@@ -4342,55 +4342,91 @@
   }
 
   // 화면 아래에 다음 목표의 방향 + 목적지 이름을 알려주는 안내 배너를 그린다.
+  // 다음 목표를 직관적으로 안내한다.
+  //  · 목표가 같은 맵·화면 안: 그 칸 위에 통통 튀는 ▼ 마커로 "여기!" 표시
+  //  · 그 외: 플레이어를 도는 큰 방향 화살표 + 하단에 목적지 이름
   function drawObjectiveArrow() {
     const target = getObjectiveTarget(game.flags);
     if (!target) return;
     const wp = nextWaypoint(game.flags, game.map);
     if (!wp) return;
     const p = game.player;
-    const dx = wp.x - p.x, dy = wp.y - p.y;
     const onTargetMap = target.map === game.map;
+    // 걸어갈 목표 칸: 같은 맵이면 목표 자체, 아니면 다음 워프 칸
+    const aim = onTargetMap ? { x: target.x, y: target.y } : wp;
+    const dx = aim.x - p.x, dy = aim.y - p.y;
     const dist = Math.abs(dx) + Math.abs(dy);
     if (onTargetMap && dist === 0) return; // 이미 도착
-
-    const destName = (MAPS[target.map] && MAPS[target.map].name) || '목표';
-    let label;
-    if (onTargetMap) label = dist <= 3 ? '바로 여기!' : (target.label || '이 지역에 있어요');
-    else label = destName;
+    const { cx, cy } = camera();
     const angle = Math.atan2(dy, dx);
+    const bob = game.reduceFx ? 0 : Math.abs(Math.sin(game.time / 12));
 
-    // 배너 박스 (하단 중앙) — 화살표 + 목적지 라벨
-    ctx.font = fs(13, true);
-    const tw = ctx.measureText(label).width;
-    const bh = game.largeText ? 36 : 30;
-    const bw = tw + 56;
-    const bx = Math.round(LW / 2 - bw / 2);
-    const by = LH - bh - 10;
-    utBox(bx, by, bw, bh, 6);
+    // 목표 칸이 화면 안이고 가까우면: 그 칸 바로 위에 마커를 띄운다
+    const sx = Math.round(aim.x * TS - cx + TS / 2);
+    const sy = Math.round(aim.y * TS - cy);
+    const onScreen = sx > 8 && sx < LW - 8 && sy > 24 && sy < LH - 8;
+    if (onTargetMap && onScreen && dist <= 8) {
+      const my = sy - 14 - bob * 7;
+      // 빛 고리
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = '#ffd644';
+      ctx.beginPath();
+      ctx.ellipse(sx, sy + TS / 2, 16, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      // 통통 튀는 ▼ 마커
+      ctx.save();
+      ctx.fillStyle = '#ffd644';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(sx, my + 14);
+      ctx.lineTo(sx - 9, my);
+      ctx.lineTo(sx + 9, my);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
 
-    // 방향 화살표 (배너 왼쪽, 살짝 둥실거려 눈에 띄게)
-    const bob = Math.sin(game.time / 14) * 1.5;
-    const ax = bx + 24, ay = by + bh / 2;
+    // 그 외: 플레이어 주위를 도는 큰 방향 화살표
+    const px = Math.round(p.px - cx + TS / 2);
+    const py = Math.round(p.py - cy + TS / 2);
+    const r = 40 + bob * 4;
+    const ax = px + Math.cos(angle) * r;
+    const ay = py + Math.sin(angle) * r;
     ctx.save();
-    ctx.translate(ax + Math.cos(angle) * bob, ay + Math.sin(angle) * bob);
+    ctx.translate(ax, ay);
     ctx.rotate(angle);
     ctx.fillStyle = '#ffd644';
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(12, 0);
-    ctx.lineTo(-7, -9);
-    ctx.lineTo(-7, 9);
+    ctx.moveTo(17, 0);
+    ctx.lineTo(-9, -12);
+    ctx.lineTo(-3, 0);
+    ctx.lineTo(-9, 12);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.restore();
 
-    // 목적지 라벨
-    ctx.fillStyle = label === '바로 여기!' ? '#ffd644' : '#fff';
+    // 하단 목적지 라벨
+    const destName = onTargetMap ? (target.label || '이 지역') : ((MAPS[target.map] && MAPS[target.map].name) || '목표');
+    const label = onTargetMap ? `${destName} 쪽으로!` : `${destName}(으)로 가기`;
     ctx.font = fs(13, true);
+    const tw = ctx.measureText(label).width;
+    const bh = game.largeText ? 34 : 28;
+    const bw = tw + 28;
+    const bx = Math.round(LW / 2 - bw / 2);
+    const by = LH - bh - 10;
+    utBox(bx, by, bw, bh, 6);
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, LW / 2, by + bh / 2 + 5);
     ctx.textAlign = 'left';
-    ctx.fillText(label, bx + 44, by + bh / 2 + 5);
   }
 
   function drawHud() {
