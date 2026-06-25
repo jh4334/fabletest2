@@ -53,6 +53,11 @@ const MAPS = {
       { id: 'labguide', x: 25, y: 8, pal: 'guard', name: '연구원' },
       { id: 'yeongi_npc', x: 5, y: 12, monSprite: 'yeongi', name: '영이',
         show: (flags) => !!flags.trueEnding },
+      // 되돌린 친구들이 마을에 놀러 온다 — 자비가 쌓일수록 마을이 북적인다
+      { id: 'friend_somun', x: 19, y: 9, monSprite: 'somunmon', name: '소문몬',
+        show: (flags) => flags.mercy >= 12 && !!(flags.mercyChoice && flags.mercyChoice.somunmon === 'mercy') },
+      { id: 'friend_kkam', x: 22, y: 9, monSprite: 'kkamkkammon', name: '깜깜몬',
+        show: (flags) => flags.mercy >= 20 && !!(flags.mercyChoice && flags.mercyChoice.kkamkkammon === 'mercy') },
     ],
     signs: [
       { x: 15, y: 16, text: '≪경계마을≫\nAI 윤리 수호대의 고향입니다.' },
@@ -2610,12 +2615,33 @@ function getNpcDialog(npcId, flags) {
         '아 맞다, 누가 내 비밀번호를 물어봐도\n절대 알려주면 안 된댔어!',
       ];
 
-    case 'grandma':
+    case 'grandma': {
+      const g = ['아이고, 우리 마을의 수호자님.\n모험은 자동으로 저장된단다.'];
+      // 자비 총량에 따라 마을 분위기가 달라진다 (선택이 세계에 남는다)
+      if (flags.mercy >= 20) {
+        g.push('요즘 마을이 참 따뜻하구나.\n네가 마음을 안아 준 친구들 소식이\n바람을 타고 자꾸 들려온단다.');
+      } else if (flags.mercy >= 8) {
+        g.push(`벌써 ${flags.mercy}이나 되돌렸다며?\n네가 지나간 자리마다\n웃음소리가 늘었단다.`);
+      } else if (flags.mercy >= 1) {
+        g.push('마음을 되돌려 준 몬스터가\n있다고 들었어. 작은 친절이\n생각보다 멀리 퍼진단다.');
+      } else {
+        g.push('몬스터와 헤어지는 마지막 순간,\n네가 건넨 마음을…\n세상은 조용히 기억한단다.');
+      }
+      g.push('정답을 맞히는 것만큼이나,\n어떻게 작별하는지가 중요해.\n…끝에 가면 알게 될 거야.');
+      g.push('아 참, M키를 누르면 음악을\n켜고 끌 수 있다는구나.');
+      return g;
+    }
+
+    case 'friend_somun':
       return [
-        '아이고, 우리 마을의 수호자님.\n모험은 자동으로 저장된단다.',
-        '한 가지만 기억해 두렴.\n몬스터와 헤어지는 마지막 순간,\n네가 건넨 마음을…\n세상은 조용히 기억한단다.',
-        '정답을 맞히는 것만큼이나,\n어떻게 작별하는지가 중요해.\n…끝에 가면 알게 될 거야.',
-        '아 참, M키를 누르면 음악을\n켜고 끌 수 있다는구나.',
+        '앗, 수호자! 마을에 놀러 왔어.',
+        '이제 나는 확인 안 된 얘기는\n함부로 옮기지 않아.\n…너 덕분이야!',
+      ];
+
+    case 'friend_kkam':
+      return [
+        '여기 마을은 참 환하다!\n…나도 이제 "왜?"라고\n물어볼 수 있게 됐어.',
+        '모르는 건 부끄러운 게 아니더라.\n이유를 묻는 게 더 멋진 거였어.',
       ];
 
     case 'guard':
