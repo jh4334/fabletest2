@@ -884,10 +884,14 @@ check('전당 닫고 월드 복귀', g.mode === 'world');
 
 console.log('[48] 미니게임·보스 패턴 확장');
 const { BOSS_ATTACKS } = vm.runInContext('({ BOSS_ATTACKS })', sandbox);
-const patterns = Object.values(BOSS_ATTACKS).map((a) => a.pattern);
+// 단일 pattern + 다단계 patterns 배열을 모두 모은다
+const patterns = Object.values(BOSS_ATTACKS).flatMap((a) => a.patterns || (a.pattern ? [a.pattern] : []));
 check('나선형 패턴 존재', patterns.includes('spiral'));
 check('빈틈 벽 패턴 존재', patterns.includes('wall'));
 check('지그재그 패턴 존재', patterns.includes('zigzag'));
+check('추적(aimed) 패턴 존재', patterns.includes('aimed'));
+check('다단계 보스 존재 (최종보스)', Array.isArray(BOSS_ATTACKS.finalboss.patterns) && BOSS_ATTACKS.finalboss.patterns.length >= 2);
+check('영이 다단계 패턴', Array.isArray(BOSS_ATTACKS.yeongi.patterns) && BOSS_ATTACKS.yeongi.patterns.length >= 2);
 check('보너스 몬스터도 회피 패턴 보유', BOSS_ATTACKS.miraemon && BOSS_ATTACKS.miraemon.pattern === 'spiral');
 
 console.log('[49] 이름 입력 정제');

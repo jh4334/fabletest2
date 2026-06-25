@@ -1735,7 +1735,16 @@
 
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-  function spawnBullets(d, pattern) {
+  // 다단계 보스: patterns 배열을 진행도에 따라 순서대로 펼친다 (점점 거세짐)
+  function currentPattern(d, atk) {
+    if (atk.patterns && atk.patterns.length > 1) {
+      const seg = Math.floor((d.t / d.dur) * atk.patterns.length);
+      return atk.patterns[Math.min(seg, atk.patterns.length - 1)];
+    }
+    return atk.pattern || (atk.patterns && atk.patterns[0]) || 'burst';
+  }
+
+  function spawnBullets(d, pattern, soul) {
     const box = d.box;
     const sf = dodgeSpeedFactor();
     if (pattern === 'rain') {
@@ -1768,6 +1777,12 @@
       const y = box.y + 16 + Math.random() * (box.h - 32);
       d.bullets.push({ x: fromLeft ? box.x - 6 : box.x + box.w + 6, y,
         vx: (fromLeft ? 1 : -1) * 1.9 * sf, vy: 0, r: 6, zig: 2.4 * sf, zigT: Math.random() * 6 });
+    } else if (pattern === 'aimed') {
+      // 위 가장자리에서 하트의 '현재 위치'를 겨냥해 쏜다 (개인을 노리는 느낌)
+      const x = box.x + 12 + Math.random() * (box.w - 24), sy = box.y - 6;
+      const tx = soul ? soul.x : box.x + box.w / 2, ty = soul ? soul.y : box.y + box.h / 2;
+      const a = Math.atan2(ty - sy, tx - x);
+      d.bullets.push({ x, y: sy, vx: Math.cos(a) * 2.3 * sf, vy: Math.sin(a) * 2.3 * sf, r: 5 });
     } else { // burst — 중앙에서 방사형
       const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
       const n = 6, base = Math.random() * Math.PI * 2;
@@ -1797,9 +1812,10 @@
     // 탄막 생성 (끝나기 직전엔 멈춰서 정리 시간을 준다)
     d.spawnTimer -= 1;
     if (d.spawnTimer <= 0 && d.t < d.dur - 50) {
-      spawnBullets(d, atk.pattern);
-      d.spawnTimer = atk.pattern === 'burst' ? 24 : atk.pattern === 'spiral' ? 8
-        : atk.pattern === 'wall' ? 42 : atk.pattern === 'zigzag' ? 18 : 15;
+      const pat = currentPattern(d, atk);
+      spawnBullets(d, pat, d.soul);
+      d.spawnTimer = pat === 'burst' ? 24 : pat === 'spiral' ? 8
+        : pat === 'wall' ? 42 : pat === 'zigzag' ? 18 : pat === 'aimed' ? 16 : 15;
     }
 
     // 탄막 이동 + 화면 밖 제거 (zigzag 탄막은 진행하며 위아래로 일렁인다)

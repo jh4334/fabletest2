@@ -205,10 +205,13 @@ for (const id of DEX_ORDER) {
 }
 if (DEX_ORDER.length !== new Set(DEX_ORDER).size) err('DEX_ORDER에 중복 있음');
 
-// 9. 보스 공격: 패턴/지속시간이 올바른지
+// 9. 보스 공격: 패턴/지속시간이 올바른지 (단일 pattern 또는 다단계 patterns 배열)
+const VALID_PATTERNS = ['rain', 'sides', 'burst', 'spiral', 'wall', 'zigzag', 'aimed'];
 for (const [id, atk] of Object.entries(BOSS_ATTACKS)) {
   if (!MONSTERS[id]) err(`보스 공격: ${id}는 존재하지 않는 몬스터`);
-  if (!['rain', 'sides', 'burst', 'spiral', 'wall', 'zigzag'].includes(atk.pattern)) err(`보스 공격 ${id}: 패턴 '${atk.pattern}' 잘못됨`);
+  const pats = atk.patterns || (atk.pattern ? [atk.pattern] : []);
+  if (pats.length === 0) err(`보스 공격 ${id}: pattern/patterns 없음`);
+  for (const p of pats) if (!VALID_PATTERNS.includes(p)) err(`보스 공격 ${id}: 패턴 '${p}' 잘못됨`);
   if (!(atk.dur > 0)) err(`보스 공격 ${id}: dur 잘못됨`);
 }
 
