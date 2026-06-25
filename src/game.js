@@ -3175,7 +3175,7 @@
     const sum = slotSummary(slot);
     const title = selectedTitle(slot);
     const acc = s.attempted ? Math.round(s.overallRate * 100) + '%' : '—';
-    const prog = sum ? (sum.done ? '모험 완료' : `스테이지 ${sum.stage}/10`) : '시작 전';
+    const prog = sum ? (sum.done ? '모험 완료' : `스테이지 ${sum.stage}/5`) : '시작 전';
     return [
       '════════ AI 윤리 어드벤처 수료증 ════════',
       '',
@@ -3261,7 +3261,7 @@
     ctx.fillText('열심히 익혔기에 이 증서를 드립니다.', cx, by + 212);
 
     const acc = s.attempted ? Math.round(s.overallRate * 100) + '%' : '—';
-    const prog = sum ? (sum.done ? '모험 완료' : `스테이지 ${sum.stage}/10`) : '시작 전';
+    const prog = sum ? (sum.done ? '모험 완료' : `스테이지 ${sum.stage}/5`) : '시작 전';
     const rows = [
       ['진행도', prog], ['정답률', `${acc} (${s.attempted}문제)`],
       ['배움 카드', `${collectedCards(slot)}/${LEARN_CARDS.length}`],
@@ -3558,7 +3558,7 @@
         i + 1,
         sum.name,
         title ? title.name : '',
-        sum.done ? '모험 완료' : ('스테이지 ' + sum.stage + '/10'),
+        sum.done ? '모험 완료' : ('스테이지 ' + sum.stage + '/5'),
         sum.done ? 'Y' : 'N',
         s.attempted,
         s.correct,
@@ -3653,7 +3653,7 @@
         ctx.textAlign = 'right'; ctx.fillText(val, x + w - 14, ly); ctx.textAlign = 'left';
         ly += 24;
       };
-      line('진행', sum.done ? '모험 완료' : `스테이지 ${sum.stage}/10`);
+      line('진행', sum.done ? '모험 완료' : `스테이지 ${sum.stage}/5`);
       line('푼 문제', `${s.attempted}개`);
       line('정답률', s.attempted ? `${Math.round(s.overallRate * 100)}%` : '—',
         s.attempted ? (s.overallRate >= 0.8 ? okColor() : s.overallRate >= 0.6 ? warnColor() : badColor()) : '#888');
@@ -3693,7 +3693,7 @@
   // ---------- 수업 모드 (스테이지 점프) ----------
   // 선생님이 오늘 수업할 스테이지부터 바로 시작하게 해 준다.
   // 지금 슬롯의 진행을 "N스테이지 시작" 상태로 맞춘다(이전 스테이지는 모두 완료 처리).
-  const STAGE_COUNT = 10;
+  const STAGE_COUNT = 5;
   // 목표 스테이지 시작 상태의 flags를 만든다. (1스테이지 = 거의 새 모험)
   function setupStageFlags(target) {
     target = Math.max(1, Math.min(STAGE_COUNT, target | 0));
@@ -3769,15 +3769,10 @@
   // 스테이지별 한 줄 소개(선생님이 고르기 쉽게)
   const STAGE_BLURB = {
     1: '개인정보 · 저작권 · 가짜정보 · 공정함 · 절제',
-    2: '고운 말 · 필터버블 · 사람 확인 · 소문 · 경청',
-    3: '환경 · 투명성 · 책임 · 절약 · 정직',
-    4: '창의성 · 일자리 협력 · AI와 사람의 관계',
-    5: '1~4스테이지 종합 · 어둠대왕몬',
-    6: '계정 보안 · 디지털 발자국',
-    7: '데이터 수집과 동의',
-    8: 'AI 필터 · 사칭 · 신원',
-    9: '다크패턴 · 설득 · 외로움',
-    10: '심층부 종합 · 존재의 가치',
+    2: '고운 말 · 필터버블 · 사람 확인 · 소문 · 경청 · 계정 보안 · 디지털 발자국',
+    3: '환경 · 투명성 · 책임 · 절약 · 정직 · 데이터 수집과 동의',
+    4: '창의성 · 일자리 · AI와 사람 · 진짜 나 · 사칭 · 다크패턴 · 설득',
+    5: '전체 복습 · 어둠대왕몬 · 코어(존재의 가치)',
   };
   function drawClassMode() {
     const cm = game.classmode;
@@ -3871,7 +3866,7 @@
       return { empty: true, name: '', recommendations: [], sessions: [], text: lines.join('\n') };
     }
     lines.push('이름: ' + slotLearnName(slot));
-    lines.push('진행: ' + (sum.done ? '모험 완료' : `스테이지 ${sum.stage}/10`));
+    lines.push('진행: ' + (sum.done ? '모험 완료' : `스테이지 ${sum.stage}/5`));
     lines.push(`푼 문제: ${s.attempted}개 · 정답률 ${s.attempted ? pct(s.overallRate) : '—'} · 복습 노트 ${mistakeCount(slot)}개`);
     lines.push('──────────────────────');
     if (recommendations.length === 0) {
@@ -4402,7 +4397,7 @@
     // 스테이지 + 지역 이름 + 목표
     const m = MAPS[game.map];
     ctx.font = 'bold 14px monospace';
-    const title = `STAGE ${getStage(game.flags)}/10 · ${m.name}`;
+    const title = `STAGE ${getStage(game.flags)}/5 · ${m.name}`;
     const obj = `목표: ${getObjective(game.flags)}`;
     const w = Math.max(ctx.measureText(obj).width, ctx.measureText(title).width) + 20;
     utBox(8, 8, w, 52, 4);
@@ -4793,7 +4788,7 @@
         ctx.fillText(sum.name, boxX + 18, y + 46);
         ctx.fillStyle = '#888';
         ctx.font = '13px monospace';
-        const prog = sum.done ? '모험 완료' : `스테이지 ${sum.stage}/10`;
+        const prog = sum.done ? '모험 완료' : `스테이지 ${sum.stage}/5`;
         const streak = getMeta(i).streak || 0;
         ctx.textAlign = 'right';
         ctx.fillText(`${prog}   ♥ ${sum.mercy}${streak ? '   🔥' + streak : ''}`, boxX + boxW - 18, y + 40);

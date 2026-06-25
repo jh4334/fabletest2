@@ -225,7 +225,7 @@ const MAPS = {
       'TGGGGGGGGGGGGPPGGGGGGGGGGGGT',
       'TGGTTGGGGGGGGPPGGGGGGGGTTGGT',
       'TGGGGGGGGGGGGPPGGGGGGGGGGGGT',
-      'TGGGGGGGGGGGGPPGGGGG1GGGGGGT',
+      'TGGGGGG1GGGGGPPGGGGG1GGGGGGT',
       'TGGGGGGGGGGGGPPGGGGGGGGGGGGT',
       'TGGFGGGGGGGGGPPGGGGGGGGGFGGT',
       'TTTTTTTTTTTTTPPTTTTTTTTTTTTT',
@@ -235,9 +235,10 @@ const MAPS = {
       { x: 14, y: 0, to: 'village', tx: 14, ty: 18 },
       { x: 0, y: 10, to: 'windhill', tx: 1, ty: 10 },
       { x: 27, y: 10, to: 'fogswamp', tx: 26, ty: 10 },
+      { x: 7, y: 16, to: 'serverroom', tx: 13, ty: 18 },
       { x: 20, y: 16, to: 'signaltower2', tx: 8, ty: 12,
-        needAllDefeated: ['somunmon', 'musimon'],
-        lockText: '탑터의 문이 굳게 닫혀 있다.\n바람 언덕과 안개 습지의\n수호자를 먼저 깨우쳐야 한다.' },
+        needAllDefeated: ['somunmon', 'musimon', 'tturimmon', 'girokmon'],
+        lockText: '탑터의 문이 굳게 닫혀 있다.\n바람 언덕·안개 습지·서버실의\n마음을 먼저 되돌려야 한다.' },
       { x: 13, y: 19, to: 'desert', tx: 13, ty: 1, needBoss: 'meotdaeromon',
         lockText: '남쪽 길을 멋대로몬의 부하들이\n막고 있다. 이 초원의 보스\n멋대로몬을 깨우쳐야 한다!' },
       { x: 14, y: 19, to: 'desert', tx: 14, ty: 1, needBoss: 'meotdaeromon',
@@ -389,7 +390,7 @@ const MAPS = {
       'RSSXSSSSSSSSSSSSSSSSSSSSXSSR',
       'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
       'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
-      'RSSSSSRSSSSSSSSS1SSSSRSSSSSR',
+      'RSSSSSRS1SSSSSSS1SSSSRSSSSSR',
       'RSSXSSSSSSSSSSSSSSSSSSSSXSSR',
       'RSSSSSSSSSSSSSSSSSSSSSSSSSSR',
       'RRRRRRRRRRRRRSSRRRRRRRRRRRRR',
@@ -399,9 +400,10 @@ const MAPS = {
       { x: 14, y: 0, to: 'meadow', tx: 14, ty: 18 },
       { x: 0, y: 8, to: 'ruins', tx: 1, ty: 10 },
       { x: 27, y: 8, to: 'oasis', tx: 1, ty: 10 },
+      { x: 8, y: 16, to: 'library', tx: 13, ty: 18 },
       { x: 16, y: 16, to: 'temple', tx: 8, ty: 12,
-        needAllDefeated: ['nangbimon', 'pinggyemon'],
-        lockText: '신전의 문이 굳게 닫혀 있다.\n열사의 폐허와 오아시스의\n수호자를 먼저 깨우쳐야 한다.' },
+        needAllDefeated: ['nangbimon', 'pinggyemon', 'sujipmon', 'saseomon'],
+        lockText: '신전의 문이 굳게 닫혀 있다.\n폐허·오아시스·기억의 도서관의\n마음을 먼저 되돌려야 한다.' },
       { x: 13, y: 19, to: 'snow', tx: 13, ty: 1, needBoss: 'tteonemgimon',
         lockText: '모래폭풍이 길을 막고 있다.\n이 사막의 보스 떠넘기몬을\n깨우치면 가라앉을 것이다!' },
       { x: 14, y: 19, to: 'snow', tx: 14, ty: 1, needBoss: 'tteonemgimon',
@@ -552,7 +554,7 @@ const MAPS = {
       'JZZZZZZZZZZZZZZZZZZZZZZZZZZJ',
       'JZZJJZZZZZZZZZZZZZZZZZJJZZZJ',
       'JZZZZZZZZZZZZZZZZZZZZZZZZZZJ',
-      'JZZZZZZZZZZZZZZZZZZZZZZZZZZJ',
+      'JZZZZZZ1ZZZZZZZZZZZZZZZZZZZJ',
       'JZZZZZZZZZZZZZZZZZZZZZZZZZZJ',
       'JZZZZZZZZZZZZZZZZZZZZZZZZZZJ',
       'JJJJJJJJJJJJJZZJJJJJJJJJJJJJ',
@@ -560,10 +562,13 @@ const MAPS = {
     warps: [
       { x: 13, y: 0, to: 'desert', tx: 13, ty: 18 },
       { x: 14, y: 0, to: 'desert', tx: 14, ty: 18 },
+      { x: 7, y: 16, to: 'mirrors', tx: 13, ty: 18 },
       { x: 13, y: 19, to: 'castle', tx: 9, ty: 15, needBoss: 'hollimmon',
-        lockText: '그림자성의 문이 얼음으로\n덮여 있다. 이 마을의 보스\n홀림몬을 깨우쳐야 녹을 것이다!' },
+        needAllDefeated: ['piltermon', 'mirrormon', 'yuhokmon', 'soksagimon'],
+        lockText: '그림자성의 문이 얼음으로 덮여 있다.\n거울 회랑·속삭임 정원의 마음과\n설원의 보스 홀림몬을 되돌려야 한다!' },
       { x: 14, y: 19, to: 'castle', tx: 10, ty: 15, needBoss: 'hollimmon',
-        lockText: '그림자성의 문이 얼음으로\n덮여 있다. 이 마을의 보스\n홀림몬을 깨우쳐야 녹을 것이다!' },
+        needAllDefeated: ['piltermon', 'mirrormon', 'yuhokmon', 'soksagimon'],
+        lockText: '그림자성의 문이 얼음으로 덮여 있다.\n거울 회랑·속삭임 정원의 마음과\n설원의 보스 홀림몬을 되돌려야 한다!' },
     ],
     npcs: [
       { id: 'mittens', x: 16, y: 13, pal: 'mittens', name: '털장갑 소녀' },
@@ -605,8 +610,8 @@ const MAPS = {
     warps: [
       { x: 9, y: 17, to: 'snow', tx: 13, ty: 18 },
       { x: 10, y: 17, to: 'snow', tx: 14, ty: 18 },
-      { x: 9, y: 1, to: 'serverroom', tx: 13, ty: 18, needBoss: 'finalboss',
-        lockText: '벽 너머에서 지지직거리는\n잡음이 들린다…' },
+      { x: 9, y: 1, to: 'core', tx: 9, ty: 13, needBoss: 'finalboss',
+        lockText: '왕좌 뒤에서 가느다란 신호가\n더 깊은 곳으로 이어진다…' },
     ],
     npcs: [],
     signs: [],
@@ -617,13 +622,13 @@ const MAPS = {
     ],
   },
 
-  // ---- 스테이지 6 ----
+  // ---- 스테이지 2 (서버실) ----
   serverroom: {
-    name: '잊혀진 서버실 (스테이지 6)',
+    name: '잊혀진 서버실 (스테이지 2)',
     song: 'glitch',
     intro: [
       '낡은 서버들이 늘어선 차가운 방.\n먼지 쌓인 기계들 사이로\n희미한 불빛이 깜빡인다.',
-      '…여기는 분명, 그림자성보다\n훨씬 오래된 곳이다.',
+      '…경계마을이 세워지기 훨씬 전부터\n잠들어 있던 곳 같다.',
     ],
     tiles: [
       'KKKKKKKKKKKKKEEKKKKKKKKKKKKK',
@@ -648,12 +653,8 @@ const MAPS = {
       'KKKKKKKKKKKKKEEKKKKKKKKKKKKK',
     ],
     warps: [
-      { x: 13, y: 19, to: 'castle', tx: 9, ty: 2 },
-      { x: 14, y: 19, to: 'castle', tx: 9, ty: 2 },
-      { x: 13, y: 0, to: 'library', tx: 13, ty: 18, needBoss: 'girokmon',
-        lockText: '북쪽 문에 굳은 자물쇠.\n이 방의 관리자, 기록몬의\n허락이 필요해 보인다.' },
-      { x: 14, y: 0, to: 'library', tx: 14, ty: 18, needBoss: 'girokmon',
-        lockText: '북쪽 문에 굳은 자물쇠.\n이 방의 관리자, 기록몬의\n허락이 필요해 보인다.' },
+      { x: 13, y: 19, to: 'meadow', tx: 7, ty: 17 },
+      { x: 14, y: 19, to: 'meadow', tx: 7, ty: 17 },
     ],
     npcs: [
       { id: 'hologram1', x: 16, y: 16, pal: 'prof', name: '박사님(홀로그램)' },
@@ -667,9 +668,9 @@ const MAPS = {
     ],
   },
 
-  // ---- 스테이지 7 ----
+  // ---- 스테이지 3 (도서관) ----
   library: {
-    name: '기억의 도서관 (스테이지 7)',
+    name: '기억의 도서관 (스테이지 3)',
     song: 'title',
     intro: [
       '끝없이 늘어선 책장.\n책등에는 이름이 하나씩 적혀 있다.',
@@ -698,12 +699,8 @@ const MAPS = {
       'NNNNNNNNNNNNNIINNNNNNNNNNNNN',
     ],
     warps: [
-      { x: 13, y: 19, to: 'serverroom', tx: 13, ty: 1 },
-      { x: 14, y: 19, to: 'serverroom', tx: 14, ty: 1 },
-      { x: 13, y: 0, to: 'mirrors', tx: 13, ty: 18, needBoss: 'saseomon',
-        lockText: '책장이 길을 막고 있다.\n도서관의 주인, 사서몬이\n비켜 주지 않는다.' },
-      { x: 14, y: 0, to: 'mirrors', tx: 14, ty: 18, needBoss: 'saseomon',
-        lockText: '책장이 길을 막고 있다.\n도서관의 주인, 사서몬이\n비켜 주지 않는다.' },
+      { x: 13, y: 19, to: 'desert', tx: 8, ty: 17 },
+      { x: 14, y: 19, to: 'desert', tx: 8, ty: 17 },
     ],
     npcs: [],
     signs: [
@@ -715,9 +712,9 @@ const MAPS = {
     ],
   },
 
-  // ---- 스테이지 8 ----
+  // ---- 스테이지 4 (거울) ----
   mirrors: {
-    name: '거울 회랑 (스테이지 8)',
+    name: '거울 회랑 (스테이지 4)',
     song: 'glitch',
     intro: [
       '거울로 된 복도.\n수많은 "나"가 함께 걷는다.',
@@ -746,8 +743,8 @@ const MAPS = {
       'QQQQQQQQQQQQQMMQQQQQQQQQQQQQ',
     ],
     warps: [
-      { x: 13, y: 19, to: 'library', tx: 13, ty: 1 },
-      { x: 14, y: 19, to: 'library', tx: 14, ty: 1 },
+      { x: 13, y: 19, to: 'snow', tx: 7, ty: 17 },
+      { x: 14, y: 19, to: 'snow', tx: 7, ty: 17 },
       { x: 13, y: 0, to: 'garden', tx: 13, ty: 1, needBoss: 'mirrormon',
         lockText: '거울 속의 네가 고개를 젓는다.\n…아직은 지나갈 수 없다.' },
       { x: 14, y: 0, to: 'garden', tx: 14, ty: 1, needBoss: 'mirrormon',
@@ -763,9 +760,9 @@ const MAPS = {
     ],
   },
 
-  // ---- 스테이지 9 ----
+  // ---- 스테이지 4 (정원) ----
   garden: {
-    name: '속삭임 정원 (스테이지 9)',
+    name: '속삭임 정원 (스테이지 4)',
     song: 'cave',
     intro: [
       '빛나는 꽃이 피어 있는 어두운 정원.\n바람도 없는데 꽃잎이 흔들린다.',
@@ -796,10 +793,6 @@ const MAPS = {
     warps: [
       { x: 13, y: 0, to: 'mirrors', tx: 13, ty: 1 },
       { x: 14, y: 0, to: 'mirrors', tx: 14, ty: 1 },
-      { x: 13, y: 19, to: 'core', tx: 9, ty: 13, needBoss: 'soksagimon',
-        lockText: '속삭임이 겹겹이 쌓여\n보이지 않는 벽이 되었다.\n…이 정원의 목소리를 먼저\n들어 주어야 한다.' },
-      { x: 14, y: 19, to: 'core', tx: 9, ty: 13, needBoss: 'soksagimon',
-        lockText: '속삭임이 겹겹이 쌓여\n보이지 않는 벽이 되었다.\n…이 정원의 목소리를 먼저\n들어 주어야 한다.' },
     ],
     npcs: [
       { id: 'hologram2', x: 17, y: 16, pal: 'prof', name: '박사님(홀로그램)' },
@@ -813,9 +806,9 @@ const MAPS = {
     ],
   },
 
-  // ---- 스테이지 10 ----
+  // ---- 스테이지 5 (코어) ----
   core: {
-    name: '코어 (스테이지 10)',
+    name: '코어 (스테이지 5)',
     song: 'core',
     intro: [
       '세상의 가장 깊은 곳.\n모든 데이터가 시작된 자리.',
@@ -841,8 +834,8 @@ const MAPS = {
       'KKKKKKKKKAAKKKKKKKKK',
     ],
     warps: [
-      { x: 9, y: 15, to: 'garden', tx: 13, ty: 18 },
-      { x: 10, y: 15, to: 'garden', tx: 14, ty: 18 },
+      { x: 9, y: 15, to: 'castle', tx: 9, ty: 2 },
+      { x: 10, y: 15, to: 'castle', tx: 9, ty: 2 },
     ],
     npcs: [],
     signs: [],
@@ -2799,18 +2792,14 @@ function computeEnding(choiceKind, mercy) {
 }
 
 // 현재 스테이지 (1~10)
+// 5개 챕터(스테이지). 각 챕터의 보스를 되돌리면 다음 챕터로.
 function getStage(flags) {
   const d = flags.defeated;
-  if (!d.hondonmon) return 1;
-  if (!d.meotdaeromon) return 2;
-  if (!d.tteonemgimon) return 3;
-  if (!d.hollimmon) return 4;
-  if (!d.finalboss) return 5;
-  if (!d.girokmon) return 6;
-  if (!d.saseomon) return 7;
-  if (!d.mirrormon) return 8;
-  if (!d.soksagimon) return 9;
-  return 10;
+  if (!d.hondonmon) return 1;     // 1장: 숲·호수·동굴
+  if (!d.meotdaeromon) return 2;  // 2장: 초원 + 서버실(보안·발자국)
+  if (!d.tteonemgimon) return 3;  // 3장: 사막 + 도서관(데이터 동의)
+  if (!d.hollimmon) return 4;     // 4장: 설원 + 거울(사칭) + 정원(설득)
+  return 5;                       // 5장: 그림자성 + 코어 (복습·최종)
 }
 
 // 현재 목표 텍스트
@@ -2822,31 +2811,46 @@ function getObjective(flags) {
       ? '모든 이야기의 끝. 영이가 마을에서 기다려요'
       : '엔딩 도달. …모두의 마음을 안아 주면 다른 결말이 있을지도';
   }
+  // 1장 — 숲·호수·동굴
   if (!d.hondonmon) {
     const badges = countBadges(flags);
-    if (badges >= 3) return '신호탑의 혼돈몬에게 도전하기';
+    if (badges >= 3) return '신호탑의 혼돈몬 되돌리기';
     const left = [];
     if (!flags.badges.forest) left.push('숲');
     if (!flags.badges.lake) left.push('호수');
     if (!flags.badges.cave) left.push('동굴');
-    return `${left.join('·')}의 수호자 깨우치기 (증표 ${badges}/3)`;
+    return `${left.join('·')}의 수호자 되돌리기 (증표 ${badges}/3)`;
   }
+  // 2장 — 초원 + 서버실(보안·발자국)
   if (!d.meotdaeromon) {
-    if (!d.somunmon) return '바람 언덕의 소문몬 깨우치기 (초원 거점 서쪽)';
-    if (!d.musimon) return '안개 습지의 무시몬 깨우치기 (초원 거점 동쪽)';
-    return '신호 탑터의 멋대로몬 깨우치기 (초원 거점 가운데)';
+    if (!d.tturimmon) return '잊혀진 서버실 — 뚫림몬(계정 보안) 되돌리기 (초원 왼쪽 통로)';
+    if (!d.girokmon) return '잊혀진 서버실 — 기록몬(디지털 발자국) 되돌리기';
+    if (!d.somunmon) return '바람 언덕의 소문몬 되돌리기 (초원 서쪽)';
+    if (!d.musimon) return '안개 습지의 무시몬 되돌리기 (초원 동쪽)';
+    return '신호 탑터의 멋대로몬 되돌리기 (초원 가운데)';
   }
+  // 3장 — 사막 + 도서관(데이터 동의)
   if (!d.tteonemgimon) {
-    if (!d.nangbimon) return '열사의 폐허의 낭비몬 깨우치기 (사막 거점 서쪽)';
-    if (!d.pinggyemon) return '오아시스의 핑계몬 깨우치기 (사막 거점 동쪽)';
-    return '심판의 신전의 떠넘기몬 깨우치기 (사막 거점 가운데)';
+    if (!d.sujipmon) return '기억의 도서관 — 수집몬(데이터 동의) 되돌리기 (사막 왼쪽 통로)';
+    if (!d.saseomon) return '기억의 도서관 — 사서몬 되돌리기';
+    if (!d.nangbimon) return '열사의 폐허의 낭비몬 되돌리기 (사막 서쪽)';
+    if (!d.pinggyemon) return '오아시스의 핑계몬 되돌리기 (사막 동쪽)';
+    return '심판의 신전의 떠넘기몬 되돌리기 (사막 가운데)';
   }
-  if (!d.hollimmon) return '정지된 설원의 보스 홀림몬 깨우치기 (사막 남쪽)';
-  if (!d.finalboss) return '그림자성의 어둠대왕몬 깨우치기 (정지된 설원 남쪽)';
-  if (!d.girokmon) return '왕좌 뒤의 신호를 따라가기 — 잊혀진 서버실';
-  if (!d.saseomon) return '기억의 도서관 — ≪프로젝트 0호≫의 흔적 찾기';
-  if (!d.mirrormon) return '거울 회랑 — 거울 속의 나와 마주하기';
-  if (!d.soksagimon) return '속삭임 정원 — 정원의 목소리 들어 주기';
+  // 4장 — 설원 + 거울(사칭) + 정원(설득)
+  if (!d.hollimmon) {
+    if (!d.piltermon) return '거울 회랑 — 필터몬(진짜 나) 되돌리기 (설원 왼쪽 통로)';
+    if (!d.mirrormon) return '거울 회랑 — 미러몬(사칭) 되돌리기';
+    if (!d.yuhokmon) return '속삭임 정원 — 유혹몬(다크패턴) 되돌리기 (거울 회랑 너머)';
+    if (!d.soksagimon) return '속삭임 정원 — 속삭임몬(설득) 되돌리기';
+    return '정지된 설원의 보스 홀림몬 되돌리기';
+  }
+  // 5장 — 그림자성 + 코어
+  if (!d.finalboss) {
+    if (!d.piltermon || !d.mirrormon) return '거울 회랑의 남은 마음 되돌리기';
+    if (!d.yuhokmon || !d.soksagimon) return '속삭임 정원의 남은 마음 되돌리기';
+    return '그림자성의 어둠대왕몬 되돌리기 (설원 남쪽)';
+  }
   return '코어 — 가장 깊은 곳에서 기다리는 아이에게';
 }
 
@@ -2865,21 +2869,31 @@ function getObjectiveTarget(flags) {
     return { map: 'cave', x: 4, y: 4, label: '동굴의 수호자' };
   }
   if (!d.meotdaeromon) {
+    if (!d.tturimmon) return { map: 'serverroom', x: 7, y: 8, label: '뚫림몬' };
+    if (!d.girokmon) return { map: 'serverroom', x: 13, y: 2, label: '기록몬' };
     if (!d.somunmon) return { map: 'windhill', x: 20, y: 11, label: '소문몬' };
     if (!d.musimon) return { map: 'fogswamp', x: 20, y: 12, label: '무시몬' };
     return { map: 'signaltower2', x: 8, y: 3, label: '멋대로몬' };
   }
   if (!d.tteonemgimon) {
+    if (!d.sujipmon) return { map: 'library', x: 20, y: 7, label: '수집몬' };
+    if (!d.saseomon) return { map: 'library', x: 13, y: 2, label: '사서몬' };
     if (!d.nangbimon) return { map: 'ruins', x: 20, y: 13, label: '낭비몬' };
     if (!d.pinggyemon) return { map: 'oasis', x: 14, y: 11, label: '핑계몬' };
     return { map: 'temple', x: 8, y: 3, label: '떠넘기몬' };
   }
-  if (!d.hollimmon) return { map: 'snow', x: 13, y: 15, label: '홀림몬' };
-  if (!d.finalboss) return { map: 'castle', x: 9, y: 2, label: '어둠대왕몬' };
-  if (!d.girokmon) return { map: 'serverroom', x: 13, y: 2, label: '기록몬' };
-  if (!d.saseomon) return { map: 'library', x: 13, y: 2, label: '사서몬' };
-  if (!d.mirrormon) return { map: 'mirrors', x: 13, y: 2, label: '미러몬' };
-  if (!d.soksagimon) return { map: 'garden', x: 13, y: 15, label: '속삭임몬' };
+  if (!d.hollimmon) {
+    if (!d.piltermon) return { map: 'mirrors', x: 7, y: 6, label: '필터몬' };
+    if (!d.mirrormon) return { map: 'mirrors', x: 13, y: 2, label: '미러몬' };
+    if (!d.yuhokmon) return { map: 'garden', x: 7, y: 6, label: '유혹몬' };
+    if (!d.soksagimon) return { map: 'garden', x: 13, y: 15, label: '속삭임몬' };
+    return { map: 'snow', x: 13, y: 15, label: '홀림몬' };
+  }
+  if (!d.finalboss) {
+    if (!d.piltermon || !d.mirrormon) return { map: 'mirrors', x: 13, y: 2, label: '미러몬' };
+    if (!d.yuhokmon || !d.soksagimon) return { map: 'garden', x: 13, y: 15, label: '속삭임몬' };
+    return { map: 'castle', x: 9, y: 2, label: '어둠대왕몬' };
+  }
   return { map: 'core', x: 9, y: 2, label: '???' };
 }
 
@@ -2908,16 +2922,16 @@ const MONSTER_DEX = {
   maearimon:     { stage: 5, theme: '복습 · 1스테이지', learn: '배운 것은 메아리처럼 오래 울려요.' },
   geurimjamon:   { stage: 5, theme: '복습 · 2~3스테이지', learn: '그림자도 빛의 일부. 지혜는 시험을 통과해요.' },
   finalboss:     { stage: 5, theme: '전체 종합', learn: '따뜻한 답이 어둠을 밝혀요. 끝은 또 다른 시작.' },
-  tturimmon:     { stage: 6, theme: '계정 보안 · 피싱', learn: '비밀번호는 길고 다르게, 수상한 링크는 누르지 않기. 잠긴 문은 누군가의 마음.' },
-  girokmon:      { stage: 6, theme: '디지털 발자국 · 잊힐 권리', learn: '올린 것은 쉽게 안 지워져요. 소중한 것만 기억하고, 지울 권리도 있어요.' },
-  sujipmon:      { stage: 7, theme: '데이터 수집과 동의', learn: '주인이 모른다고 가져가도 되는 건 아니에요. 동의를 받고, 철회할 수도 있어요.' },
-  saseomon:      { stage: 7, theme: '동의 · 기억의 존중', learn: '함께 기억하기. 잊혀지는 게 두려워도 훔치는 건 답이 아니에요.' },
-  piltermon:     { stage: 8, theme: 'AI 필터 · 진짜 나', learn: '필터는 가공된 모습. 반짝이지 않아도 지금의 나는 충분해요.' },
-  mirrormon:     { stage: 8, theme: '사칭 · 신원', learn: '누군가를 닮지 않아도 나는 나. 익명 뒤에서도 책임은 사라지지 않아요.' },
-  yuhokmon:      { stage: 9, theme: '다크패턴 · 설득 설계', learn: '"한 번만 더"는 버튼의 말. 멈출 시간을 스스로 정해요.' },
-  soksagimon:    { stage: 9, theme: '설득 · 외로움', learn: '속삭임은 들어 달라는 말. 붙잡는 설계를 알아채면 멈출 힘이 생겨요.' },
-  jogakmon:      { stage: 10, theme: '심층부 종합', learn: '흩어진 마음도 따뜻한 답 앞에서는 길을 비켜 줘요.' },
-  yeongi:        { stage: 10, theme: '존재의 가치 · 책임', learn: '쓸모가 없어져도 가치는 사라지지 않아요. 만든 것은 끝까지 책임져요.' },
+  tturimmon:     { stage: 2, theme: '계정 보안 · 피싱', learn: '비밀번호는 길고 다르게, 수상한 링크는 누르지 않기. 잠긴 문은 누군가의 마음.' },
+  girokmon:      { stage: 2, theme: '디지털 발자국 · 잊힐 권리', learn: '올린 것은 쉽게 안 지워져요. 소중한 것만 기억하고, 지울 권리도 있어요.' },
+  sujipmon:      { stage: 3, theme: '데이터 수집과 동의', learn: '주인이 모른다고 가져가도 되는 건 아니에요. 동의를 받고, 철회할 수도 있어요.' },
+  saseomon:      { stage: 3, theme: '동의 · 기억의 존중', learn: '함께 기억하기. 잊혀지는 게 두려워도 훔치는 건 답이 아니에요.' },
+  piltermon:     { stage: 4, theme: 'AI 필터 · 진짜 나', learn: '필터는 가공된 모습. 반짝이지 않아도 지금의 나는 충분해요.' },
+  mirrormon:     { stage: 4, theme: '사칭 · 신원', learn: '누군가를 닮지 않아도 나는 나. 익명 뒤에서도 책임은 사라지지 않아요.' },
+  yuhokmon:      { stage: 4, theme: '다크패턴 · 설득 설계', learn: '"한 번만 더"는 버튼의 말. 멈출 시간을 스스로 정해요.' },
+  soksagimon:    { stage: 4, theme: '설득 · 외로움', learn: '속삭임은 들어 달라는 말. 붙잡는 설계를 알아채면 멈출 힘이 생겨요.' },
+  jogakmon:      { stage: 5, theme: '심층부 종합', learn: '흩어진 마음도 따뜻한 답 앞에서는 길을 비켜 줘요.' },
+  yeongi:        { stage: 5, theme: '존재의 가치 · 책임', learn: '쓸모가 없어져도 가치는 사라지지 않아요. 만든 것은 끝까지 책임져요.' },
   // ---- 보너스: AI 미래연구소 ----
   hwangakmon:    { stage: 0, theme: '생성형 AI · 비판적 확인', learn: 'AI도 그럴듯한 거짓(환각)을 지어낼 수 있어요. 한 번 더 확인해요.' },
   hapseongmon:   { stage: 0, theme: '딥페이크 분별', learn: '진짜처럼 만든 가짜를 의심하고 출처를 확인해요. 남의 얼굴은 함부로 합성 금지!' },
