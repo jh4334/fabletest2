@@ -1053,6 +1053,14 @@
     ) || null;
   }
 
+  // 자비로 마음을 되돌린 몬스터는 그 자리에 '친구'로 남는다 (선택이 세계에 남는다)
+  function isFriend(monId) {
+    return !!(game.flags.defeated[monId] && game.flags.mercyChoice && game.flags.mercyChoice[monId] === 'mercy');
+  }
+  function friendAt(mapId, x, y) {
+    return MAPS[mapId].monsters.find((mo) => mo.x === x && mo.y === y && isFriend(mo.id)) || null;
+  }
+
   function signAt(mapId, x, y) {
     return MAPS[mapId].signs.find((s) => s.x === x && s.y === y) || null;
   }
@@ -1418,7 +1426,7 @@
     const dy = dir === 'up' ? -1 : dir === 'down' ? 1 : 0;
     const nx = p.x + dx, ny = p.y + dy;
     const ch = tileAt(game.map, nx, ny);
-    if (SOLID(ch) || npcAt(game.map, nx, ny) || monsterAt(game.map, nx, ny)) {
+    if (SOLID(ch) || npcAt(game.map, nx, ny) || monsterAt(game.map, nx, ny) || friendAt(game.map, nx, ny)) {
       return;
     }
     p.x = nx; p.y = ny;
@@ -1448,6 +1456,16 @@
     const mon = monsterAt(game.map, f.x, f.y);
     if (mon) {
       startBattleIntro(mon.id);
+      return;
+    }
+    // 되돌려 친구가 된 몬스터: 다시 싸우지 않고, 배운 점을 들려준다
+    const friend = friendAt(game.map, f.x, f.y);
+    if (friend) {
+      const fm = MONSTERS[friend.id];
+      const dex = MONSTER_DEX[friend.id];
+      const lines = [`네 덕분에 마음을 되찾았어.\n정말 고마워!`];
+      if (dex && dex.learn) lines.push(`이제 나도 알아 —\n${dex.learn}`);
+      startDialog(lines, fm.name);
       return;
     }
     const sign = signAt(game.map, f.x, f.y);
@@ -4234,16 +4252,28 @@
       drawTalkBubble(nx + TS / 2, ny - 14);
     }
 
-    // 몬스터 (둥실둥실)
+    // 몬스터 (둥실둥실) — 되돌려 친구가 된 몬스터는 ♥와 함께 남고,
+    // 냉정·중립으로 떠나보낸 몬스터는 자리에 없다 (선택이 세계에 남는다)
     for (const mo of m.monsters) {
-      if (game.flags.defeated[mo.id]) continue;
+      const dead = game.flags.defeated[mo.id];
+      const friend = isFriend(mo.id);
+      if (dead && !friend) continue;
       const bob = Math.round(Math.sin(game.time / 18) * 4);
-      drawSprite(ctx, MONSTER_SPRITES[mo.id],
-        Math.round(mo.x * TS - cx), Math.round(mo.y * TS - cy - 6 + bob), SCALE);
-      // 느낌표
-      ctx.fillStyle = '#ffd644';
-      ctx.font = 'bold 18px monospace';
-      ctx.fillText('!', Math.round(mo.x * TS - cx) + TS / 2 - 3, Math.round(mo.y * TS - cy) - 10 + bob);
+      const dx0 = Math.round(mo.x * TS - cx), dy0 = Math.round(mo.y * TS - cy - 6 + bob);
+      drawSprite(ctx, MONSTER_SPRITES[mo.id], dx0, dy0, SCALE);
+      if (friend) {
+        // 친구가 된 몬스터: 머리 위 ♥ (말을 걸 수 있어요)
+        ctx.fillStyle = '#e0453a';
+        ctx.font = 'bold 16px monospace';
+        ctx.fillText('♥', Math.round(mo.x * TS - cx) + TS / 2 - 5, Math.round(mo.y * TS - cy) - 10 + bob);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+        ctx.strokeText('♥', Math.round(mo.x * TS - cx) + TS / 2 - 5, Math.round(mo.y * TS - cy) - 10 + bob);
+      } else {
+        // 느낌표 (아직 헷갈리는 몬스터)
+        ctx.fillStyle = '#ffd644';
+        ctx.font = 'bold 18px monospace';
+        ctx.fillText('!', Math.round(mo.x * TS - cx) + TS / 2 - 3, Math.round(mo.y * TS - cy) - 10 + bob);
+      }
     }
 
     // 플레이어
