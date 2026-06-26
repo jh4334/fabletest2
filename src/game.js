@@ -1728,13 +1728,18 @@
     b.dodgeDone = true;
     b.phase = 'dodge';
     const boxW = 300, boxH = 170;
+    // 스테이지가 올라갈수록 회피 구간이 길고·빠르고·촘촘해진다 (1장 쉽게 → 5장 어렵게)
+    const stage = (MONSTER_DEX[b.monId] && MONSTER_DEX[b.monId].stage) || 1;
+    const diffMul = game.difficulty === 'easy' ? 0.75 : game.difficulty === 'hard' ? 1.2 : 1;
     b.dodge = {
-      t: 0, dur: Math.round(atk.dur * (game.difficulty === 'easy' ? 0.75 : game.difficulty === 'hard' ? 1.2 : 1)),
+      t: 0, dur: Math.round(atk.dur * diffMul * (1 + (stage - 1) * 0.06)),
       box: { x: Math.round(LW / 2 - boxW / 2), y: 150, w: boxW, h: boxH },
       soul: { x: LW / 2, y: 235 },
       bullets: [],
       spawnTimer: 30,
       inv: 0,
+      sf: dodgeSpeedFactor() * (1 + (stage - 1) * 0.08),   // 탄막 속도 스테이지 가중
+      rateMul: Math.max(0.6, 1 - (stage - 1) * 0.08),       // 생성 간격(작을수록 촘촘)
     };
     Sound.encounter();
   }
@@ -1752,7 +1757,7 @@
 
   function spawnBullets(d, pattern, soul) {
     const box = d.box;
-    const sf = dodgeSpeedFactor();
+    const sf = d.sf || dodgeSpeedFactor();
     if (pattern === 'rain') {
       const x = box.x + 12 + Math.random() * (box.w - 24);
       d.bullets.push({ x, y: box.y - 6, vx: 0, vy: (2.0 + Math.random() * 1.4) * sf, r: 6 });
@@ -1820,8 +1825,9 @@
     if (d.spawnTimer <= 0 && d.t < d.dur - 50) {
       const pat = currentPattern(d, atk);
       spawnBullets(d, pat, d.soul);
-      d.spawnTimer = pat === 'burst' ? 24 : pat === 'spiral' ? 8
+      const baseRate = pat === 'burst' ? 24 : pat === 'spiral' ? 8
         : pat === 'wall' ? 42 : pat === 'zigzag' ? 18 : pat === 'aimed' ? 16 : 15;
+      d.spawnTimer = Math.max(4, Math.round(baseRate * (d.rateMul || 1)));
     }
 
     // 탄막 이동 + 화면 밖 제거 (zigzag 탄막은 진행하며 위아래로 일렁인다)

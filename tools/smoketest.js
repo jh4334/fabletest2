@@ -240,10 +240,10 @@ check('타워 입장', g.map === 'tower' && g.player.x === 8 && g.player.y >= 10
 setPos(8, 4, 'up'); // 혼돈몬 (8,3)
 tap('z');
 advanceDialog();
-check('보스전 시작', g.mode === 'battle' && g.battle.monId === 'hondonmon' && g.battle.monMaxHp === 5);
-check('보스전은 하트 4개', g.battle.maxHearts === 4);
+check('보스전 시작', g.mode === 'battle' && g.battle.monId === 'hondonmon' && g.battle.monMaxHp === 4);
+check('보스전은 하트 3개(1장 보스)', g.battle.maxHearts === 3);
 check('보스는 회피 공격을 가짐', !!g.battle.attack);
-fightWithMercy(5, 0);
+fightWithMercy(4, 0);
 check('보스전에서 회피 구간이 발동됨', dodgeSeen === true);
 check('회피 중에도 하트는 0이 되지 않음', g.flags.defeated.hondonmon === true);
 advanceDialog();
@@ -309,7 +309,7 @@ check('신호 탑터 진입(잠금 해제)', g.map === 'signaltower2');
 setPos(8, 4, 'up'); // 멋대로몬 (8,3)
 tap('z'); advanceDialog();
 check('멋대로몬 보스전', g.battle.monId === 'meotdaeromon');
-fightWithMercy(4, 0); advanceDialog();
+fightWithMercy(5, 0); advanceDialog();
 check('멋대로몬 클리어', g.flags.defeated.meotdaeromon);
 setPos(8, 12, 'down'); hold('ArrowDown', 14); // 거점 복귀
 check('거점 복귀(보스)', g.map === 'meadow');
@@ -367,7 +367,7 @@ check('심판의 신전 진입(잠금 해제)', g.map === 'temple');
 setPos(8, 4, 'up'); // 떠넘기몬 (8,3)
 tap('z'); advanceDialog();
 check('떠넘기몬 보스전', g.battle.monId === 'tteonemgimon');
-fightWithMercy(4, 0); advanceDialog();
+fightWithMercy(6, 0); advanceDialog();
 check('떠넘기몬 클리어', g.flags.defeated.tteonemgimon);
 setPos(8, 12, 'down'); hold('ArrowDown', 14); // 거점 복귀
 check('거점 복귀(신전)', g.map === 'desert');
@@ -411,7 +411,7 @@ check('거울에서 설원 복귀', g.map === 'snow');
 setPos(13, 16, 'up'); // 보스 홀림몬 (13,15)
 tap('z'); advanceDialog();
 check('홀림몬 보스전', g.battle.monId === 'hollimmon');
-fightWithMercy(4, 0); advanceDialog();
+fightWithMercy(7, 0); advanceDialog();
 check('홀림몬 클리어', g.flags.defeated.hollimmon);
 setPos(13, 18, 'down');
 hold('ArrowDown', 14);
@@ -427,8 +427,8 @@ tap('z'); advanceDialog();
 fightWithMercy(3, 0); advanceDialog();
 setPos(9, 3, 'up'); // 어둠대왕몬 (9,2)
 tap('z'); advanceDialog();
-check('최종 보스전', g.battle.monId === 'finalboss' && g.battle.monMaxHp === 6 && g.battle.maxHearts === 4);
-fightWithMercy(6, 0);
+check('최종 보스전', g.battle.monId === 'finalboss' && g.battle.monMaxHp === 8 && g.battle.maxHearts === 4);
+fightWithMercy(8, 0);
 advanceDialog();
 check('엔딩 진입', g.mode === 'ending');
 step(130);
@@ -447,7 +447,7 @@ check('조각몬 클리어', g.flags.defeated.jogakmon);
 setPos(9, 3, 'up'); // 영이 (9,2)
 tap('z'); advanceDialog();
 check('영이 배틀 (코어 BGM)', g.mode === 'battle' && g.battle.monId === 'yeongi');
-fightWithMercy(5, 0); // "함께 돌아가자"
+fightWithMercy(8, 0); // "함께 돌아가자"
 advanceDialog();
 check('진엔딩 진입', g.mode === 'ending' && g.endingType === 'true');
 check('진엔딩 조건 충족', g.flags.trueEnding === true && g.flags.mercy === 29 && g.flags.endingId === 'home');
@@ -893,6 +893,13 @@ check('추적(aimed) 패턴 존재', patterns.includes('aimed'));
 check('다단계 보스 존재 (최종보스)', Array.isArray(BOSS_ATTACKS.finalboss.patterns) && BOSS_ATTACKS.finalboss.patterns.length >= 2);
 check('영이 다단계 패턴', Array.isArray(BOSS_ATTACKS.yeongi.patterns) && BOSS_ATTACKS.yeongi.patterns.length >= 2);
 check('보너스 몬스터도 회피 패턴 보유', BOSS_ATTACKS.miraemon && BOSS_ATTACKS.miraemon.pattern === 'spiral');
+// 챕터 보스 HP가 스테이지별로 상승(1장 쉽게 → 5장 어렵게)
+const bossHp = (id) => MONSTERS[id].hp;
+check('보스 HP 스테이지별 상승',
+  bossHp('hondonmon') < bossHp('meotdaeromon') &&
+  bossHp('meotdaeromon') < bossHp('tteonemgimon') &&
+  bossHp('tteonemgimon') < bossHp('hollimmon') &&
+  bossHp('hollimmon') < bossHp('finalboss'));
 
 console.log('[49] 이름 입력 정제');
 check('앞뒤 공백 제거', T.sanitizeName('  도도  ') === '도도');

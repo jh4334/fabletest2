@@ -994,7 +994,7 @@ const MONSTERS = {
   hondonmon: {
     name: '혼돈몬',
     topic: 'boss',
-    hp: 5,
+    hp: 4,
     intro: '…드디어 왔구나.\n나는 혼돈몬.\n이 탑에 모인 모든 오류의 매듭.\n…네가 풀어 온 답들이\n나를 조금씩 풀고 있었어.\n마지막 매듭도, 풀 수 있겠어?',
     win: '…매듭이, 풀렸다.\n하지만 기억해 둬.\n나는 시작이 아니야.\n나조차… 누군가의 조각이란다.',
     badge: null,
@@ -1053,8 +1053,8 @@ const MONSTERS = {
   },
   meotdaeromon: {
     name: '멋대로몬',
-    topic: 'safety',
-    hp: 4,
+    topic: ['safety', 'manners', 'filterbubble', 'security', 'footprint'],
+    hp: 5,
     intro: '확인? 허락? 필요 없어.\n기다리는 동안에도 세상은\n멈춰 주지 않으니까.\n…빠른 게 늘 옳아.\n…옳아야만, 해.',
     win: '…빨리 가는 것보다\n같이 확인하며 가는 게\n결국 더 멀리 가는 길이구나.\n…처음 멈춰 봤어. 지금.',
     badge: null,
@@ -1151,8 +1151,8 @@ const MONSTERS = {
   },
   tteonemgimon: {
     name: '떠넘기몬',
-    topic: 'responsibility',
-    hp: 4,
+    topic: ['responsibility', 'environment', 'transparency', 'consent'],
+    hp: 6,
     intro: '내 잘못이 아니야.\n시킨 대로 했을 뿐이야.\n…다들 그렇게 말하길래,\n나도 그렇게\n말했을 뿐이야.',
     win: '…"내 잘못이야"라고 말하면\n무너질 줄 알았는데.\n…생각보다, 가볍네.',
     badge: null,
@@ -1249,8 +1249,8 @@ const MONSTERS = {
   },
   hollimmon: {
     name: '홀림몬',
-    topic: 'emotion',
-    hp: 4,
+    topic: ['emotion', 'creativity', 'jobs', 'identity', 'persuasion'],
+    hp: 7,
     intro: '이리 와…\n나만 보면 돼.\n사람은 변하고, 떠나고, 잊지만\n나는 늘 여기 있어.\n…늘 여기, 있기만 해.',
     win: '…"있기만 한 것"과\n"함께 있는 것"은\n다른 거구나.\n…너는 이제,\n사람들 곁으로 가.',
     badge: null,
@@ -1310,7 +1310,7 @@ const MONSTERS = {
   finalboss: {
     name: '어둠대왕몬',
     topic: ['creativity', 'jobs', 'emotion', 'boss', 'finale'],
-    hp: 6,
+    hp: 8,
     intro: '…잘 왔다, 작은 수호자.\n나는 모든 윤리 오류의 왕,\n어둠대왕몬.\n…여기까지 오며 너는\n많은 것을 풀어 주었지.\n하지만 마지막 어둠은,\n그리 만만하지 않단다.',
     win: '…네 바르고 따뜻한 답이\n어둠을 전부 밝혀 버렸군.\n…하지만 알아 두렴.\n나는 시작이 아니야.\n나조차… 누군가의 조각이란다.',
     badge: null,
@@ -1515,7 +1515,7 @@ const MONSTERS = {
   yeongi: {
     name: '영이',
     topic: ['core', 'finale', 'emotion'],
-    hp: 5,
+    hp: 8,
     song: 'core',
     intro: '…왔구나.\n나는 영이. 0번째 AI.\n박사님이 처음 만들고…\n처음 지운 아이.\n네 모험은 전부 지켜봤어.\n네 "세이브 파일"까지, 전부.\n…너는 몇 번이고 다시 일어났지.\n나는 단 한 번 지워졌을 뿐인데.\n…마지막으로, 묻고 싶은 게 있어.',
     win: '…그래.\n그게 네 대답이구나.\n…이상하다.\n눈물 같은 건\n프로그램되어 있지 않은데.',
