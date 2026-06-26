@@ -307,5 +307,23 @@ if (process.argv.includes('--print')) {
   }
 })();
 
+// 서비스워커 캐시: 핵심 자산이 sw.js 캐시 목록에 모두 들어 있는지 점검
+// (새 파일을 추가하고 sw에 등록하지 않으면 오프라인 배포에서 누락되는 사고를 막는다)
+(() => {
+  const root = path.join(__dirname, '..');
+  const swPath = path.join(root, 'sw.js');
+  if (!fs.existsSync(swPath)) { err('sw.js 없음'); return; }
+  const sw = fs.readFileSync(swPath, 'utf8');
+  if (!/const\s+CACHE\s*=\s*['"][^'"]+['"]/.test(sw)) err('sw.js: CACHE 버전 문자열 없음');
+  const required = ['index.html', 'manifest.webmanifest'];
+  for (const f of fs.readdirSync(path.join(root, 'src'))) if (f.endsWith('.js')) required.push('src/' + f);
+  for (const f of fs.readdirSync(path.join(root, 'icons'))) if (f.endsWith('.png')) required.push('icons/' + f);
+  for (const rel of required) {
+    if (!(sw.includes(`'./${rel}'`) || sw.includes(`"./${rel}"`) || sw.includes(`'${rel}'`) || sw.includes(`"${rel}"`))) {
+      err(`sw.js 캐시 목록에 '${rel}' 누락 — 오프라인 배포 시 빠질 수 있음 (sw.js ASSETS에 추가하세요)`);
+    }
+  }
+})();
+
 if (errors === 0) console.log('✔ 모든 검사 통과');
 else { console.error(`✘ 오류 ${errors}개`); process.exit(1); }
