@@ -125,6 +125,33 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
     await page.screenshot({ path: path.join(shotsDir, `browser-${vp.name}.png`) });
     await ctx.close();
   }
+  // 핵심 게임플레이 렌더: 타이틀 외에 '월드'까지 실제 브라우저에서 그려지는지
+  // (캔버스 메인 렌더 경로의 회귀를 잡는다 — node 스모크는 목 캔버스라 못 잡음)
+  {
+    console.log('[gameplay] 월드 진입 렌더 (2장)');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+    page.on('console', (m) => {
+      if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push('console.error: ' + m.text());
+    });
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    const entered = await page.evaluate(() => {
+      window.__test.applyStageJump(2);   // 2장(서버실 포함) 상태로 진입
+      window.__game.mode = 'world';
+      return window.__game.mode === 'world';
+    });
+    await page.waitForTimeout(600); // 여러 프레임 렌더 (크래시면 프레임 오류 누적)
+    check('월드 진입 성공', entered);
+    check('렌더 후에도 월드 유지(프레임 크래시 없음)', (await page.evaluate(() => window.__game.mode)) === 'world');
+    check('월드 렌더 콘솔/페이지 에러 없음', errors.length === 0);
+    errors.slice(0, 6).forEach((e) => console.log('     · ' + e));
+    await page.screenshot({ path: path.join(shotsDir, 'browser-gameplay.png') });
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
 
