@@ -887,7 +887,9 @@
   let stickRepeatFrames = 0; // 메뉴에서 누른 채로 두면 자동 반복시키는 카운터
 
   // 터치 컨트롤
+  let isTouchDevice = false;
   if ('ontouchstart' in window) {
+    isTouchDevice = true;
     document.body.classList.add('touch');
     const touchIds = new Map();
     const bind = (id, key) => {
@@ -4843,7 +4845,7 @@
     ctx.fillText('AI 윤리 어드벤처', LW / 2, 86);
     ctx.fillStyle = '#888';
     ctx.font = '15px monospace';
-    ctx.fillText('10개의 스테이지 끝에서, 잊혀진 이야기와 만나라', LW / 2, 114);
+    ctx.fillText('5개의 스테이지 끝에서, 잊혀진 이야기와 만나라', LW / 2, 114);
 
     // 몬스터들 둥실둥실 (한 줄)
     const parade = ['mollaemon', 'geojitmon', 'pyeonhyangmon', 'hollimmon', 'mirrormon', 'soksagimon', 'yeongi'];
@@ -4890,10 +4892,19 @@
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#777';
-    ctx.font = '12px monospace';
-    ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 도감 · Q 챌린지 · J 일지 · B 도전과제 · K 꾸미기 · L 배움카드`, LW / 2, 456);
-    ctx.fillText(`F 명예의전당 · N 수료증 · P 대시보드 · E 커스텀퀴즈 · U 백업 · I 도움말`, LW / 2, 472);
-    ctx.fillText(`M 음악 · T 자막(${TEXT_SPEED_LABEL[game.textSpeed]}) · 난이도(${DIFF_LABEL[game.difficulty]})`, LW / 2, 488);
+    // 터치 기기엔 키보드가 없으므로 단축키 벽 대신 핵심 조작만 + "메뉴에서 더 보기"
+    if (isTouchDevice) {
+      ctx.font = '14px monospace';
+      ctx.fillText('스틱으로 슬롯 선택 · Ⓐ로 시작', LW / 2, 462);
+      ctx.fillStyle = '#9aa8c8';
+      ctx.font = '13px monospace';
+      ctx.fillText('도감·챌린지·대시보드·백업 등 모든 기능은 [메뉴] 버튼에', LW / 2, 484);
+    } else {
+      ctx.font = '12px monospace';
+      ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 도감 · Q 챌린지 · J 일지 · B 도전과제 · K 꾸미기 · L 배움카드`, LW / 2, 456);
+      ctx.fillText(`F 명예의전당 · N 수료증 · P 대시보드 · E 커스텀퀴즈 · U 백업 · I 도움말`, LW / 2, 472);
+      ctx.fillText(`M 음악 · T 자막(${TEXT_SPEED_LABEL[game.textSpeed]}) · 난이도(${DIFF_LABEL[game.difficulty]})`, LW / 2, 488);
+    }
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
     const seen = getEndingsSeen();
