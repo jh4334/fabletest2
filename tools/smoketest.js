@@ -901,6 +901,17 @@ check('보스 HP 스테이지별 상승',
   bossHp('tteonemgimon') < bossHp('hollimmon') &&
   bossHp('hollimmon') < bossHp('finalboss'));
 
+// 필터버블 방탈출 시범 맵: '새로운 길'은 위로, '추천' 문은 제자리로 루프
+{
+  const bub = MAPS.bubble;
+  check('필터버블 맵 존재', !!bub);
+  const gate = (bub.warps || []).filter((w) => w.y === 4);
+  check('관문 문 3개', gate.length === 3);
+  check('새로운 길(위로 상승) 1개', gate.filter((w) => w.to === 'bubble' && w.ty < 4).length === 1);
+  check('추천(제자리로 루프) 2개', gate.filter((w) => w.to === 'bubble' && w.ty > 4).length === 2);
+  check('연구실에서 필터버블 진입 가능', MAPS.lab.warps.some((w) => w.to === 'bubble'));
+}
+
 console.log('[49] 이름 입력 정제');
 check('앞뒤 공백 제거', T.sanitizeName('  도도  ') === '도도');
 check('공백만 입력은 기본값', T.sanitizeName('     ') === '수호자');

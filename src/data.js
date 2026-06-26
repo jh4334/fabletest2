@@ -869,7 +869,7 @@ const MAPS = {
       'KEEEEEEEEEEEEEEEEK',
       'KEEEEEEEEEEEEEEEEK',
       'KEEEEEEEEEEEEEEEEK',
-      'KEEEEEEEE55EEEEEEK',
+      'KEEEEEEEE55EEEE1EK',
       'KEEEEEEEE55EEEEEEK',
       'KKKKKKKKKKKKKKKKKK',
     ],
@@ -878,6 +878,7 @@ const MAPS = {
       { x: 9, y: 9, to: 'village', tx: 26, ty: 9 },
       { x: 8, y: 10, to: 'village', tx: 26, ty: 9 },
       { x: 9, y: 10, to: 'village', tx: 26, ty: 9 },
+      { x: 15, y: 9, to: 'bubble', tx: 7, ty: 9 },
     ],
     npcs: [
       { id: 'labguide', x: 2, y: 8, pal: 'guard', name: '연구원' },
@@ -890,6 +891,47 @@ const MAPS = {
       { id: 'hapseongmon', x: 13, y: 4 },
       { id: 'miraemon', x: 9, y: 3 },
     ],
+  },
+
+  // ---- 보너스: 필터버블 방탈출 (개념 체험 시범) ----
+  // '추천(같은 문)'만 따라가면 제자리(입구)로 되돌아오고, '새로운 길'을
+  // 골라야 위로 빠져나온다. 똑같은 복도가 반복되는 것 자체가 필터버블 체험.
+  bubble: {
+    name: '필터버블 미로 (연습)',
+    song: 'glitch',
+    intro: [
+      '똑같은 복도가 끝없이 이어진다.\n벽마다 "네가 좋아할 만한 것"이라는\n추천 화면이 깜빡인다.',
+      '…여기서 나가려면, 늘 보던 것 말고\n"새로운 길"을 골라야 할 것 같다.',
+    ],
+    tiles: [
+      'NNNNNNNNNNNNNN',
+      'NMMMMMMYMMMMMN',
+      'N1MMMMMMMMMMMN',
+      'NMMMMMMMMMMMMN',
+      'NNN1NNN1NN1NNN',
+      'NMMMMMMMMMMMMN',
+      'NMYMMMYMMYMMMN',
+      'NMMMMMMMMMMMMN',
+      'NMMMMMMMMMMMMN',
+      'NMMMMMMMMMMMMN',
+      'NMMMMMMMMMMM1N',
+      'NNNNNNNNNNNNNN',
+    ],
+    warps: [
+      { x: 12, y: 10, to: 'lab', tx: 14, ty: 9 },     // 포기하고 연구실로
+      { x: 3, y: 4, to: 'bubble', tx: 7, ty: 8 },     // 추천 → 제자리로(필터버블)
+      { x: 7, y: 4, to: 'bubble', tx: 7, ty: 8 },     // 추천 → 제자리로(필터버블)
+      { x: 10, y: 4, to: 'bubble', tx: 10, ty: 2 },   // ✨새로운 길 → 위(탈출)로
+      { x: 1, y: 2, to: 'lab', tx: 14, ty: 9 },       // 탈출문 → 연구실
+    ],
+    npcs: [],
+    signs: [
+      { x: 7, y: 1, text: '✨ 빠져나왔다!\n추천(같은 것)만 보면 시야가 좁아져요.\n가끔 "새로운 것"도 골라 보는 게\n필터버블을 깨는 법이에요!' },
+      { x: 2, y: 6, text: '추천 영상: "네가 좋아하는 것"\n(…또 비슷한 거네.)' },
+      { x: 6, y: 6, text: '추천 영상: "네가 좋아하는 것"\n(…또 비슷한 거네.)' },
+      { x: 9, y: 6, text: '✨ 한 번도 안 가 본 "새로운 길"' },
+    ],
+    monsters: [],
   },
 };
 
@@ -2789,6 +2831,7 @@ function getNpcDialog(npcId, flags) {
         '여기는 AI 미래연구소예요!\n아직 교과서에 다 담기지 않은\n새로운 AI 주제를 미리 연습해요.',
         '생성형 AI가 지어내는 "환각",\n진짜 같은 가짜 "딥페이크"…\n미래의 수호자에게 꼭 필요한 힘이죠.',
         '여기 친구들은 증표를 주진 않지만,\n도감과 도전과제에는 똑같이\n기록된답니다. 마음껏 연습해요!',
+        '아 참, 오른쪽 문으로 들어가면\n"필터버블 미로"를 체험할 수 있어요.\n추천(같은 길)만 따라가면 못 나와요 —\n"새로운 길"을 찾아 빠져나와 보세요!',
       ];
 
     case 'yeongi_npc':
