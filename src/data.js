@@ -3046,6 +3046,77 @@ function getBossAttack(monId) {
   return BOSS_ATTACKS[monId] || null;
 }
 
+// ===== v2 설득 배틀 (M1 프로토타입) =====
+// 퀴즈 출제 대신, 몬스터의 오개념 주장(claim)에 공감/질문/증거/반박으로 대응해
+// 마음 게이지를 채우는 배틀. PERSUADE에 정의된 몬스터만 이 방식으로 조우한다.
+// 대응 효과는 마음 상태(닫힘→동요→열림)에 따라 달라진다 — 순서가 전략이다.
+
+// 증거 카드 — 배틀에서 「증거 보여주기」로 사용. desc는 카드 뒷면 설명.
+const EVIDENCE_CARDS = {
+  ev_maker: {
+    title: '만든 사람의 마음', topic: 'copyright',
+    desc: '그림 한 장, 글 한 줄에도 만든 사람의 시간과 마음이 담겨 있어요. 함부로 가져가면 그 마음까지 가져가는 거예요.',
+  },
+  ev_source: {
+    title: '솔직하게 밝히기', topic: 'copyright',
+    desc: 'AI로 만들었으면 AI로 만들었다고, 남의 것을 빌렸으면 출처를 밝혀요. 솔직함은 부끄러운 게 아니에요.',
+  },
+  ev_myvoice: {
+    title: '서툴러도 내 것', topic: 'copyright',
+    desc: '서툰 내 그림이 완벽한 남의 그림보다 내 이야기를 더 잘해요. 처음부터 잘하는 사람은 없어요.',
+  },
+  // 다른 주제의 카드 — 지금 주장과 맞지 않는 카드를 내면 통하지 않는다 (미끼)
+  ev_password: {
+    title: '비밀번호는 나만', topic: 'privacy',
+    desc: '비밀번호는 가장 친한 친구에게도 알려 주지 않아요. 나를 지키는 첫 번째 자물쇠예요.',
+  },
+};
+
+const PERSUADE = {
+  bekkyeomon: {
+    gaugeMax: 100,
+    // 조우 시 지급되는 카드 (M1 임시 — 정식판에서는 방탈출 보상으로 획득)
+    starterCards: ['ev_maker', 'ev_source', 'ev_myvoice', 'ev_password'],
+    claims: [
+      {
+        text: '잘 그린 그림은 인터넷에 잔뜩 있는걸.\n그냥 가져다 쓰면 되잖아?',
+        hint: '"…사실은 알아. 그 그림들도 누군가\n밤새워 그린 거라는 거."\n(「만든 사람」 이야기가 통할 것 같다!)',
+        counters: ['ev_maker'],
+        onWrong: '…그건 지금 얘기랑 다르잖아.\n(베껴몬이 시무룩해졌다)',
+        attack: { pattern: 'rain', dur: 260, color: '#e07a5f', taunt: '다 가질 거야…!' },
+      },
+      {
+        text: 'AI한테 그려 달라고 하고 내가 그렸다고\n올릴래. …아무도 모를 텐데, 뭐 어때?',
+        hint: '"…들킬까 봐 무서운 게 아니야. 칭찬받을\n때마다 가슴이 콕콕 아픈 거야."\n(「솔직하게 밝히기」가 필요해 보인다!)',
+        counters: ['ev_source'],
+        onWrong: '…아무도 모른다니까.\n(마음에 닿지 않았다)',
+        attack: { pattern: 'zigzag', dur: 260, color: '#8d6cd6', taunt: '내 거야… 내 거라고 할 거야…' },
+      },
+      {
+        text: '내 그림은 서툴고 못생겼어.\n베낀 게 훨씬 멋있는데 왜 내 걸 그려야 해?',
+        hint: '"…한 번만이라도, 누가 『네 그림이 좋아』\n라고 말해 주면 좋겠어."\n(「내 것의 가치」를 보여 주자!)',
+        counters: ['ev_myvoice'],
+        onWrong: '…거봐. 역시 넌 몰라.\n(베껴몬이 고개를 돌렸다)',
+        attack: { pattern: 'aimed', dur: 260, color: '#f08a24', taunt: '보지 마… 내 진짜 그림은 보지 마!' },
+      },
+    ],
+    react: {
+      empathy: '…뭐야. 혼내러 온 거 아니었어?\n(베껴몬의 어깨가 조금 풀렸다)',
+      empathyAgain: '…응. …고마워.\n(하지만 위로만으로는 부족한 것 같다)',
+      questionClosed: '…몰라. 말하고 싶지 않아.\n(마음이 닫혀 있어 대답하지 않는다)',
+      evidenceClosed: '…(베껴몬은 카드를 쳐다보지도 않는다)\n먼저 마음을 열어야 할 것 같다.',
+      evidenceRight: '…그런가. …그랬구나.\n(카드의 말이 마음에 스며든다)',
+      rebutBackfire: '시끄러워!! 어차피 다 베낀 세상이잖아!\n(마음이 더 굳게 닫혔다… 다음 공격이 거세진다)',
+      rebutOk: '…그, 그런가. 그럴지도…',
+      open: '(베껴몬이 너덜너덜한 연필을 내려다본다.\n마음이 열리고 있다…!)',
+    },
+  },
+};
+
+function getPersuade(monId) {
+  return PERSUADE[monId] || null;
+}
+
 // ===== 조사(살펴보기) 텍스트 =====
 // 타일 종류에 따른 기본 살펴보기 문구. (언더테일식 소소한 재미)
 const EXAMINE_TILES = {

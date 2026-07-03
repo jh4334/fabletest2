@@ -1592,6 +1592,7 @@
   }
 
   function startBattleIntro(monId) {
+    if (getPersuade(monId)) { startPersuadeIntro(monId); return; }
     const mon = MONSTERS[monId];
     Sound.encounter();
     const lines = [mon.intro];
@@ -1839,21 +1840,24 @@
       bu.x > d.box.x - 24 && bu.x < d.box.x + d.box.w + 24 &&
       bu.y > d.box.y - 24 && bu.y < d.box.y + d.box.h + 24);
 
-    // 충돌 (하트는 1 아래로 줄지 않아 게임오버 없음)
+    // 충돌 — 퀴즈 배틀은 하트가 1 아래로 안 줄지만(게임오버 없음),
+    // 설득 배틀에서는 진짜로 닳는다 (다 닳으면 물러났다 재도전)
     if (d.inv <= 0) {
       for (const bu of d.bullets) {
         const dx = bu.x - d.soul.x, dy = bu.y - d.soul.y;
         if (dx * dx + dy * dy < (r + bu.r) * (r + bu.r)) {
-          b.playerHp = Math.max(1, b.playerHp - 1);
+          b.playerHp = Math.max(b.isPersuade ? 0 : 1, b.playerHp - 1);
+          d.hits = (d.hits || 0) + 1;
           d.inv = 42; b.flash = 12; Sound.bump();
+          if (b.isPersuade && b.playerHp <= 0) { persuadeExhaust(); return; }
           break;
         }
       }
     }
 
     if (d.t >= d.dur) {
-      b.dodge = null;
-      nextQuestion();
+      if (b.isPersuade) { endPersuadeDodge(); }
+      else { b.dodge = null; nextQuestion(); }
       Sound.select();
     }
   }
@@ -1863,6 +1867,11 @@
     if (b.phase === 'dodge') { updateDodge(); return; }
     if (b.shake > 0) b.shake -= 1;
     if (b.flash > 0) b.flash -= 1;
+
+    if (b.isPersuade && (b.phase === 'pclaim' || b.phase === 'pcards' || b.phase === 'preact')) {
+      updatePersuade();
+      return;
+    }
 
     if (b.phase === 'question') {
       const q = currentQuestion();
@@ -2007,6 +2016,281 @@
       '으윽, 머리가 어지럽다…!',
       '괜찮아, 틀려도 배우면 되는 거야.\n기운을 차리고 다시 도전하자!',
     ]);
+  }
+
+  // ---------- v2 설득 배틀 (M1 프로토타입) ----------
+  // 몬스터의 오개념 주장에 공감/질문/증거/반박으로 대응해 마음 게이지를 채운다.
+  // 마음 상태: closed(닫힘) → shaken(동요) → open(열림). 상태에 따라 통하는 대응이 다르다.
+  const P_STATE_LABEL = { closed: '닫힘', shaken: '동요', open: '열림' };
+  const P_VERBS = [
+    { kind: 'empathy', label: '공감하기' },
+    { kind: 'question', label: '질문하기' },
+    { kind: 'evidence', label: '증거 보여주기' },
+    { kind: 'rebut', label: '반박하기' },
+  ];
+
+  function ownedCards() {
+    return (game.flags.evCards || []).filter((id) => EVIDENCE_CARDS[id]);
+  }
+
+  function pStats() {
+    if (!game.flags.pStats) {
+      game.flags.pStats = { empathy: 0, question: 0, evidence: 0, rebut: 0, evRight: 0, evWrong: 0, backfire: 0 };
+    }
+    return game.flags.pStats;
+  }
+
+  function startPersuadeIntro(monId) {
+    const mon = MONSTERS[monId];
+    const p = getPersuade(monId);
+    Sound.encounter();
+    const lines = [mon.intro];
+    // M1 임시: 조우 시 증거 카드를 지급한다 (정식판에서는 방탈출 보상)
+    if (!game.flags.evCards) game.flags.evCards = [];
+    const fresh = (p.starterCards || []).filter((id) => !game.flags.evCards.includes(id));
+    if (fresh.length > 0) {
+      game.flags.evCards = game.flags.evCards.concat(fresh);
+      lines.push(`◆ 증거 카드 ${fresh.length}장을 얻었다!\n(전투에서 「증거 보여주기」로 사용해요)`);
+    }
+    if (!game.flags.sawPersuadeTip) {
+      game.flags.sawPersuadeTip = true;
+      lines.push(
+        isTouchDevice
+          ? '[설득 안내]\n이 아이는 퀴즈가 아니라 「설득」으로 되돌려요.\n스틱 ↑↓로 대응을 고르고 Ⓐ로 결정!'
+          : '[설득 안내]\n이 아이는 퀴즈가 아니라 「설득」으로 되돌려요.\n↑↓로 대응을 고르고 Z(스페이스)로 결정!',
+        '마음 상태(닫힘→동요→열림)를 살펴보세요.\n닫힌 마음엔 증거도 반박도 통하지 않아요.\n먼저 두드리고, 물어보고, 그다음에 보여 주세요.',
+        '몬스터의 차례에는 탄막을 피해요.\n이번엔 하트가 진짜로 닳아요! 다 닳으면\n잠시 물러났다가 다시 도전하게 돼요.'
+      );
+    }
+    startDialog(lines, mon.name, () => startPersuadeBattle(monId));
+  }
+
+  function startPersuadeBattle(monId) {
+    const mon = MONSTERS[monId];
+    const p = getPersuade(monId);
+    game.mode = 'battle';
+    Sound.playSong(mon.song || 'battle');
+    // 물러났던 상대는 이야기를 절반쯤 기억한다 (재도전은 더 짧게)
+    const memo = (game.flags.persuadeMemory || {})[monId];
+    const maxHearts = 4 + (game.difficulty === 'easy' ? 1 : 0);
+    game.battle = {
+      isPersuade: true,
+      monId,
+      mon,
+      p,
+      gauge: memo ? memo.gauge : 0,
+      gaugeMax: p.gaugeMax || 100,
+      pState: memo ? memo.state : 'closed',
+      claimIdx: 0,
+      empathyCount: 0,
+      revealed: {},
+      playerHp: maxHearts,
+      maxHearts,
+      phase: 'pclaim', // pclaim | pcards | preact | dodge | mercy | mercyReply
+      cursor: 0,
+      pLine: null,   // preact에서 보여줄 반응 대사
+      pDelta: 0,     // 이번 대응의 게이지 변화 (표시용)
+      pNote: null,   // pclaim 상단 한 줄 알림 (회피 보너스 등)
+      pIntense: false, // 반박 역효과 → 다음 탄막 강화
+      shake: 0,
+      flash: 0,
+      attack: null,
+      dodge: null,
+    };
+    game.flags.battleCount += 1;
+    speakClaim();
+  }
+
+  function currentClaim() {
+    const b = game.battle;
+    return b.p.claims[b.claimIdx % b.p.claims.length];
+  }
+
+  function speakClaim() {
+    if (!game.tts) return;
+    Speech.speak(currentClaim().text + '. ' + P_VERBS.map((v, i) => `${i + 1}번, ${v.label}`).join('. '));
+  }
+
+  // 대응 판정 — 기획서 §6.2의 효과표. 상태 전이와 게이지 변화를 함께 계산한다.
+  function persuadeRespond(kind, cardId) {
+    const b = game.battle;
+    const r = b.p.react;
+    const claim = currentClaim();
+    const st = pStats();
+    let delta = 0, line = '';
+    st[kind] += 1;
+
+    if (kind === 'empathy') {
+      if (b.pState === 'closed') {
+        delta = 14; b.pState = 'shaken'; line = r.empathy;
+      } else {
+        b.empathyCount += 1;
+        delta = b.empathyCount === 1 ? 6 : 2;
+        line = r.empathyAgain;
+      }
+      Sound.select();
+    } else if (kind === 'question') {
+      if (b.pState === 'closed') {
+        delta = 4; line = r.questionClosed;
+        Sound.blip();
+      } else {
+        delta = 8;
+        b.revealed[b.claimIdx % b.p.claims.length] = true;
+        line = claim.hint; // 속마음이 드러난다 — 어떤 증거가 통할지 힌트
+        Sound.correct();
+      }
+    } else if (kind === 'evidence') {
+      const card = EVIDENCE_CARDS[cardId];
+      if (b.pState === 'closed') {
+        delta = 0; line = r.evidenceClosed;
+        Sound.bump();
+      } else if (claim.counters.includes(cardId)) {
+        delta = b.pState === 'open' ? 32 : 26;
+        line = `[${card.title}]\n${r.evidenceRight}`;
+        st.evRight += 1;
+        recordTopicResult(game.currentSlot, card.topic, true);
+        b.shake = 14;
+        Sound.correct();
+      } else {
+        delta = -6;
+        line = `[${card.title}]\n${claim.onWrong}`;
+        st.evWrong += 1;
+        // 오답은 카드가 아니라 '지금 상대의 주제'를 헷갈린 것으로 기록한다
+        const mt = Array.isArray(b.mon.topic) ? b.mon.topic[0] : b.mon.topic;
+        recordTopicResult(game.currentSlot, mt, false);
+        Sound.wrong();
+      }
+    } else if (kind === 'rebut') {
+      if (b.pState === 'closed') {
+        delta = -10; b.pIntense = true; line = r.rebutBackfire;
+        st.backfire += 1;
+        b.flash = 14;
+        Sound.wrong();
+      } else {
+        delta = b.pState === 'open' ? 14 : 8;
+        line = r.rebutOk;
+        Sound.select();
+      }
+    }
+
+    b.gauge = clamp(b.gauge + delta, 0, b.gaugeMax);
+    // 게이지가 차오르면 마음 상태도 따라 열린다 (공감 없이도 길은 있다)
+    if (b.pState === 'closed' && b.gauge >= 30) b.pState = 'shaken';
+    if (b.pState !== 'open' && b.gauge >= 55) {
+      b.pState = 'open';
+      line += '\n' + b.p.react.open;
+    }
+    b.pDelta = delta;
+    b.pLine = line;
+    b.phase = 'preact';
+    b.cursor = 0;
+    if (game.tts) Speech.speak(line);
+  }
+
+  function enterPersuadeDodge() {
+    const b = game.battle;
+    b.attack = currentClaim().attack;
+    enterDodge();
+    b.dodge.hits = 0;
+    if (b.pIntense) { // 반박 역효과의 대가 — 이번 탄막이 거세진다
+      b.dodge.sf *= 1.3;
+      b.dodge.rateMul *= 0.75;
+      b.pIntense = false;
+    }
+  }
+
+  function endPersuadeDodge() {
+    const b = game.battle;
+    const perfect = b.dodge.hits === 0;
+    b.dodge = null;
+    b.attack = null;
+    if (perfect) {
+      b.gauge = clamp(b.gauge + 6, 0, b.gaugeMax);
+      b.pNote = '(피하지 않고 끝까지 봐 줬다… 마음 +6)';
+    } else {
+      b.pNote = null;
+    }
+    b.claimIdx += 1;
+    b.phase = 'pclaim';
+    b.cursor = 0;
+    speakClaim();
+  }
+
+  // 하트가 다 닳으면 물러난다 — 단, 상대는 이야기를 절반쯤 기억한다
+  function persuadeExhaust() {
+    const b = game.battle;
+    if (!game.flags.persuadeMemory) game.flags.persuadeMemory = {};
+    game.flags.persuadeMemory[b.monId] = {
+      gauge: Math.floor(b.gauge / 2),
+      state: b.pState === 'closed' ? 'closed' : 'shaken',
+    };
+    save();
+    const monName = b.mon.name;
+    game.battle = null;
+    game.mode = 'world';
+    Sound.playSong(MAPS[game.map].song);
+    startDialog([
+      '마음이 지쳐서, 한 발 물러났다…',
+      `괜찮아. ${monName}는 네 이야기를\n조금은 기억하고 있을 거야.\n숨을 고르고 다시 가 보자.`,
+    ]);
+  }
+
+  function updatePersuade() {
+    const b = game.battle;
+
+    if (b.phase === 'pclaim') {
+      if (justPressed('up')) { b.cursor = (b.cursor + P_VERBS.length - 1) % P_VERBS.length; Sound.blip(); }
+      if (justPressed('down')) { b.cursor = (b.cursor + 1) % P_VERBS.length; Sound.blip(); }
+      if (justPressed('action')) {
+        const verb = P_VERBS[b.cursor];
+        if (verb.kind === 'evidence') {
+          if (ownedCards().length === 0) {
+            b.pDelta = 0;
+            b.pLine = '보여줄 증거 카드가 없다…';
+            b.phase = 'preact';
+          } else {
+            b.phase = 'pcards';
+            b.cursor = 0;
+            Sound.select();
+          }
+        } else {
+          persuadeRespond(verb.kind);
+        }
+      }
+      return;
+    }
+
+    if (b.phase === 'pcards') {
+      const cards = ownedCards();
+      const n = cards.length + 1; // 마지막 항목 = 돌아가기 (터치 기기 배려)
+      if (justPressed('up')) { b.cursor = (b.cursor + n - 1) % n; Sound.blip(); }
+      if (justPressed('down')) { b.cursor = (b.cursor + 1) % n; Sound.blip(); }
+      if (justPressed('cancel')) { b.phase = 'pclaim'; b.cursor = 2; Sound.blip(); return; }
+      if (justPressed('action')) {
+        if (b.cursor >= cards.length) { b.phase = 'pclaim'; b.cursor = 2; Sound.blip(); return; }
+        persuadeRespond('evidence', cards[b.cursor]);
+      }
+      return;
+    }
+
+    if (b.phase === 'preact') {
+      if (justPressed('action')) {
+        if (b.gauge >= b.gaugeMax) {
+          // 마음이 완전히 열렸다 — 마음의 선택(자비)으로
+          if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.monId];
+          if (b.mon.mercy && !b.mercyDone) {
+            b.phase = 'mercy';
+            b.cursor = 0;
+            Sound.badge();
+            return;
+          }
+          winBattle();
+          return;
+        }
+        enterPersuadeDodge();
+      }
+      return;
+    }
   }
 
   // ---------- 도감 ----------
@@ -4668,18 +4952,32 @@
       ctx.textAlign = 'left';
     }
 
-    // 몬스터 이름/HP
+    // 몬스터 이름 + (퀴즈: HP / 설득: 마음 게이지·상태)
     utBox(24, 24, 240, 64, 6);
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 17px monospace';
     ctx.fillText(b.mon.name, 40, 50);
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 12px monospace';
-    ctx.fillText('HP', 40, 70);
-    ctx.fillStyle = '#601010';
-    ctx.fillRect(66, 62, 174, 12);
-    ctx.fillStyle = b.monHp / b.monMaxHp > 0.5 ? '#ffd644' : b.monHp / b.monMaxHp > 0.25 ? '#f08a24' : '#e0453a';
-    ctx.fillRect(66, 62, 174 * Math.max(0, b.monHp / b.monMaxHp), 12);
+    if (b.isPersuade) {
+      const stateColor = b.pState === 'open' ? okColor() : b.pState === 'shaken' ? warnColor() : badColor();
+      ctx.fillStyle = stateColor;
+      ctx.font = 'bold 12px monospace';
+      ctx.fillText(P_STATE_LABEL[b.pState], 40, 70);
+      ctx.fillStyle = '#333';
+      ctx.fillRect(72, 62, 168, 12);
+      ctx.fillStyle = '#ffd644';
+      ctx.fillRect(72, 62, 168 * clamp(b.gauge / b.gaugeMax, 0, 1), 12);
+      ctx.fillStyle = '#888';
+      ctx.font = '11px monospace';
+      ctx.fillText('마음', 244 - 24, 50);
+    } else {
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 12px monospace';
+      ctx.fillText('HP', 40, 70);
+      ctx.fillStyle = '#601010';
+      ctx.fillRect(66, 62, 174, 12);
+      ctx.fillStyle = b.monHp / b.monMaxHp > 0.5 ? '#ffd644' : b.monHp / b.monMaxHp > 0.25 ? '#f08a24' : '#e0453a';
+      ctx.fillRect(66, 62, 174 * Math.max(0, b.monHp / b.monMaxHp), 12);
+    }
 
     // 플레이어 하트
     utBox(24, 100, 30 + b.maxHearts * 32, 44, 6);
@@ -4701,6 +4999,7 @@
     // 질문/피드백 박스 — 큰 글씨·긴 문제(커스텀 포함)에서 글자가 넘치지 않게 높이를 맞춘다
     ctx.font = fs(16);
     let boxH = game.largeText ? 280 : 238;
+    if (b.isPersuade) boxH = game.largeText ? 312 : 264; // 주장+메뉴 4종·카드 설명이 넉넉히 들어가게
     if (b.phase === 'question') {
       const q = currentQuestion();
       const order = choiceOrder();
@@ -4716,7 +5015,70 @@
     const hintY = boxY + boxH - 18;
     utBox(12, boxY, LW - 24, boxH, 8);
 
-    if (b.phase === 'question') {
+    if (b.phase === 'pclaim') {
+      // 몬스터의 주장 + 대응 4종 메뉴
+      const claim = currentClaim();
+      let ty = boxY + 30;
+      if (b.pNote) {
+        ctx.fillStyle = '#888';
+        ctx.font = fs(13);
+        ctx.fillText(b.pNote, 34, ty);
+        ty += lh(20);
+      }
+      ctx.fillStyle = '#fff';
+      ctx.font = fs(16);
+      ty = drawQuestionText(claim.text, 34, ty, LW - 24 - 56, lh(24));
+      if (b.revealed[b.claimIdx % b.p.claims.length]) {
+        const cardId = claim.counters[0];
+        ctx.fillStyle = '#ffd644';
+        ctx.font = fs(13);
+        ctx.fillText(`※ 속마음을 알아냈다 — 통할 증거: 「${EVIDENCE_CARDS[cardId].title}」`, 34, ty + 2);
+        ty += lh(20);
+      }
+      ty += lh(10);
+      const stepP = game.largeText ? 36 : 30;
+      for (let i = 0; i < P_VERBS.length; i++) {
+        const v = P_VERBS[i];
+        const label = v.kind === 'evidence' ? `${v.label} (${ownedCards().length}장)` : v.label;
+        drawChoiceLine(label, 38, ty, i === b.cursor);
+        ty += stepP;
+      }
+    } else if (b.phase === 'pcards') {
+      ctx.fillStyle = '#ffd644';
+      ctx.font = fs(16, true);
+      ctx.fillText('◆ 어떤 증거를 보여줄까?', 34, boxY + 32);
+      const cards = ownedCards();
+      const stepC = game.largeText ? 34 : 28;
+      let ty = boxY + 62;
+      for (let i = 0; i < cards.length; i++) {
+        drawChoiceLine(`「${EVIDENCE_CARDS[cards[i]].title}」`, 38, ty, i === b.cursor);
+        ty += stepC;
+      }
+      drawChoiceLine('돌아가기', 38, ty, b.cursor >= cards.length);
+      ty += stepC;
+      // 고른 카드의 뒷면 설명
+      if (b.cursor < cards.length) {
+        ctx.fillStyle = '#888';
+        ctx.font = fs(13);
+        wrapText(EVIDENCE_CARDS[cards[b.cursor]].desc, 34, ty + 6, LW - 24 - 56, lh(18));
+      }
+    } else if (b.phase === 'preact') {
+      ctx.fillStyle = '#fff';
+      ctx.font = fs(16);
+      drawQuestionText(b.pLine || '', 34, boxY + 34, LW - 24 - 44, lh(24));
+      if (b.pDelta !== 0) {
+        ctx.font = fs(16, true);
+        ctx.fillStyle = b.pDelta > 0 ? okColor() : badColor();
+        ctx.textAlign = 'right';
+        ctx.fillText(`마음 ${b.pDelta > 0 ? '+' : ''}${b.pDelta}`, LW - 40, boxY + 34);
+        ctx.textAlign = 'left';
+      }
+      if (Math.floor(game.time / 20) % 2 === 0) {
+        ctx.fillStyle = '#ffd644';
+        ctx.font = fs(16);
+        ctx.fillText('▼ (Z/스페이스)', LW - 150, hintY);
+      }
+    } else if (b.phase === 'question') {
       const q = currentQuestion();
       const order = choiceOrder();
       ctx.fillStyle = '#fff';
@@ -4806,7 +5168,11 @@
     ctx.fillText(b.attack.taunt, LW / 2, d.box.y - 26);
     ctx.fillStyle = '#888';
     ctx.font = '13px monospace';
-    ctx.fillText('화살표로 하트를 움직여 피하세요!  (하트는 0이 되지 않아요)', LW / 2, d.box.y - 6);
+    ctx.fillText(
+      b.isPersuade
+        ? '화살표로 하트를 움직여 피하세요!  (하트가 다 닳으면 물러나요)'
+        : '화살표로 하트를 움직여 피하세요!  (하트는 0이 되지 않아요)',
+      LW / 2, d.box.y - 6);
     ctx.textAlign = 'left';
 
     // 박스

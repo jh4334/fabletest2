@@ -177,33 +177,87 @@ hold('ArrowUp', 14);
 // 워프 후에도 키를 누르고 있으면 계속 걸어갈 수 있으므로 맵과 x만 확인
 check('숲으로 워프', g.map === 'forest' && g.player.x === 13 && g.player.y >= 16);
 
-console.log('[5] 배틀 패배 흐름 (베껴몬에게 3번 틀리기)');
+// ---------- v2 설득 배틀 도우미 (베껴몬 = M1 프로토타입) ----------
+function pickVerb(idx) { // pclaim에서 대응(0공감/1질문/2증거/3반박)을 골라 결정
+  if (g.battle.phase !== 'pclaim') throw new Error('주장 단계가 아님: ' + g.battle.phase);
+  while (g.battle.cursor !== idx) tap('ArrowDown');
+  tap('z');
+}
+function pickCard(idx) { // 증거 메뉴를 열고 idx번째 카드를 낸다
+  pickVerb(2);
+  if (g.battle.phase !== 'pcards') throw new Error('카드 단계가 아님: ' + g.battle.phase);
+  while (g.battle.cursor !== idx) tap('ArrowDown');
+  tap('z');
+}
+function fastDodge() { // 회피 턴을 무피격으로 빨리감기 (퍼펙트 보너스 +6)
+  if (g.battle.phase !== 'dodge') throw new Error('회피 턴이 아님: ' + g.battle.phase);
+  g.battle.dodge.t = g.battle.dodge.dur - 1;
+  g.battle.dodge.bullets.length = 0;
+  step(2);
+}
+
+console.log('[5] 설득 배틀 — 물러남(탈진) 흐름 (베껴몬)');
 setPos(7, 9, 'down'); // 베껴몬 (7,10) 위
 tap('z');
-advanceDialog(); // 등장 대사 → 배틀
-check('배틀 시작', g.mode === 'battle' && g.battle.monId === 'bekkyeomon');
-answerQuestion(false);
-answerQuestion(false);
-answerQuestion(false);
-check('패배 → 월드 복귀 대화', g.mode === 'dialog');
+advanceDialog(); // 등장 대사 + 증거 카드 지급 + 설득 안내 → 배틀
+check('설득 배틀 시작', g.mode === 'battle' && g.battle.monId === 'bekkyeomon' && g.battle.isPersuade === true);
+check('증거 카드 4장 지급', g.flags.evCards.length === 4);
+check('마음은 닫힘에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0);
+check('하트 4개(고학년 기본)', g.battle.maxHearts === 4);
+pickVerb(0); // 공감하기
+check('공감이 닫힌 마음을 두드림 (+14, 동요)', g.battle.pDelta === 14 && g.battle.pState === 'shaken');
+g.battle.playerHp = 1; // 테스트: 다음 피격에 탈진하도록
+tap('z'); // 반응 확인 → 몬스터 턴(회피)
+check('몬스터 턴은 회피 구간', g.battle.phase === 'dodge');
+// 하트 위에 탄을 놓아 결정적으로 피격시킨다
+g.battle.dodge.bullets.push({ x: g.battle.dodge.soul.x, y: g.battle.dodge.soul.y, vx: 0, vy: 0, r: 6 });
+step(2);
+check('하트 소진 → 물러남 대화', g.mode === 'dialog');
 advanceDialog();
 check('베껴몬 아직 남아있음', g.flags.defeated.bekkyeomon === false);
+check('상대가 이야기를 절반 기억', g.flags.persuadeMemory.bekkyeomon.gauge === 7 &&
+  g.flags.persuadeMemory.bekkyeomon.state === 'shaken');
 
-console.log('[6] 배틀 승리 흐름 (베껴몬, 1번 틀리고 승리)');
+console.log('[6] 설득 배틀 — 승리 흐름 (재도전, 대응 4종 전부 검증)');
 tap('z'); // 같은 자리에서 재도전
 advanceDialog();
-check('재배틀 시작', g.mode === 'battle');
-fightWithMercy(3, 0, 1);
+check('재도전 — 지난 이야기를 기억함', g.mode === 'battle' && g.battle.gauge === 7 && g.battle.pState === 'shaken');
+pickVerb(1); // 질문하기 (동요 상태)
+check('질문 → 속마음이 드러남 (+8, 힌트 공개)', g.battle.pDelta === 8 && g.battle.revealed[0] === true);
+tap('z'); fastDodge();
+check('무피격 보너스 (+6)', g.battle.gauge === 21 && g.battle.phase === 'pclaim');
+pickCard(3); // 안 맞는 카드 (비밀번호는 나만 — privacy)
+check('지금 주장과 다른 카드는 통하지 않음 (-6)', g.battle.pDelta === -6);
+tap('z'); fastDodge();
+pickVerb(0); // 공감 반복 → 효과 감소
+check('공감 반복은 효과 감소 (+6)', g.battle.pDelta === 6);
+tap('z'); fastDodge();
+pickCard(0); // 「만든 사람의 마음」 — 1번 주장의 정답 카드
+check('맞는 증거가 크게 통함 (+26, 마음 열림)', g.battle.pDelta === 26 && g.battle.pState === 'open');
+tap('z'); fastDodge();
+pickVerb(3); // 반박하기 (열림 상태에선 통한다)
+check('열린 마음에는 반박도 통함 (+14)', g.battle.pDelta === 14);
+tap('z'); fastDodge();
+pickCard(2); // 「서툴러도 내 것」 — 3번 주장의 정답 카드
+check('게이지 만충', g.battle.gauge === g.battle.gaugeMax);
+tap('z'); // 반응 확인 → 마음의 선택
+check('마음이 열려 마음의 선택으로', g.battle.phase === 'mercy');
+tap('z'); // 첫 번째(자비) 선택
+check('자비 응답', g.battle.phase === 'mercyReply');
+tap('z'); // 응답 닫기 → 승리 대화
 check('승리 대화', g.mode === 'dialog');
 advanceDialog();
-check('베껴몬 깨우침', g.flags.defeated.bekkyeomon === true);
+check('베껴몬 깨우침(설득)', g.flags.defeated.bekkyeomon === true);
+check('기억은 승리 후 지워짐', !g.flags.persuadeMemory.bekkyeomon);
+check('설득 전략 로그 기록', g.flags.pStats.evidence === 3 && g.flags.pStats.evRight === 2 &&
+  g.flags.pStats.evWrong === 1 && g.flags.pStats.empathy === 2);
 check('증표는 아직 0개 (부하 몬스터)', !g.flags.badges.forest);
 
-console.log('[7] 수호자 몰래몬 → 숲의 증표');
+console.log('[7] 수호자 몰래몬 → 숲의 증표 (퀴즈 배틀, 오답 1회 포함)');
 setPos(13, 4, 'up'); // 몰래몬 (13,3) 아래
 tap('z');
 advanceDialog();
-fightWithMercy(3, 0);
+fightWithMercy(3, 0, 1); // 한 번 틀려서 오답 노트 기록도 검증
 advanceDialog();
 check('숲의 증표 획득', g.flags.badges.forest === true);
 
