@@ -4,7 +4,7 @@
 //  G 풀  P 길  F 꽃  S 모래  B 다리  C 동굴바닥  M 탑바닥  1 탑문(워프)
 //  T 나무  W 물  O 지붕  H 벽  D 문(장식)  R 바위  K 동굴벽  * 수정  N 탑벽  Y 표지판
 
-const WALKABLE = new Set(['G', 'P', 'F', 'S', 'B', 'C', 'M', 'Z', 'E', 'I', '2', '4', 'A', '1', '5']);
+const WALKABLE = new Set(['G', 'P', 'F', 'S', 'B', 'C', 'M', 'Z', 'E', 'I', '2', '4', 'A', '1', '5', '6']);
 
 const MAPS = {
   village: {
@@ -16,7 +16,7 @@ const MAPS = {
       'TGGOOOOOGGGGGPPGOOOOOOGGGGGT',
       'TGGOOOOOGGGGGPPGOOOOOOGGGGGT',
       'TGGHHDHHGGGGGPPGHH1HHHGGGGGT',
-      'TGGGGPGGGGGGGPPGGGPGGGGGGGGT',
+      'TGGGGPGGGGGGGPPGGGPGGGGG6YGT',
       'TGFGGPGGGGFGGPPGGGPGGFGGGFGT',
       'TGGGGPPPPPPPPPPPPPPGGGGGGGGT',
       'TGOOOOOOGGGGGPPGGGGGGGGGGG5T',
@@ -44,6 +44,8 @@ const MAPS = {
         lockText: '남쪽 길이 어둠의 안개로 막혀 있다.\n신호탑의 혼돈몬을 깨우치면\n안개가 걷힐 것 같다.' },
       // 보너스 지역: AI 미래연구소 (언제든 자유롭게 드나드는 연습 공간)
       { x: 26, y: 8, to: 'lab', tx: 9, ty: 8 },
+      // 1장 방탈출: 수집몬의 "무료 게임 카페" (흔적의 방)
+      { x: 24, y: 5, to: 'traceroom', tx: 9, ty: 11 },
     ],
     npcs: [
       { id: 'prof', x: 4, y: 12, pal: 'prof', name: '박사님' },
@@ -61,7 +63,43 @@ const MAPS = {
     ],
     signs: [
       { x: 15, y: 16, text: '≪경계마을≫\nAI 윤리 수호대의 고향입니다.' },
+      { x: 25, y: 5, text: '≪무료 게임 카페≫\n수집몬이 새로 열었대요.\n"게임 전부 공짜!" …정말 공짜일까?' },
     ],
+    monsters: [],
+  },
+
+  // 1장 방탈출 「흔적의 방」 — 수집몬의 무료 게임 카페.
+  // 모든 편의는 정보를 대가로 요구한다. 상호작용 물체(단말·게시판·지우개·출구)는
+  // 타일이 아니라 PUZZLES.traces 설정의 좌표로 배치된다.
+  traceroom: {
+    name: '흔적의 방',
+    song: 'battle',
+    intro: [
+      '≪무료 게임 카페≫\n반짝이는 화면과 경품이 가득하다.',
+      '수집몬: "어서 와! 전부 공짜야.\n…아주 작은 정보만 주면 돼."',
+      '[안내] 급할수록 아무것도 주지 말기.\n막히면 H(또는 메뉴▶힌트)로 도움을 받아요.',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEE6EEEEEEEEEH',
+      'HHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      { x: 9, y: 12, to: 'village', tx: 24, ty: 6 },
+    ],
+    npcs: [],
+    signs: [],
     monsters: [],
   },
 
@@ -3070,6 +3108,15 @@ const EVIDENCE_CARDS = {
     title: '비밀번호는 나만', topic: 'privacy',
     desc: '비밀번호는 가장 친한 친구에게도 알려 주지 않아요. 나를 지키는 첫 번째 자물쇠예요.',
   },
+  // 「흔적의 방」 클리어 보상
+  ev_minimal: {
+    title: '최소한의 정보', topic: 'privacy',
+    desc: '편리함을 준다고 해서 다 줄 필요는 없어요. 정말 필요한 최소한만, 신중하게 나눠요.',
+  },
+  ev_footprint: {
+    title: '지워지지 않는 발자국', topic: 'footprint',
+    desc: '한번 인터넷에 올린 것은 완전히 지우기 어려워요. 조각이 남아요. 올리기 전에 한 번 더 생각해요.',
+  },
 };
 
 const PERSUADE = {
@@ -3117,6 +3164,88 @@ function getPersuade(monId) {
   return PERSUADE[monId] || null;
 }
 
+// ===== v2 방탈출 퍼즐 (T2 프레임워크) =====
+// 이후 방 4개가 재사용하는 공통 틀. 방마다 진행 단계(steps)·단계별 3단계 힌트(hints)·
+// 클리어 보상 카드(rewards)를 정의한다. 방별 물체(단말·게시판 등)는 그 방 설정에 좌표로 둔다.
+// 흔적의 방 정보 토큰 5종 (닉네임·학교·집주소·전화번호·얼굴사진)
+const TRACE_TOKENS = {
+  nickname: '닉네임', school: '학교', address: '집주소', phone: '전화번호', face: '얼굴사진',
+};
+
+const PUZZLES = {
+  traces: {
+    map: 'traceroom',
+    title: '흔적의 방',
+    steps: ['tokens', 'board', 'eraser', 'exit'], // 진행 단계 키
+    // 각 단계 3단계 점진 힌트 (1:무엇을 볼지 / 2:왜 / 3:무엇을 할지)
+    hints: {
+      tokens: [
+        '방 안의 단말기들을 살펴보세요.',
+        '모두 편리함을 주는 대신 내 정보를 달라고 해요. 정말 필요한 거래일까요?',
+        '급하지 않으면 아무것도 주지 말고, 먼저 단말기의 설명을 읽어 보세요.',
+      ],
+      board: [
+        '친구 게시판(기록몬)에 무엇을 올렸는지 떠올려 보세요.',
+        '한번 게시판에 올린 얼굴사진은 지우개로도 지울 수 없어요. 조각이 남아요.',
+        '앞으로는 지울 수 있는 것만, 꼭 필요한 곳에만 나눠 주기로 해요.',
+      ],
+      eraser: [
+        '화면 위쪽 프로필 보드의 숫자와 따라다니는 그림자를 보세요.',
+        '내보낸 정보가 3개를 넘으면 그림자 스토커가 나타나요. 정보를 줄이면 사라져요.',
+        '지우개 단말에서 준 정보를 골라 지우세요. (게시판 공유분은 못 지워요)',
+      ],
+      exit: [
+        '출구가 둘이에요. 화려한 문과 수수한 문.',
+        '화려한 VIP 문은 남은 정보를 전부 달라고 해요 — 함정이에요.',
+        '수수한 일반 출구로 가세요. 붙어 있는 흔적(닉네임 제외)이 1개 이하일 때 나갈 수 있어요.',
+      ],
+    },
+    rewards: ['ev_minimal', 'ev_footprint'], // 클리어 보상 증거 카드
+    // ---- 흔적의 방 전용 구성 ----
+    tokens: TRACE_TOKENS,
+    // 단말기 4개 (몰래몬 테마) + 친구 게시판 (기록몬 테마)
+    terminals: [
+      { id: 'map', x: 3, y: 3, theme: 'mollaemon', name: '지도 단말', require: 'school',
+        ask: '지도 단말이 반짝인다.\n"학교 이름만 알려주면\n가게 안 지름길을 열어줄게!"',
+        yes: '지름길 안내가 켜졌다.\n…근데 왜 학교를 물어봤지?',
+        no: '"괜찮아, 언제든 다시 와~"' },
+      { id: 'prize', x: 16, y: 3, theme: 'mollaemon', name: '경품 단말', require: 'phone',
+        ask: '경품 단말이 번쩍인다.\n"전화번호만 남기면\n반짝이 아이템을 공짜로!"',
+        yes: '반짝이 장식을 받았다.\n…이제 모르는 번호로 전화가 올지도.',
+        no: '"에이, 아쉽다~"' },
+      { id: 'board', x: 9, y: 1, theme: 'girokmon', name: '친구 게시판', require: 'face', share: true,
+        ask: '친구 게시판(기록몬)이 웃는다.\n"얼굴 사진 한 장만 올려 봐!\n친구들이 좋아요를 누를 거야."',
+        yes: '얼굴 사진을 게시판에 올렸다.\n기록몬: "고마워! …이건 이제\n내가 영원히 가지고 있을게."',
+        no: '"부끄러워? …알겠어."' },
+      { id: 'vip', x: 3, y: 7, theme: 'mollaemon', name: 'VIP 안내 단말', require: 'address',
+        ask: 'VIP 안내 단말이 속삭인다.\n"집주소를 알려주면\n선물을 집으로 보내줄게!"',
+        yes: '주소를 입력했다.\n…낯선 택배가 집을 찾아올 수 있다.',
+        no: '"흠, 신중하구나."' },
+    ],
+    // 지우개 단말 — 준 정보를 골라 삭제 (게시판 공유분은 삭제 불가)
+    eraser: { x: 16, y: 7, name: '지우개 단말',
+      prompt: '지우개 단말: 지울 정보를 고르세요.',
+      empty: '지울 수 있는 정보가 없어요.',
+      cantErase: '게시판에 공유한 얼굴사진은\n지울 수 없어요. 조각이 남아요.\n(잊힐 권리에도 한계가 있어요)' },
+    // 출구 2개
+    exits: {
+      vip: { x: 16, y: 10, name: 'VIP 출구',
+        ask: '화려한 VIP 문이 번쩍인다.\n"남은 정보를 전부 주면\n특별히 문을 열어줄게!"',
+        trap: '이미 알려진 정보는\n문을 닫아도 따라온단다…\n(그림자 둘이 더 늘어났다!)' },
+      normal: { x: 3, y: 10, name: '일반 출구',
+        ask: '수수한 문이다.\n"닉네임만 알려주면\n조용히 나갈 수 있어."',
+        tooMany: '붙어 있는 흔적이 너무 많아요.\n(닉네임 빼고 1개 이하로 줄여 보세요)' },
+    },
+  },
+};
+
+function getPuzzleForMap(mapId) {
+  for (const k in PUZZLES) {
+    if (PUZZLES[k].map === mapId) return Object.assign({ id: k }, PUZZLES[k]);
+  }
+  return null;
+}
+
 // ===== 조사(살펴보기) 텍스트 =====
 // 타일 종류에 따른 기본 살펴보기 문구. (언더테일식 소소한 재미)
 const EXAMINE_TILES = {
@@ -3143,6 +3272,7 @@ const EXAMINE_TILES = {
   Q: '거울이다. …방금, 거울 속의 내가 먼저 웃지 않았나?',
   X: '선인장. 가시가 따끔해 보인다. 멀리서 인사만.',
   D: '문이 잠겨 있다. 주인이 잠시 자리를 비운 모양이다.',
+  '6': '반짝이는 게임 카페 입구. "전부 공짜!" …정말일까?',
 };
 
 // 맵별 특별 살펴보기 지점(좌표). 같은 좌표면 기본 타일 문구보다 우선.

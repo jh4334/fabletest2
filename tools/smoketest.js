@@ -1157,4 +1157,95 @@ dispatch('keyup', { key: 'ArrowLeft' });
 check('워프 후에도 전 맵으로 튕기지 않음(meadow 유지)', g.map === 'meadow');
 check('워프 직후 멈춤(도착칸에 정지)', g.player.x === 1 && g.player.y === 10);
 
+console.log('[68] 방탈출: 흔적의 방 (T2 — 개인정보·디지털 발자국)');
+function pickChoice(idx) { // 월드 선택지 박스에서 idx번째를 고른다
+  if (g.mode !== 'choice') throw new Error('선택 모드가 아님: ' + g.mode);
+  let guard = 0;
+  while (g.choice.cursor !== idx) { tap('ArrowDown'); if (guard++ > 20) throw new Error('선택 커서 이동 실패'); }
+  tap('z');
+}
+// 마을 카페 입구(24,5)로 워프 진입 (인트로는 스킵)
+g.flags.visited = g.flags.visited || {};
+g.flags.visited.traceroom = true;
+g.flags.evCards = (g.flags.evCards || []).filter((id) => id !== 'ev_minimal' && id !== 'ev_footprint');
+g.dialog = null; g.mode = 'world'; g.map = 'village'; setPos(24, 6, 'up');
+hold('ArrowUp', 14);
+check('흔적의 방 입장', g.map === 'traceroom' && !!g.puzzleRun);
+check('정보 토큰 5종 소지 시작', Object.values(g.puzzleRun.held).filter(Boolean).length === 5);
+check('시작 단계는 tokens', g.puzzleRun.stalkers.length === 0);
+
+// 토큰 3개 제공: 학교(지도) · 전화번호(경품) · 얼굴사진(친구 게시판)
+setPos(3, 4, 'up'); tap('z');
+check('지도 단말 — 선택창 열림', g.mode === 'choice');
+pickChoice(0); advanceDialog();
+check('학교 정보 제공됨', g.puzzleRun.given.includes('school'));
+setPos(16, 4, 'up'); tap('z'); pickChoice(0); advanceDialog();
+check('전화번호 정보 제공됨', g.puzzleRun.given.includes('phone'));
+setPos(9, 2, 'up'); tap('z'); pickChoice(0); advanceDialog();
+check('얼굴사진 게시판 공유(영구)', g.puzzleRun.boardFace === true);
+check('내보낸 정보 3개 → 그림자 스토커 스폰', g.puzzleRun.stalkers.length >= 1);
+check('프로필 보드 카운트 3', g.puzzleRun.given.filter((k) => k !== 'nickname').length + 1 === 3);
+
+// 3단계 점진 힌트 (H) — 로그에 단계별 기록
+tap('h');
+check('힌트 오버레이 열림', g.mode === 'hint' && g.hint.level === 1);
+tap('h');
+check('힌트 더 보기(2단계)', g.hint.level === 2);
+tap('z');
+check('힌트 닫힘 → 월드 복귀', g.mode === 'world');
+let plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+check('힌트 사용이 단계별 로그에 기록', plog.traces && plog.traces.hintsUsed.eraser >= 1);
+
+// 지우개로 2개 삭제 — 게시판 공유 얼굴사진은 삭제 불가
+setPos(16, 8, 'up'); tap('z');
+check('지우개 — 선택창 열림', g.mode === 'choice');
+check('공유 얼굴사진은 삭제불가 항목으로 표시', g.choice.options.some((o) => /삭제불가/.test(o)));
+// 공유분 삭제 시도 → 불가 안내
+const faceIdx = g.choice.options.findIndex((o) => /삭제불가/.test(o));
+while (g.choice.cursor !== faceIdx) tap('ArrowDown');
+tap('z');
+check('공유분 삭제 시도 → 불가 안내 대사', g.mode === 'dialog');
+advanceDialog();
+check('게시판 공유분은 여전히 남음', g.puzzleRun.boardFace === true);
+// 학교·전화번호 삭제 (각각 목록 첫 항목)
+setPos(16, 8, 'up'); tap('z'); pickChoice(0); advanceDialog();
+setPos(16, 8, 'up'); tap('z'); pickChoice(0); advanceDialog();
+check('두 정보 삭제됨(보드 수 감소)', !g.puzzleRun.given.includes('school') && !g.puzzleRun.given.includes('phone'));
+check('보드 3 미만 → 스토커 소멸', g.puzzleRun.stalkers.length === 0);
+
+// VIP 출구 — 함정(스토커 +2, wrongTries 기록, 클리어 아님)
+setPos(16, 11, 'up'); tap('z');
+check('VIP 출구 — 선택창 열림', g.mode === 'choice');
+const beforeStalkers = g.puzzleRun.stalkers.length;
+pickChoice(0); advanceDialog();
+check('VIP 함정 → 스토커 2 추가', g.puzzleRun.stalkers.length === beforeStalkers + 2);
+check('VIP 통과 실패(방에 남음)', g.map === 'traceroom' && !!g.puzzleRun);
+plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+check('VIP 함정 → wrongTries 기록', plog.traces.wrongTries >= 1);
+
+// 정리하고 일반 출구로 클리어 (테스트 편의로 되돌린 상태 구성)
+g.puzzleRun.given = [];
+g.puzzleRun.boardFace = true; // 게시판 얼굴사진(닉네임 제외 1개) — 클리어 허용
+g.puzzleRun.stalkers = [];
+g.puzzleRun.held.nickname = true;
+setPos(3, 11, 'up'); tap('z');
+check('일반 출구 — 선택창 열림', g.mode === 'choice');
+pickChoice(0);
+check('클리어 대화 시작', g.mode === 'dialog');
+advanceDialog();
+check('클리어 → 마을 복귀', g.map === 'village' && !g.puzzleRun);
+check('증거 카드 2장 지급', g.flags.evCards.includes('ev_minimal') && g.flags.evCards.includes('ev_footprint'));
+plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+check('퍼즐 done/clears 기록', plog.traces.done === true && plog.traces.clears >= 1);
+check('입장~클리어 프레임 누적 기록', plog.traces.timeFrames > 0);
+
+// 재입장 가능(연습용) — clears 증가
+g.dialog = null; g.mode = 'world'; g.map = 'village'; setPos(24, 6, 'up');
+hold('ArrowUp', 14);
+check('재입장 가능', g.map === 'traceroom' && !!g.puzzleRun);
+g.puzzleRun.given = []; g.puzzleRun.boardFace = false; g.puzzleRun.held.nickname = true;
+setPos(3, 11, 'up'); tap('z'); pickChoice(0); advanceDialog();
+plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+check('재클리어로 clears 증가', plog.traces.clears >= 2);
+
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

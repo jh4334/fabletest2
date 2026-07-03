@@ -879,6 +879,27 @@ MONSTER_SPRITES.pinggyemon = [
   '................',
 ];
 
+// 그림자 스토커 (흔적의 방) — 준 정보가 3개를 넘으면 나타나 플레이어를 따라온다.
+// 어두운 후드 형체 + 붉게 빛나는 눈 (대미지는 없지만 불안하게).
+const STALKER_SPRITE = [
+  '................',
+  '......dddd......',
+  '.....dddddd.....',
+  '....dddddddd....',
+  '...dddddddddd...',
+  '...dddddddddd...',
+  '...dqddddddqd...',
+  '...dddddddddd...',
+  '..dddddddddddd..',
+  '..dddddddddddd..',
+  '..dddddddddddd..',
+  '..dddddddddddd..',
+  '..dkddddddddkd..',
+  '...dd.dddd.dd...',
+  '....d..dd..d....',
+  '................',
+];
+
 // 스프라이트 렌더 캐시
 const _spriteCache = new Map();
 // 스프라이트 배열마다 짧은 고유 id를 붙여, 매 프레임 256자 join을 피한다.

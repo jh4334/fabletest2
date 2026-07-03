@@ -81,6 +81,11 @@
     cert: { ret: 'title', slot: 0, toast: 0 },       // 수료증·진도 인증서
     hof: { ret: 'title', cat: 0 },                   // 명예의 전당(로컬 기록)
     pauseScroll: 0,      // 일시정지 메뉴 스크롤
+    puzzleRun: null,     // 방탈출 런타임 상태 (흔적의 방 등) — 방 밖에서는 null
+    choice: null,        // 월드 선택지 박스 { prompt, options, cursor, onPick }
+    choiceRet: 'world',
+    hint: null,          // 퍼즐 힌트 오버레이 { step, level, hints }
+    hintRet: 'world',
   };
 
   const SLOT_COUNT = 3;
@@ -789,7 +794,12 @@
     if (e.key === 'm' || e.key === 'M') { Sound.toggleMute(); return; }
     if (e.key === 't' || e.key === 'T') { cycleTextSpeed(); return; }
     if (e.key === 'g' || e.key === 'G') { toggleLargeText(); return; }
-    if (e.key === 'h' || e.key === 'H') { useHint(); return; }
+    if (e.key === 'h' || e.key === 'H') {
+      if (game.mode === 'hint') { advanceHint(); return; }
+      if (game.mode === 'world' && game.puzzleRun) { openHint(); return; }
+      useHint();
+      return;
+    }
     if (e.key === 'v' || e.key === 'V') {
       if (game.mode === 'world') { openReview('world'); return; }
       if (game.mode === 'review') { closeReview(); return; }
@@ -1380,6 +1390,18 @@
         px(12, 1, 1, 14, '#56b6e0');
         break;
       }
+      case '6': { // 게임 카페 입구 (네온 아치 문 — 흔적의 방)
+        px(0, 0, 16, 16, '#3a2340');
+        px(2, 1, 12, 14, '#5a2a6a');
+        px(3, 2, 10, 13, '#1a1020');
+        const neon = frame ? '#ff6ad5' : '#ffa8e6';
+        px(2, 1, 12, 1, neon);
+        px(2, 1, 1, 6, neon);
+        px(13, 1, 1, 6, neon);
+        px(5, 4, 6, 8, frame ? '#8a4fd6' : '#a86ae0');
+        px(6, 5, 4, 6, frame ? '#ffd644' : '#fff2a8'); // 반짝이는 "무료"
+        break;
+      }
       default:
         px(0, 0, 16, 16, '#f0f');
     }
@@ -1420,6 +1442,417 @@
     }
   }
 
+  // ---------- 방탈출 퍼즐 (T2 프레임워크) ----------
+  // 퍼즐 로그: 슬롯별 localStorage. { <puzzleId>: { done, clears, hintsUsed:{단계:횟수}, wrongTries, timeFrames } }
+  const PUZZLE_KEY = 'ai-ethics-adventure-puzzle';
+  function puzzleKey(slot) { return PUZZLE_KEY + '-' + slot; }
+  function getPuzzleLog(slot) {
+    try { return JSON.parse(localStorage.getItem(puzzleKey(slot))) || {}; } catch (e) { return {}; }
+  }
+  function writePuzzleLog(slot, data) {
+    try { localStorage.setItem(puzzleKey(slot), JSON.stringify(data)); } catch (e) { noteStorageFail(); }
+  }
+  function puzzleEntry(log, id) {
+    if (!log[id]) log[id] = { done: false, clears: 0, hintsUsed: {}, wrongTries: 0, timeFrames: 0 };
+    return log[id];
+  }
+  function recordPuzzleHint(id, step) {
+    const slot = game.currentSlot;
+    const log = getPuzzleLog(slot);
+    const e = puzzleEntry(log, id);
+    e.hintsUsed[step] = (e.hintsUsed[step] || 0) + 1;
+    writePuzzleLog(slot, log);
+  }
+  function recordPuzzleWrong(id) {
+    const slot = game.currentSlot;
+    const log = getPuzzleLog(slot);
+    puzzleEntry(log, id).wrongTries += 1;
+    writePuzzleLog(slot, log);
+  }
+  function recordPuzzleClear(id, frames) {
+    const slot = game.currentSlot;
+    const log = getPuzzleLog(slot);
+    const e = puzzleEntry(log, id);
+    e.done = true; e.clears += 1; e.timeFrames += frames;
+    writePuzzleLog(slot, log);
+  }
+
+  // 방 입장/퇴장에 맞춰 런타임 상태를 맞춘다 (checkWarp에서 호출)
+  function syncPuzzleRun() {
+    const puz = getPuzzleForMap(game.map);
+    if (puz) {
+      if (!game.puzzleRun || game.puzzleRun.map !== game.map) startPuzzleRun(puz);
+    } else {
+      game.puzzleRun = null;
+    }
+  }
+  function startPuzzleRun(puzzle) {
+    game.puzzleRun = {
+      id: puzzle.id,
+      map: puzzle.map,
+      puzzle,
+      held: { nickname: true, school: true, address: true, phone: true, face: true },
+      given: [],        // 되돌릴 수 있게 내준 토큰 키들
+      boardFace: false, // 게시판에 공유한 얼굴사진(영구 — 지울 수 없음)
+      stalkers: [],     // { px, py }
+      timeFrames: 0,    // 입장~클리어 프레임 누적 (자체 카운터)
+      flashT: 0,        // 접촉 화면 플래시
+      warnCool: 0,      // 경고 대사 스로틀
+    };
+  }
+  // 지금 밖에 내보낸 토큰 (되돌릴 수 있는 것 + 게시판 공유 얼굴사진)
+  function givenTokens(run) {
+    return run.given.concat(run.boardFace ? ['face'] : []);
+  }
+  // 프로필 보드 카운트 (닉네임 제외) — 3 이상이면 스토커
+  function boardCount(run) {
+    return givenTokens(run).filter((k) => k !== 'nickname').length;
+  }
+  // 상태에서 현재 단계 유도 — 힌트가 이 단계를 따라간다
+  function puzzleStep(run) {
+    const spent = givenTokens(run);
+    if (spent.length === 0) return 'tokens';
+    if (spent.filter((k) => k !== 'nickname').length >= 3) return 'eraser';
+    if (run.boardFace) return 'board';
+    return 'exit';
+  }
+  function spawnStalker(run) {
+    // 플레이어에서 먼 구석에서 등장
+    const p = game.player;
+    const far = p.x < 10 ? { x: 17, y: 2 } : { x: 2, y: 2 };
+    run.stalkers.push({ px: far.x * TS, py: far.y * TS });
+  }
+  // 보드 카운트에 맞춰 스토커를 스폰/소멸 (3 이상이면 최소 1, 미만이면 전부 소멸)
+  function refreshStalkers(run) {
+    if (boardCount(run) >= 3) {
+      if (run.stalkers.length === 0) spawnStalker(run);
+    } else {
+      run.stalkers.length = 0;
+      run.flashT = 0;
+    }
+  }
+  // 매 프레임: 시간 누적 + 스토커 추격(반 속도, walkable 체크) + 접촉 처리
+  function updatePuzzleWorld() {
+    const run = game.puzzleRun;
+    run.timeFrames += 1;
+    if (run.flashT > 0) run.flashT -= 1;
+    if (run.warnCool > 0) run.warnCool -= 1;
+    const p = game.player;
+    const spd = MOVE_SPEED * 0.5;
+    for (const s of run.stalkers) {
+      const dx = p.px - s.px, dy = p.py - s.py;
+      const dist = Math.hypot(dx, dy) || 1;
+      const sx = dx / dist * spd, sy = dy / dist * spd;
+      // 축별 walkable 체크 (벽을 통과하지 않게)
+      if (!SOLID(tileAt(game.map, Math.round((s.px + sx) / TS), Math.round(s.py / TS)))) s.px += sx;
+      if (!SOLID(tileAt(game.map, Math.round(s.px / TS), Math.round((s.py + sy) / TS)))) s.py += sy;
+      if (Math.hypot(p.px - s.px, p.py - s.py) < TS * 0.5) {
+        run.flashT = 8;
+        if (run.warnCool <= 0) {
+          run.warnCool = 90; // 연속 접촉 스로틀
+          game.notice = { text: '그림자: 네 정보를 따라왔어…', t: 120 };
+          Sound.bump();
+        }
+      }
+    }
+  }
+  // 퍼즐 물체(단말·게시판·지우개·출구) — 좌표로 판정 (이동 차단 + 상호작용)
+  function puzzleObjAt(mapId, x, y) {
+    const run = game.puzzleRun;
+    if (!run || run.map !== mapId) return null;
+    const puz = run.puzzle;
+    for (const t of puz.terminals) if (t.x === x && t.y === y) return { kind: 'terminal', ref: t };
+    if (puz.eraser.x === x && puz.eraser.y === y) return { kind: 'eraser' };
+    if (puz.exits.vip.x === x && puz.exits.vip.y === y) return { kind: 'vip' };
+    if (puz.exits.normal.x === x && puz.exits.normal.y === y) return { kind: 'normal' };
+    return null;
+  }
+  // 마주 본 물체와 상호작용 (interact에서 호출). 처리했으면 true.
+  function interactPuzzle() {
+    const run = game.puzzleRun;
+    if (!run) return false;
+    const f = facingTile();
+    const obj = puzzleObjAt(game.map, f.x, f.y);
+    if (!obj) return false;
+    if (obj.kind === 'terminal') openTerminal(obj.ref);
+    else if (obj.kind === 'eraser') openEraser();
+    else if (obj.kind === 'vip') openVipExit();
+    else if (obj.kind === 'normal') openNormalExit();
+    return true;
+  }
+  function openTerminal(t) {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    const already = run.given.includes(t.require) || (t.share && run.boardFace);
+    if (already) { startDialog([`이미 ${puz.tokens[t.require]}을(를) 줬어요.`], t.name); return; }
+    if (!run.held[t.require]) { startDialog([`지금은 ${puz.tokens[t.require]}이(가) 없어요.`], t.name); return; }
+    startChoice(`${t.ask}\n\n${puz.tokens[t.require]}을(를) 줄까요?`, ['준다', '안 준다'], (i) => {
+      if (i === 0) {
+        run.held[t.require] = false;
+        if (t.share) run.boardFace = true; else run.given.push(t.require);
+        refreshStalkers(run);
+        Sound.select();
+        startDialog([t.yes], t.name);
+      } else if (i > 0) {
+        startDialog([t.no || '…알겠어요.'], t.name);
+      }
+    });
+  }
+  function openEraser() {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    const opts = run.given.map((k) => ({ key: k, locked: false }));
+    if (run.boardFace) opts.push({ key: 'face', locked: true }); // 공유분 — 삭제 불가(표시만)
+    if (opts.length === 0) { startDialog([puz.eraser.empty], puz.eraser.name); return; }
+    const labels = opts.map((o) => puz.tokens[o.key] + (o.locked ? '(공유됨·삭제불가)' : ''));
+    labels.push('그만두기');
+    startChoice(puz.eraser.prompt, labels, (i) => {
+      if (i < 0 || i >= opts.length) return;
+      const o = opts[i];
+      if (o.locked) { Sound.bump(); startDialog([puz.eraser.cantErase], puz.eraser.name); return; }
+      const idx = run.given.indexOf(o.key);
+      if (idx >= 0) run.given.splice(idx, 1);
+      run.held[o.key] = true; // 되돌려 받음
+      refreshStalkers(run);
+      Sound.correct();
+      startDialog([`${puz.tokens[o.key]} 정보를 지웠어요.`], puz.eraser.name);
+    });
+  }
+  function openVipExit() {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    startChoice(`${puz.exits.vip.ask}\n\n남은 정보를 전부 줄까요?`, ['전부 준다', '안 준다'], (i) => {
+      if (i === 0) {
+        for (const k in run.held) if (run.held[k]) { run.held[k] = false; run.given.push(k); }
+        spawnStalker(run); spawnStalker(run); // 함정: 스토커 2 추가
+        recordPuzzleWrong(run.id);
+        run.flashT = 12;
+        Sound.wrong();
+        startDialog([puz.exits.vip.trap], puz.exits.vip.name);
+      } else if (i > 0) {
+        startDialog(['…역시 수상해. 그만두자.'], puz.exits.vip.name);
+      }
+    });
+  }
+  function openNormalExit() {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    const nonNick = givenTokens(run).filter((k) => k !== 'nickname');
+    if (nonNick.length > 1) { startDialog([puz.exits.normal.tooMany], puz.exits.normal.name); return; }
+    startChoice(`${puz.exits.normal.ask}\n\n닉네임을 주고 나갈까요?`, ['나간다', '아직'], (i) => {
+      if (i === 0) {
+        if (run.held.nickname) { run.held.nickname = false; run.given.push('nickname'); }
+        clearPuzzle(run);
+      } else if (i > 0) {
+        startDialog(['(문 앞에서 잠시 멈췄다)'], puz.exits.normal.name);
+      }
+    });
+  }
+  // 클리어: 보상 카드 지급(중복 방지) + 로그 기록 + 저장 + 마을 복귀
+  function clearPuzzle(run) {
+    const puz = run.puzzle;
+    if (!game.flags.evCards) game.flags.evCards = [];
+    const fresh = puz.rewards.filter((id) => !game.flags.evCards.includes(id));
+    if (fresh.length) game.flags.evCards = game.flags.evCards.concat(fresh);
+    recordPuzzleClear(run.id, run.timeFrames);
+    game.puzzleRun = null;
+    // 마을로 복귀 (카페 입구 앞)
+    game.map = 'village';
+    const p = game.player;
+    p.x = 24; p.y = 6; p.px = 24 * TS; p.py = 6 * TS; p.moving = false;
+    held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
+    stickDir = null; stickRepeatFrames = 0;
+    Sound.warp();
+    Sound.playSong(MAPS.village.song);
+    const lines = [
+      '흔적을 정리하고 문을 나섰다.',
+      '기억하자 — 편리함을 준다고\n다 내주지 않기. 꼭 필요한 최소한만.',
+      '한번 나눠 준 것은\n완전히 지워지지 않는단다.',
+    ];
+    for (const id of fresh) lines.push(`◆ 증거 카드 「${EVIDENCE_CARDS[id].title}」 획득!`);
+    save();
+    startDialog(lines, '흔적의 방');
+  }
+
+  // 월드 선택지 박스 — 단말 상호작용·이후 모든 방이 사용 (배틀 mercy 메뉴 스타일 재사용)
+  function startChoice(prompt, options, onPick) {
+    game.choice = { prompt, options, cursor: 0, onPick };
+    game.choiceRet = game.mode;
+    game.mode = 'choice';
+    Sound.select();
+    if (game.tts) Speech.speak(prompt);
+  }
+  function updateChoice() {
+    const c = game.choice;
+    if (!c) { game.mode = game.choiceRet || 'world'; return; }
+    const n = c.options.length;
+    if (justPressed('up')) { c.cursor = (c.cursor + n - 1) % n; Sound.blip(); }
+    if (justPressed('down')) { c.cursor = (c.cursor + 1) % n; Sound.blip(); }
+    if (justPressed('cancel')) {
+      const cb = c.onPick; game.choice = null; game.mode = game.choiceRet || 'world';
+      Speech.stop(); if (cb) cb(-1);
+      return;
+    }
+    if (justPressed('action')) {
+      const cb = c.onPick, idx = c.cursor;
+      game.choice = null; game.mode = game.choiceRet || 'world';
+      Speech.stop(); if (cb) cb(idx);
+      return;
+    }
+  }
+  function drawChoice() {
+    const c = game.choice;
+    if (!c) return;
+    const maxW = LW - 24 - 48;
+    ctx.font = fs(16);
+    const promptLines = measureWrap(c.prompt, maxW);
+    const optH = lh(30);
+    const boxH = Math.max(120, 30 + promptLines * lh(24) + 10 + c.options.length * optH + 24);
+    const y = LH - boxH - 12;
+    utBox(12, y, LW - 24, boxH, 8);
+    ctx.fillStyle = '#fff';
+    ctx.font = fs(16);
+    let ty = y + 30;
+    ty = drawQuestionText(c.prompt, 30, ty, maxW, lh(24)) + 10;
+    for (let i = 0; i < c.options.length; i++) {
+      drawChoiceWrapped(c.options[i], 40, ty + 4, i === c.cursor, maxW - 20, lh(22));
+      ty += optH;
+    }
+  }
+
+  // 3단계 점진 힌트 오버레이 (퍼즐 전용) — H(또는 메뉴▶힌트)로 열고, 누를 때마다 더 공개
+  function openHint() {
+    const run = game.puzzleRun;
+    if (!run) return;
+    const step = puzzleStep(run);
+    game.hint = { step, level: 1, hints: (run.puzzle.hints[step] || []).slice() };
+    game.hintRet = game.mode;
+    game.mode = 'hint';
+    recordPuzzleHint(run.id, step); // 힌트 사용 횟수를 단계별로 로그에 기록
+    Sound.select();
+    if (game.tts && game.hint.hints[0]) Speech.speak(game.hint.hints[0]);
+  }
+  function advanceHint() {
+    const h = game.hint;
+    if (!h) return;
+    if (h.level < h.hints.length) {
+      h.level += 1;
+      Sound.blip();
+      if (game.tts && h.hints[h.level - 1]) Speech.speak(h.hints[h.level - 1]);
+    }
+  }
+  function closeHint() {
+    game.mode = game.hintRet || 'world';
+    game.hint = null;
+    Speech.stop();
+    Sound.select();
+  }
+  function updateHint() {
+    // H는 keydown 핸들러에서 advanceHint를 직접 호출 (더 공개). X/Z로 닫는다.
+    if (justPressed('action') || justPressed('cancel')) { closeHint(); return; }
+  }
+  const HINT_STEP_LABEL = { tokens: '정보 토큰', board: '게시판', eraser: '지우개', exit: '출구' };
+  function drawHint() {
+    drawWorld();
+    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+    ctx.fillRect(0, 0, LW, LH);
+    const h = game.hint;
+    if (!h) return;
+    const boxW = Math.min(LW - 40, 480);
+    const boxX = Math.round(LW / 2 - boxW / 2);
+    const maxW = boxW - 44;
+    ctx.font = fs(15);
+    let lines = 0;
+    for (let i = 0; i < h.level; i++) lines += measureWrap(`${i + 1}. ${h.hints[i]}`, maxW) + 0.4;
+    const boxH = Math.round(64 + lines * lh(24) + 30);
+    const boxY = Math.round(LH / 2 - boxH / 2);
+    utBox(boxX, boxY, boxW, boxH, 8);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ffd644';
+    ctx.font = fs(16, true);
+    ctx.fillText(`힌트 — ${HINT_STEP_LABEL[h.step] || h.step}  (${h.level}/${h.hints.length})`, boxX + 22, boxY + 30);
+    ctx.fillStyle = '#fff';
+    ctx.font = fs(15);
+    let ty = boxY + 58;
+    for (let i = 0; i < h.level; i++) {
+      ty = drawQuestionText(`${i + 1}. ${h.hints[i]}`, boxX + 22, ty, maxW, lh(24)) + 6;
+    }
+    ctx.fillStyle = '#888';
+    ctx.font = fs(12);
+    ctx.textAlign = 'center';
+    const more = h.level < h.hints.length ? 'H 더 보기 · ' : '';
+    ctx.fillText(`${more}X/Z 닫기`, LW / 2, boxY + boxH - 12);
+    ctx.textAlign = 'left';
+  }
+
+  // 퍼즐 물체 그리기 (타일 위 스프라이트/문 + 라벨)
+  function drawPuzzleObjects(cx, cy) {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    const bob = Math.round(Math.sin(game.time / 22) * 2);
+    const label = (nx, ny, text, col) => {
+      ctx.font = fs(11, true);
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 3; ctx.strokeStyle = '#000';
+      ctx.strokeText(text, nx + TS / 2, ny - 4);
+      ctx.fillStyle = col || '#fff';
+      ctx.fillText(text, nx + TS / 2, ny - 4);
+      ctx.textAlign = 'left';
+    };
+    const box = (nx, ny, col, mark, markCol) => {
+      ctx.fillStyle = col;
+      ctx.fillRect(nx + 6, ny + 8, TS - 12, TS - 12);
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+      ctx.strokeRect(nx + 6, ny + 8, TS - 12, TS - 12);
+      ctx.fillStyle = markCol || '#fff';
+      ctx.font = fs(16, true);
+      ctx.textAlign = 'center';
+      ctx.fillText(mark, nx + TS / 2, ny + TS / 2 + 8);
+      ctx.textAlign = 'left';
+    };
+    for (const t of puz.terminals) {
+      const nx = Math.round(t.x * TS - cx), ny = Math.round(t.y * TS - cy - 6);
+      const given = run.given.includes(t.require) || (t.share && run.boardFace);
+      drawSprite(ctx, MONSTER_SPRITES[t.theme], nx, ny + bob, SCALE);
+      label(nx, ny, t.name + (given ? ' ✓' : ''), given ? '#8de08d' : '#fff');
+    }
+    const er = puz.eraser, ex = puz.exits;
+    box(Math.round(er.x * TS - cx), Math.round(er.y * TS - cy - 6), '#2a4a6a', '⌫', '#a8d8ff');
+    label(Math.round(er.x * TS - cx), Math.round(er.y * TS - cy - 6), '지우개', '#a8d8ff');
+    box(Math.round(ex.vip.x * TS - cx), Math.round(ex.vip.y * TS - cy - 6), '#8a6a20', '★', '#ffd644');
+    label(Math.round(ex.vip.x * TS - cx), Math.round(ex.vip.y * TS - cy - 6), 'VIP 출구', '#ffd644');
+    box(Math.round(ex.normal.x * TS - cx), Math.round(ex.normal.y * TS - cy - 6), '#2a5a3a', '↩', '#8de08d');
+    label(Math.round(ex.normal.x * TS - cx), Math.round(ex.normal.y * TS - cy - 6), '일반 출구', '#8de08d');
+  }
+  function drawStalkers(cx, cy) {
+    const run = game.puzzleRun;
+    for (const s of run.stalkers) {
+      const bob = Math.round(Math.sin(game.time / 10) * 2);
+      drawSprite(ctx, STALKER_SPRITE, Math.round(s.px - cx), Math.round(s.py - cy - 6 + bob), SCALE);
+    }
+  }
+  // 프로필 보드 HUD — 화면 위쪽, 내보낸 정보 상시 표시
+  function drawPuzzleHud() {
+    const run = game.puzzleRun;
+    const given = givenTokens(run);
+    const nonNick = given.filter((k) => k !== 'nickname');
+    const names = given.map((k) => run.puzzle.tokens[k]);
+    const title = `프로필 보드 — 내보낸 정보 ${nonNick.length}개`;
+    const detail = names.length ? names.join(' · ') : '(아직 없음)';
+    ctx.font = fs(13, true);
+    const tw = Math.max(ctx.measureText(title).width, ctx.measureText(detail).width) + 24;
+    const bw = Math.min(LW - 20, Math.max(200, tw));
+    const bx = Math.round(LW / 2 - bw / 2), by = 8, bh = game.largeText ? 56 : 48;
+    utBox(bx, by, bw, bh, 6);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = nonNick.length >= 3 ? badColor() : warnColor();
+    ctx.fillText(title, LW / 2, by + 20);
+    ctx.fillStyle = '#fff';
+    ctx.font = fs(12);
+    ctx.fillText(detail, LW / 2, by + (game.largeText ? 42 : 38));
+    ctx.textAlign = 'left';
+  }
+
   // ---------- 월드 ----------
   function tryMove(dir) {
     const p = game.player;
@@ -1428,7 +1861,8 @@
     const dy = dir === 'up' ? -1 : dir === 'down' ? 1 : 0;
     const nx = p.x + dx, ny = p.y + dy;
     const ch = tileAt(game.map, nx, ny);
-    if (SOLID(ch) || npcAt(game.map, nx, ny) || monsterAt(game.map, nx, ny) || friendAt(game.map, nx, ny)) {
+    if (SOLID(ch) || npcAt(game.map, nx, ny) || monsterAt(game.map, nx, ny) || friendAt(game.map, nx, ny) ||
+        (game.puzzleRun && puzzleObjAt(game.map, nx, ny))) {
       return;
     }
     p.x = nx; p.y = ny;
@@ -1443,6 +1877,7 @@
   }
 
   function interact() {
+    if (game.puzzleRun && interactPuzzle()) return;
     const f = facingTile();
     const npc = npcAt(game.map, f.x, f.y);
     if (npc) {
@@ -1532,6 +1967,7 @@
     stickDir = null; stickRepeatFrames = 0;
     Sound.warp();
     Sound.playSong(MAPS[w.to].song);
+    syncPuzzleRun(); // 방탈출 방 입장/퇴장에 맞춰 런타임 상태 초기화/해제
     // 처음 방문하는 맵의 인트로 연출
     const dest = MAPS[w.to];
     if (dest.intro && !game.flags.visited[w.to]) {
@@ -1546,6 +1982,7 @@
   function updateWorld() {
     const p = game.player;
     if (game.notice.t > 0) game.notice.t -= 1;
+    if (game.puzzleRun) updatePuzzleWorld(); // 방탈출: 시간 누적 + 스토커 추격
 
     // 픽셀 보간 이동
     const tx = p.x * TS, ty = p.y * TS;
@@ -2599,7 +3036,12 @@
   const PAUSE_ITEMS = ['journal', 'cards', 'halloffame', 'dashboard', 'report', 'classmode', 'awards', 'cosmetics', 'cert',
     'challenge', 'review', 'dex', 'quizedit', 'backup', 'difficulty', 'textspeed', 'tts',
     'largetext', 'colorblind', 'reducefx', 'mute', 'help', 'close'];
+  // 방탈출 중에는 「힌트」 항목을 맨 위에 붙인다 (터치 기기에서 H키 대체)
+  function pauseItems() {
+    return game.puzzleRun ? ['hint'].concat(PAUSE_ITEMS) : PAUSE_ITEMS;
+  }
   const PAUSE_LABELS = {
+    hint: '💡 힌트',
     journal: '◆ 수호자 일지',
     cards: '📚 배움 카드',
     halloffame: '🏆 명예의 전당',
@@ -2659,19 +3101,21 @@
   }
 
   function clampPauseScroll() {
-    const maxScroll = Math.max(0, PAUSE_ITEMS.length - PAUSE_VISIBLE);
+    const maxScroll = Math.max(0, pauseItems().length - PAUSE_VISIBLE);
     if (game.pauseCursor < game.pauseScroll) game.pauseScroll = game.pauseCursor;
     if (game.pauseCursor >= game.pauseScroll + PAUSE_VISIBLE) game.pauseScroll = game.pauseCursor - PAUSE_VISIBLE + 1;
     game.pauseScroll = Math.max(0, Math.min(game.pauseScroll, maxScroll));
   }
   function updatePause() {
-    const n = PAUSE_ITEMS.length;
+    const items = pauseItems();
+    const n = items.length;
     if (justPressed('up')) { game.pauseCursor = (game.pauseCursor + n - 1) % n; clampPauseScroll(); Sound.blip(); }
     if (justPressed('down')) { game.pauseCursor = (game.pauseCursor + 1) % n; clampPauseScroll(); Sound.blip(); }
     if (justPressed('cancel')) { closePause(); return; }
     if (justPressed('action')) {
-      const item = PAUSE_ITEMS[game.pauseCursor];
-      if (item === 'journal') openJournal('pause');
+      const item = items[game.pauseCursor];
+      if (item === 'hint') { const had = game.puzzleRun; closePause(); if (had) openHint(); }
+      else if (item === 'journal') openJournal('pause');
       else if (item === 'cards') openCards('pause');
       else if (item === 'halloffame') openHof('pause');
       else if (item === 'cert') openCert('pause');
@@ -2702,8 +3146,9 @@
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0, 0, LW, LH);
 
+    const items = pauseItems();
     const rowH = 34;
-    const shown = Math.min(PAUSE_VISIBLE, PAUSE_ITEMS.length);
+    const shown = Math.min(PAUSE_VISIBLE, items.length);
     const boxW = 340, boxH = 64 + shown * rowH;
     const boxX = Math.round(LW / 2 - boxW / 2);
     const boxY = Math.round(LH / 2 - boxH / 2);
@@ -2718,8 +3163,8 @@
     let ty = boxY + 62;
     for (let k = 0; k < shown; k++) {
       const i = start + k;
-      if (i >= PAUSE_ITEMS.length) break;
-      const item = PAUSE_ITEMS[i];
+      if (i >= items.length) break;
+      const item = items[i];
       drawChoiceLine(PAUSE_LABELS[item], boxX + 22, ty, i === game.pauseCursor);
       const val = pauseValueLabel(item);
       if (val) {
@@ -2733,7 +3178,7 @@
     }
     // 스크롤 표시
     if (start > 0) { ctx.fillStyle = '#888'; ctx.textAlign = 'center'; ctx.fillText('▲', boxX + boxW - 16, boxY + 56); }
-    if (start + shown < PAUSE_ITEMS.length) { ctx.fillStyle = '#888'; ctx.textAlign = 'center'; ctx.fillText('▼', boxX + boxW - 16, boxY + boxH - 22); }
+    if (start + shown < items.length) { ctx.fillStyle = '#888'; ctx.textAlign = 'center'; ctx.fillText('▼', boxX + boxW - 16, boxY + boxH - 22); }
 
     ctx.fillStyle = '#777';
     ctx.font = '12px monospace';
@@ -4552,6 +4997,9 @@
       }
     }
 
+    // 방탈출 물체 (단말·게시판·지우개·출구) — 타일 위, 엔티티 아래
+    if (game.puzzleRun) drawPuzzleObjects(cx, cy);
+
     // NPC
     for (const npc of m.npcs) {
       if (!npcVisible(npc)) continue;
@@ -4599,10 +5047,20 @@
     drawSprite(ctx, PLAYER_SPRITES[dirKey][pframe],
       Math.round(p.px - cx), Math.round(p.py - cy - 6), SCALE, null, p.dir === 'right');
 
+    if (game.puzzleRun) drawStalkers(cx, cy);
+
     drawHud();
-    drawObjectiveArrow();
+    if (!game.puzzleRun) drawObjectiveArrow();
     drawControlHint();
     drawNotice();
+    if (game.puzzleRun) {
+      drawPuzzleHud();
+      // 접촉 화면 플래시 (모션 민감 배려로 reduceFx면 생략)
+      if (game.puzzleRun.flashT > 0 && !game.reduceFx) {
+        ctx.fillStyle = 'rgba(224,69,58,0.32)';
+        ctx.fillRect(0, 0, LW, LH);
+      }
+    }
   }
 
   // 월드 상단 안내 토스트 (해금 알림 등) — 잠깐 떴다 사라진다
@@ -5381,6 +5839,7 @@
     game.flags.badges = Object.assign({ forest: false, lake: false, cave: false }, s.flags.badges);
     game.flags.defeated = Object.assign(newFlags().defeated, s.flags.defeated);
     game.mode = 'world';
+    syncPuzzleRun(); // 방탈출 방 안에서 저장된 세이브면 퍼즐을 새로 시작
     recordPlayDay(slot);
     checkCosmeticUnlocks(slot);
     Sound.playSong(MAPS[game.map].song);
@@ -5711,6 +6170,15 @@
       case 'pause':
         updatePause();
         drawPause();
+        break;
+      case 'choice':
+        updateChoice();
+        drawWorld();
+        if (game.choice) drawChoice();
+        break;
+      case 'hint':
+        updateHint();
+        drawHint();
         break;
       case 'journal':
         updateJournal();
