@@ -1013,6 +1013,7 @@ const MAPS = {
 const MONSTERS = {
   bekkyeomon: {
     name: '베껴몬',
+    displayName: '따라', // 마음 조각 배틀에서 쓰는 표시 이름 (HUD·화자·플로팅·도감)
     topic: 'copyright',
     hp: 3,
     intro: '…내 그림? 내 글?\n그런 건 처음부터 없었어.\n전부 누군가의 것이었으니까.\n…너의 것도, 내 거로 만들어 줄게.',
@@ -3157,19 +3158,34 @@ const EVIDENCE_CARDS = {
 const PERSUADE = {
   bekkyeomon: {
     gaugeMax: 100,
+    displayName: '따라',
+    // 마음 조각 배틀(행동 설득) 튜닝 — 프롤로그 튜토리얼 축소판:
+    //   closedThreshold 낮게(2), 탄속 완화(waveBulletMul), 파도 짧게(waveDur)
+    tutorial: true,
+    closedThreshold: 2,     // closed→shaken 전이에 필요한 누적 조각 수
+    fragmentsPerWave: 3,    // 파도당 스폰되는 속마음 조각 ✦ 개수
+    waveBulletMul: 0.7,     // 탄막 속도 배율(작을수록 느림)
+    waveDur: 300,           // 파도 지속 프레임
+    // 오답 문 라벨을 만들 때 섞어 쓰는 미끼 말들 (다른 대응·주장의 짧은 말)
+    decoys: ['그냥 가져', '아무도 몰라', '다 똑같잖아', '어차피 베낀 세상'],
     // 조우 시 지급되는 카드 (M1 임시 — 정식판에서는 방탈출 보상으로 획득)
     starterCards: ['ev_maker', 'ev_source', 'ev_myvoice', 'ev_password'],
     claims: [
       {
         text: '잘 그린 그림은 인터넷에 잔뜩 있는걸.\n그냥 가져다 쓰면 되잖아?',
         hint: '"…사실은 알아. 그 그림들도 누군가\n밤새워 그린 거라는 거."\n(「만든 사람」 이야기가 통할 것 같다!)',
+        // ✦를 주우면 흐르는 속마음(비차단 플로팅) — 40자 내외로 1~2줄
+        fragments: ['…사실은 알아.', '그 그림들도 누군가 밤새워 그린 거라는 거…'],
+        gateLabel: '만든 사람의 마음', // 정답 문 라벨 (ev_maker 카드에 대응)
         counters: ['ev_maker'],
-        onWrong: '…그건 지금 얘기랑 다르잖아.\n(베껴몬이 시무룩해졌다)',
+        onWrong: '…그건 지금 얘기랑 다르잖아.\n(따라가 시무룩해졌다)',
         attack: { pattern: 'rain', dur: 260, color: '#e07a5f', taunt: '다 가질 거야…!' },
       },
       {
         text: 'AI한테 그려 달라고 하고 내가 그렸다고\n올릴래. …아무도 모를 텐데, 뭐 어때?',
         hint: '"…들킬까 봐 무서운 게 아니야. 칭찬받을\n때마다 가슴이 콕콕 아픈 거야."\n(「솔직하게 밝히기」가 필요해 보인다!)',
+        fragments: ['…들킬까 봐 무서운 게 아니야.', '칭찬받을 때마다 가슴이 콕콕 아픈 거야…'],
+        gateLabel: '솔직하게 밝히기', // ev_source
         counters: ['ev_source'],
         onWrong: '…아무도 모른다니까.\n(마음에 닿지 않았다)',
         attack: { pattern: 'zigzag', dur: 260, color: '#8d6cd6', taunt: '내 거야… 내 거라고 할 거야…' },
@@ -3177,8 +3193,10 @@ const PERSUADE = {
       {
         text: '내 그림은 서툴고 못생겼어.\n베낀 게 훨씬 멋있는데 왜 내 걸 그려야 해?',
         hint: '"…한 번만이라도, 누가 『네 그림이 좋아』\n라고 말해 주면 좋겠어."\n(「내 것의 가치」를 보여 주자!)',
+        fragments: ['…한 번만이라도,', '누가 『네 그림이 좋아』라고 말해 주면 좋겠어…'],
+        gateLabel: '서툴러도 내 것', // ev_myvoice
         counters: ['ev_myvoice'],
-        onWrong: '…거봐. 역시 넌 몰라.\n(베껴몬이 고개를 돌렸다)',
+        onWrong: '…거봐. 역시 넌 몰라.\n(따라가 고개를 돌렸다)',
         attack: { pattern: 'aimed', dur: 260, color: '#f08a24', taunt: '보지 마… 내 진짜 그림은 보지 마!' },
       },
     ],
@@ -3205,6 +3223,15 @@ const PERSUADE = {
   //   claim.revealNote : 카드가 없는 주장에서 질문으로 속마음을 알아냈을 때의 힌트 문구
   sujipmon_boss: {
     gaugeMax: 120,
+    displayName: '담아', // 보스 조우 표시 이름 (persuadeId 쪽에만 적용 — v1 도서관 수집몬은 '수집몬' 유지)
+    // 마음 조각 배틀 튜닝 (보스: 정석 난이도)
+    closedThreshold: 3,     // closed→shaken 전이에 필요한 누적 조각 수
+    fragmentsPerWave: 3,
+    waveBulletMul: 1.0,
+    waveDur: 340,
+    openMechanic: 'parcel', // open 페이즈 고유 기믹: 「정보 꾸러미」 운반
+    parcelReply: '…이건 원래 네 거였지.\n돌려줄게. 하나씩.',
+    decoys: ['공짜잖아', '네가 줬잖아', '그냥 모은 거야', '어쩔 수 없어', '다들 주던데'],
     // 조우 지급 카드 없음 — 수집몬의 정답 카드(ev_minimal·ev_footprint)는 흔적의 방 보상으로만 얻는다.
     // 콜백 인트로: 퍼즐에서 「내보낸 정보 최대 개수」(flags.traceGiven)로 첫 대사가 갈린다.
     intro(flags) {
@@ -3218,28 +3245,34 @@ const PERSUADE = {
       {
         text: '무료로 재밌게 해 줬잖아.\n정보 좀 받는 게 뭐 어때서?',
         hint: '"공짜라고 다들 좋아했지…\n근데 그 대가가 뭔지는 아무도 안 물어봤어."\n(「최소한의 정보」가 통할 것 같다!)',
+        fragments: ['공짜라고 다들 좋아했지…', '근데 그 대가가 뭔지는 아무도 안 물어봤어.'],
+        gateLabel: '최소한만 주기', // ev_minimal
         counters: ['ev_minimal'],
         okLine: '…맞아. 공짜인 줄 알았는데,\n실은 나를 조금씩 내주고 있었네.',
-        onWrong: '…그게 지금 얘기랑 무슨 상관인데.\n(수집몬이 입을 삐죽였다)',
+        onWrong: '…그게 지금 얘기랑 무슨 상관인데.\n(담아가 입을 삐죽였다)',
         attack: { pattern: 'rain', dur: 280, color: '#5cb85c', taunt: '더 줘… 조금만 더!' },
       },
       {
         text: '모아 두기만 했는데 뭐.\n아무한테도 안 보여 줬어.',
         hint: '"모으는 건 나쁜 게 아니잖아?\n그냥, 버리기 아까워서…"\n(「지워지지 않는 발자국」이 통할 것 같다!)',
+        fragments: ['모으는 건 나쁜 게 아니잖아?', '그냥… 버리기 아까워서 모은 건데…'],
+        gateLabel: '지워지지 않는 발자국', // ev_footprint
         counters: ['ev_footprint'],
         // 방의 프로필 보드 경험 콜백
         okLine: '…맞아. 조각을 모으면…\n그 사람이 통째로 만들어지지.',
-        onWrong: '…그건 또 다른 얘기잖아.\n(수집몬이 자루를 끌어안았다)',
+        onWrong: '…그건 또 다른 얘기잖아.\n(담아가 자루를 끌어안았다)',
         attack: { pattern: 'sides', dur: 280, color: '#7bd1f0', taunt: '내 거야… 다 내 수집품이야!' },
       },
       {
         text: '네가 스스로 준 거잖아.\n동의한 거 아니야?',
         best: 'rebut', // 정답은 카드가 아니라 반박 — 동의의 '범위'를 되묻는다
         hint: '"경품 받으려고 준 거였는데…\n그게 전부 다 허락한 게 되는 거야?"\n(카드가 아니라 「반박하기」가 통할 것 같다!)',
+        fragments: ['경품 받으려고 준 거였는데…', '그게 전부 다 허락한 게 되는 거야…?'],
+        gateLabel: '아니야, 그건 아니야', // best=rebut — 동의의 범위를 되묻는 말
         revealNote: '카드로는 안 통해 — 「반박하기」로 되물어 보자!',
         counters: [],
         okLine: '경품 준다고 줬지,\n맘대로 쓰라곤 안 했어…\n그런 거야?',
-        onWrong: '…봐, 네가 준 거 맞잖아.\n(수집몬이 고개를 저었다)',
+        onWrong: '…봐, 네가 준 거 맞잖아.\n(담아가 고개를 저었다)',
         attack: { pattern: 'spiral', dur: 300, color: '#8d6cd6', taunt: '동의했잖아… 네가 그랬잖아!' },
       },
       {
@@ -3247,26 +3280,28 @@ const PERSUADE = {
         best: 'empathy',  // 정답은 공감 — 논리로 시작한 전투가 마음으로 끝나는 곡선
         unlockAt: 70,     // 마음이 열린 뒤에야 꺼내는 속마음
         hint: '"…빈손이 되는 게 무서워.\n혼자 남는 게 무서운 거야."\n(증거 말고 「공감하기」가 필요해!)',
+        fragments: ['…빈손이 되는 게 무서워.', '혼자 남는 게, 무서운 거야…'],
+        gateLabel: '그랬구나, 무서웠구나', // best=empathy — 마음을 안아 주는 말
         revealNote: '이건 논리로 될 게 아니야 — 「공감하기」로 마음을 안아 주자!',
         counters: [],
         okLine: '…남는 게 없어도,\n괜찮은 걸까.\n…곁에 있어 줄 거야?',
-        onWrong: '…너도 결국 떠날 거잖아.\n(수집몬이 몸을 웅크렸다)',
+        onWrong: '…너도 결국 떠날 거잖아.\n(담아가 몸을 웅크렸다)',
         attack: { patterns: ['aimed', 'wall'], dur: 320, color: '#e07a5f', taunt: '가지 마… 나만 두고 가지 마!' },
       },
     ],
     react: {
-      empathy: '…뭐야, 왜 그런 눈으로 봐.\n(수집몬이 자루를 슬쩍 당겼다)',
+      empathy: '…뭐야, 왜 그런 눈으로 봐.\n(담아가 자루를 슬쩍 당겼다)',
       empathyAgain: '…응. …들어 줘서, 고마워.\n(하지만 위로만으론 부족한 것 같다)',
       questionClosed: '…몰라. 대답 안 할래.\n(마음이 닫혀 있어 대답하지 않는다)',
-      evidenceClosed: '…(수집몬은 카드를 거들떠보지도 않는다)\n먼저 마음을 열어야 할 것 같다.',
+      evidenceClosed: '…(담아는 카드를 거들떠보지도 않는다)\n먼저 마음을 열어야 할 것 같다.',
       evidenceRight: '…그런가. …그랬구나.\n(카드의 말이 마음에 스며든다)',
       rebutBackfire: '시끄러워!! 다 내가 모은 거야!\n(마음이 더 굳게 닫혔다… 다음 공격이 거세진다)',
       rebutOk: '…그, 그런가. 그럴지도…',
-      open: '(수집몬이 끌어안은 자루를\n스르르 내려놓는다. 마음이 열리고 있다…!)',
+      open: '(담아가 끌어안은 자루를\n스르르 내려놓는다. 마음이 열리고 있다…!)',
     },
     // mercy: v1 수집몬 것을 카페 맥락으로 손질해 재사용
     mercy: {
-      prompt: '수집몬이 산더미 같은\n수집품 앞에서 너를 본다.',
+      prompt: '담아가 산더미 같은\n수집품 앞에서 너를 본다.',
       options: [
         { label: '"같이 하나씩 돌려주자" (손을 내민다)', kind: 'mercy',
           reply: '…같이?\n버리는 게 아니라, 돌려주는 거라고?\n…그러면, 나 혼자가 아닌 거네.\n…고마워.' },

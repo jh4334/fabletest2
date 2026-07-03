@@ -177,80 +177,98 @@ hold('ArrowUp', 14);
 // 워프 후에도 키를 누르고 있으면 계속 걸어갈 수 있으므로 맵과 x만 확인
 check('숲으로 워프', g.map === 'forest' && g.player.x === 13 && g.player.y >= 16);
 
-// ---------- v2 설득 배틀 도우미 (베껴몬 = M1 프로토타입) ----------
-function pickVerb(idx) { // pclaim에서 대응(0공감/1질문/2증거/3반박)을 골라 결정
-  if (g.battle.phase !== 'pclaim') throw new Error('주장 단계가 아님: ' + g.battle.phase);
-  while (g.battle.cursor !== idx) tap('ArrowDown');
-  tap('z');
+// ---------- v2 「마음 조각 배틀」(행동 설득) 도우미 ----------
+// 테스트에선 하트(soul) 좌표를 직접 설정해 조각/문 접촉을 재현한다.
+function grabFragment() { // 파도에서 속마음 조각 ✦을 하나 줍는다
+  const b = g.battle;
+  if (b.phase !== 'wave') throw new Error('파도 단계가 아님: ' + b.phase);
+  if (!b.wave.fragments.length) throw new Error('주울 조각이 없음');
+  const f = b.wave.fragments[0];
+  b.arena.bullets.length = 0; b.arena.inv = 0; // 피격 방지
+  b.arena.soul.x = f.x; b.arena.soul.y = f.y;
+  step(1);
 }
-function pickCard(idx) { // 증거 메뉴를 열고 idx번째 카드를 낸다
-  pickVerb(2);
-  if (g.battle.phase !== 'pcards') throw new Error('카드 단계가 아님: ' + g.battle.phase);
-  while (g.battle.cursor !== idx) tap('ArrowDown');
-  tap('z');
+function forceGates() { // 파도를 시간 만료로 끝내 문(gates)으로 (무피격 보너스는 배제)
+  const b = g.battle;
+  if (b.phase === 'gates') return;
+  if (b.phase !== 'wave') throw new Error('파도 단계가 아님: ' + b.phase);
+  b.arena.bullets.length = 0; b.wave.fragments.length = 0;
+  b.wave.hits = 1;               // +6 무피격 보너스 방지 (게이지 예측 유지)
+  b.wave.t = b.wave.dur;         // 시간 만료
+  step(1);
+  if (b.phase !== 'gates') throw new Error('문 단계 진입 실패: ' + b.phase);
 }
-function fastDodge() { // 회피 턴을 무피격으로 빨리감기 (퍼펙트 보너스 +6)
-  if (g.battle.phase !== 'dodge') throw new Error('회피 턴이 아님: ' + g.battle.phase);
-  g.battle.dodge.t = g.battle.dodge.dur - 1;
-  g.battle.dodge.bullets.length = 0;
-  step(2);
+function enterDoor(wantCorrect) { // 원하는(정답/오답) 열린 문으로 하트를 넣는다
+  const b = g.battle;
+  if (b.phase !== 'gates') throw new Error('문 단계가 아님: ' + b.phase);
+  const d = b.gates.doors.find((x) => !!x.correct === wantCorrect && !x.locked);
+  if (!d) throw new Error('원하는 문을 찾지 못함');
+  b.arena.bullets.length = 0; b.arena.inv = 0;
+  b.arena.soul.x = d.x + d.w / 2; b.arena.soul.y = d.y + d.h / 2;
+  step(1);
+  return d;
 }
 
-console.log('[5] 설득 배틀 — 물러남(탈진) 흐름 (베껴몬)');
+console.log('[5] 마음 조각 배틀 — 조각 수집·닫힘→동요·탈진(기억) (따라=베껴몬)');
 setPos(7, 9, 'down'); // 베껴몬 (7,10) 위
 tap('z');
-advanceDialog(); // 등장 대사 + 증거 카드 지급 + 설득 안내 → 배틀
-check('설득 배틀 시작', g.mode === 'battle' && g.battle.monId === 'bekkyeomon' && g.battle.isPersuade === true);
+advanceDialog(); // 등장 대사 + 증거 카드 지급 + 조작 안내 → 배틀
+check('마음 조각 배틀 시작', g.mode === 'battle' && g.battle.monId === 'bekkyeomon' && g.battle.isPersuade === true);
+check('표시 이름은 따라(displayName)', g.battle.mon.name === '따라');
 check('증거 카드 4장 지급', g.flags.evCards.length === 4);
-check('마음은 닫힘에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0);
+check('닫힘·게이지0·파도에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'wave');
 check('하트 4개(고학년 기본)', g.battle.maxHearts === 4);
-pickVerb(0); // 공감하기
-check('공감이 닫힌 마음을 두드림 (+14, 동요)', g.battle.pDelta === 14 && g.battle.pState === 'shaken');
-g.battle.playerHp = 1; // 테스트: 다음 피격에 탈진하도록
-tap('z'); // 반응 확인 → 몬스터 턴(회피)
-check('몬스터 턴은 회피 구간', g.battle.phase === 'dodge');
-// 하트 위에 탄을 놓아 결정적으로 피격시킨다
-g.battle.dodge.bullets.push({ x: g.battle.dodge.soul.x, y: g.battle.dodge.soul.y, vx: 0, vy: 0, r: 6 });
-step(2);
+grabFragment(); // 조각 1
+check('조각 수집: 게이지 +2 + 플로팅 텍스트', g.battle.gauge === 2 &&
+  (g.battle.floatActive !== null || g.battle.floatQ.length > 0));
+check('닫힘 유지(임계 2 미만)', g.battle.pState === 'closed' && g.battle.fragmentTotal === 1);
+grabFragment(); // 조각 2 → 임계(2) 도달
+check('조각 누적 2 → 동요 전환', g.battle.pState === 'shaken' && g.battle.gauge === 4);
+check('조각 수집 로그', g.flags.pStats.fragments === 2);
+// 탈진: 하트를 1로 두고 하트 위에 탄을 얹어 결정적으로 피격
+g.battle.playerHp = 1;
+g.battle.arena.inv = 0;
+g.battle.arena.bullets = [{ x: g.battle.arena.soul.x, y: g.battle.arena.soul.y, vx: 0, vy: 0, r: 6 }];
+step(1);
 check('하트 소진 → 물러남 대화', g.mode === 'dialog');
 advanceDialog();
 check('베껴몬 아직 남아있음', g.flags.defeated.bekkyeomon === false);
-check('상대가 이야기를 절반 기억', g.flags.persuadeMemory.bekkyeomon.gauge === 7 &&
+check('상대가 이야기를 절반 기억(게이지 반·동요)', g.flags.persuadeMemory.bekkyeomon.gauge === 2 &&
   g.flags.persuadeMemory.bekkyeomon.state === 'shaken');
 
-console.log('[6] 설득 배틀 — 승리 흐름 (재도전, 대응 4종 전부 검증)');
+console.log('[6] 마음 조각 배틀 — 문 판정(정답/오답/타임아웃)·승리 (따라)');
 tap('z'); // 같은 자리에서 재도전
 advanceDialog();
-check('재도전 — 지난 이야기를 기억함', g.mode === 'battle' && g.battle.gauge === 7 && g.battle.pState === 'shaken');
-pickVerb(1); // 질문하기 (동요 상태)
-check('질문 → 속마음이 드러남 (+8, 힌트 공개)', g.battle.pDelta === 8 && g.battle.revealed[0] === true);
-tap('z'); fastDodge();
-check('무피격 보너스 (+6)', g.battle.gauge === 21 && g.battle.phase === 'pclaim');
-pickCard(3); // 안 맞는 카드 (비밀번호는 나만 — privacy)
-check('지금 주장과 다른 카드는 통하지 않음 (-6)', g.battle.pDelta === -6);
-tap('z'); fastDodge();
-pickVerb(0); // 공감 반복 → 효과 감소
-check('공감 반복은 효과 감소 (+6)', g.battle.pDelta === 6);
-tap('z'); fastDodge();
-pickCard(0); // 「만든 사람의 마음」 — 1번 주장의 정답 카드
-check('맞는 증거가 크게 통함 (+26, 마음 열림)', g.battle.pDelta === 26 && g.battle.pState === 'open');
-tap('z'); fastDodge();
-pickVerb(3); // 반박하기 (열림 상태에선 통한다)
-check('열린 마음에는 반박도 통함 (+14)', g.battle.pDelta === 14);
-tap('z'); fastDodge();
-pickCard(2); // 「서툴러도 내 것」 — 3번 주장의 정답 카드
-check('게이지 만충', g.battle.gauge === g.battle.gaugeMax);
-tap('z'); // 반응 확인 → 마음의 선택
-check('마음이 열려 마음의 선택으로', g.battle.phase === 'mercy');
-tap('z'); // 첫 번째(자비) 선택
-check('자비 응답', g.battle.phase === 'mercyReply');
-tap('z'); // 응답 닫기 → 승리 대화
+check('재도전 — 지난 이야기를 기억함', g.mode === 'battle' && g.battle.gauge === 2 && g.battle.pState === 'shaken');
+// 정답 문 (동요: +26) — claim0의 정답 카드 ev_maker 소지
+forceGates();
+check('동요에선 문이 열려 있음', g.battle.gates.doors.some((d) => !d.locked));
+enterDoor(true);
+check('정답 문 통과 (+26)', g.battle.gauge === 28 && g.flags.pStats.gateRight === 1 && g.battle.phase === 'wave');
+// 오답 문 (-6, 다음 파도 강화)
+forceGates();
+enterDoor(false);
+// 오답 → 게이지 -6 + 다음 파도 강화(pIntense는 이어진 enterWave에서 소비되어 rateMul<1로 반영)
+check('오답 문 (-6·역효과·다음 파도 강화)', g.battle.gauge === 22 && g.flags.pStats.gateWrong === 1 &&
+  g.flags.pStats.backfire === 1 && g.battle.arena.rateMul === 0.75);
+// 타임아웃 (변화 없음) — 하트를 문 밖(상자 중앙)에 두고 시간만 흘린다
+forceGates();
+{ const bx = g.battle.arena.box;
+  g.battle.arena.soul.x = bx.x + bx.w / 2; g.battle.arena.soul.y = bx.y + bx.h / 2; }
+g.battle.gates.t = g.battle.gates.timeLimit; step(1);
+check('타임아웃 → 변화 없이 파도 재개', g.battle.gauge === 22 && g.flags.pStats.gateTimeout === 1 && g.battle.phase === 'wave');
+// 게이지 만충 → 자비 → 승리
+g.battle.gauge = g.battle.gaugeMax; step(1);
+check('게이지 만충 → 마음의 선택', g.battle.phase === 'mercy');
+while (g.battle.cursor !== 0) tap('ArrowDown');
+tap('z'); check('자비 응답', g.battle.phase === 'mercyReply');
+tap('z');
 check('승리 대화', g.mode === 'dialog');
 advanceDialog();
 check('베껴몬 깨우침(설득)', g.flags.defeated.bekkyeomon === true);
 check('기억은 승리 후 지워짐', !g.flags.persuadeMemory.bekkyeomon);
-check('설득 전략 로그 기록', g.flags.pStats.evidence === 3 && g.flags.pStats.evRight === 2 &&
-  g.flags.pStats.evWrong === 1 && g.flags.pStats.empathy === 2);
+check('설득 로그 누적(문·조각)', g.flags.pStats.gateRight === 1 && g.flags.pStats.gateWrong === 1 &&
+  g.flags.pStats.gateTimeout === 1 && g.flags.pStats.fragments === 2);
 check('증표는 아직 0개 (부하 몬스터)', !g.flags.badges.forest);
 
 console.log('[7] 수호자 몰래몬 → 숲의 증표 (퀴즈 배틀, 오답 1회 포함)');
@@ -1288,9 +1306,10 @@ setPos(5, 3, 'up'); tap('z'); // 수집몬(5,2)에게 말 걸기
 check('보스 조우 대화 시작', g.mode === 'dialog');
 check('콜백 인트로(토큰 3+)가 조우에 반영', /여기 다 있어/.test(g.dialog.lines[0]));
 advanceDialog();
-check('수집몬 설득 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true);
+check('담아(수집몬 보스) 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'wave');
 check('스프라이트/도감 id는 sujipmon', g.battle.monId === 'sujipmon');
 check('설득 프로필 id는 sujipmon_boss', g.battle.persuadeId === 'sujipmon_boss');
+check('표시 이름은 담아(persuadeId 계층)', g.battle.mon.name === '담아');
 check('게이지 최대 120', g.battle.gaugeMax === 120);
 check('조우 카드 미지급(보상으로만 획득)', (g.flags.evCards || []).length === 0);
 
@@ -1300,27 +1319,49 @@ check('게이지 70 미만 — 감정 주장 순환 제외', !TH.persuadeAvail()
 g.battle.gauge = 75;
 check('게이지 70 이상 — 감정 주장 순환 등장', TH.persuadeAvail().some((t) => /돌려주면/.test(t)));
 
-// ── best='rebut': 열림 상태 반박이 큰 폭(+32), 닫힘 반박은 여전히 역효과(-10) ──
-g.battle.gauge = 55; g.battle.pState = 'open'; g.battle.claimIdx = 2;
-g.battle.phase = 'pclaim'; g.battle.cursor = 0;
-check('현재 주장 = 동의 범위(best=rebut)', /동의한 거/.test(TH.persuadeAvail()[g.battle.claimIdx % TH.persuadeAvail().length]));
-pickVerb(3); // 반박하기
-check('열림 상태 best 반박이 큰 폭 판정 (+32)', g.battle.pDelta === 32);
-g.battle.gauge = 0; g.battle.pState = 'closed'; g.battle.claimIdx = 2;
-g.battle.phase = 'pclaim'; g.battle.cursor = 0;
-pickVerb(3);
-check('닫힘 상태 best 반박은 여전히 역효과 (-10)', g.battle.pDelta === -10);
+// ── closed: 문 전부 잠김 (조각만 수집 가능) ──
+g.battle.pState = 'closed'; g.battle.gauge = 0; g.battle.claimIdx = 0;
+forceGates();
+check('닫힘 페이즈 — 문 3개 전부 잠김', g.battle.gates.doors.length === 3 && g.battle.gates.doors.every((d) => d.locked));
+g.battle.gates.t = g.battle.gates.timeLimit; step(1); // 타임아웃으로 파도 복귀
+check('닫힘 문 타임아웃 → 파도 재개', g.battle.phase === 'wave');
 
-// ── best='empathy': 열림 상태 공감이 큰 폭 판정 (감정 주장) ──
-g.battle.gauge = 80; g.battle.pState = 'open'; g.battle.claimIdx = 3; // 감정 주장(잠금 해제됨)
-g.battle.phase = 'pclaim'; g.battle.cursor = 0;
+// ── best='rebut'(동의 범위 되묻기): 열림 정답 문 +32 ──
+g.battle.pState = 'open'; g.battle.gauge = 55; g.battle.claimIdx = 2;
+check('현재 주장 = 동의 범위(best=rebut)', /동의한 거/.test(TH.persuadeAvail()[g.battle.claimIdx % TH.persuadeAvail().length]));
+forceGates();
+enterDoor(true);
+check('열림 정답 문 큰 폭 (+32)', g.battle.gauge === 87 && g.flags.pStats.gateRight === 1);
+
+// ── best='empathy'(감정 주장): 열림 정답 문 +32 ──
+g.battle.pState = 'open'; g.battle.gauge = 80; g.battle.claimIdx = 3;
 check('현재 주장 = 감정 주장(best=empathy)', /돌려주면/.test(TH.persuadeAvail()[g.battle.claimIdx % TH.persuadeAvail().length]));
-pickVerb(0); // 공감하기
-check('열림 상태 best 공감이 큰 폭 판정 (+32)', g.battle.pDelta === 32);
+forceGates();
+enterDoor(true);
+check('열림 감정 정답 문 (+32)', g.battle.gauge === 112 && g.flags.pStats.gateRight === 2);
+
+// ── 미소지 카드 문은 자물쇠 (claim0 = ev_minimal 카드, 보스는 미소지) ──
+g.battle.pState = 'open'; g.battle.gauge = 60; g.battle.claimIdx = 0;
+forceGates();
+const cardDoor = g.battle.gates.doors.find((d) => d.correct);
+check('미소지 카드의 정답 문은 자물쇠', cardDoor.card === 'ev_minimal' && cardDoor.locked === true);
+check('오답 문은 열림 상태에서 선택 가능', g.battle.gates.doors.some((d) => !d.correct && !d.locked));
+enterDoor(false); // 오답으로 판정 → 파도 복귀
+check('오답 문 판정 → 파도 재개', g.battle.phase === 'wave' && g.flags.pStats.gateWrong === 1);
+
+// ── open 고유 기믹: 담아 「정보 꾸러미」 운반 (+10, 3회면 만충 직전) ──
+g.battle.pState = 'open'; g.battle.gauge = 90;
+g.battle.wave.fragments.length = 0; // 조각 오수집 방지
+const arena = g.battle.arena, pc = g.battle.wave.parcel;
+pc.deliveries = 2; pc.obj = { x: arena.box.x + 60, y: arena.box.y + 60 };
+arena.bullets.length = 0; arena.inv = 0;
+arena.soul.x = pc.obj.x; arena.soul.y = pc.obj.y; step(1); // 집기
+check('정보 꾸러미 집기 → 하트가 운반 중', arena.carrying === true);
+arena.soul.x = pc.hole.x; arena.soul.y = pc.hole.y; step(1); // 돌려주기 구멍에 배달
+check('배달 3회 → 게이지 +10 및 만충 직전(≥118)', pc.deliveries === 3 && g.battle.gauge >= 118);
 
 // ── 승리 → chapter1Clear + 마을 복귀 ──
-g.battle.phase = 'preact'; g.battle.gauge = g.battle.gaugeMax; g.battle.pDelta = 0; g.battle.pLine = '';
-tap('z'); // 게이지 만충 → 마음의 선택
+g.battle.gauge = g.battle.gaugeMax; step(1); // 게이지 만충 → 마음의 선택
 check('게이지 만충 → 마음의 선택', g.battle.phase === 'mercy');
 while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); // 자비 선택 → 응답
@@ -1332,6 +1373,7 @@ check('1장 클리어 플래그', g.flags.chapter1Clear === true);
 check('보스 승리 후 카페 밖(마을) 복귀', g.map === 'village' && g.player.x === 24 && g.player.y === 6);
 check('라이브러리 수집몬 처치 플래그 오염 없음', g.flags.defeated.sujipmon === false);
 check('보스는 도감 순서에 없음', !DEX_ORDER.includes('sujipmon_boss'));
+check('보스 설득 로그 기록', g.flags.pStats.gateRight === 2 && g.flags.pStats.gateWrong === 1 && g.flags.pStats.gateTimeout === 1);
 
 console.log('[70] 수업 모드 — 「1장 — 흔적의 방」 특별 항목');
 g.dialog = null; g.mode = 'world';
