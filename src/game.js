@@ -135,6 +135,8 @@
       correctCount: 0,
       battleCount: 0,
       sawBattleTip: false, // 첫 전투 1회 안내 표시 여부
+      traceGiven: 0,       // 흔적의 방에서 내보낸 정보 최대 개수(닉네임 제외) — 보스 콜백 인트로용
+      chapter1Clear: false, // 1장 보스(수집몬) 설득 완료
     };
   }
 
@@ -1402,6 +1404,15 @@
         px(6, 5, 4, 6, frame ? '#ffd644' : '#fff2a8'); // 반짝이는 "무료"
         break;
       }
+      case '7': { // 주인의 방 문 (낡은 나무문 — 흔적의 방 위쪽)
+        px(0, 0, 16, 16, '#2a2018');
+        px(3, 1, 10, 14, '#5a3d24');
+        px(4, 2, 8, 13, '#7c5830');
+        px(4, 2, 1, 13, '#9a6f3e');
+        px(11, 2, 1, 13, '#3e2a18');
+        px(9, 8, 2, 2, '#d0b060'); // 손잡이
+        break;
+      }
       default:
         px(0, 0, 16, 16, '#f0f');
     }
@@ -1476,6 +1487,11 @@
     e.done = true; e.clears += 1; e.timeFrames += frames;
     writePuzzleLog(slot, log);
   }
+  // 방을 클리어한 적이 있는지 (보스방 문 개방 판정 등)
+  function isPuzzleCleared(id) {
+    const e = getPuzzleLog(game.currentSlot)[id];
+    return !!(e && e.done);
+  }
 
   // 방 입장/퇴장에 맞춰 런타임 상태를 맞춘다 (checkWarp에서 호출)
   function syncPuzzleRun() {
@@ -1498,6 +1514,7 @@
       timeFrames: 0,    // 입장~클리어 프레임 누적 (자체 카운터)
       flashT: 0,        // 접촉 화면 플래시
       warnCool: 0,      // 경고 대사 스로틀
+      maxBoard: 0,      // 방 플레이 중 내보낸 정보 최고치(닉네임 제외) — 보스 콜백 인트로용
     };
   }
   // 지금 밖에 내보낸 토큰 (되돌릴 수 있는 것 + 게시판 공유 얼굴사진)
@@ -1535,6 +1552,7 @@
   function updatePuzzleWorld() {
     const run = game.puzzleRun;
     run.timeFrames += 1;
+    if (boardCount(run) > run.maxBoard) run.maxBoard = boardCount(run); // 최고치 추적
     if (run.flashT > 0) run.flashT -= 1;
     if (run.warnCool > 0) run.warnCool -= 1;
     const p = game.player;
@@ -1655,15 +1673,18 @@
     const fresh = puz.rewards.filter((id) => !game.flags.evCards.includes(id));
     if (fresh.length) game.flags.evCards = game.flags.evCards.concat(fresh);
     recordPuzzleClear(run.id, run.timeFrames);
+    // 이 방에서 내보낸 정보 최고치를 기록 (보스 콜백 인트로 분기용) — 이전 최고치와 비교해 유지
+    game.flags.traceGiven = Math.max(game.flags.traceGiven || 0, run.maxBoard || 0);
     game.puzzleRun = null;
-    // 마을로 복귀 (카페 입구 앞)
-    game.map = 'village';
+    // 복귀 지점 (데이터화된 exitTo — 이후 방 4개 재사용). 기본은 마을 카페 입구 앞.
+    const exit = puz.exitTo || { map: 'village', x: 24, y: 6 };
+    game.map = exit.map;
     const p = game.player;
-    p.x = 24; p.y = 6; p.px = 24 * TS; p.py = 6 * TS; p.moving = false;
+    p.x = exit.x; p.y = exit.y; p.px = exit.x * TS; p.py = exit.y * TS; p.moving = false;
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.warp();
-    Sound.playSong(MAPS.village.song);
+    Sound.playSong(MAPS[exit.map].song);
     const lines = [
       '흔적을 정리하고 문을 나섰다.',
       '기억하자 — 편리함을 준다고\n다 내주지 않기. 꼭 필요한 최소한만.',
@@ -1881,6 +1902,15 @@
     const f = facingTile();
     const npc = npcAt(game.map, f.x, f.y);
     if (npc) {
+      // 1장 보스(수집몬) — 아직 설득하지 않았으면 설득 배틀로, 이후엔 되돌린 친구로
+      if (npc.id === 'sujip_boss') {
+        if (!game.flags.chapter1Clear) { startBattleIntro('sujipmon', 'sujipmon_boss'); return; }
+        startDialog([
+          '수집몬: "덕분에 하나씩 돌려주고 있어.\n…빈손인데, 이상하게 안 허전해."',
+          '이제 나도 알아 —\n편리함을 준다고 다 내주지 않기.\n한번 나눠 준 건, 완전히 지워지지 않으니까.',
+        ], '수집몬');
+        return;
+      }
       const lines = getNpcDialog(npc.id, game.flags);
       startDialog(lines, npc.name, () => {
         if (npc.id === 'prof' && !game.flags.talkedProf) {
@@ -1917,6 +1947,15 @@
       return;
     }
     const ch = tileAt(game.map, f.x, f.y);
+    // 주인의 방 문(흔적의 방 위쪽 벽) — 클리어 전엔 잠겨 있다는 안내
+    if (game.map === 'traceroom' && ch === '7') {
+      if (isPuzzleCleared('traces')) {
+        startDialog(['주인의 방으로 통하는 문이 열려 있다.\n(위로 걸어 들어가 보자)'], '주인의 방');
+      } else {
+        startDialog(['문이 잠겨 있다.\n…안에서 서랍 여닫는 소리가 난다.'], '주인의 방');
+      }
+      return;
+    }
     const examine = getExamineTile(ch);
     if (examine) {
       startDialog([examine]);
@@ -1954,6 +1993,13 @@
       pushBack();
       Sound.bump();
       startDialog([w.lockText || '길이 막혀 있다.']);
+      return;
+    }
+    // 방탈출 클리어 게이트 (예: 흔적의 방 → 주인의 방 문)
+    if (w.needPuzzleClear && !isPuzzleCleared(w.needPuzzleClear)) {
+      pushBack();
+      Sound.bump();
+      startDialog([w.lockText || '문이 잠겨 있다.']);
       return;
     }
     game.map = w.to;
@@ -2028,8 +2074,10 @@
     return a;
   }
 
-  function startBattleIntro(monId) {
-    if (getPersuade(monId)) { startPersuadeIntro(monId); return; }
+  function startBattleIntro(monId, persuadeKey) {
+    // persuadeKey는 배치별 설득 프로필(예: 보스방 수집몬='sujipmon_boss'). 없으면 monId로 조회.
+    const pKey = persuadeKey || monId;
+    if (getPersuade(pKey)) { startPersuadeIntro(monId, pKey); return; }
     const mon = MONSTERS[monId];
     Sound.encounter();
     const lines = [mon.intro];
@@ -2389,9 +2437,39 @@
     }
   }
 
+  // 1장 보스 승리 — chapter1Clear 플래그 + 1장 마무리 대사 후 카페 밖(마을)으로 복귀.
+  // 라이브러리 수집몬(퀴즈)과 별개이므로 defeated.sujipmon/도감은 건드리지 않는다.
+  function winChapter1Boss() {
+    const b = game.battle;
+    const mon = b.mon;
+    game.flags.chapter1Clear = true;
+    if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
+    save();
+    checkCosmeticUnlocks(game.currentSlot);
+    game.battle = null;
+    game.mode = 'world';
+    // 카페 밖(마을)으로 복귀
+    game.map = 'village';
+    const p = game.player;
+    p.x = 24; p.y = 6; p.px = 24 * TS; p.py = 6 * TS; p.moving = false; p.dir = 'down';
+    held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
+    stickDir = null; stickRepeatFrames = 0;
+    Sound.badge();
+    Sound.playSong(MAPS.village.song);
+    const lines = [mon.win];
+    if (b.mercyChoiceKind === 'mercy') {
+      lines.push('💛 수집몬의 굳어 있던 마음이\n환하게 풀렸어요. 또 한 친구를 되돌렸다!');
+    }
+    lines.push('☆ 1장 클리어! ☆\n무료 게임 카페의 흔적이 조용히 걷혔다.');
+    lines.push('배움 — 편리함을 준다고 다 내주지 않기.\n한번 나눠 준 건, 완전히 지워지지 않으니까.');
+    startDialog(lines, mon.name, () => Sound.playSong(MAPS.village.song));
+  }
+
   function winBattle() {
     const b = game.battle;
     const mon = b.mon;
+    // 1장 보스(수집몬) — 별도 진행 플래그로 처리해 도감/처치 플래그(라이브러리 수집몬)를 오염시키지 않는다
+    if (b.persuadeId === 'sujipmon_boss') { winChapter1Boss(); return; }
     game.flags.defeated[b.monId] = true;
     recordDexSeen(b.monId, b.mercyChoiceKind);
     if (!game.flags.mercyChoice) game.flags.mercyChoice = {};
@@ -2477,12 +2555,30 @@
     return game.flags.pStats;
   }
 
-  function startPersuadeIntro(monId) {
-    const mon = MONSTERS[monId];
-    const p = getPersuade(monId);
+  // 설득 프로필(persuadeKey)의 몬스터 데이터를 해석한다.
+  // 보스처럼 별도 프로필을 쓰되 스프라이트/이름은 재사용하는 경우(spriteId≠persuadeKey),
+  // MONSTERS[spriteId]를 바탕으로 프로필의 mercy/win을 덮어써 배틀용 mon을 만든다.
+  function resolvePersuadeMon(spriteId, persuadeKey) {
+    const base = MONSTERS[spriteId];
+    const p = getPersuade(persuadeKey);
+    if (persuadeKey === spriteId || !p) return base;
+    return Object.assign({}, base, {
+      mercy: p.mercy || base.mercy,
+      win: p.win || base.win,
+    });
+  }
+
+  function startPersuadeIntro(monId, persuadeKey) {
+    persuadeKey = persuadeKey || monId;
+    const p = getPersuade(persuadeKey);
+    const mon = resolvePersuadeMon(monId, persuadeKey);
     Sound.encounter();
-    const lines = [mon.intro];
-    // M1 임시: 조우 시 증거 카드를 지급한다 (정식판에서는 방탈출 보상)
+    // 콜백 인트로: 프로필 intro가 함수면 현재 플래그로 첫 대사를 분기한다 (없으면 몬스터 기본 인트로)
+    const introText = (typeof p.intro === 'function') ? p.intro(game.flags) : (p.intro || mon.intro);
+    const lines = [introText];
+    // 조우 시 증거 카드 지급은 프롤로그 튜토리얼(베껴몬)만을 위한 것 —
+    // starterCards가 있는 프로필에서만 지급한다. 보스(수집몬)의 카드는 방탈출 보상으로만 얻으므로
+    // starterCards가 없어 여기서 지급되지 않는다.
     if (!game.flags.evCards) game.flags.evCards = [];
     const fresh = (p.starterCards || []).filter((id) => !game.flags.evCards.includes(id));
     if (fresh.length > 0) {
@@ -2499,20 +2595,22 @@
         '몬스터의 차례에는 탄막을 피해요.\n이번엔 하트가 진짜로 닳아요! 다 닳으면\n잠시 물러났다가 다시 도전하게 돼요.'
       );
     }
-    startDialog(lines, mon.name, () => startPersuadeBattle(monId));
+    startDialog(lines, mon.name, () => startPersuadeBattle(monId, persuadeKey));
   }
 
-  function startPersuadeBattle(monId) {
-    const mon = MONSTERS[monId];
-    const p = getPersuade(monId);
+  function startPersuadeBattle(monId, persuadeKey) {
+    persuadeKey = persuadeKey || monId;
+    const p = getPersuade(persuadeKey);
+    const mon = resolvePersuadeMon(monId, persuadeKey);
     game.mode = 'battle';
     Sound.playSong(mon.song || 'battle');
-    // 물러났던 상대는 이야기를 절반쯤 기억한다 (재도전은 더 짧게)
-    const memo = (game.flags.persuadeMemory || {})[monId];
+    // 물러났던 상대는 이야기를 절반쯤 기억한다 (재도전은 더 짧게). 기억은 프로필별로 구분한다.
+    const memo = (game.flags.persuadeMemory || {})[persuadeKey];
     const maxHearts = 4 + (game.difficulty === 'easy' ? 1 : 0);
     game.battle = {
       isPersuade: true,
-      monId,
+      monId,              // 스프라이트·도감·몬스터 데이터 조회용 id
+      persuadeId: persuadeKey, // 설득 프로필 id (승리 처리·기억 키). 보통은 monId와 같다.
       mon,
       p,
       gauge: memo ? memo.gauge : 0,
@@ -2538,9 +2636,20 @@
     speakClaim();
   }
 
+  // 지금 순환 풀에 올라온 주장들 — unlockAt이 걸린 주장은 게이지가 그 값 이상일 때만 등장한다.
+  function availableClaims(b) {
+    const avail = b.p.claims.filter((c) => !c.unlockAt || b.gauge >= c.unlockAt);
+    return avail.length ? avail : b.p.claims; // 안전장치: 비면 전체
+  }
   function currentClaim() {
     const b = game.battle;
-    return b.p.claims[b.claimIdx % b.p.claims.length];
+    const avail = availableClaims(b);
+    return avail[b.claimIdx % avail.length];
+  }
+  // 반박 힌트(revealed) 저장·표시에 쓰는 안정적 키 — 전체 claims 배열에서의 인덱스
+  function claimKey() {
+    const b = game.battle;
+    return b.p.claims.indexOf(currentClaim());
   }
 
   function speakClaim() {
@@ -2557,23 +2666,34 @@
     let delta = 0, line = '';
     st[kind] += 1;
 
+    // 이 주장의 '정답 대응'이 카드가 아닌 경우(claim.best): 'rebut' 또는 'empathy'.
+    // best가 없는 몬스터(베껴몬)에서는 아래 모든 분기가 기존 효과표와 완전히 동일하게 동작한다.
+    const best = claim.best;
+
     if (kind === 'empathy') {
-      if (b.pState === 'closed') {
+      if (best === 'empathy' && b.pState !== 'closed') {
+        // 감정 주장의 정답 — 열림/동요에서 크게 통한다
+        delta = b.pState === 'open' ? 32 : 26;
+        line = claim.okLine || r.empathyAgain;
+        b.shake = 14;
+        Sound.correct();
+      } else if (b.pState === 'closed') {
         delta = 14; b.pState = 'shaken'; line = r.empathy;
+        Sound.select();
       } else {
         b.empathyCount += 1;
         delta = b.empathyCount === 1 ? 6 : 2;
         line = r.empathyAgain;
+        Sound.select();
       }
-      Sound.select();
     } else if (kind === 'question') {
       if (b.pState === 'closed') {
         delta = 4; line = r.questionClosed;
         Sound.blip();
       } else {
         delta = 8;
-        b.revealed[b.claimIdx % b.p.claims.length] = true;
-        line = claim.hint; // 속마음이 드러난다 — 어떤 증거가 통할지 힌트
+        b.revealed[claimKey()] = true;
+        line = claim.hint; // 속마음이 드러난다 — 어떤 대응이 통할지 힌트
         Sound.correct();
       }
     } else if (kind === 'evidence') {
@@ -2582,8 +2702,9 @@
         delta = 0; line = r.evidenceClosed;
         Sound.bump();
       } else if (claim.counters.includes(cardId)) {
-        delta = b.pState === 'open' ? 32 : 26;
-        line = `[${card.title}]\n${r.evidenceRight}`;
+        // best 주장에서는 카드가 정답이 아니므로 통해도 효과가 낮다(+10). 일반 주장은 크게(+26/+32).
+        delta = best ? 10 : (b.pState === 'open' ? 32 : 26);
+        line = `[${card.title}]\n${claim.okLine || r.evidenceRight}`;
         st.evRight += 1;
         recordTopicResult(game.currentSlot, card.topic, true);
         b.shake = 14;
@@ -2599,10 +2720,17 @@
       }
     } else if (kind === 'rebut') {
       if (b.pState === 'closed') {
+        // best='rebut'라도 닫힌 마음엔 여전히 역효과 (기존 규칙 유지)
         delta = -10; b.pIntense = true; line = r.rebutBackfire;
         st.backfire += 1;
         b.flash = 14;
         Sound.wrong();
+      } else if (best === 'rebut') {
+        // 동의의 범위를 되묻는 정답 반박 — 열림/동요에서 크게 통한다
+        delta = b.pState === 'open' ? 32 : 26;
+        line = claim.okLine || r.rebutOk;
+        b.shake = 14;
+        Sound.correct();
       } else {
         delta = b.pState === 'open' ? 14 : 8;
         line = r.rebutOk;
@@ -2657,7 +2785,7 @@
   function persuadeExhaust() {
     const b = game.battle;
     if (!game.flags.persuadeMemory) game.flags.persuadeMemory = {};
-    game.flags.persuadeMemory[b.monId] = {
+    game.flags.persuadeMemory[b.persuadeId] = {
       gauge: Math.floor(b.gauge / 2),
       state: b.pState === 'closed' ? 'closed' : 'shaken',
     };
@@ -2714,7 +2842,7 @@
       if (justPressed('action')) {
         if (b.gauge >= b.gaugeMax) {
           // 마음이 완전히 열렸다 — 마음의 선택(자비)으로
-          if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.monId];
+          if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
           if (b.mon.mercy && !b.mercyDone) {
             b.phase = 'mercy';
             b.cursor = 0;
@@ -4517,6 +4645,18 @@
     game.player.dir = 'down';
     save();
   }
+  // 수업 모드 특별 항목 「1장 — 흔적의 방」 (스테이지 번호가 아닌 방탈출 수업용)
+  const TRACE_SEL = 0;
+  // 1장 시작 상태로 맞추고, 흔적의 방 입구(마을 카페 앞) 앞에 서서 시작한다.
+  function applyTraceRoomClass() {
+    const flags = setupStageFlags(1);
+    game.flags = flags;
+    game.map = 'village';
+    const p = game.player;
+    p.x = 24; p.y = 6; p.px = 24 * TS; p.py = 6 * TS;
+    p.moving = false; p.dir = 'up';
+    save();
+  }
   function openClassMode(ret) {
     const cm = game.classmode;
     cm.ret = ret;
@@ -4536,7 +4676,7 @@
     if (cm.toast > 0) return; // 적용 안내 표시 중엔 입력 잠금
     if (cm.confirm) {
       if (justPressed('action')) {
-        applyStageJump(cm.sel);
+        if (cm.sel === TRACE_SEL) applyTraceRoomClass(); else applyStageJump(cm.sel);
         cm.confirm = false;
         cm.toast = 90;
         Sound.badge();
@@ -4545,8 +4685,9 @@
       if (justPressed('cancel') || justPressed('menu')) { cm.confirm = false; Sound.blip(); }
       return;
     }
-    if (justPressed('left') || justPressed('up')) { cm.sel = cm.sel <= 1 ? STAGE_COUNT : cm.sel - 1; Sound.blip(); }
-    if (justPressed('right') || justPressed('down')) { cm.sel = cm.sel >= STAGE_COUNT ? 1 : cm.sel + 1; Sound.blip(); }
+    // 스테이지 1~5 + 특별 항목 「1장 — 흔적의 방」(TRACE_SEL=0)을 한 바퀴로 순환
+    if (justPressed('left') || justPressed('up')) { cm.sel = cm.sel <= TRACE_SEL ? STAGE_COUNT : cm.sel - 1; Sound.blip(); }
+    if (justPressed('right') || justPressed('down')) { cm.sel = cm.sel >= STAGE_COUNT ? TRACE_SEL : cm.sel + 1; Sound.blip(); }
     if (justPressed('action')) { cm.confirm = true; Sound.select(); return; }
     if (justPressed('cancel') || justPressed('menu')) { closeClassMode(); }
   }
@@ -4570,25 +4711,34 @@
     ctx.font = '13px monospace';
     ctx.fillText('오늘 수업할 스테이지를 골라 바로 시작해요. (지금 학생 슬롯에 적용)', 24, 64);
 
+    // 특별 항목: 「1장 — 흔적의 방」 (방탈출 수업)
+    const isTrace = cm.sel === TRACE_SEL;
+    const selLabel = isTrace ? '1장 시작 상태 · 흔적의 방 입구 앞' : `${cm.sel}스테이지`;
+
     // 스테이지 선택기
     ctx.textAlign = 'center';
     ctx.fillStyle = themeAccent();
-    ctx.font = 'bold 56px monospace';
-    ctx.fillText(`${cm.sel}`, LW / 2, 180);
-    ctx.fillStyle = '#aaa';
-    ctx.font = '15px monospace';
-    ctx.fillText(`/ ${STAGE_COUNT} 스테이지`, LW / 2, 210);
+    if (isTrace) {
+      ctx.font = 'bold 30px monospace';
+      ctx.fillText('1장 — 흔적의 방', LW / 2, 176);
+    } else {
+      ctx.font = 'bold 56px monospace';
+      ctx.fillText(`${cm.sel}`, LW / 2, 180);
+      ctx.fillStyle = '#aaa';
+      ctx.font = '15px monospace';
+      ctx.fillText(`/ ${STAGE_COUNT} 스테이지`, LW / 2, 210);
+    }
     ctx.fillStyle = '#fff';
     ctx.font = '15px monospace';
-    ctx.fillText(STAGE_BLURB[cm.sel] || '', LW / 2, 250);
+    ctx.fillText(isTrace ? '개인정보 · 디지털 발자국 (방탈출 → 수집몬 보스)' : (STAGE_BLURB[cm.sel] || ''), LW / 2, 250);
     ctx.fillStyle = '#666';
     ctx.font = '13px monospace';
-    ctx.fillText('◀ ▶ 스테이지 고르기', LW / 2, 286);
+    ctx.fillText('◀ ▶ 스테이지/수업 고르기', LW / 2, 286);
 
     if (cm.toast > 0) {
       ctx.fillStyle = okColor();
       ctx.font = 'bold 17px monospace';
-      ctx.fillText(`✓ ${cm.sel}스테이지 시작 상태로 맞췄어요!`, LW / 2, 360);
+      ctx.fillText(`✓ ${selLabel} 상태로 맞췄어요!`, LW / 2, 360);
       ctx.fillStyle = '#aaa';
       ctx.font = '13px monospace';
       ctx.fillText('잠시 후 모험 화면으로 돌아갑니다…', LW / 2, 386);
@@ -4596,7 +4746,7 @@
     } else if (cm.confirm) {
       ctx.fillStyle = badColor();
       ctx.font = 'bold 16px monospace';
-      ctx.fillText(`지금 이 슬롯을 ${cm.sel}스테이지 시작 상태로 바꿀까요?`, LW / 2, 360);
+      ctx.fillText(`지금 이 슬롯을 ${selLabel} 상태로 바꿀까요?`, LW / 2, 360);
       ctx.fillStyle = '#ddd';
       ctx.font = '13px monospace';
       ctx.fillText('이전 진행은 완료 처리되고 되돌릴 수 없어요.', LW / 2, 384);
@@ -5243,7 +5393,16 @@
     const m = MAPS[game.map];
     ctx.font = 'bold 14px monospace';
     const title = `STAGE ${getStage(game.flags)}/5 · ${m.name}`;
-    const obj = `목표: ${getObjective(game.flags)}`;
+    // 방탈출 중에는 본편 퀘스트 대신 방 맥락 목표를 보여 준다 (클리어 후엔 보스방 안내)
+    let objText;
+    if (game.puzzleRun) {
+      const puz = game.puzzleRun.puzzle;
+      objText = (isPuzzleCleared(game.puzzleRun.id) && puz.objectiveCleared) ? puz.objectiveCleared
+        : (puz.objective || '방을 빠져나가자');
+    } else {
+      objText = getObjective(game.flags);
+    }
+    const obj = `목표: ${objText}`;
     const w = Math.max(ctx.measureText(obj).width, ctx.measureText(title).width) + 20;
     utBox(8, 8, w, 52, 4);
     ctx.fillStyle = '#ffd644';
@@ -5486,11 +5645,15 @@
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
       ty = drawQuestionText(claim.text, 34, ty, LW - 24 - 56, lh(24));
-      if (b.revealed[b.claimIdx % b.p.claims.length]) {
-        const cardId = claim.counters[0];
+      if (b.revealed[claimKey()]) {
+        const cardId = claim.counters && claim.counters[0];
+        // 카드가 정답인 주장은 통할 증거 이름을, 그렇지 않은 주장(best)은 방향 힌트를 보여 준다
+        const note = cardId
+          ? `※ 속마음을 알아냈다 — 통할 증거: 「${EVIDENCE_CARDS[cardId].title}」`
+          : `※ ${claim.revealNote || '속마음을 알아냈다 — 카드가 아니라 다른 대응이 필요해!'}`;
         ctx.fillStyle = '#ffd644';
         ctx.font = fs(13);
-        ctx.fillText(`※ 속마음을 알아냈다 — 통할 증거: 「${EVIDENCE_CARDS[cardId].title}」`, 34, ty + 2);
+        ctx.fillText(note, 34, ty + 2);
         ty += lh(20);
       }
       ty += lh(10);
@@ -6324,6 +6487,8 @@
     sanitizeName, probeStorage, getStorageOk: () => storageOk,
     buildClassCsv, setupStageFlags, getStage, stageSpawn, applyStageJump,
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
+    // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록
+    persuadeAvail: () => (game.battle ? availableClaims(game.battle).map((c) => c.text) : []),
   };
   frame();
 })();

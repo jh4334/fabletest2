@@ -4,7 +4,7 @@
 //  G 풀  P 길  F 꽃  S 모래  B 다리  C 동굴바닥  M 탑바닥  1 탑문(워프)
 //  T 나무  W 물  O 지붕  H 벽  D 문(장식)  R 바위  K 동굴벽  * 수정  N 탑벽  Y 표지판
 
-const WALKABLE = new Set(['G', 'P', 'F', 'S', 'B', 'C', 'M', 'Z', 'E', 'I', '2', '4', 'A', '1', '5', '6']);
+const WALKABLE = new Set(['G', 'P', 'F', 'S', 'B', 'C', 'M', 'Z', 'E', 'I', '2', '4', 'A', '1', '5', '6', '7']);
 
 const MAPS = {
   village: {
@@ -80,7 +80,7 @@ const MAPS = {
       '[안내] 급할수록 아무것도 주지 말기.\n막히면 H(또는 메뉴▶힌트)로 도움을 받아요.',
     ],
     tiles: [
-      'HHHHHHHHHHHHHHHHHHHH',
+      'HHHHHHHHH7HHHHHHHHHH',
       'HEEEEEEEEEEEEEEEEEEH',
       'HEEEEEEEEEEEEEEEEEEH',
       'HEEEEEEEEEEEEEEEEEEH',
@@ -97,8 +97,43 @@ const MAPS = {
     ],
     warps: [
       { x: 9, y: 12, to: 'village', tx: 24, ty: 6 },
+      // 위쪽 벽의 「주인의 방」 문 — 방을 클리어해야만 열린다 (needPuzzleClear)
+      { x: 9, y: 0, to: 'ownerroom', tx: 5, ty: 7, needPuzzleClear: 'traces',
+        lockText: '문이 잠겨 있다.\n…안에서 서랍 여닫는 소리가 난다.' },
     ],
     npcs: [],
+    signs: [],
+    monsters: [],
+  },
+
+  // 1장 보스 「주인의 방」 — 흔적의 방을 클리어하면 열리는 수집몬의 은신처.
+  // 수집몬(보스)은 map 몬스터가 아니라 NPC(sujip_boss)로 두어 도감/처치 플래그를
+  // 오염시키지 않는다. 조우 시 설득 배틀(PERSUADE.sujipmon_boss)로 이어진다.
+  ownerroom: {
+    name: '주인의 방',
+    song: 'battle',
+    intro: [
+      '문 너머는 좁은 방이었다.\n서랍과 상자가 천장까지 쌓여 있다.',
+      '그 한가운데 수집몬이\n무언가를 잔뜩 끌어안고 앉아 있다.',
+      '수집몬: "…어? 손님이네.\n여기까지 어떻게 들어왔어?"',
+    ],
+    tiles: [
+      'HHHHHHHHHHHH',
+      'HEEEEEEEEEEH',
+      'HEEEEEEEEEEH',
+      'HEEEEEEEEEEH',
+      'HEEEEEEEEEEH',
+      'HEEEEEEEEEEH',
+      'HEEEEEEEEEEH',
+      'HEEEEEEEEEEH',
+      'HHHHH7HHHHHH',
+    ],
+    warps: [
+      { x: 5, y: 8, to: 'traceroom', tx: 9, ty: 2 },
+    ],
+    npcs: [
+      { id: 'sujip_boss', x: 5, y: 2, monSprite: 'sujipmon', name: '수집몬' },
+    ],
     signs: [],
     monsters: [],
   },
@@ -3158,6 +3193,90 @@ const PERSUADE = {
       open: '(베껴몬이 너덜너덜한 연필을 내려다본다.\n마음이 열리고 있다…!)',
     },
   },
+
+  // ── 1장 보스 「수집몬」 (주인의 방) ──────────────────────────────
+  // 별도 PERSUADE 키(sujipmon_boss)로 정의해 v1 라이브러리 수집몬(퀴즈 배틀)과 분리한다.
+  // 스프라이트·이름·mercy는 수집몬을 재사용하되, 배틀 자체는 이 프로필로 진행한다.
+  // 새 프레임워크 필드:
+  //   claim.best  : 'rebut'|'empathy' — 정답 대응이 카드가 아닌 주장. 열림/동요에서 큰 폭(+26/+32),
+  //                 그 주장의 counters 카드는 보통 효과(+10)로 낮아진다. 닫힘 반박은 기존대로 역효과.
+  //   claim.unlockAt : 게이지가 이 값 이상일 때만 순환 풀에 등장 (마음이 열린 뒤에야 꺼내는 속마음)
+  //   claim.okLine   : 그 주장을 정답 대응으로 풀었을 때의 전용 반응 (경험 콜백 대사)
+  //   claim.revealNote : 카드가 없는 주장에서 질문으로 속마음을 알아냈을 때의 힌트 문구
+  sujipmon_boss: {
+    gaugeMax: 120,
+    // 조우 지급 카드 없음 — 수집몬의 정답 카드(ev_minimal·ev_footprint)는 흔적의 방 보상으로만 얻는다.
+    // 콜백 인트로: 퍼즐에서 「내보낸 정보 최대 개수」(flags.traceGiven)로 첫 대사가 갈린다.
+    intro(flags) {
+      const n = (flags && flags.traceGiven) || 0;
+      if (n >= 3) return '아까 네가 준 것들, 여기 다 있어.\n…고마웠는데. 왜 지금은 그런 눈으로 봐?';
+      if (n <= 1) return '…넌 잘 안 주더라. 다들 주는데.\n…수상해.';
+      return '…또 왔네. 뭐, 더 줄 거라도 있어?\n…아니면, 뭘 확인하러 온 거야?';
+    },
+    win: '…"무료"라는 말로 사람들 마음을\n조금씩 가져왔던 거였어.\n돌려줄게. 하나도 빠짐없이.',
+    claims: [
+      {
+        text: '무료로 재밌게 해 줬잖아.\n정보 좀 받는 게 뭐 어때서?',
+        hint: '"공짜라고 다들 좋아했지…\n근데 그 대가가 뭔지는 아무도 안 물어봤어."\n(「최소한의 정보」가 통할 것 같다!)',
+        counters: ['ev_minimal'],
+        okLine: '…맞아. 공짜인 줄 알았는데,\n실은 나를 조금씩 내주고 있었네.',
+        onWrong: '…그게 지금 얘기랑 무슨 상관인데.\n(수집몬이 입을 삐죽였다)',
+        attack: { pattern: 'rain', dur: 280, color: '#5cb85c', taunt: '더 줘… 조금만 더!' },
+      },
+      {
+        text: '모아 두기만 했는데 뭐.\n아무한테도 안 보여 줬어.',
+        hint: '"모으는 건 나쁜 게 아니잖아?\n그냥, 버리기 아까워서…"\n(「지워지지 않는 발자국」이 통할 것 같다!)',
+        counters: ['ev_footprint'],
+        // 방의 프로필 보드 경험 콜백
+        okLine: '…맞아. 조각을 모으면…\n그 사람이 통째로 만들어지지.',
+        onWrong: '…그건 또 다른 얘기잖아.\n(수집몬이 자루를 끌어안았다)',
+        attack: { pattern: 'sides', dur: 280, color: '#7bd1f0', taunt: '내 거야… 다 내 수집품이야!' },
+      },
+      {
+        text: '네가 스스로 준 거잖아.\n동의한 거 아니야?',
+        best: 'rebut', // 정답은 카드가 아니라 반박 — 동의의 '범위'를 되묻는다
+        hint: '"경품 받으려고 준 거였는데…\n그게 전부 다 허락한 게 되는 거야?"\n(카드가 아니라 「반박하기」가 통할 것 같다!)',
+        revealNote: '카드로는 안 통해 — 「반박하기」로 되물어 보자!',
+        counters: [],
+        okLine: '경품 준다고 줬지,\n맘대로 쓰라곤 안 했어…\n그런 거야?',
+        onWrong: '…봐, 네가 준 거 맞잖아.\n(수집몬이 고개를 저었다)',
+        attack: { pattern: 'spiral', dur: 300, color: '#8d6cd6', taunt: '동의했잖아… 네가 그랬잖아!' },
+      },
+      {
+        text: '…모은 걸 다 돌려주면,\n나한텐 뭐가 남는데?',
+        best: 'empathy',  // 정답은 공감 — 논리로 시작한 전투가 마음으로 끝나는 곡선
+        unlockAt: 70,     // 마음이 열린 뒤에야 꺼내는 속마음
+        hint: '"…빈손이 되는 게 무서워.\n혼자 남는 게 무서운 거야."\n(증거 말고 「공감하기」가 필요해!)',
+        revealNote: '이건 논리로 될 게 아니야 — 「공감하기」로 마음을 안아 주자!',
+        counters: [],
+        okLine: '…남는 게 없어도,\n괜찮은 걸까.\n…곁에 있어 줄 거야?',
+        onWrong: '…너도 결국 떠날 거잖아.\n(수집몬이 몸을 웅크렸다)',
+        attack: { patterns: ['aimed', 'wall'], dur: 320, color: '#e07a5f', taunt: '가지 마… 나만 두고 가지 마!' },
+      },
+    ],
+    react: {
+      empathy: '…뭐야, 왜 그런 눈으로 봐.\n(수집몬이 자루를 슬쩍 당겼다)',
+      empathyAgain: '…응. …들어 줘서, 고마워.\n(하지만 위로만으론 부족한 것 같다)',
+      questionClosed: '…몰라. 대답 안 할래.\n(마음이 닫혀 있어 대답하지 않는다)',
+      evidenceClosed: '…(수집몬은 카드를 거들떠보지도 않는다)\n먼저 마음을 열어야 할 것 같다.',
+      evidenceRight: '…그런가. …그랬구나.\n(카드의 말이 마음에 스며든다)',
+      rebutBackfire: '시끄러워!! 다 내가 모은 거야!\n(마음이 더 굳게 닫혔다… 다음 공격이 거세진다)',
+      rebutOk: '…그, 그런가. 그럴지도…',
+      open: '(수집몬이 끌어안은 자루를\n스르르 내려놓는다. 마음이 열리고 있다…!)',
+    },
+    // mercy: v1 수집몬 것을 카페 맥락으로 손질해 재사용
+    mercy: {
+      prompt: '수집몬이 산더미 같은\n수집품 앞에서 너를 본다.',
+      options: [
+        { label: '"같이 하나씩 돌려주자" (손을 내민다)', kind: 'mercy',
+          reply: '…같이?\n버리는 게 아니라, 돌려주는 거라고?\n…그러면, 나 혼자가 아닌 거네.\n…고마워.' },
+        { label: '"필요한 만큼만 받기로 해"', kind: 'neutral',
+          reply: '…응. 딱 필요한 만큼만.\n약속할게.' },
+        { label: '수집품을 전부 압수한다', kind: 'harsh',
+          reply: '아…\n(수집몬이 텅 빈 두 손을\n물끄러미 내려다본다.)' },
+      ],
+    },
+  },
 };
 
 function getPersuade(monId) {
@@ -3176,6 +3295,11 @@ const PUZZLES = {
   traces: {
     map: 'traceroom',
     title: '흔적의 방',
+    // 방 안 목표 HUD 문구 (본편 퀘스트 대신 표시). 클리어 후엔 보스방 안내로 바뀐다.
+    objective: '정보를 지키며 출구를 찾자',
+    objectiveCleared: '주인의 방으로',
+    // 클리어 후 복귀 지점 (마을 카페 입구 앞) — 이후 방 4개가 재사용
+    exitTo: { map: 'village', x: 24, y: 6 },
     steps: ['tokens', 'board', 'eraser', 'exit'], // 진행 단계 키
     // 각 단계 3단계 점진 힌트 (1:무엇을 볼지 / 2:왜 / 3:무엇을 할지)
     hints: {
@@ -3273,6 +3397,7 @@ const EXAMINE_TILES = {
   X: '선인장. 가시가 따끔해 보인다. 멀리서 인사만.',
   D: '문이 잠겨 있다. 주인이 잠시 자리를 비운 모양이다.',
   '6': '반짝이는 게임 카페 입구. "전부 공짜!" …정말일까?',
+  '7': '안쪽으로 통하는 낡은 문.\n손잡이에 「주인의 방」이라 적혀 있다.',
 };
 
 // 맵별 특별 살펴보기 지점(좌표). 같은 좌표면 기본 타일 문구보다 우선.

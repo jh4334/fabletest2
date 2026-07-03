@@ -1248,4 +1248,101 @@ setPos(3, 11, 'up'); tap('z'); pickChoice(0); advanceDialog();
 plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
 check('재클리어로 clears 증가', plog.traces.clears >= 2);
 
+console.log('[69] T2.3 — 1장 보스 「수집몬」 설득 배틀 (주인의 방)');
+const { PERSUADE } = vm.runInContext('({ PERSUADE })', sandbox);
+const TH = vm.runInContext('window.__test', sandbox);
+// 깨끗한 1장 상태로 리셋 (라이브러리 수집몬 처치 플래그 오염 검증을 위해)
+g.flags = TJ.setupStageFlags(1);
+g.currentSlot = 0;
+check('리셋 직후 라이브러리 수집몬 미처치', g.flags.defeated.sujipmon === false);
+
+// ── 콜백 인트로 분기 (데이터 레벨) ──
+check('콜백 인트로 — 토큰 3+ 경로', /여기 다 있어/.test(PERSUADE.sujipmon_boss.intro({ traceGiven: 3 })));
+check('콜백 인트로 — 토큰 0~1 경로', /수상해/.test(PERSUADE.sujipmon_boss.intro({ traceGiven: 1 })));
+check('콜백 인트로 — 토큰 2 중립(양쪽과 다름)',
+  PERSUADE.sujipmon_boss.intro({ traceGiven: 2 }) !== PERSUADE.sujipmon_boss.intro({ traceGiven: 3 }) &&
+  PERSUADE.sujipmon_boss.intro({ traceGiven: 2 }) !== PERSUADE.sujipmon_boss.intro({ traceGiven: 0 }));
+
+// ── 보스방 진입 게이트 ──
+// 퍼즐 로그를 미클리어로 두고 문이 잠겼는지 확인
+storage.set('ai-ethics-adventure-puzzle-0',
+  JSON.stringify({ traces: { done: false, clears: 0, hintsUsed: {}, wrongTries: 0, timeFrames: 0 } }));
+g.flags.visited = g.flags.visited || {}; g.flags.visited.traceroom = true;
+g.dialog = null; g.mode = 'world'; g.map = 'village'; setPos(24, 6, 'up');
+hold('ArrowUp', 14);
+check('흔적의 방 입장', g.map === 'traceroom' && !!g.puzzleRun);
+setPos(9, 1, 'up'); hold('ArrowUp', 12); // 위쪽 문(9,0)으로 진입 시도
+check('클리어 전 보스방 문 잠김(방에 남음)', g.map === 'traceroom');
+check('잠김 안내 대사 표시', g.mode === 'dialog');
+advanceDialog();
+// 클리어 상태로 바꾸면 문이 열린다
+storage.set('ai-ethics-adventure-puzzle-0',
+  JSON.stringify({ traces: { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 10 } }));
+g.flags.traceGiven = 3; // 콜백 인트로 3+ 경로를 실제 조우에서 확인
+g.dialog = null; g.mode = 'world'; setPos(9, 1, 'up'); hold('ArrowUp', 12);
+check('클리어 후 문 개방 → 주인의 방 진입', g.map === 'ownerroom');
+advanceDialog(); // 주인의 방 인트로
+
+// ── 보스 조우 → 설득 배틀 시작 ──
+setPos(5, 3, 'up'); tap('z'); // 수집몬(5,2)에게 말 걸기
+check('보스 조우 대화 시작', g.mode === 'dialog');
+check('콜백 인트로(토큰 3+)가 조우에 반영', /여기 다 있어/.test(g.dialog.lines[0]));
+advanceDialog();
+check('수집몬 설득 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true);
+check('스프라이트/도감 id는 sujipmon', g.battle.monId === 'sujipmon');
+check('설득 프로필 id는 sujipmon_boss', g.battle.persuadeId === 'sujipmon_boss');
+check('게이지 최대 120', g.battle.gaugeMax === 120);
+check('조우 카드 미지급(보상으로만 획득)', (g.flags.evCards || []).length === 0);
+
+// ── unlockAt: 감정 주장은 게이지 70 이상에서만 순환 풀에 등장 ──
+g.battle.gauge = 60;
+check('게이지 70 미만 — 감정 주장 순환 제외', !TH.persuadeAvail().some((t) => /돌려주면/.test(t)));
+g.battle.gauge = 75;
+check('게이지 70 이상 — 감정 주장 순환 등장', TH.persuadeAvail().some((t) => /돌려주면/.test(t)));
+
+// ── best='rebut': 열림 상태 반박이 큰 폭(+32), 닫힘 반박은 여전히 역효과(-10) ──
+g.battle.gauge = 55; g.battle.pState = 'open'; g.battle.claimIdx = 2;
+g.battle.phase = 'pclaim'; g.battle.cursor = 0;
+check('현재 주장 = 동의 범위(best=rebut)', /동의한 거/.test(TH.persuadeAvail()[g.battle.claimIdx % TH.persuadeAvail().length]));
+pickVerb(3); // 반박하기
+check('열림 상태 best 반박이 큰 폭 판정 (+32)', g.battle.pDelta === 32);
+g.battle.gauge = 0; g.battle.pState = 'closed'; g.battle.claimIdx = 2;
+g.battle.phase = 'pclaim'; g.battle.cursor = 0;
+pickVerb(3);
+check('닫힘 상태 best 반박은 여전히 역효과 (-10)', g.battle.pDelta === -10);
+
+// ── best='empathy': 열림 상태 공감이 큰 폭 판정 (감정 주장) ──
+g.battle.gauge = 80; g.battle.pState = 'open'; g.battle.claimIdx = 3; // 감정 주장(잠금 해제됨)
+g.battle.phase = 'pclaim'; g.battle.cursor = 0;
+check('현재 주장 = 감정 주장(best=empathy)', /돌려주면/.test(TH.persuadeAvail()[g.battle.claimIdx % TH.persuadeAvail().length]));
+pickVerb(0); // 공감하기
+check('열림 상태 best 공감이 큰 폭 판정 (+32)', g.battle.pDelta === 32);
+
+// ── 승리 → chapter1Clear + 마을 복귀 ──
+g.battle.phase = 'preact'; g.battle.gauge = g.battle.gaugeMax; g.battle.pDelta = 0; g.battle.pLine = '';
+tap('z'); // 게이지 만충 → 마음의 선택
+check('게이지 만충 → 마음의 선택', g.battle.phase === 'mercy');
+while (g.battle.cursor !== 0) tap('ArrowDown');
+tap('z'); // 자비 선택 → 응답
+check('자비 응답 단계', g.battle.phase === 'mercyReply');
+tap('z'); // 응답 닫기 → 승리 처리
+check('승리 대화 시작', g.mode === 'dialog');
+advanceDialog();
+check('1장 클리어 플래그', g.flags.chapter1Clear === true);
+check('보스 승리 후 카페 밖(마을) 복귀', g.map === 'village' && g.player.x === 24 && g.player.y === 6);
+check('라이브러리 수집몬 처치 플래그 오염 없음', g.flags.defeated.sujipmon === false);
+check('보스는 도감 순서에 없음', !DEX_ORDER.includes('sujipmon_boss'));
+
+console.log('[70] 수업 모드 — 「1장 — 흔적의 방」 특별 항목');
+g.dialog = null; g.mode = 'world';
+g.classmode.ret = 'world'; g.classmode.sel = 1; g.classmode.confirm = false; g.classmode.toast = 0;
+g.mode = 'classmode';
+tap('ArrowUp'); // 1 → 0(흔적의 방 특별 항목)
+check('수업 목록에 흔적의 방(TRACE_SEL=0) 진입', g.classmode.sel === 0);
+tap('z'); // 확인 단계
+check('확인 단계', g.classmode.confirm === true);
+tap('z'); // 적용 → 1장 시작 + 흔적의 방 입구 앞
+check('흔적의 방 수업: 마을 카페 입구 앞에서 시작', g.map === 'village' && g.player.x === 24 && g.player.y === 6);
+check('흔적의 방 수업: 1장 시작 상태', TJ.getStage(g.flags) === 1);
+
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
