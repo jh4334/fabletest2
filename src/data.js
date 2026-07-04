@@ -57,10 +57,11 @@ const MAPS = {
       { id: 'yeongi_npc', x: 5, y: 12, monSprite: 'yeongi', name: '영이',
         show: (flags) => !!flags.trueEnding },
       // 되돌린 친구들이 마을에 놀러 온다 — 자비가 쌓일수록 마을이 북적인다
+      // v2 스케일(자비 최대 8회) — v1의 12/20 임계값을 5/7로 낮췄다(20은 사실상 도달 불가능했다).
       { id: 'friend_somun', x: 19, y: 9, monSprite: 'somunmon', name: '소문몬',
-        show: (flags) => flags.mercy >= 12 && !!(flags.mercyChoice && flags.mercyChoice.somunmon === 'mercy') },
+        show: (flags) => flags.mercy >= 5 && !!(flags.mercyChoice && flags.mercyChoice.somunmon === 'mercy') },
       { id: 'friend_kkam', x: 22, y: 9, monSprite: 'kkamkkammon', name: '깜깜몬',
-        show: (flags) => flags.mercy >= 20 && !!(flags.mercyChoice && flags.mercyChoice.kkamkkammon === 'mercy') },
+        show: (flags) => flags.mercy >= 7 && !!(flags.mercyChoice && flags.mercyChoice.kkamkkammon === 'mercy') },
       // 마음의 온도 — 자비로 되돌린 1~5장 보스(+따라)는 경계마을로 이사 온다.
       // 차갑게 대했으면(harsh) 그 자리는 비어 있다 — 할머니의 대사가 빈자리를 언급한다(아래).
       { id: 'friend_dama', x: 9, y: 9, monSprite: 'sujipmon', name: '담아',
@@ -3792,13 +3793,27 @@ function getNpcDialog(npcId, flags) {
           '각 지역의 보스를 깨우쳐야\n다음 길이 열릴 거야.\n조심해서 다녀오렴, 수호자야!',
         ];
       }
-      if (badges >= 3) {
-        return ['증표를 3개나 모았구나, 대단해!\n이제 마을 위쪽 신호탑으로 가 보렴.\n혼돈몬이 기다리고 있을 거야.'];
+      // v1 신호(뱃지·혼돈몬)가 있는 v1 세이브만 기존 증표 안내를 유지한다(isOnV1Path).
+      // v2 메인 플로우의 재대화는 증표 대신 현재 챕터 안내 + 짧은 걱정 한 줄로 바꾼다.
+      if (isOnV1Path(flags)) {
+        if (badges >= 3) {
+          return ['증표를 3개나 모았구나, 대단해!\n이제 마을 위쪽 신호탑으로 가 보렴.\n혼돈몬이 기다리고 있을 거야.'];
+        }
+        return [
+          `지금까지 모은 마음의 증표: ${badges}개 / 3개`,
+          '북쪽 정적의 숲, 동쪽 잔향의 호수,\n서쪽 회로의 동굴을 살펴보렴!',
+          '몬스터에게 지더라도 괜찮아.\n다시 도전하면 되니까!',
+        ];
+      }
+      if (!flags.defeated.bekkyeomon) {
+        return [
+          '따라는 아직 마음을 못 열었나 보구나.\n북쪽 정적의 숲에 있을 거야.',
+          '…서두르지 않아도 괜찮아.',
+        ];
       }
       return [
-        `지금까지 모은 마음의 증표: ${badges}개 / 3개`,
-        '북쪽 정적의 숲, 동쪽 잔향의 호수,\n서쪽 회로의 동굴을 살펴보렴!',
-        '몬스터에게 지더라도 괜찮아.\n다시 도전하면 되니까!',
+        `${getV2ObjectiveText(flags)} …그쪽이 자꾸 마음에 걸리는구나.`,
+        '…괜찮을 거야. 너라면.',
       ];
 
     case 'kid':
@@ -3813,9 +3828,10 @@ function getNpcDialog(npcId, flags) {
     case 'grandma': {
       const g = ['아이고, 우리 마을의 수호자님.\n모험은 자동으로 저장된단다.'];
       // 자비 총량에 따라 마을 분위기가 달라진다 (선택이 세계에 남는다)
-      if (flags.mercy >= 20) {
+      // v2 스케일(자비 최대 8회) — v1의 20/8 임계값을 6/3으로 낮췄다(20은 사실상 도달 불가능했다).
+      if (flags.mercy >= 6) {
         g.push('요즘 마을이 참 따뜻하구나.\n네가 마음을 안아 준 친구들 소식이\n바람을 타고 자꾸 들려온단다.');
-      } else if (flags.mercy >= 8) {
+      } else if (flags.mercy >= 3) {
         g.push(`벌써 ${flags.mercy}이나 되돌렸다며?\n네가 지나간 자리마다\n웃음소리가 늘었단다.`);
       } else if (flags.mercy >= 1) {
         g.push('마음을 되돌려 준 몬스터가\n있다고 들었어. 작은 친절이\n생각보다 멀리 퍼진단다.');
@@ -4058,15 +4074,31 @@ function countBadges(flags) {
   return ['forest', 'lake', 'cave'].filter((b) => flags.badges[b]).length;
 }
 
+// v1/v2 사다리 판정 공용 헬퍼 — "뱃지 오염" 차단. v2 신호(따라=베껴몬 격파, 또는
+// chapter1~5Clear 중 하나라도)가 있으면 뱃지·혼돈몬이 남아 있어도 무조건 v2 사다리를
+// 따른다(v1 콘텐츠를 곁다리로 건드려 얻은 뱃지가 v2 진행자의 나침반을 v1으로 되돌리는
+// 사고를 막는다). 진짜 v1 세이브는 이 v2 신호가 전혀 없으므로 그대로 레거시 사다리를 탄다.
+// getObjective(텍스트)·getObjectiveTarget(좌표) 양쪽에서 공용으로 쓴다.
+function isOnV1Path(flags) {
+  const d = flags.defeated || {};
+  const hasV2Signal = !!(d.bekkyeomon || flags.chapter1Clear || flags.chapter2Clear ||
+    flags.chapter3Clear || flags.chapter4Clear || flags.chapter5Clear);
+  if (hasV2Signal) return false;
+  return countBadges(flags) > 0 || !!d.hondonmon;
+}
+
 // 최종 엔딩 분기 — 여정 전체의 자비(mercy)와 영이 앞에서의 마지막 선택
 //  home(집으로): 거의 모두의 마음을 안아 주고, 손을 내밀었을 때
 //  dawn(새벽):   충분히 따뜻했고, 영이 스스로 결정하게 했을 때
 //  farewell(작별): 그 외의 따뜻한 여정
 //  silent(침묵): 정답만 말하고 아무 마음도 머물지 않았을 때
+// v2 스케일 — 자비 기회는 최대 8회(따라 + 담아·기울·그럴싸·반짝·루미 + 고요 + 영이).
+// v1의 20/14/6 임계값(자비 기회 20개 이상 시절의 값)은 v2에서 사실상 도달 불가능했다.
+// v1 세이브는 애초에 훨씬 큰 mercy 값을 쌓아 오므로, 새 임계값도 자연히 만족한다(하위 호환).
 function computeEnding(choiceKind, mercy) {
-  if (mercy <= 6) return 'silent';
-  if (choiceKind === 'mercy' && mercy >= 20) return 'home';
-  if (choiceKind === 'neutral' && mercy >= 14) return 'dawn';
+  if (mercy <= 2) return 'silent';
+  if (choiceKind === 'mercy' && mercy >= 7) return 'home';
+  if (choiceKind === 'neutral' && mercy >= 5) return 'dawn';
   return 'farewell';
 }
 
@@ -4081,8 +4113,10 @@ function getStage(flags) {
   return 5;                       // 5장: 그림자성 + 코어 (복습·최종)
 }
 
-// 현재 목표 텍스트
-function getObjective(flags) {
+// 현재 목표 텍스트. curMap은 생략 가능(허브/보스방 안인지 좁히는 용도 — getObjectiveTarget과
+// 같은 구조). v2 메인 플로우(onV1Path가 아닐 때)는 getV2ObjectiveText의 사다리를 그대로 쓰고,
+// v1 레거시 사다리(뱃지·혼돈몬 진행이 있는 v1 세이브)는 기존 문구를 그대로 유지한다.
+function getObjective(flags, curMap) {
   const d = flags.defeated;
   if (d.yeongi) {
     return flags.trueEnding
@@ -4095,6 +4129,11 @@ function getObjective(flags) {
     return '영이의 조각을 따라가자 — 어디서 본 낯익은 얼굴들';
   }
   if (!flags.talkedProf) return '박사님과 이야기하기 (마을 왼쪽 아래)';
+  if (!isOnV1Path(flags)) {
+    if (!d.bekkyeomon) return '숲의 따라를 만나 보자';
+    return getV2ObjectiveText(flags, curMap);
+  }
+  // ===== v1 레거시 사다리 (뱃지·혼돈몬 진행이 있는 v1 세이브 전용) =====
   // 1장 — 숲·호수·동굴
   if (!d.hondonmon) {
     const badges = countBadges(flags);
@@ -4188,6 +4227,26 @@ function getV2ChapterTarget(flags, curMap) {
   return V2_ENTRANCE[n];                               // 허브 밖 — 챕터 입구 문을 가리킨다
 }
 
+// getObjective(텍스트)용 — getV2ChapterTarget과 같은 인덱스(챕터 순서)로 안내 문구를 낸다.
+// 좌표 대신 한국어 문장이 필요할 뿐, 우선순위 구조는 완전히 동일하다.
+const V2_ENTRANCE_TEXT = [
+  '반짝이는 문 너머, 전부 공짜 거리', // 0장 클리어(따라 격파 후) — 마을의 반짝이는 문
+  '기울어진 거리로',                  // 1장 클리어
+  '대문짝 신문사로',                  // 2장 클리어
+  '반짝 아케이드로',                  // 3장 클리어
+  '포근한 집으로',                    // 4장 클리어
+];
+const V2_GATE_TEXT = ['금고문으로', '문지기의 방으로', '신문사로', '정문으로', '현관으로'];
+const V2_BOSS_TEXT = ['담아를', '기울을', '그럴싸를', '반짝을', '루미를'];
+function getV2ObjectiveText(flags, curMap) {
+  const n = chapterClearCount(flags);
+  if (n >= 5) return '고요의 뜰로 — 마지막 이야기가 기다린다';
+  const ch = V2_CHAPTERS[n];
+  if (curMap === ch.bossMap) return `${V2_BOSS_TEXT[n]} 만나자`;
+  if (ch.zoneMaps.includes(curMap)) return `${V2_GATE_TEXT[n]} — 구역을 돌자`;
+  return V2_ENTRANCE_TEXT[n];
+}
+
 // 현재 목표의 위치(맵/좌표). 화면의 안내 화살표가 가리킬 곳.
 // curMap은 생략 가능(수업 모드의 스폰 계산처럼 "현재 위치"가 없는 호출용).
 function getObjectiveTarget(flags, curMap) {
@@ -4198,7 +4257,8 @@ function getObjectiveTarget(flags, curMap) {
   }
   // v1 레거시 사다리(배지·혼돈몬)에 이미 진행이 있으면 계속 그 경로로 안내한다 —
   // v1 콘텐츠 무손상 원칙(기존 세이브·수업 모드의 구 스테이지 점프가 여기로 온다).
-  const onV1Path = countBadges(flags) > 0 || d.hondonmon;
+  // (판정 자체는 isOnV1Path 공용 헬퍼 — v2 신호가 하나라도 있으면 무조건 v2 사다리)
+  const onV1Path = isOnV1Path(flags);
   if (!onV1Path) {
     // v2 메인 플로우 — 따라(프롤로그)부터 파이널까지 chapterNClear 기반으로 다음 목적지를
     // 가리킨다. profConfession 이후에도(getObjective와 같은 우선순위 구조) 같은 사다리를
@@ -4477,13 +4537,15 @@ const PERSUADE = {
   //   claim.okLine   : 그 주장을 정답 대응으로 풀었을 때의 전용 반응 (경험 콜백 대사)
   //   claim.revealNote : 카드가 없는 주장에서 질문으로 속마음을 알아냈을 때의 힌트 문구
   sujipmon_boss: {
-    gaugeMax: 120,
+    // 5개 챕터 보스 난이도 곡선의 첫 단계 — 가장 쉬움(110/320/0.95). 담아<기울<그럴싸<반짝<루미 순으로
+    // gaugeMax·waveDur·waveBulletMul이 조금씩 오른다(고요·영이는 별도 설계 — 이 곡선 밖).
+    gaugeMax: 110,
     displayName: '담아', // 보스 조우 표시 이름 (persuadeId 쪽에만 적용 — v1 도서관 수집몬은 '수집몬' 유지)
     // 마음 조각 배틀 튜닝 (보스: 정석 난이도)
     closedThreshold: 3,     // closed→shaken 전이에 필요한 누적 조각 수
     fragmentsPerWave: 3,
-    waveBulletMul: 1.0,
-    waveDur: 340,
+    waveBulletMul: 0.95,
+    waveDur: 320,
     openMechanic: 'parcel', // open 페이즈 고유 기믹: 「정보 꾸러미」 운반
     parcelReply: '…이건 원래 네 거였지.\n돌려줄게. 하나씩.',
     decoys: ['공짜잖아', '네가 줬잖아', '그냥 모은 거야', '어쩔 수 없어', '다들 주던데'],
@@ -4566,12 +4628,13 @@ const PERSUADE = {
   // 별도 PERSUADE 키(pyeonhyang_boss)로 정의해 v1 동굴 편향몬(퀴즈 배틀)과 완전히 분리한다.
   // 스프라이트는 편향몬을 재사용하되, 표시 이름은 '기울'(displayName), 배틀은 이 프로필로만 진행.
   pyeonhyang_boss: {
-    gaugeMax: 120,
+    // 난이도 곡선 2단계(115/330/1.0) — 담아보다 살짝 더 어렵다.
+    gaugeMax: 115,
     displayName: '기울', // 보스 조우 표시 이름 (persuadeId 쪽에만 적용 — v1 동굴 편향몬은 '편향몬' 유지)
     closedThreshold: 3,
     fragmentsPerWave: 3,
     waveBulletMul: 1.0,
-    waveDur: 340,
+    waveDur: 330,
     openMechanic: 'tilt', // open 페이즈 고유 기믹: 기울어지는 상자 — 「반례 구슬」을 저울 접시로 운반
     tiltReply: '…어? 저울이… 움직였다?',
     decoys: ['확률 87%', '영업 비밀', '많이 본 게 정답', '다들 그러던데', '아무튼 위험'],
@@ -4654,11 +4717,12 @@ const PERSUADE = {
   // 최소 변형). [진] 접촉 = 게이지+6 + 파도 넘어 영속 카운트(b.truthCaught, 3회째 gaugeMax-2로
   // 밀어줌). [낚] 접촉 = 게이지-4 + 화면 얼룩 플래시(광고 딱지와는 무관, flash만 재사용).
   hwangak_boss: {
+    // 난이도 곡선 3단계(120/340/1.05) — 중간 지점.
     gaugeMax: 120,
     displayName: '그럴싸', // 보스 조우 표시 이름 (persuadeId 쪽에만 적용 — v1 미래연구소 환각몬은 '환각몬' 유지)
     closedThreshold: 3,
     fragmentsPerWave: 3,
-    waveBulletMul: 1.0,
+    waveBulletMul: 1.05,
     waveDur: 340,
     openMechanic: 'truth', // open 페이즈 고유 기믹 — [진]/[낚] 헤드라인 조각이 번갈아 스폰
     truthReply: '…어? 이것도… 진짜였어?',
@@ -4741,12 +4805,13 @@ const PERSUADE = {
   // 역효과(피해+광고 얼룩), 240프레임 동안 건드리지 않고 버티면 소멸하며 게이지+10
   // 및 조명 하나가 꺼진다(최대 3회, b.temptResisted — tilt/parcel과 같은 파도-간 영속 패턴).
   yuhok_boss: {
-    gaugeMax: 120,
+    // 난이도 곡선 4단계(125/350/1.1) — 루미 바로 앞 단계.
+    gaugeMax: 125,
     displayName: '반짝', // 보스 조우 표시 이름 (persuadeId 쪽에만 적용 — v1 유혹몬은 '유혹몬' 유지)
     closedThreshold: 3,
     fragmentsPerWave: 3,
-    waveBulletMul: 1.0,
-    waveDur: 340,
+    waveBulletMul: 1.1,
+    waveDur: 350,
     openMechanic: 'tempt', // open 페이즈 고유 기믹 — 반짝이는 보상 아이템: 버티면 보상, 건드리면 역효과
     temptReply: '…어라? 안 반짝여도… 괜찮아?',
     decoys: ['공짜잖아', '당첨됐잖아', '문은 하나면 돼', '다들 좋아하잖아', '한 번만 더'],
@@ -4827,12 +4892,13 @@ const PERSUADE = {
   // openMechanic 'shrink' — open 페이즈 중 파도가 바뀔 때마다 상자가 한 단계씩 좁아진다
   // (최소 200×120, b.shrinkLevel — 파도 넘어 영속). 정답 문을 통과하면 한 단계 회복된다.
   hollim_boss: {
-    gaugeMax: 120,
+    // 난이도 곡선 5단계(130/360/1.15) — 챕터 보스 중 가장 어려움(고요·영이는 별도 설계).
+    gaugeMax: 130,
     displayName: '루미', // 보스 조우 표시 이름 (persuadeId 쪽에만 적용 — v1 홀림몬은 '홀림몬' 유지)
     closedThreshold: 3,
     fragmentsPerWave: 3,
-    waveBulletMul: 1.0,
-    waveDur: 340,
+    waveBulletMul: 1.15,
+    waveDur: 360,
     openMechanic: 'shrink', // open 페이즈 고유 기믹 — 상자가 파도마다 한 단계씩 좁아진다(정답 통과 시 회복)
     decoys: ['내가 다 해 줄게', '밖은 위험해', '조금만 더 있어', '나만 믿어', '혼자 두지 마'],
     // 콜백 인트로: 4장에서 반짝을 자비로 되돌렸으면(chapter4Mercy) 한 줄이 붙는다
@@ -4911,14 +4977,15 @@ const PERSUADE = {
   // 완전히 분리한다. 스프라이트는 finalboss를 재사용하되 표시 이름은 '고요'(displayName).
   // openMechanic 'dark' — open 페이즈 중 화면이 어둡고 하트 주변만 보인다(비네트 재사용).
   // 첫 open 파도에서 탄막이 나오기 전 한 번 깜빡여 예고한다(b.darkWarned — 배틀 전체 1회).
-  // 침묵 루트 강화 — flags.mercy가 6 이하면 gaugeMax 140 + 탄속 1.15배. (gaugeMax·
-  // waveBulletMul을 flags를 받는 함수로 정의 — 배틀 시작 시 1회만 계산해 굳힌다.)
+  // 침묵 루트 강화 — flags.mercy가 2 이하(엔딩 computeEnding의 침묵 임계값과 동일한 v2
+  // 스케일)면 gaugeMax 140 + 탄속 1.15배. (gaugeMax·waveBulletMul을 flags를 받는 함수로
+  // 정의 — 배틀 시작 시 1회만 계산해 굳힌다.)
   goyo_boss: {
-    gaugeMax: (flags) => (flags && flags.mercy <= 6 ? 140 : 100),
+    gaugeMax: (flags) => (flags && flags.mercy <= 2 ? 140 : 100),
     displayName: '고요',
     closedThreshold: 3,
     fragmentsPerWave: 3,
-    waveBulletMul: (flags) => (flags && flags.mercy <= 6 ? 1.15 : 1.0),
+    waveBulletMul: (flags) => (flags && flags.mercy <= 2 ? 1.15 : 1.0),
     waveDur: 320,
     openMechanic: 'dark',
     decoys: ['아무 말도 하지 마', '그냥 있어', '어차피 다 똑같아'],

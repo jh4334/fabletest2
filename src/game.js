@@ -457,12 +457,15 @@
     } catch (e) { /* 저장 불가 환경이면 무시 */ }
   }
 
-  // 슬롯 삭제 시 학습 데이터도 함께 지운다
+  // 슬롯 삭제 시 학습 데이터도 함께 지운다 (방탈출 퍼즐 진행 로그 포함)
   function clearSlotLearning(slot) {
     try {
       localStorage.removeItem(statsKey(slot));
       localStorage.removeItem(mistakesKey(slot));
       localStorage.removeItem(metaKey(slot));
+      localStorage.removeItem(puzzleKey(slot));
+      // 지운 슬롯이 메모이즈 캐시에 남아 있으면 무효화(다음 getPuzzleLog가 빈 값을 반환하게)
+      if (puzzleLogCache && puzzleLogCache.slot === slot) puzzleLogCache = null;
     } catch (e) { /* 무시 */ }
   }
 
@@ -746,7 +749,7 @@
   function allBackupKeys() {
     const keys = [SETTINGS_KEY, ENDINGS_KEY, DEX_KEY];
     for (let i = 0; i < SLOT_COUNT; i++) {
-      keys.push(slotKey(i), statsKey(i), mistakesKey(i), metaKey(i), cosmeticKey(i));
+      keys.push(slotKey(i), statsKey(i), mistakesKey(i), metaKey(i), cosmeticKey(i), puzzleKey(i));
     }
     return keys;
   }
@@ -4338,7 +4341,13 @@
   function monTopic(b) { return Array.isArray(b.mon.topic) ? b.mon.topic[0] : b.mon.topic; }
 
   // 비차단 플로팅 텍스트 — 큐에 넣고 한 번에 한 줄씩 상자 위를 흐른다.
-  function pushFloat(text) { if (text) game.battle.floatQ.push(text); }
+  // speak=true면 game.tts일 때 Speech.speak로도 읽어 준다 — 과도한 수다를 막기 위해
+  // 기믹의 "결과성" 이벤트(운반·버티기·진위 판정 완료 등)에만 선택적으로 붙인다.
+  function pushFloat(text, speak) {
+    if (!text) return;
+    game.battle.floatQ.push(text);
+    if (speak && game.tts) Speech.speak(text);
+  }
   function updateFloats(b) {
     if (!b.floatActive && b.floatQ.length) b.floatActive = { text: b.floatQ.shift(), t: 0, dur: 150 };
     if (b.floatActive) { b.floatActive.t += 1; if (b.floatActive.t >= b.floatActive.dur) b.floatActive = null; }
@@ -4551,7 +4560,7 @@
       if (dx * dx + dy * dy < (SOUL_R + 12) * (SOUL_R + 12)) { // 배달
         arena.carrying = false; pc.deliveries += 1; b.parcelDeliveries = pc.deliveries;
         b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax);
-        pushFloat(b.p.parcelReply || '…돌려줄게.');
+        pushFloat(b.p.parcelReply || '…돌려줄게.', true);
         if (pc.deliveries >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3회 → 만충 직전
         pc.spawnTimer = 90;
         Sound.correct();
@@ -4582,7 +4591,7 @@
         b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax);
         // 0.9 → 0.6 → 0.3 → 0 (표를 사용해 부동소수점 오차 없이 정확한 값으로)
         tl.drift = TILT_DRIFT_STEPS[Math.min(tl.deliveries, TILT_DRIFT_STEPS.length - 1)];
-        pushFloat((b.p.tiltReply || '…어? 저울이… 움직였다?') + '\n(기울기가 줄었다!)');
+        pushFloat((b.p.tiltReply || '…어? 저울이… 움직였다?') + '\n(기울기가 줄었다!)', true);
         if (tl.deliveries >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3회 → 만충 직전
         tl.spawnTimer = 90;
         Sound.correct();
@@ -4615,7 +4624,7 @@
       b.playerHp = Math.max(0, b.playerHp - 1);
       arena.inv = 42; b.flash = 12;
       addAdSticker();
-      pushFloat('반짝: "거봐, 반짝이는 게 좋잖아!"\n(광고 얼룩이 하나 더 붙었다!)');
+      pushFloat('반짝: "거봐, 반짝이는 게 좋잖아!"\n(광고 얼룩이 하나 더 붙었다!)', true);
       Sound.bump();
       if (b.playerHp <= 0) { persuadeExhaust(); return; }
       return;
@@ -4627,7 +4636,7 @@
       tp.resisted = Math.min(3, tp.resisted + 1);
       b.temptResisted = tp.resisted;
       b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax);
-      pushFloat((b.p.temptReply || '…버텼다.') + `\n(조명이 하나 꺼졌다! ${tp.resisted}/3)`);
+      pushFloat((b.p.temptReply || '…버텼다.') + `\n(조명이 하나 꺼졌다! ${tp.resisted}/3)`, true);
       if (tp.resisted >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3회 → 만충 직전
       Sound.correct();
       persuadeGaugeSync(b);
@@ -4658,14 +4667,14 @@
         b.truthCaught = tr.caught;
         b.gauge = clamp(b.gauge + 6, 0, b.gaugeMax);
         if (tr.caught >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2);
-        pushFloat((b.p.truthReply || '…어, 진짜였어?') + `\n(진짜를 알아챘다! ${tr.caught}/3)`);
+        pushFloat((b.p.truthReply || '…어, 진짜였어?') + `\n(진짜를 알아챘다! ${tr.caught}/3)`, true);
         Sound.correct();
         persuadeGaugeSync(b);
       } else {
         // [낚] 접촉 — 게이지 -4 + 화면 얼룩(피해·광고 딱지는 없음)
         b.gauge = clamp(b.gauge - 4, 0, b.gaugeMax);
         b.flash = 12;
-        pushFloat('그럴싸: "…거봐, 그럴듯하지?"\n(낚였다… 마음이 식었다)');
+        pushFloat('그럴싸: "…거봐, 그럴듯하지?"\n(낚였다… 마음이 식었다)', true);
         Sound.bump();
       }
       tr.obj = null;
@@ -5742,7 +5751,8 @@
   const ACHIEVEMENTS = [
     { id: 'firstwin', cat: 'battle', name: '첫 깨우침', desc: '몬스터를 처음 깨우쳤어요', check: (c) => c.defeatedCount >= 1 },
     { id: 'mercy1', cat: 'battle', name: '따뜻한 마음', desc: '마음을 한 번 안아 주었어요', check: (c) => c.mercy >= 1 },
-    { id: 'mercy10', cat: 'battle', name: '마음의 수호자', desc: '마음을 열 번 안아 주었어요', check: (c) => c.mercy >= 10 },
+    // v2 스케일(자비 최대 8회) — v1의 10 임계값은 사실상 도달 불가능해 7로 낮췄다.
+    { id: 'mercy10', cat: 'battle', name: '마음의 수호자', desc: '마음을 일곱 번 안아 주었어요', check: (c) => c.mercy >= 7 },
     { id: 'solved50', cat: 'learn', name: '꾸준한 공부', desc: '문제를 50개 이상 풀었어요', check: (c) => c.attempted >= 50 },
     { id: 'perfectTopic', cat: 'learn', name: '완벽한 한 주제', desc: '한 주제 100% (3문제 이상)', check: (c) => c.perfectTopic },
     { id: 'wellRounded', cat: 'learn', name: '두루 박학', desc: '5개 주제에서 80% 이상', check: (c) => c.strongTopics >= 5 },
@@ -6691,8 +6701,12 @@
     return TRACE_SEL;
   }
   // 1장 시작 상태로 맞추고, 전부 공짜 거리 입구에 서서 시작한다.
+  // defeated.bekkyeomon(프롤로그 「따라」 격파)도 true로 맞춘다 — 1장 허브 안에 이미 서
+  // 있는 상태인데 프롤로그 미클리어로 남겨 두면 목표 나침반(getObjectiveTarget)이 숲의
+  // 따라를 계속 가리키는 모순이 생긴다(수업 모드 점프는 "이 장부터 바로 수업" 전제).
   function applyTraceRoomClass() {
     const flags = setupStageFlags(1);
+    flags.defeated.bekkyeomon = true;
     game.flags = flags;
     game.map = 'freestreet';
     const p = game.player;
@@ -6703,6 +6717,7 @@
   // 2장 시작 상태(1장 클리어 직후)로 맞추고, 기울어진 거리 입구에 서서 시작한다.
   function applyTiltStreetClass() {
     const flags = setupStageFlags(1);
+    flags.defeated.bekkyeomon = true; // 프롤로그(따라)는 이미 클리어한 상태
     flags.chapter1Clear = true; // 2장은 1장 클리어 후 상태
     game.flags = flags;
     game.map = 'tiltstreet';
@@ -6714,6 +6729,7 @@
   // 3장 시작 상태(2장 클리어 직후)로 맞추고, 소문 거리 입구에 서서 시작한다.
   function applyRumorStreetClass() {
     const flags = setupStageFlags(1);
+    flags.defeated.bekkyeomon = true; // 프롤로그(따라)는 이미 클리어한 상태
     flags.chapter1Clear = true;
     flags.chapter2Clear = true; // 3장은 2장 클리어 후 상태
     game.flags = flags;
@@ -6726,6 +6742,7 @@
   // 4장 시작 상태(3장 클리어 직후)로 맞추고, 반짝 아케이드 입구에 서서 시작한다.
   function applyArcadeClass() {
     const flags = setupStageFlags(1);
+    flags.defeated.bekkyeomon = true; // 프롤로그(따라)는 이미 클리어한 상태
     flags.chapter1Clear = true;
     flags.chapter2Clear = true;
     flags.chapter3Clear = true; // 4장은 3장 클리어 후 상태
@@ -6739,6 +6756,7 @@
   // 5장 시작 상태(4장 클리어 직후)로 맞추고, 포근한 집 입구에 서서 시작한다.
   function applyCozyhomeClass() {
     const flags = setupStageFlags(1);
+    flags.defeated.bekkyeomon = true; // 프롤로그(따라)는 이미 클리어한 상태
     flags.chapter1Clear = true;
     flags.chapter2Clear = true;
     flags.chapter3Clear = true;
@@ -6753,6 +6771,7 @@
   // 파이널 시작 상태(5장 클리어 직후)로 맞추고, 포근한 집 안쪽 문 앞에 서서 시작한다.
   function applyFinalClass() {
     const flags = setupStageFlags(1);
+    flags.defeated.bekkyeomon = true; // 프롤로그(따라)는 이미 클리어한 상태
     flags.chapter1Clear = true;
     flags.chapter2Clear = true;
     flags.chapter3Clear = true;
@@ -7420,10 +7439,12 @@
     const n = game.flags.adStickers || 0;
     if (n <= 0) return;
     const W = 58, H = 24;
+    // 상시 HUD(좌상단 목표 상자 y 8~60, 우상단 증표·자비 하트 표시)와 겹치지 않도록 상단
+    // 딱지는 y=96(HUD·퍼즐 HUD 아래)으로 내린다. 화면 모서리를 어지럽히는 연출 의도는 유지.
     const spots = [
-      { x: 8, y: 8 },               // 좌상단
-      { x: LW - W - 8, y: 8 },      // 우상단
-      { x: 8, y: LH - H - 8 },      // 좌하단
+      { x: 8, y: 96 },               // 좌상단(HUD 아래)
+      { x: LW - W - 8, y: 96 },      // 우상단(HUD·하트 표시 아래)
+      { x: 8, y: LH - H - 8 },       // 좌하단
       { x: LW - W - 8, y: LH - H - 8 }, // 우하단
     ];
     for (let i = 0; i < n; i++) {
@@ -7702,7 +7723,7 @@
         : n >= 3 ? '현관이 열렸다 — 루미의 방으로'
         : `확인한 용기 ${n}/3 — 방을 둘러보자`;
     } else {
-      objText = getObjective(game.flags);
+      objText = getObjective(game.flags, game.map);
     }
     const obj = `목표: ${objText}`;
     const w = Math.max(ctx.measureText(obj).width, ctx.measureText(title).width) + 20;
@@ -8086,7 +8107,9 @@
   function drawDarkArenaVignette(b) {
     const soul = b.arena.soul;
     if (game.reduceFx) {
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      // 저시력·광과민성 완화(화면 효과 줄이기) — 하트 주변만 보이는 방사형 비네트 대신
+      // 균일하게 살짝만 어둡혀 시야를 넓게 확보한다(가장 어두운 가장자리 0.88보다 훨씬 옅은 0.55).
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
       ctx.fillRect(0, 0, LW, LH);
       return;
     }

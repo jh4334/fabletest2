@@ -541,13 +541,17 @@ check('모든 보스 처치 저장', save.flags.defeated.hondonmon && save.flags
 check('심층부 진행 저장', save.flags.defeated.yeongi && save.flags.trueEnding === true &&
   save.flags.mercy === 29);
 
-console.log('[23] 엔딩 분기 로직 (4종)');
+console.log('[23] 엔딩 분기 로직 (4종) — v2 스케일(자비 최대 8회: 따라+담아·기울·그럴싸·반짝·루미+고요+영이)');
 const { computeEnding } = vm.runInContext('({ computeEnding })', sandbox);
-check('진엔딩: 손 + 자비 20↑', computeEnding('mercy', 22) === 'home');
-check('새벽: 맡김 + 자비 14↑', computeEnding('neutral', 16) === 'dawn');
-check('작별: 손을 내밀어도 자비 부족이면', computeEnding('mercy', 15) === 'farewell');
-check('작별: 차가운 마지막 선택', computeEnding('harsh', 28) === 'farewell');
-check('침묵: 자비 6 이하', computeEnding('mercy', 3) === 'silent');
+check('진엔딩: 손 + 자비 7↑', computeEnding('mercy', 7) === 'home');
+check('새벽: 맡김 + 자비 5↑', computeEnding('neutral', 5) === 'dawn');
+check('작별: 손을 내밀어도 자비 부족이면', computeEnding('mercy', 6) === 'farewell');
+check('작별: 차가운 마지막 선택', computeEnding('harsh', 8) === 'farewell');
+check('침묵: 자비 2 이하', computeEnding('mercy', 2) === 'silent');
+// v2 완주 산술 검증 — 자비 기회 8회를 전부 자비로 선택하면(mercy===8) 반드시 진엔딩에 닿는다
+check('v2 완주(자비 8회 전부 mercy) → 진엔딩 도달', computeEnding('mercy', 8) === 'home');
+// 하위 호환 — v1 세이브가 쌓아 온 훨씬 큰 자비값도 새 임계값을 자연히 만족한다
+check('하위 호환 — v1 세이브의 큰 자비값도 진엔딩 충족', computeEnding('mercy', 22) === 'home');
 const endingsSeen = JSON.parse(storage.get('ai-ethics-adventure-endings'));
 check('엔딩 수집 기록(타이틀 표시용)', endingsSeen.home === true);
 
@@ -757,9 +761,15 @@ const s0 = JSON.parse(storage.get('ai-ethics-adventure-stats-0') || '{}');
 const s1 = JSON.parse(storage.get('ai-ethics-adventure-stats-1') || '{}');
 check('슬롯 1 통계가 따로 쌓임', s1.privacy && s1.privacy.total === 2);
 check('슬롯 0과 슬롯 1 통계가 분리됨', JSON.stringify(s0) !== JSON.stringify(s1));
-// 슬롯 1 삭제 시 학습 데이터도 함께 지워지는지
+// 슬롯 1 삭제 시 학습 데이터도 함께 지워지는지 (방탈출 퍼즐 로그 포함 — C6)
+const getPuzzleLogT = vm.runInContext('window.__test.getPuzzleLog', sandbox);
+storage.set('ai-ethics-adventure-puzzle-1',
+  JSON.stringify({ dummy: { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 1 } }));
+check('슬롯 1 퍼즐 로그 기록됨(삭제 전, 메모이즈 캐시에도 적재)', Object.keys(getPuzzleLogT(1)).length === 1);
 deleteSlotViaGame(1);
 check('슬롯 1 삭제 시 통계도 삭제', !storage.get('ai-ethics-adventure-stats-1'));
+check('슬롯 1 삭제 시 퍼즐 로그도 삭제(스토리지)', !storage.get('ai-ethics-adventure-puzzle-1'));
+check('슬롯 1 삭제 시 퍼즐 로그 메모이즈도 무효화(빈 객체 반환)', Object.keys(getPuzzleLogT(1)).length === 0);
 function deleteSlotViaGame(slot) {
   g.mode = 'title'; g.titleScreen = 'delete'; g.slotCursor = slot;
   tap('z'); // 삭제 확정
@@ -768,17 +778,24 @@ g.mode = 'world';
 
 console.log('[36] 데이터 백업·복원 (내보내기·가져오기)');
 const T = vm.runInContext('window.__test', sandbox);
+// 퍼즐 로그도 백업 대상에 포함되는지(C6) 확인하기 위해 슬롯 0에 하나 심어 둔다
+storage.set('ai-ethics-adventure-puzzle-0',
+  JSON.stringify({ dummy: { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 1 } }));
 const backupText = T.buildBackupText();
 const backupObj = JSON.parse(backupText);
 check('백업에 앱 식별자 포함', backupObj.app === 'ai-ethics-adventure');
 check('백업에 슬롯 0 세이브 포함', !!backupObj.data['ai-ethics-adventure-slot-0']);
 check('백업에 슬롯 0 통계 포함', !!backupObj.data['ai-ethics-adventure-stats-0']);
+check('백업에 슬롯 0 퍼즐 로그 포함', !!backupObj.data['ai-ethics-adventure-puzzle-0']);
 // 데이터를 망가뜨린 뒤 복원
 const goodStats = storage.get('ai-ethics-adventure-stats-0');
+const goodPuzzle = storage.get('ai-ethics-adventure-puzzle-0');
 storage.set('ai-ethics-adventure-stats-0', '{}');
+storage.set('ai-ethics-adventure-puzzle-0', '{}');
 const res = T.applyBackup(backupText);
 check('복원 성공', res.ok === true && res.count >= 2);
 check('통계가 복원됨', storage.get('ai-ethics-adventure-stats-0') === goodStats);
+check('퍼즐 로그도 복원됨', storage.get('ai-ethics-adventure-puzzle-0') === goodPuzzle);
 check('잘못된 데이터는 거부', T.applyBackup('{"app":"other"}').ok === false);
 check('깨진 JSON은 거부', T.applyBackup('not json').ok === false);
 
@@ -1455,7 +1472,7 @@ check('담아(수집몬 보스) 마음 조각 배틀 시작', g.mode === 'battle
 check('스프라이트/도감 id는 sujipmon', g.battle.monId === 'sujipmon');
 check('설득 프로필 id는 sujipmon_boss', g.battle.persuadeId === 'sujipmon_boss');
 check('표시 이름은 담아(persuadeId 계층)', g.battle.mon.name === '담아');
-check('게이지 최대 120', g.battle.gaugeMax === 120);
+check('게이지 최대 110(난이도 곡선 1단계)', g.battle.gaugeMax === 110);
 check('조우 카드 미지급(보상으로만 획득)', (g.flags.evCards || []).length === 0);
 
 // ── unlockAt: 감정 주장은 게이지 70 이상에서만 순환 풀에 등장 ──
@@ -1479,11 +1496,11 @@ enterDoor(true);
 check('열림 정답 문 큰 폭 (+32)', g.battle.gauge === 87 && g.flags.pStats.gateRight === 1);
 
 // ── best='empathy'(감정 주장): 열림 정답 문 +32 ──
-g.battle.pState = 'open'; g.battle.gauge = 80; g.battle.claimIdx = 3;
+g.battle.pState = 'open'; g.battle.gauge = 70; g.battle.claimIdx = 3;
 check('현재 주장 = 감정 주장(best=empathy)', /돌려주면/.test(TH.persuadeAvail()[g.battle.claimIdx % TH.persuadeAvail().length]));
 forceGates();
 enterDoor(true);
-check('열림 감정 정답 문 (+32)', g.battle.gauge === 112 && g.flags.pStats.gateRight === 2);
+check('열림 감정 정답 문 (+32)', g.battle.gauge === 102 && g.flags.pStats.gateRight === 2);
 
 // ── 미소지 카드 문은 자물쇠 (claim0 = ev_minimal 카드, 보스는 미소지) ──
 g.battle.pState = 'open'; g.battle.gauge = 60; g.battle.claimIdx = 0;
@@ -1503,7 +1520,7 @@ arena.bullets.length = 0; arena.inv = 0;
 arena.soul.x = pc.obj.x; arena.soul.y = pc.obj.y; step(1); // 집기
 check('정보 꾸러미 집기 → 하트가 운반 중', arena.carrying === true);
 arena.soul.x = pc.hole.x; arena.soul.y = pc.hole.y; step(1); // 돌려주기 구멍에 배달
-check('배달 3회 → 게이지 +10 및 만충 직전(≥118)', pc.deliveries === 3 && g.battle.gauge >= 118);
+check('배달 3회 → 게이지 +10 및 만충 직전(≥108, gaugeMax 110-2)', pc.deliveries === 3 && g.battle.gauge >= 108);
 
 // ── 승리 → chapter1Clear + 마을 복귀 ──
 g.battle.gauge = g.battle.gaugeMax; step(1); // 게이지 만충 → 마음의 선택
@@ -1531,6 +1548,14 @@ check('확인 단계', g.classmode.confirm === true);
 tap('z'); // 적용 → 1장 시작 + 거리 입구
 check('1장 수업: 전부 공짜 거리 입구에서 시작', g.map === 'freestreet' && g.player.x === 14 && g.player.y === 17);
 check('1장 수업: 1장 시작 상태', TJ.getStage(g.flags) === 1);
+check('1장 수업: 프롤로그(따라) 클리어 상태로 맞춰짐', g.flags.defeated.bekkyeomon === true);
+{
+  // 점프 직후 목표 나침반이 실제로 서 있는 챕터(1장 허브 안 → 금고문)를 가리키는지 검증
+  // (defeated.bekkyeomon이 빠지면 나침반이 엉뚱하게 숲의 따라를 계속 가리키는 회귀가 있었다)
+  const { getObjectiveTarget } = vm.runInContext('({ getObjectiveTarget })', sandbox);
+  const t = getObjectiveTarget(g.flags, g.map);
+  check('1장 수업 점프 후 나침반 — 금고문(1장 허브)', !!t && t.map === 'freestreet' && t.label === '금고문');
+}
 
 console.log('[71] 2장 「기울어진 거리」 — 진입 게이트 + 구역① 메아리 골목');
 g.flags = TJ.setupStageFlags(1);
@@ -1648,12 +1673,14 @@ check('기울 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPe
 check('스프라이트/도감 id는 pyeonhyangmon', g.battle.monId === 'pyeonhyangmon');
 check('설득 프로필 id는 pyeonhyang_boss', g.battle.persuadeId === 'pyeonhyang_boss');
 check('표시 이름은 기울(persuadeId 계층)', g.battle.mon.name === '기울');
-check('게이지 최대 120', g.battle.gaugeMax === 120);
+check('게이지 최대 115(난이도 곡선 2단계)', g.battle.gaugeMax === 115);
 // 정답 문 1회 (claim0 = ev_othervoice 소지 → 열림 정답 +32)
-g.battle.pState = 'open'; g.battle.gauge = 55; g.battle.claimIdx = 0;
+// 시작 게이지를 40으로 낮춰 둔다 — gaugeMax가 115로 줄어, 옛 55 기준(+32+10×3=117)이면
+// 3회째 배달 전에 이미 만충(≥gaugeMax)에 닿아 조기 승리(persuadeTriumph)가 터진다.
+g.battle.pState = 'open'; g.battle.gauge = 40; g.battle.claimIdx = 0;
 forceGates();
 enterDoor(true);
-check('열림 정답 문 통과 (+32)', g.battle.gauge === 87 && g.flags.pStats.gateRight >= 1);
+check('열림 정답 문 통과 (+32)', g.battle.gauge === 72 && g.flags.pStats.gateRight >= 1);
 
 // ── open 고유 기믹: 기울 「기울어지는 상자」 — 기울기 드리프트 + 반례 구슬 운반 ──
 check('open 진입 시 드리프트 초기값 0.9', g.battle.wave.tilt.drift === 0.9);
@@ -1687,13 +1714,13 @@ arenaT.soul.x = tl.orb.x; arenaT.soul.y = tl.orb.y; step(1); // 집기
 arenaT.bullets.length = 0; arenaT.inv = 0;
 arenaT.soul.x = tl.plate.x; arenaT.soul.y = tl.plate.y; step(1); // 배달
 check('배달 2회 → drift 0.6→0.3', tl.deliveries === 2 && Math.abs(tl.drift - 0.3) < 1e-9);
-// 3회차 배달 → drift 0 + 게이지 만충 직전(≥118)
+// 3회차 배달 → drift 0 + 게이지 만충 직전(≥113)
 tl.orb = { x: arenaT.box.x + 60, y: arenaT.box.y + 60 };
 arenaT.bullets.length = 0; arenaT.inv = 0;
 arenaT.soul.x = tl.orb.x; arenaT.soul.y = tl.orb.y; step(1); // 집기
 arenaT.bullets.length = 0; arenaT.inv = 0;
 arenaT.soul.x = tl.plate.x; arenaT.soul.y = tl.plate.y; step(1); // 배달
-check('배달 3회 → drift 0 및 게이지 만충 직전(≥118)', tl.deliveries === 3 && tl.drift === 0 && g.battle.gauge >= 118);
+check('배달 3회 → drift 0 및 게이지 만충 직전(≥113, gaugeMax 115-2)', tl.deliveries === 3 && tl.drift === 0 && g.battle.gauge >= 113);
 
 // 게이지 만충 → 자비 → 승리
 g.battle.gauge = g.battle.gaugeMax; step(1);
@@ -1719,6 +1746,12 @@ tap('z'); check('확인 단계', g.classmode.confirm === true);
 tap('z'); // 적용 → 2장 시작 + 기울어진 거리 입구
 check('2장 수업: 기울어진 거리 입구에서 시작', g.map === 'tiltstreet' && g.player.x === 14 && g.player.y === 17);
 check('2장 수업: chapter1Clear=true 세팅', g.flags.chapter1Clear === true);
+check('2장 수업: 프롤로그(따라) 클리어 상태로 맞춰짐', g.flags.defeated.bekkyeomon === true);
+{
+  const { getObjectiveTarget } = vm.runInContext('({ getObjectiveTarget })', sandbox);
+  const t = getObjectiveTarget(g.flags, g.map);
+  check('2장 수업 점프 후 나침반 — 문지기의 방(2장 허브)', !!t && t.map === 'tiltstreet' && t.label === '문지기의 방');
+}
 
 // ==================== S3 「대문짝 신문사」 ====================
 g.flags.visited.rumorstreet = true;
@@ -1969,6 +2002,12 @@ tap('z'); // 적용 → 3장 시작 + 대문짝 신문사 입구
 check('3장 수업: 대문짝 신문사 입구에서 시작', g.map === 'rumorstreet' && g.player.x === 14 && g.player.y === 17);
 check('3장 수업: chapter1Clear/chapter2Clear=true 세팅',
   g.flags.chapter1Clear === true && g.flags.chapter2Clear === true);
+check('3장 수업: 프롤로그(따라) 클리어 상태로 맞춰짐', g.flags.defeated.bekkyeomon === true);
+{
+  const { getObjectiveTarget } = vm.runInContext('({ getObjectiveTarget })', sandbox);
+  const t = getObjectiveTarget(g.flags, g.map);
+  check('3장 수업 점프 후 나침반 — 신문사(3장 허브)', !!t && t.map === 'rumorstreet' && t.label === '신문사');
+}
 
 // ==================== S4 「반짝 아케이드」 ====================
 const { EVIDENCE_CARDS } = vm.runInContext('({ EVIDENCE_CARDS })', sandbox);
@@ -2113,7 +2152,7 @@ check('반짝 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPe
 check('스프라이트/도감 id는 yuhokmon', g.battle.monId === 'yuhokmon');
 check('설득 프로필 id는 yuhok_boss', g.battle.persuadeId === 'yuhok_boss');
 check('표시 이름은 반짝(persuadeId 계층)', g.battle.mon.name === '반짝');
-check('게이지 최대 120', g.battle.gaugeMax === 120);
+check('게이지 최대 125(난이도 곡선 4단계)', g.battle.gaugeMax === 125);
 check('닫힘·게이지0·파도에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'wave');
 // 반짝 주장 4종 — 텍스트/패턴/카드/best 확인
 check('주장① 텍스트/카드(ev_free)', g.battle.p.claims[0].text.includes('공짜가 세상에서 제일 좋은 거야') &&
@@ -2188,6 +2227,12 @@ tap('z'); // 적용 → 4장 시작 + 반짝 아케이드 입구
 check('4장 수업: 반짝 아케이드 입구에서 시작', g.map === 'arcade' && g.player.x === 11 && g.player.y === 14);
 check('4장 수업: chapter1~3Clear=true 세팅',
   g.flags.chapter1Clear === true && g.flags.chapter2Clear === true && g.flags.chapter3Clear === true);
+check('4장 수업: 프롤로그(따라) 클리어 상태로 맞춰짐', g.flags.defeated.bekkyeomon === true);
+{
+  const { getObjectiveTarget } = vm.runInContext('({ getObjectiveTarget })', sandbox);
+  const t = getObjectiveTarget(g.flags, g.map);
+  check('4장 수업 점프 후 나침반 — 정문(4장 허브)', !!t && t.map === 'arcade' && t.label === '정문');
+}
 
 // ==================== S5 「포근한 집」 ====================
 g.flags.visited.arcade = true;
@@ -2284,7 +2329,7 @@ check('루미 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPe
 check('스프라이트/도감 id는 hollimmon', g.battle.monId === 'hollimmon');
 check('설득 프로필 id는 hollim_boss', g.battle.persuadeId === 'hollim_boss');
 check('표시 이름은 루미(persuadeId 계층)', g.battle.mon.name === '루미');
-check('게이지 최대 120', g.battle.gaugeMax === 120);
+check('게이지 최대 130(난이도 곡선 5단계)', g.battle.gaugeMax === 130);
 check('닫힘·게이지0·파도에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'wave');
 // 루미 주장 4종 — 텍스트/패턴/카드/best 확인
 check('주장① 텍스트/카드(ev_answer)', g.battle.p.claims[0].text.includes('내가 다 해 줄게') &&
@@ -2389,6 +2434,12 @@ check('5장 수업: 포근한 집 입구에서 시작', g.map === 'cozyhome' && 
 check('5장 수업: chapter1~4Clear=true 세팅',
   g.flags.chapter1Clear === true && g.flags.chapter2Clear === true &&
   g.flags.chapter3Clear === true && g.flags.chapter4Clear === true);
+check('5장 수업: 프롤로그(따라) 클리어 상태로 맞춰짐', g.flags.defeated.bekkyeomon === true);
+{
+  const { getObjectiveTarget } = vm.runInContext('({ getObjectiveTarget })', sandbox);
+  const t = getObjectiveTarget(g.flags, g.map);
+  check('5장 수업 점프 후 나침반 — 현관(5장 허브)', !!t && t.map === 'cozyhome' && t.label === '현관');
+}
 
 // ==================== 파이널 「고요의 뜰 → 코어」 ====================
 const { SONGS } = vm.runInContext('({ SONGS })', sandbox);
@@ -2438,10 +2489,10 @@ check('고요 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPe
 check('스프라이트/도감 id는 finalboss(어둠대왕몬 재사용)', g.battle.monId === 'finalboss');
 check('설득 프로필 id는 goyo_boss', g.battle.persuadeId === 'goyo_boss');
 check('표시 이름은 고요(persuadeId 계층)', g.battle.mon.name === '고요');
-check('침묵 루트 강화 — 자비 0(≤6)이라 gaugeMax 140', g.battle.gaugeMax === 140);
-check('침묵 루트 함수 직접 확인 — gaugeMax/waveBulletMul', PERSUADE.goyo_boss.gaugeMax({ mercy: 6 }) === 140 &&
-  PERSUADE.goyo_boss.gaugeMax({ mercy: 7 }) === 100 &&
-  PERSUADE.goyo_boss.waveBulletMul({ mercy: 6 }) === 1.15 && PERSUADE.goyo_boss.waveBulletMul({ mercy: 7 }) === 1.0);
+check('침묵 루트 강화 — 자비 0(≤2, v2 침묵 엔딩 임계값과 동일)이라 gaugeMax 140', g.battle.gaugeMax === 140);
+check('침묵 루트 함수 직접 확인 — gaugeMax/waveBulletMul', PERSUADE.goyo_boss.gaugeMax({ mercy: 2 }) === 140 &&
+  PERSUADE.goyo_boss.gaugeMax({ mercy: 3 }) === 100 &&
+  PERSUADE.goyo_boss.waveBulletMul({ mercy: 2 }) === 1.15 && PERSUADE.goyo_boss.waveBulletMul({ mercy: 3 }) === 1.0);
 check('주장① "…아무도, 대답하지 않았어" / 카드(ev_answer)', g.battle.p.claims[0].text.includes('아무도') &&
   g.battle.p.claims[0].text.includes('대답하지 않았어') && g.battle.p.claims[0].counters.includes('ev_answer'));
 check('주장② "…너도, 갈 거잖아" / 카드(ev_offstage)', g.battle.p.claims[1].text.includes('너도') &&
@@ -2559,6 +2610,12 @@ check('파이널 수업: 포근한 집 안쪽 문 앞에서 시작', g.map === '
 check('파이널 수업: chapter1~5Clear=true 세팅',
   g.flags.chapter1Clear === true && g.flags.chapter2Clear === true && g.flags.chapter3Clear === true &&
   g.flags.chapter4Clear === true && g.flags.chapter5Clear === true);
+check('파이널 수업: 프롤로그(따라) 클리어 상태로 맞춰짐', g.flags.defeated.bekkyeomon === true);
+{
+  const { getObjectiveTarget } = vm.runInContext('({ getObjectiveTarget })', sandbox);
+  const t = getObjectiveTarget(g.flags, g.map);
+  check('파이널 수업 점프 후 나침반 — 고요의 뜰(파이널 문)', !!t && t.map === 'cozyhome' && t.label === '고요의 뜰');
+}
 
 console.log('[106] 스테이지 HUD — 챕터 플래그 기반 표기');
 {
@@ -2683,10 +2740,25 @@ console.log('[109] 목표 나침반(getObjectiveTarget) — v2 사다리 — v1 
   check('나침반 — 이미 1장 허브 안 → 금고문(14,4)', !!t2b && t2b.map === 'freestreet' && t2b.x === 14 && t2b.y === 4);
   const t2c = getObjectiveTarget(s2, 'ownerroom');
   check('나침반 — 이미 1장 보스방 안 → 담아(5,2)', !!t2c && t2c.map === 'ownerroom' && t2c.x === 5 && t2c.y === 2);
-  // v1 레거시 사다리(배지 진행 있음)는 그대로 보존된다 — v1 콘텐츠 무손상 원칙
+  // v1 레거시 사다리(뱃지 진행만 있고 v2 신호는 없음)는 그대로 보존된다 — v1 콘텐츠 무손상 원칙.
+  // setupStageFlags(3)은 부수 효과로 defeated.bekkyeomon도 true로 만들어 버리므로(베껴몬이
+  // MONSTER_DEX상 stage:1이라 "스테이지 3 이전 몬스터 전부 처치"에 걸려든다), 순수 v1 신호만
+  // 남긴 상태를 따로 만들어 검증한다(실제 v1 세이브가 베껴몬을 못 만났을 수도 있는 경우).
   const v1 = TJ.setupStageFlags(3); // 배지 3개 + hondonmon 등 v1 진행 상태
+  v1.defeated.bekkyeomon = false;
   const t5 = getObjectiveTarget(v1);
-  check('나침반 — v1 진행(배지) 있으면 v1 사다리 유지', !!t5 && t5.map !== 'forest' && t5.map !== 'village');
+  check('나침반 — v1 진행(배지)만 있고 v2 신호 없으면 v1 사다리 유지', !!t5 && t5.map !== 'forest' && t5.map !== 'village');
+
+  // C3 「뱃지 오염 차단」 — v2 신호(베껴몬 격파 또는 chapterNClear)가 하나라도 있으면 뱃지·
+  // 혼돈몬이 남아 있어도 반드시 v2 사다리로 전환되어야 한다. setupStageFlags(3)이 그대로
+  // 만들어 내는 "배지 3개 + 베껴몬도 처치됨"(오염된 상태)이 정확히 이 시나리오다.
+  const contaminated = TJ.setupStageFlags(3);
+  check('오염 상태 전제 확인 — 뱃지 3개 + 베껴몬도 처치됨',
+    contaminated.badges.forest && contaminated.badges.lake && contaminated.badges.cave &&
+    contaminated.defeated.bekkyeomon === true);
+  const t6 = getObjectiveTarget(contaminated);
+  check('나침반 — 뱃지 오염 차단: 베껴몬(v2 신호) 있으면 뱃지와 무관하게 v2 사다리로 전환',
+    !!t6 && t6.map === 'village' && t6.label === '전부 공짜 거리');
 }
 
 console.log('[110] 박사 첫 대화 — v2 흐름(숲의 따라 → 마을 오른쪽 반짝이는 문)으로 교체');
@@ -2696,6 +2768,25 @@ console.log('[110] 박사 첫 대화 — v2 흐름(숲의 따라 → 마을 오�
   check('첫 대화 — 숲의 따라 언급', /따라/.test(joined) && /정적의 숲/.test(joined));
   check('첫 대화 — 마을 오른쪽 반짝이는 문(전부 공짜 거리) 안내', /전부 공짜 거리/.test(joined));
   check('첫 대화 — v1 증표 안내 문구는 제거됨', !/증표 셋이 모이면/.test(joined));
+}
+
+console.log('[110b] 박사 재대화(talkedProf 후 기본 분기) — v2는 챕터 안내, v1은 기존 증표 문구 유지(C2/C3)');
+{
+  // v2 플로우 — 프롤로그(따라)까지 클리어하고 1장(전부 공짜 거리) 진행 중인 재대화
+  const v2Flags = { talkedProf: true, badges: { forest: false, lake: false, cave: false }, defeated: { bekkyeomon: true } };
+  const v2Lines = getNpcDialogT('prof', v2Flags).join(' ');
+  check('박사 재대화(v2, 담아 챕터 진행 중) — 증표 문구 없음', !/증표/.test(v2Lines));
+  check('박사 재대화(v2) — 현재 챕터(전부 공짜 거리) 안내 포함', /전부 공짜 거리/.test(v2Lines));
+
+  // v2 플로우 — 프롤로그(따라)도 아직 못 만난 상태의 재대화
+  const v2Pre = { talkedProf: true, badges: { forest: false, lake: false, cave: false }, defeated: { bekkyeomon: false } };
+  const v2PreLines = getNpcDialogT('prof', v2Pre).join(' ');
+  check('박사 재대화(v2, 따라 전) — 증표 문구 없음 + 따라 언급', !/증표/.test(v2PreLines) && /따라/.test(v2PreLines));
+
+  // v1 세이브(뱃지 진행만 있고 v2 신호 없음) — 기존 증표 문구가 그대로 유지된다
+  const v1Flags = { talkedProf: true, badges: { forest: true, lake: false, cave: false }, defeated: {} };
+  const v1Lines = getNpcDialogT('prof', v1Flags).join(' ');
+  check('박사 재대화(v1) — 기존 증표 문구 유지', /증표/.test(v1Lines));
 }
 
 console.log('[111] 수업 모드 선택기 — v1 숫자 스테이지 제거, v2 6개 항목만 순환');
