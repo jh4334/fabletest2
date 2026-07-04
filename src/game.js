@@ -3297,8 +3297,13 @@
       t: 0, dur: b.p.waveDur || 300, spawnTimer: 30,
       fragments: frags, fragTotal: n, collected: 0, hits: 0,
       // 담아(보스) open 페이즈 고유 기믹 — 「정보 꾸러미」 운반
-      parcel: { obj: null, deliveries: 0, spawnTimer: 90,
+      // 배달 진행은 파도가 바뀌어도 이어진다 (한 파도 안에 3배달은 사실상 불가능하므로)
+      parcel: { obj: null, deliveries: b.parcelDeliveries || 0, spawnTimer: 90,
         hole: { x: box.x + box.w - 18, y: box.y + box.h / 2 } },
+      // 기울(보스) open 페이즈 고유 기믹 — 기울어지는 상자: 「반례 구슬」을 저울 접시로 운반
+      tilt: { orb: null, deliveries: b.tiltDeliveries || 0, spawnTimer: 90,
+        drift: [0.9, 0.6, 0.3, 0][Math.min(b.tiltDeliveries || 0, 3)],
+        plate: { x: box.x + box.w - 18, y: box.y + box.h / 2 } },
     };
     if (game.tts) Speech.speak(claim.text);
   }
@@ -3349,6 +3354,13 @@
 
     moveSoul(arena, box, arena.carrying ? 0.6 : 1);
 
+    // 기울(보스) open 페이즈 — 기울기 드리프트: 하트가 낮은 쪽(왼쪽)으로 조금씩 미끄러진다
+    const tiltActive = b.p.openMechanic === 'tilt' && b.pState === 'open';
+    if (tiltActive) {
+      arena.soul.x -= w.tilt.drift;
+      arena.soul.x = clamp(arena.soul.x, box.x + SOUL_R, box.x + box.w - SOUL_R);
+    }
+
     // 탄막 생성 (끝나기 직전엔 멈춤)
     w.spawnTimer -= 1;
     if (w.spawnTimer <= 0 && w.t < w.dur - 40) {
@@ -3358,10 +3370,11 @@
         : pat === 'wall' ? 42 : pat === 'zigzag' ? 18 : pat === 'aimed' ? 16 : 15;
       w.spawnTimer = Math.max(4, Math.round(baseRate * (arena.rateMul || 1)));
     }
-    // 탄막 이동 + 화면 밖 제거
+    // 탄막 이동 + 화면 밖 제거 (기울기 드리프트의 절반이 탄막에도 실린다)
+    const tiltBulletDrift = tiltActive ? w.tilt.drift * 0.5 : 0;
     for (const bu of arena.bullets) {
       if (bu.zig) { bu.zigT = (bu.zigT || 0) + 1; bu.vy = Math.sin(bu.zigT / 7) * bu.zig; }
-      bu.x += bu.vx; bu.y += bu.vy;
+      bu.x += bu.vx - tiltBulletDrift; bu.y += bu.vy;
     }
     arena.bullets = arena.bullets.filter((bu) =>
       bu.x > box.x - 24 && bu.x < box.x + box.w + 24 && bu.y > box.y - 24 && bu.y < box.y + box.h + 24);
@@ -3379,6 +3392,8 @@
 
     // 담아(보스) open 페이즈 — 「정보 꾸러미」 운반 기믹
     if (b.p.openMechanic === 'parcel' && b.pState === 'open') updateParcel(b);
+    // 기울(보스) open 페이즈 — 기울어지는 상자: 「반례 구슬」 운반 기믹
+    if (tiltActive) updateTilt(b);
 
     if (b.gauge >= b.gaugeMax) { persuadeTriumph(); return; }
 
@@ -3407,11 +3422,42 @@
     if (arena.carrying) {
       const dx = pc.hole.x - arena.soul.x, dy = pc.hole.y - arena.soul.y;
       if (dx * dx + dy * dy < (SOUL_R + 12) * (SOUL_R + 12)) { // 배달
-        arena.carrying = false; pc.deliveries += 1;
+        arena.carrying = false; pc.deliveries += 1; b.parcelDeliveries = pc.deliveries;
         b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax);
         pushFloat(b.p.parcelReply || '…돌려줄게.');
         if (pc.deliveries >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3회 → 만충 직전
         pc.spawnTimer = 90;
+        Sound.correct();
+        persuadeGaugeSync(b);
+      }
+    }
+  }
+  // 기울(보스) open 페이즈 고유 기믹 — 기울어지는 상자: 「반례 구슬」을 저울 접시로 운반
+  const TILT_DRIFT_STEPS = [0.9, 0.6, 0.3, 0];
+  function updateTilt(b) {
+    const w = b.wave, tl = w.tilt, arena = b.arena, box = arena.box;
+    if (!tl.orb && !arena.carrying) {
+      tl.spawnTimer -= 1;
+      if (tl.spawnTimer <= 0) { // 낮은 쪽(왼쪽) 절반에만 스폰
+        tl.orb = { x: box.x + 20 + Math.random() * (box.w / 2 - 40), y: box.y + 40 + Math.random() * (box.h - 80) };
+      }
+    }
+    if (tl.orb) {
+      const dx = tl.orb.x - arena.soul.x, dy = tl.orb.y - arena.soul.y;
+      if (dx * dx + dy * dy < (SOUL_R + 10) * (SOUL_R + 10)) { // 집기 (1개만)
+        arena.carrying = true; tl.orb = null; Sound.blip();
+      }
+    }
+    if (arena.carrying) {
+      const dx = tl.plate.x - arena.soul.x, dy = tl.plate.y - arena.soul.y;
+      if (dx * dx + dy * dy < (SOUL_R + 12) * (SOUL_R + 12)) { // 높은 쪽(오른쪽) 저울 접시에 배달
+        arena.carrying = false; tl.deliveries += 1; b.tiltDeliveries = tl.deliveries;
+        b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax);
+        // 0.9 → 0.6 → 0.3 → 0 (표를 사용해 부동소수점 오차 없이 정확한 값으로)
+        tl.drift = TILT_DRIFT_STEPS[Math.min(tl.deliveries, TILT_DRIFT_STEPS.length - 1)];
+        pushFloat((b.p.tiltReply || '…어? 저울이… 움직였다?') + '\n(기울기가 줄었다!)');
+        if (tl.deliveries >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3회 → 만충 직전
+        tl.spawnTimer = 90;
         Sound.correct();
         persuadeGaugeSync(b);
       }
@@ -6536,11 +6582,32 @@
         if (pc.obj) { ctx.fillStyle = '#f0c060'; ctx.font = '16px monospace'; ctx.fillText('▣', pc.obj.x, pc.obj.y + 5); }
         if (arena.carrying) { ctx.fillStyle = '#f0c060'; ctx.font = '13px monospace'; ctx.fillText('▣', arena.soul.x + 10, arena.soul.y - 8); }
       }
+      // 기울(보스) 반례 구슬 + 저울 접시 (상자 오른쪽·높은 쪽 가장자리)
+      if (b.p.openMechanic === 'tilt' && b.pState === 'open') {
+        const tl = b.wave.tilt;
+        ctx.fillStyle = '#e0a53a';
+        ctx.fillRect(tl.plate.x - 9, tl.plate.y - 9, 18, 18);
+        ctx.fillStyle = '#000'; ctx.font = '11px monospace';
+        ctx.fillText('⚖', tl.plate.x, tl.plate.y + 4);
+        ctx.fillStyle = '#e0a53a'; ctx.font = '10px monospace';
+        ctx.fillText('저울 접시', tl.plate.x, tl.plate.y - 16);
+        if (tl.orb) {
+          ctx.fillStyle = '#8ecbff'; ctx.font = '16px monospace'; ctx.fillText('◍', tl.orb.x, tl.orb.y + 5);
+          ctx.font = '10px monospace'; ctx.fillText('반례', tl.orb.x, tl.orb.y - 12);
+        }
+        if (arena.carrying) { ctx.fillStyle = '#8ecbff'; ctx.font = '13px monospace'; ctx.fillText('◍', arena.soul.x + 10, arena.soul.y - 8); }
+      }
       ctx.textAlign = 'left';
       // 남은 파도 시간 바
       const frac = Math.max(0, 1 - b.wave.t / b.wave.dur);
       ctx.fillStyle = '#333'; ctx.fillRect(box.x, box.y + box.h + 12, box.w, 6);
       ctx.fillStyle = '#ffd644'; ctx.fillRect(box.x, box.y + box.h + 12, box.w * frac, 6);
+      // 기울기 바 — 상자가 왼쪽으로 얼마나 기울어 있는지(왼쪽부터 채워지는 게이지)
+      if (b.p.openMechanic === 'tilt' && b.pState === 'open') {
+        const tiltFrac = b.wave.tilt.drift / 0.9;
+        ctx.fillStyle = '#333'; ctx.fillRect(box.x, box.y + box.h + 22, box.w, 4);
+        ctx.fillStyle = '#e0a53a'; ctx.fillRect(box.x, box.y + box.h + 22, box.w * 0.5 * tiltFrac, 4);
+      }
     } else if (b.phase === 'gates') {
       // 문 3개
       for (const d of b.gates.doors) {

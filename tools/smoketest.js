@@ -1619,6 +1619,47 @@ g.battle.pState = 'open'; g.battle.gauge = 55; g.battle.claimIdx = 0;
 forceGates();
 enterDoor(true);
 check('열림 정답 문 통과 (+32)', g.battle.gauge === 87 && g.flags.pStats.gateRight >= 1);
+
+// ── open 고유 기믹: 기울 「기울어지는 상자」 — 기울기 드리프트 + 반례 구슬 운반 ──
+check('open 진입 시 드리프트 초기값 0.9', g.battle.wave.tilt.drift === 0.9);
+const arenaT = g.battle.arena, tl = g.battle.wave.tilt;
+g.battle.wave.fragments.length = 0; // 조각 오수집 방지
+arenaT.bullets.length = 0; arenaT.inv = 0;
+const midX = arenaT.box.x + arenaT.box.w / 2;
+arenaT.soul.x = midX; arenaT.soul.y = arenaT.box.y + arenaT.box.h / 2;
+step(1); // 입력 없이 한 프레임
+check('open 페이즈 드리프트 — 입력 없이 하트가 왼쪽(낮은 쪽)으로 미끄러짐',
+  arenaT.soul.x < midX && Math.abs((midX - arenaT.soul.x) - 0.9) < 1e-9);
+// 반례 구슬 스폰은 상자 왼쪽(낮은 쪽) 절반에만
+tl.orb = null; tl.spawnTimer = 0;
+arenaT.bullets.length = 0; arenaT.inv = 0;
+step(1);
+check('반례 구슬 스폰 위치 — 상자 왼쪽 절반', !!tl.orb && tl.orb.x < arenaT.box.x + arenaT.box.w / 2);
+// 집기 → 배달 1회: 게이지 +10, drift 0.9→0.6
+tl.orb = { x: arenaT.box.x + 60, y: arenaT.box.y + 60 };
+arenaT.bullets.length = 0; arenaT.inv = 0;
+arenaT.soul.x = tl.orb.x; arenaT.soul.y = tl.orb.y; step(1); // 집기
+check('반례 구슬 집기 → 하트가 운반 중', arenaT.carrying === true);
+const gaugeBeforeDeliver1 = g.battle.gauge;
+arenaT.bullets.length = 0; arenaT.inv = 0;
+arenaT.soul.x = tl.plate.x; arenaT.soul.y = tl.plate.y; step(1); // 저울 접시에 1회 배달
+check('배달 1회 → 게이지 +10, drift 0.9→0.6',
+  g.battle.gauge === gaugeBeforeDeliver1 + 10 && Math.abs(tl.drift - 0.6) < 1e-9 && tl.deliveries === 1);
+// 2회차 배달 → drift 0.6→0.3
+tl.orb = { x: arenaT.box.x + 60, y: arenaT.box.y + 60 };
+arenaT.bullets.length = 0; arenaT.inv = 0;
+arenaT.soul.x = tl.orb.x; arenaT.soul.y = tl.orb.y; step(1); // 집기
+arenaT.bullets.length = 0; arenaT.inv = 0;
+arenaT.soul.x = tl.plate.x; arenaT.soul.y = tl.plate.y; step(1); // 배달
+check('배달 2회 → drift 0.6→0.3', tl.deliveries === 2 && Math.abs(tl.drift - 0.3) < 1e-9);
+// 3회차 배달 → drift 0 + 게이지 만충 직전(≥118)
+tl.orb = { x: arenaT.box.x + 60, y: arenaT.box.y + 60 };
+arenaT.bullets.length = 0; arenaT.inv = 0;
+arenaT.soul.x = tl.orb.x; arenaT.soul.y = tl.orb.y; step(1); // 집기
+arenaT.bullets.length = 0; arenaT.inv = 0;
+arenaT.soul.x = tl.plate.x; arenaT.soul.y = tl.plate.y; step(1); // 배달
+check('배달 3회 → drift 0 및 게이지 만충 직전(≥118)', tl.deliveries === 3 && tl.drift === 0 && g.battle.gauge >= 118);
+
 // 게이지 만충 → 자비 → 승리
 g.battle.gauge = g.battle.gaugeMax; step(1);
 check('게이지 만충 → 마음의 선택', g.battle.phase === 'mercy');

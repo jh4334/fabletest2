@@ -3690,6 +3690,8 @@ const PERSUADE = {
     fragmentsPerWave: 3,
     waveBulletMul: 1.0,
     waveDur: 340,
+    openMechanic: 'tilt', // open 페이즈 고유 기믹: 기울어지는 상자 — 「반례 구슬」을 저울 접시로 운반
+    tiltReply: '…어? 저울이… 움직였다?',
     decoys: ['확률 87%', '영업 비밀', '많이 본 게 정답', '다들 그러던데', '아무튼 위험'],
     // 콜백 인트로: 1장에서 담아를 자비로 되돌렸으면(chapter1Mercy) 한 줄이 붙는다 (퍼센트 개그)
     intro(flags) {
