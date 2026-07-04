@@ -216,7 +216,7 @@
   const TEXT_SPEED_ORDER = ['normal', 'fast', 'slow'];
   const TEXT_SPEED_LABEL = { normal: '보통', fast: '빠름', slow: '느림' };
   const DIFF_ORDER = ['easy', 'normal', 'hard'];
-  const DIFF_LABEL = { easy: '저학년', normal: '기본', hard: '고학년' };
+  const DIFF_LABEL = { easy: '포근하게', normal: '보통', hard: '매콤하게' };
   // OS의 "동작 줄이기" 선호를 기본값으로 삼는다 (광과민성·모션 민감 배려)
   const prefersReduce = (() => {
     try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
@@ -633,7 +633,7 @@
     { id: 'scholar', name: '공부벌레', desc: '문제 50개 이상 풀기', check: (c) => c.attempted >= 50 },
     { id: 'collector', name: '도감 수집가', desc: '도감 절반 이상 모으기', check: (c) => c.dex > 0 && c.dex * 2 >= c.dexTotal },
     { id: 'champion', name: '챌린지 챔피언', desc: '퀴즈 챌린지 만점', check: (c) => c.challengeBest > 0 && c.challengeBest === c.challengeBestTotal },
-    { id: 'master', name: 'AI 윤리 마스터', desc: '엔딩 보고 도전과제 8개 달성', check: (c) => c.endings >= 1 && c.achieved >= 8 },
+    { id: 'master', name: '마음의 수호자', desc: '엔딩 보고 도전과제 8개 달성', check: (c) => c.endings >= 1 && c.achieved >= 8 },
   ];
   const THEMES = [
     { id: 'classic', name: '클래식', color: '#ffd644', desc: '기본 노란빛', check: () => true },
@@ -3378,10 +3378,10 @@
       ctx.textAlign = 'left';
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 22px monospace';
-      ctx.fillText('★ 오답 복습 노트', 24, 38);
+      ctx.fillText('★ 다시 만나기', 24, 38);
       ctx.fillStyle = '#888';
       ctx.font = '15px monospace';
-      ctx.fillText(`복습할 문제 ${ids.length}개`, 24, 62);
+      ctx.fillText(`다시 만날 이야기 ${ids.length}개`, 24, 62);
 
       if (ids.length === 0) {
         ctx.fillStyle = '#aaa';
@@ -3439,7 +3439,7 @@
 
     ctx.fillStyle = '#888';
     ctx.font = '14px monospace';
-    ctx.fillText('★ 오답 복습', 24, 32);
+    ctx.fillText('★ 다시 만나기', 24, 32);
 
     utBox(12, boxY, LW - 24, boxH, 8);
 
@@ -3479,8 +3479,8 @@
   }
   const PAUSE_LABELS = {
     hint: '💡 힌트',
-    journal: '◆ 수호자 일지',
-    cards: '📚 배움 카드',
+    journal: '◆ 모험 일지',
+    cards: '📚 기억 조각',
     halloffame: '🏆 명예의 전당',
     dashboard: '▤ 교사용 대시보드',
     report: '🩺 학생 진단 리포트',
@@ -3488,8 +3488,8 @@
     awards: '☆ 도전과제',
     cosmetics: '✿ 꾸미기 (칭호·테마)',
     cert: '🎓 수료증',
-    challenge: '▶ 퀴즈 챌린지',
-    review: '★ 오답 복습 노트',
+    challenge: '▶ 도전 극장',
+    review: '★ 다시 만나기',
     dex: '♥ 몬스터 도감',
     quizedit: '✎ 커스텀 퀴즈',
     backup: '⇄ 데이터 백업·복원',
@@ -3699,7 +3699,7 @@
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px monospace';
-    ctx.fillText(`◆ 수호자 일지 — ${slotLearnName(slot)}`, 24, 38);
+    ctx.fillText(`◆ 모험 일지 — ${slotLearnName(slot)}`, 24, 38);
     // 고른 칭호
     const title = selectedTitle(slot);
     if (title) {
@@ -3908,7 +3908,7 @@
       ctx.textAlign = 'left';
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 22px monospace';
-      ctx.fillText('▶ 자유 퀴즈 챌린지', 24, 40);
+      ctx.fillText('▶ 도전 극장', 24, 40);
       ctx.fillStyle = '#888';
       ctx.font = '14px monospace';
       ctx.fillText(`주제를 골라 ${CHALLENGE_LEN}문제에 도전! (모험과 별개로 즐겨요)`, 24, 64);
@@ -3956,7 +3956,7 @@
       ctx.font = 'bold 40px monospace';
       ctx.fillText(`${c.score} / ${total}`, LW / 2, 220);
       const rate = total ? c.score / total : 0;
-      const msg = rate >= 0.9 ? '대단해요! 진정한 AI 윤리 수호자!'
+      const msg = rate >= 0.9 ? '대단해요! 진정한 마음의 수호자!'
         : rate >= 0.7 ? '잘했어요! 조금만 더 하면 완벽!'
         : rate >= 0.5 ? '좋아요! 복습 노트로 다시 살펴봐요.'
         : '괜찮아요. 틀린 문제는 복습 노트에 모였어요!';
@@ -4342,7 +4342,7 @@
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px monospace';
-    ctx.fillText(`📚 배움 카드 — ${slotLearnName(slot)}`, 24, 36);
+    ctx.fillText(`📚 기억 조각 — ${slotLearnName(slot)}`, 24, 36);
     const got = collectedCards(slot);
     ctx.fillStyle = warnColor();
     ctx.font = 'bold 14px monospace';
@@ -6200,10 +6200,10 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 40px monospace';
-    ctx.fillText('AI 윤리 어드벤처', LW / 2, 86);
+    ctx.fillText('마음의 문', LW / 2, 86);
     ctx.fillStyle = '#888';
     ctx.font = '15px monospace';
-    ctx.fillText('5개의 스테이지 끝에서, 잊혀진 이야기와 만나라', LW / 2, 114);
+    ctx.fillText('화면 속에서, 누군가 기다리고 있다', LW / 2, 114);
 
     // 몬스터들 둥실둥실 (한 줄)
     const parade = ['mollaemon', 'geojitmon', 'pyeonhyangmon', 'hollimmon', 'mirrormon', 'soksagimon', 'yeongi'];
@@ -6259,7 +6259,7 @@
       ctx.fillText('도감·챌린지·대시보드·백업 등 모든 기능은 [메뉴] 버튼에', LW / 2, 484);
     } else {
       ctx.font = '12px monospace';
-      ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 도감 · Q 챌린지 · J 일지 · B 도전과제 · K 꾸미기 · L 배움카드`, LW / 2, 456);
+      ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 도감 · Q 도전극장 · J 일지 · B 도전과제 · K 꾸미기 · L 기억조각`, LW / 2, 456);
       ctx.fillText(`F 명예의전당 · N 수료증 · P 대시보드 · E 커스텀퀴즈 · U 백업 · I 도움말`, LW / 2, 472);
       ctx.fillText(`M 음악 · T 자막(${TEXT_SPEED_LABEL[game.textSpeed]}) · 난이도(${DIFF_LABEL[game.difficulty]})`, LW / 2, 488);
     }
@@ -6314,9 +6314,10 @@
     checkCosmeticUnlocks(slot);
     Sound.playSong(MAPS[game.map].song);
     startDialog([
-      `여기는 AI들과 사람들이 함께 사는\n평화로운 "경계마을".`,
-      `반가워, ${game.playerName}!\n그런데 요즘 이상한 몬스터들이\n나타나기 시작했는데…`,
-      '마을 왼쪽 아래에 계신 박사님을\n찾아가 보자! (목표는 왼쪽 위에 표시돼요)',
+      '방과 후, 텅 빈 컴퓨터실.\n낡은 태블릿 하나가\n혼자 켜져 있다.',
+      `${game.playerName}이(가) 화면에 손을 대는 순간—\n빛이 손끝을 붙잡고 끌어당긴다.\n…떨어진다.`,
+      '눈을 뜨니 낯선 마을.\n한 번도 와 본 적 없는데…\n어딘가, 낯이 익다.',
+      '저만치 누군가 서 있다.\n일단, 저 어른에게 물어보자.\n(목표는 왼쪽 위에 표시돼요)',
     ]);
   }
 
@@ -6549,7 +6550,7 @@
 
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px monospace';
-    ctx.fillText('🏆 AI 윤리 수호자 인증서 🏆', LW / 2, 155);
+    ctx.fillText('🏆 마음의 수호자 인증서 🏆', LW / 2, 155);
 
     ctx.font = '16px monospace';
     ctx.fillStyle = '#ccc';
@@ -6558,7 +6559,7 @@
       '개인정보 보호, 저작권, 진실 분별, 공정함, 절제,',
       '바른 말, 안전, 환경, 투명함, 책임, 창의성,',
       '협력, 그리고 사람을 아끼는 마음을 보여준',
-      '훌륭한 AI 윤리 수호자임을 인증합니다.',
+      '훌륭한 마음의 수호자임을 인증합니다.',
       '',
       `맞힌 문제: ${game.flags.correctCount}개`,
     ];
