@@ -135,8 +135,9 @@
       correctCount: 0,
       battleCount: 0,
       sawBattleTip: false, // 첫 전투 1회 안내 표시 여부
-      traceGiven: 0,       // 흔적의 방에서 내보낸 정보 최대 개수(닉네임 제외) — 보스 콜백 인트로용
-      chapter1Clear: false, // 1장 보스(수집몬) 설득 완료
+      traceGiven: 0,       // 접수처에서 내보낸 정보 최대 개수(닉네임 제외) — 보스 콜백 인트로용
+      chapter1Clear: false, // 1장 보스(담아) 설득 완료
+      seenPhoto1: false,   // 스토리 복선 — 주인의 방 서랍의 낡은 사진을 봤다
     };
   }
 
@@ -1394,7 +1395,7 @@
         px(12, 1, 1, 14, '#56b6e0');
         break;
       }
-      case '6': { // 게임 카페 입구 (네온 아치 문 — 흔적의 방)
+      case '6': { // 네온 아치 문 (전부 공짜 거리 — 구역 입구들)
         px(0, 0, 16, 16, '#3a2340');
         px(2, 1, 12, 14, '#5a2a6a');
         px(3, 2, 10, 13, '#1a1020');
@@ -1406,7 +1407,7 @@
         px(6, 5, 4, 6, frame ? '#ffd644' : '#fff2a8'); // 반짝이는 "무료"
         break;
       }
-      case '7': { // 주인의 방 문 (낡은 나무문 — 흔적의 방 위쪽)
+      case '7': { // 금고문/주인의 방 문 (낡은 나무문 — 거리·주인의 방)
         px(0, 0, 16, 16, '#2a2018');
         px(3, 1, 10, 14, '#5a3d24');
         px(4, 2, 8, 13, '#7c5830');
@@ -1489,10 +1490,14 @@
     e.done = true; e.clears += 1; e.timeFrames += frames;
     writePuzzleLog(slot, log);
   }
-  // 방을 클리어한 적이 있는지 (보스방 문 개방 판정 등)
+  // 방을 클리어한 적이 있는지 (금고문 개방 판정 등)
   function isPuzzleCleared(id) {
     const e = getPuzzleLog(game.currentSlot)[id];
     return !!(e && e.done);
+  }
+  // 1장 금고 잠금 — 구역(접수처·게시판 광장·배달 창고)을 클리어할 때마다 하나씩 풀린다
+  function s1LockCount() {
+    return S1_ZONE_PUZZLES.filter((id) => isPuzzleCleared(id)).length;
   }
 
   // 방 입장/퇴장에 맞춰 런타임 상태를 맞춘다 (checkWarp에서 호출)
@@ -1505,19 +1510,31 @@
     }
   }
   function startPuzzleRun(puzzle) {
-    game.puzzleRun = {
+    const run = {
       id: puzzle.id,
       map: puzzle.map,
       puzzle,
-      held: { nickname: true, school: true, address: true, phone: true, face: true },
-      given: [],        // 되돌릴 수 있게 내준 토큰 키들
-      boardFace: false, // 게시판에 공유한 얼굴사진(영구 — 지울 수 없음)
-      stalkers: [],     // { px, py }
+      stalkers: [],     // { px, py } (traces 전용이지만 그리기 루프 공용이라 항상 배열)
       timeFrames: 0,    // 입장~클리어 프레임 누적 (자체 카운터)
-      flashT: 0,        // 접촉 화면 플래시
+      flashT: 0,        // 접촉/오답 화면 플래시
       warnCool: 0,      // 경고 대사 스로틀
-      maxBoard: 0,      // 방 플레이 중 내보낸 정보 최고치(닉네임 제외) — 보스 콜백 인트로용
     };
+    if (puzzle.type === 'copies') {
+      // 구역②: 떠도는 내 정보 사본 — 플레이어를 피해 도망친다 (0.7배속)
+      run.copies = puzzle.copies.map((c, i) => ({ px: c.x * TS, py: c.y * TS, seed: i * 47, got: false }));
+      run.collected = 0;
+    } else if (puzzle.type === 'levers') {
+      // 구역③: 컨베이어 상자 + 차단 레버
+      run.boxIdx = 0;   // 지금 벨트를 흐르는 상자 (puzzle.boxes 인덱스)
+      run.diverted = 0; // 반송함으로 돌린 상자 수 (3이면 클리어)
+    } else {
+      // 구역①(traces): 정보 토큰 방
+      run.held = { nickname: true, school: true, address: true, phone: true, face: true };
+      run.given = [];        // 되돌릴 수 있게 내준 토큰 키들
+      run.boardFace = false; // 게시판에 공유한 얼굴사진(영구 — 지울 수 없음)
+      run.maxBoard = 0;      // 방 플레이 중 내보낸 정보 최고치(닉네임 제외) — 보스 콜백 인트로용
+    }
+    game.puzzleRun = run;
   }
   // 지금 밖에 내보낸 토큰 (되돌릴 수 있는 것 + 게시판 공유 얼굴사진)
   function givenTokens(run) {
@@ -1529,6 +1546,8 @@
   }
   // 상태에서 현재 단계 유도 — 힌트가 이 단계를 따라간다
   function puzzleStep(run) {
+    if (run.puzzle.type === 'copies') return 'copies';
+    if (run.puzzle.type === 'levers') return 'levers';
     const spent = givenTokens(run);
     if (spent.length === 0) return 'tokens';
     if (spent.filter((k) => k !== 'nickname').length >= 3) return 'eraser';
@@ -1550,13 +1569,16 @@
       run.flashT = 0;
     }
   }
-  // 매 프레임: 시간 누적 + 스토커 추격(반 속도, walkable 체크) + 접촉 처리
+  // 매 프레임: 시간 누적 + 구역별 움직이는 물체 갱신
   function updatePuzzleWorld() {
     const run = game.puzzleRun;
     run.timeFrames += 1;
-    if (boardCount(run) > run.maxBoard) run.maxBoard = boardCount(run); // 최고치 추적
     if (run.flashT > 0) run.flashT -= 1;
     if (run.warnCool > 0) run.warnCool -= 1;
+    if (run.puzzle.type === 'copies') { updateCopies(run); return; }
+    if (run.puzzle.type === 'levers') return; // 컨베이어 상자는 timeFrames로 그리기에서 움직인다
+    // ── traces: 스토커 추격(반 속도, walkable 체크) + 접촉 처리 ──
+    if (boardCount(run) > run.maxBoard) run.maxBoard = boardCount(run); // 최고치 추적
     const p = game.player;
     const spd = MOVE_SPEED * 0.5;
     for (const s of run.stalkers) {
@@ -1576,11 +1598,47 @@
       }
     }
   }
-  // 퍼즐 물체(단말·게시판·지우개·출구) — 좌표로 판정 (이동 차단 + 상호작용)
+  // 구역②: 떠도는 사본 — 플레이어를 피해 도망(0.7배속, 스토커 이동 로직 재활용).
+  // 붙잡으면(접촉) 회수. 3개를 모두 회수하면 클리어.
+  function updateCopies(run) {
+    const p = game.player;
+    for (const c of run.copies) {
+      if (c.got) continue;
+      const dx = c.px - p.px, dy = c.py - p.py;
+      const dist = Math.hypot(dx, dy) || 1;
+      if (dist < TS * 7) {
+        // 가까우면 도망 (플레이어 이동의 0.7배속 — 결국 따라잡힌다)
+        const spd = MOVE_SPEED * 0.7;
+        const sx = dx / dist * spd, sy = dy / dist * spd;
+        if (!SOLID(tileAt(game.map, Math.round((c.px + sx) / TS), Math.round(c.py / TS)))) c.px += sx;
+        if (!SOLID(tileAt(game.map, Math.round(c.px / TS), Math.round((c.py + sy) / TS)))) c.py += sy;
+      } else {
+        // 멀면 종이처럼 하늘하늘 떠다닌다
+        const sx = Math.sin((game.time + c.seed) / 40) * 0.6;
+        const sy = Math.cos((game.time + c.seed) / 52) * 0.6;
+        if (!SOLID(tileAt(game.map, Math.round((c.px + sx) / TS), Math.round(c.py / TS)))) c.px += sx;
+        if (!SOLID(tileAt(game.map, Math.round(c.px / TS), Math.round((c.py + sy) / TS)))) c.py += sy;
+      }
+      if (Math.hypot(p.px - c.px, p.py - c.py) < TS * 0.7) {
+        c.got = true;
+        run.collected += 1;
+        Sound.correct();
+        game.notice = { text: `내 조각을 되찾았다! (${run.collected}/3)`, t: 120 };
+        if (run.collected >= 3) { clearPuzzle(run); return; }
+      }
+    }
+  }
+  // 퍼즐 물체(단말·게시판·지우개·출구·레버·반송함) — 좌표로 판정 (이동 차단 + 상호작용)
   function puzzleObjAt(mapId, x, y) {
     const run = game.puzzleRun;
     if (!run || run.map !== mapId) return null;
     const puz = run.puzzle;
+    if (puz.type === 'copies') return null; // 광장의 사본은 접촉(추격)으로만 회수
+    if (puz.type === 'levers') {
+      for (const lv of puz.levers) if (lv.x === x && lv.y === y) return { kind: 'lever', ref: lv };
+      if (puz.returnBin.x === x && puz.returnBin.y === y) return { kind: 'bin' };
+      return null;
+    }
     for (const t of puz.terminals) if (t.x === x && t.y === y) return { kind: 'terminal', ref: t };
     if (puz.eraser.x === x && puz.eraser.y === y) return { kind: 'eraser' };
     if (puz.exits.vip.x === x && puz.exits.vip.y === y) return { kind: 'vip' };
@@ -1598,7 +1656,44 @@
     else if (obj.kind === 'eraser') openEraser();
     else if (obj.kind === 'vip') openVipExit();
     else if (obj.kind === 'normal') openNormalExit();
+    else if (obj.kind === 'lever') openLever(obj.ref);
+    else if (obj.kind === 'bin') openReturnBin();
     return true;
+  }
+  // 구역③: 차단 레버 — 지금 흐르는 상자의 레인과 맞으면 반송, 틀리면 출하(오답 기록)
+  function openLever(lv) {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    const box = puz.boxes[run.boxIdx];
+    startChoice(`${lv.name}.\n벨트 위 상자: 「${box.label}」 — ${box.lane} 레인\n\n레버를 당길까요?`, ['당긴다', '그만둔다'], (i) => {
+      if (i === 0) {
+        if (lv.lane === box.lane) {
+          run.diverted += 1;
+          Sound.correct();
+          if (run.diverted >= puz.boxes.length) { clearPuzzle(run); return; }
+          run.boxIdx = Math.min(run.boxIdx + 1, puz.boxes.length - 1);
+          startDialog([`덜컹! 「${box.label}」 상자가\n반송함으로 미끄러져 들어갔다.\n(반송 ${run.diverted}/${puz.boxes.length})`], puz.title);
+        } else {
+          recordPuzzleWrong(run.id);
+          run.flashT = 10;
+          Sound.wrong();
+          startDialog([
+            `…앗. 「${box.label}」 상자가\n그대로 출하구로 빠져나갔다.`,
+            '덜컹. 같은 라벨의 새 상자가\n벨트 위로 올라온다.',
+          ], puz.title);
+        }
+      } else if (i > 0) {
+        startDialog(['(레버에서 손을 뗐다)'], lv.name);
+      }
+    });
+  }
+  function openReturnBin() {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    const n = run.diverted;
+    startDialog([n > 0
+      ? `반송함이다.\n되돌아온 상자 ${n}개가 얌전히 쌓여 있다.`
+      : '반송함이다. …아직 비어 있다.'], puz.returnBin.name);
   }
   function openTerminal(t) {
     const run = game.puzzleRun;
@@ -1668,18 +1763,21 @@
       }
     });
   }
-  // 클리어: 보상 카드 지급(중복 방지) + 로그 기록 + 저장 + 마을 복귀
+  // 클리어: 보상 카드 지급(중복 방지) + 로그 기록 + 저장 + 거리 복귀 — 모든 구역 공용
   function clearPuzzle(run) {
     const puz = run.puzzle;
     if (!game.flags.evCards) game.flags.evCards = [];
     const fresh = puz.rewards.filter((id) => !game.flags.evCards.includes(id));
     if (fresh.length) game.flags.evCards = game.flags.evCards.concat(fresh);
+    const locksBefore = s1LockCount();
     recordPuzzleClear(run.id, run.timeFrames);
-    // 이 방에서 내보낸 정보 최고치를 기록 (보스 콜백 인트로 분기용) — 이전 최고치와 비교해 유지
-    game.flags.traceGiven = Math.max(game.flags.traceGiven || 0, run.maxBoard || 0);
+    // 접수처에서 내보낸 정보 최고치를 기록 (보스 콜백 인트로 분기용) — 이전 최고치와 비교해 유지
+    if (puz.type === 'traces') {
+      game.flags.traceGiven = Math.max(game.flags.traceGiven || 0, run.maxBoard || 0);
+    }
     game.puzzleRun = null;
-    // 복귀 지점 (데이터화된 exitTo — 이후 방 4개 재사용). 기본은 마을 카페 입구 앞.
-    const exit = puz.exitTo || { map: 'village', x: 24, y: 6 };
+    // 복귀 지점 (데이터화된 exitTo). 기본은 거리 입구 앞.
+    const exit = puz.exitTo || { map: 'freestreet', x: 14, y: 17 };
     game.map = exit.map;
     const p = game.player;
     p.x = exit.x; p.y = exit.y; p.px = exit.x * TS; p.py = exit.y * TS; p.moving = false;
@@ -1687,14 +1785,17 @@
     stickDir = null; stickRepeatFrames = 0;
     Sound.warp();
     Sound.playSong(MAPS[exit.map].song);
-    const lines = [
-      '흔적을 정리하고 문을 나섰다.',
-      '기억하자 — 편리함을 준다고\n다 내주지 않기. 꼭 필요한 최소한만.',
-      '한번 나눠 준 것은\n완전히 지워지지 않는단다.',
-    ];
+    const lines = (puz.clearLines || ['방을 빠져나왔다.']).slice();
     for (const id of fresh) lines.push(`◆ 증거 카드 「${EVIDENCE_CARDS[id].title}」 획득!`);
+    // 금고 잠금 진행 안내 (이번 클리어로 잠금이 새로 풀렸을 때만)
+    const locks = s1LockCount();
+    if (locks > locksBefore) {
+      lines.push(locks >= 3
+        ? '철컹 — 거리의 금고에서\n마지막 잠금이 풀리는 소리가 났다!'
+        : `철컥. 거리의 금고에서\n잠금 풀리는 소리가 났다. (${locks}/3)`);
+    }
     save();
-    startDialog(lines, '흔적의 방');
+    startDialog(lines, puz.title);
   }
 
   // 월드 선택지 박스 — 단말 상호작용·이후 모든 방이 사용 (배틀 mercy 메뉴 스타일 재사용)
@@ -1774,7 +1875,8 @@
     // H는 keydown 핸들러에서 advanceHint를 직접 호출 (더 공개). X/Z로 닫는다.
     if (justPressed('action') || justPressed('cancel')) { closeHint(); return; }
   }
-  const HINT_STEP_LABEL = { tokens: '정보 토큰', board: '게시판', eraser: '지우개', exit: '출구' };
+  const HINT_STEP_LABEL = { tokens: '정보 토큰', board: '게시판', eraser: '지우개', exit: '출구',
+    copies: '떠도는 조각', levers: '차단 레버' };
   function drawHint() {
     drawWorld();
     ctx.fillStyle = 'rgba(0,0,0,0.72)';
@@ -1833,6 +1935,36 @@
       ctx.fillText(mark, nx + TS / 2, ny + TS / 2 + 8);
       ctx.textAlign = 'left';
     };
+    if (puz.type === 'copies') {
+      // 구역②: 떠도는 내 정보 사본 (반짝이는 조각)
+      for (const c of run.copies) {
+        if (c.got) continue;
+        const nx = Math.round(c.px - cx), ny = Math.round(c.py - cy - 6);
+        box(nx, ny + bob, '#3a6ea5', '◈', '#cfe8ff');
+        label(nx, ny + bob, '내 조각', '#cfe8ff');
+      }
+      return;
+    }
+    if (puz.type === 'levers') {
+      // 구역③: 차단 레버 3개 + 반송함 + 벨트를 흐르는 상자
+      for (const lv of puz.levers) {
+        const nx = Math.round(lv.x * TS - cx), ny = Math.round(lv.y * TS - cy - 6);
+        box(nx, ny, '#6a4a2a', '↕', '#ffd6a0');
+        label(nx, ny, lv.name, '#ffd6a0');
+      }
+      const bin = puz.returnBin;
+      box(Math.round(bin.x * TS - cx), Math.round(bin.y * TS - cy - 6), '#2a5a3a', '⟲', '#8de08d');
+      label(Math.round(bin.x * TS - cx), Math.round(bin.y * TS - cy - 6), bin.name, '#8de08d');
+      // 벨트 위 상자 — timeFrames로 왼쪽→오른쪽(출하구 방향) 순환 이동
+      const belt = puz.belt;
+      const span = belt.x1 - belt.x0;
+      const bx = belt.x0 * TS + ((run.timeFrames * 1.5) % (span * TS));
+      const nx = Math.round(bx - cx), ny = Math.round(belt.y * TS - cy - 6);
+      const curBox = puz.boxes[run.boxIdx];
+      box(nx, ny, '#8a6a20', '▣', '#fff2a8');
+      label(nx, ny, `${curBox.label}·${curBox.lane}`, '#fff2a8');
+      return;
+    }
     for (const t of puz.terminals) {
       const nx = Math.round(t.x * TS - cx), ny = Math.round(t.y * TS - cy - 6);
       const given = run.given.includes(t.require) || (t.share && run.boardFace);
@@ -1854,21 +1986,32 @@
       drawSprite(ctx, STALKER_SPRITE, Math.round(s.px - cx), Math.round(s.py - cy - 6 + bob), SCALE);
     }
   }
-  // 프로필 보드 HUD — 화면 위쪽, 내보낸 정보 상시 표시
+  // 구역 HUD — 화면 위쪽 상시 표시 (traces: 프로필 보드 / copies: 회수 수 / levers: 지금 상자)
   function drawPuzzleHud() {
     const run = game.puzzleRun;
-    const given = givenTokens(run);
-    const nonNick = given.filter((k) => k !== 'nickname');
-    const names = given.map((k) => run.puzzle.tokens[k]);
-    const title = `프로필 보드 — 내보낸 정보 ${nonNick.length}개`;
-    const detail = names.length ? names.join(' · ') : '(아직 없음)';
+    let title, detail, danger = false;
+    if (run.puzzle.type === 'copies') {
+      title = `되찾은 조각 ${run.collected}/3`;
+      detail = '떠도는 조각을 쫓아가 붙잡자';
+    } else if (run.puzzle.type === 'levers') {
+      const b = run.puzzle.boxes[run.boxIdx];
+      title = `반송 ${run.diverted}/${run.puzzle.boxes.length}`;
+      detail = `벨트 위 상자: 「${b.label}」 — ${b.lane} 레인`;
+    } else {
+      const given = givenTokens(run);
+      const nonNick = given.filter((k) => k !== 'nickname');
+      const names = given.map((k) => run.puzzle.tokens[k]);
+      title = `프로필 보드 — 내보낸 정보 ${nonNick.length}개`;
+      detail = names.length ? names.join(' · ') : '(아직 없음)';
+      danger = nonNick.length >= 3;
+    }
     ctx.font = fs(13, true);
     const tw = Math.max(ctx.measureText(title).width, ctx.measureText(detail).width) + 24;
     const bw = Math.min(LW - 20, Math.max(200, tw));
     const bx = Math.round(LW / 2 - bw / 2), by = 8, bh = game.largeText ? 56 : 48;
     utBox(bx, by, bw, bh, 6);
     ctx.textAlign = 'center';
-    ctx.fillStyle = nonNick.length >= 3 ? badColor() : warnColor();
+    ctx.fillStyle = danger ? badColor() : warnColor();
     ctx.fillText(title, LW / 2, by + 20);
     ctx.fillStyle = '#fff';
     ctx.font = fs(12);
@@ -1904,13 +2047,35 @@
     const f = facingTile();
     const npc = npcAt(game.map, f.x, f.y);
     if (npc) {
-      // 1장 보스(수집몬) — 아직 설득하지 않았으면 설득 배틀로, 이후엔 되돌린 친구로
+      // 1장 보스(담아) — 아직 설득하지 않았으면 설득 배틀로, 이후엔 되돌린 친구로
       if (npc.id === 'sujip_boss') {
         if (!game.flags.chapter1Clear) { startBattleIntro('sujipmon', 'sujipmon_boss'); return; }
         startDialog([
-          '수집몬: "덕분에 하나씩 돌려주고 있어.\n…빈손인데, 이상하게 안 허전해."',
-          '이제 나도 알아 —\n편리함을 준다고 다 내주지 않기.\n한번 나눠 준 건, 완전히 지워지지 않으니까.',
-        ], '수집몬');
+          '담아: "덕분에 하나씩 돌려주고 있어.\n…빈손인데, 이상하게 안 허전해."',
+          '담아: "라벨도 다 떼는 중이야.\n「친구가 준 것」이 아니라…\n원래, 친구 거였으니까."',
+        ], '담아');
+        return;
+      }
+      // 구역②의 새김 — 퍼즐 진행 상태(회수·클리어)에 따라 대사가 달라진다
+      if (npc.id === 'saegim_plaza') {
+        const run = game.puzzleRun;
+        if (isPuzzleCleared('copies')) {
+          startDialog([
+            '새김: "…금고 안의 하나는 못 꺼내 줘.\n이미 내 몸에 새겨졌으니까."',
+            '새김: "그래도 셋은 네 품에 돌아갔네.\n…다행이야."',
+          ], '새김');
+        } else if (run && run.collected > 0) {
+          startDialog([
+            `새김: "벌써 ${run.collected}개나 붙잡았네.\n…빠르다, 너."`,
+            '새김: "남은 것도 부탁해.\n네 거니까, 네가 붙잡아야 해."',
+          ], '새김');
+        } else {
+          startDialog([
+            '새김: "네 조각이 광장에 떠돌고 있어.\n셋. …원래는 넷이었는데."',
+            '새김: "하나는 금고 안이야.\n그건 이미 내 몸에 새겨졌어. …미안."',
+            '새김: "나머지 셋은 붙잡을 수 있어.\n도망치지만… 금방 지쳐."',
+          ], '새김');
+        }
         return;
       }
       const lines = getNpcDialog(npc.id, game.flags);
@@ -1945,16 +2110,22 @@
     // 조사(살펴보기): 특별 지점 → 타일 기본 문구
     const prop = getPropAt(game.map, f.x, f.y);
     if (prop) {
+      // 스토리 복선 등 — 조사 지점에 flag가 있으면 플래그를 남긴다 (예: seenPhoto1)
+      if (prop.flag && !game.flags[prop.flag]) { game.flags[prop.flag] = true; save(); }
       startDialog([prop.text]);
       return;
     }
     const ch = tileAt(game.map, f.x, f.y);
-    // 주인의 방 문(흔적의 방 위쪽 벽) — 클리어 전엔 잠겨 있다는 안내
-    if (game.map === 'traceroom' && ch === '7') {
-      if (isPuzzleCleared('traces')) {
-        startDialog(['주인의 방으로 통하는 문이 열려 있다.\n(위로 걸어 들어가 보자)'], '주인의 방');
+    // 거리의 금고문 — 잠금 3개(구역 클리어마다 하나)의 진행을 보여 준다
+    if (game.map === 'freestreet' && ch === '7') {
+      const n = s1LockCount();
+      if (n >= 3) {
+        startDialog(['금고 문이 열려 있다.\n…안에서 서랍 여닫는 소리가 난다.\n(위로 걸어 들어가 보자)'], '금고');
       } else {
-        startDialog(['문이 잠겨 있다.\n…안에서 서랍 여닫는 소리가 난다.'], '주인의 방');
+        startDialog([
+          `육중한 금고 문.\n잠금 ${3 - n}개가 아직 잠겨 있다. (${n}/3 해제)`,
+          '작은 글씨: "주인 전용★\n※출입 조건은 각 매장에서 확인"',
+        ], '금고');
       }
       return;
     }
@@ -1997,11 +2168,18 @@
       startDialog([w.lockText || '길이 막혀 있다.']);
       return;
     }
-    // 방탈출 클리어 게이트 (예: 흔적의 방 → 주인의 방 문)
+    // 방탈출 클리어 게이트 (예: 거리 → 게시판 광장 — 접수처를 먼저)
     if (w.needPuzzleClear && !isPuzzleCleared(w.needPuzzleClear)) {
       pushBack();
       Sound.bump();
       startDialog([w.lockText || '문이 잠겨 있다.']);
+      return;
+    }
+    // 1장 금고문 게이트 — 구역 클리어 수만큼 잠금이 풀린다
+    if (w.needS1Locks && s1LockCount() < w.needS1Locks) {
+      pushBack();
+      Sound.bump();
+      startDialog([w.lockText || '문이 잠겨 있다.', `금고 잠금 ${s1LockCount()}/${w.needS1Locks} 해제.`]);
       return;
     }
     game.map = w.to;
@@ -2030,7 +2208,26 @@
   function updateWorld() {
     const p = game.player;
     if (game.notice.t > 0) game.notice.t -= 1;
-    if (game.puzzleRun) updatePuzzleWorld(); // 방탈출: 시간 누적 + 스토커 추격
+    if (game.puzzleRun) updatePuzzleWorld(); // 방탈출: 시간 누적 + 구역별 물체 갱신
+
+    // 서성이는 NPC (wander) — 거리의 살금 등. 몇 초마다 한 칸씩, 집 근처(반경 2)만 돈다.
+    if (game.time % 45 === 0) {
+      const wm = MAPS[game.map];
+      for (const npc of wm.npcs) {
+        if (!npc.wander || !npcVisible(npc)) continue;
+        if (npc.hx === undefined) { npc.hx = npc.x; npc.hy = npc.y; }
+        const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+        const [dx, dy] = dirs[Math.floor(Math.random() * dirs.length)];
+        const nx = npc.x + dx, ny = npc.y + dy;
+        if (Math.abs(nx - npc.hx) > 2 || Math.abs(ny - npc.hy) > 2) continue;
+        if (SOLID(tileAt(game.map, nx, ny))) continue;
+        if (nx === p.x && ny === p.y) continue;
+        if (npcAt(game.map, nx, ny) || monsterAt(game.map, nx, ny)) continue;
+        if ((wm.warps || []).some((w) => w.x === nx && w.y === ny)) continue; // 워프 칸 막지 않기
+        if (game.puzzleRun && puzzleObjAt(game.map, nx, ny)) continue;
+        npc.x = nx; npc.y = ny;
+      }
+    }
 
     // 픽셀 보간 이동
     const tx = p.x * TS, ty = p.y * TS;
@@ -2437,7 +2634,7 @@
     }
   }
 
-  // 1장 보스 승리 — chapter1Clear 플래그 + 1장 마무리 대사 후 카페 밖(마을)으로 복귀.
+  // 1장 보스 승리 — chapter1Clear 플래그 + 1장 마무리 대사 후 금고 앞(거리)으로 복귀.
   // 라이브러리 수집몬(퀴즈)과 별개이므로 defeated.sujipmon/도감은 건드리지 않는다.
   function winChapter1Boss() {
     const b = game.battle;
@@ -2448,21 +2645,21 @@
     checkCosmeticUnlocks(game.currentSlot);
     game.battle = null;
     game.mode = 'world';
-    // 카페 밖(마을)으로 복귀
-    game.map = 'village';
+    // 금고 밖(거리)으로 복귀
+    game.map = 'freestreet';
     const p = game.player;
-    p.x = 24; p.y = 6; p.px = 24 * TS; p.py = 6 * TS; p.moving = false; p.dir = 'down';
+    p.x = 14; p.y = 5; p.px = 14 * TS; p.py = 5 * TS; p.moving = false; p.dir = 'down';
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.badge();
-    Sound.playSong(MAPS.village.song);
+    Sound.playSong(MAPS.freestreet.song);
     const lines = [mon.win];
     if (b.mercyChoiceKind === 'mercy') {
-      lines.push('💛 수집몬의 굳어 있던 마음이\n환하게 풀렸어요. 또 한 친구를 되돌렸다!');
+      lines.push('💛 담아의 굳어 있던 마음이\n환하게 풀렸어요. 또 한 친구를 되돌렸다!');
     }
-    lines.push('☆ 1장 클리어! ☆\n무료 게임 카페의 흔적이 조용히 걷혔다.');
-    lines.push('배움 — 편리함을 준다고 다 내주지 않기.\n한번 나눠 준 건, 완전히 지워지지 않으니까.');
-    startDialog(lines, mon.name, () => Sound.playSong(MAPS.village.song));
+    lines.push('☆ 1장 클리어! ☆\n「전부 공짜 거리」의 네온이\n조용히 잦아들었다.');
+    lines.push('담아가 상자마다 붙은\n「친구가 준 것」 라벨을\n하나씩 떼어 내기 시작했다.');
+    startDialog(lines, mon.name, () => Sound.playSong(MAPS.freestreet.song));
   }
 
   function winBattle() {
@@ -4757,15 +4954,15 @@
     game.player.dir = 'down';
     save();
   }
-  // 수업 모드 특별 항목 「1장 — 흔적의 방」 (스테이지 번호가 아닌 방탈출 수업용)
+  // 수업 모드 특별 항목 「1장 — 전부 공짜 거리」 (스테이지 번호가 아닌 방탈출 수업용)
   const TRACE_SEL = 0;
-  // 1장 시작 상태로 맞추고, 흔적의 방 입구(마을 카페 앞) 앞에 서서 시작한다.
+  // 1장 시작 상태로 맞추고, 전부 공짜 거리 입구에 서서 시작한다.
   function applyTraceRoomClass() {
     const flags = setupStageFlags(1);
     game.flags = flags;
-    game.map = 'village';
+    game.map = 'freestreet';
     const p = game.player;
-    p.x = 24; p.y = 6; p.px = 24 * TS; p.py = 6 * TS;
+    p.x = 14; p.y = 17; p.px = 14 * TS; p.py = 17 * TS;
     p.moving = false; p.dir = 'up';
     save();
   }
@@ -4823,16 +5020,16 @@
     ctx.font = '13px monospace';
     ctx.fillText('오늘 수업할 스테이지를 골라 바로 시작해요. (지금 학생 슬롯에 적용)', 24, 64);
 
-    // 특별 항목: 「1장 — 흔적의 방」 (방탈출 수업)
+    // 특별 항목: 「1장 — 전부 공짜 거리」 (방탈출 수업)
     const isTrace = cm.sel === TRACE_SEL;
-    const selLabel = isTrace ? '1장 시작 상태 · 흔적의 방 입구 앞' : `${cm.sel}스테이지`;
+    const selLabel = isTrace ? '1장 시작 상태 · 전부 공짜 거리 입구' : `${cm.sel}스테이지`;
 
     // 스테이지 선택기
     ctx.textAlign = 'center';
     ctx.fillStyle = themeAccent();
     if (isTrace) {
       ctx.font = 'bold 30px monospace';
-      ctx.fillText('1장 — 흔적의 방', LW / 2, 176);
+      ctx.fillText('1장 — 전부 공짜 거리', LW / 2, 176);
     } else {
       ctx.font = 'bold 56px monospace';
       ctx.fillText(`${cm.sel}`, LW / 2, 180);
@@ -4842,7 +5039,7 @@
     }
     ctx.fillStyle = '#fff';
     ctx.font = '15px monospace';
-    ctx.fillText(isTrace ? '개인정보 · 디지털 발자국 (방탈출 → 수집몬 보스)' : (STAGE_BLURB[cm.sel] || ''), LW / 2, 250);
+    ctx.fillText(isTrace ? '개인정보 · 디지털 발자국 · 동의 (구역 3개 → 담아 보스)' : (STAGE_BLURB[cm.sel] || ''), LW / 2, 250);
     ctx.fillStyle = '#666';
     ctx.font = '13px monospace';
     ctx.fillText('◀ ▶ 스테이지/수업 고르기', LW / 2, 286);
@@ -5511,6 +5708,12 @@
       const puz = game.puzzleRun.puzzle;
       objText = (isPuzzleCleared(game.puzzleRun.id) && puz.objectiveCleared) ? puz.objectiveCleared
         : (puz.objective || '방을 빠져나가자');
+    } else if (game.map === 'freestreet') {
+      // 허브 HUD — 금고 잠금 진행을 상시 가시화
+      const n = s1LockCount();
+      objText = game.flags.chapter1Clear ? '거리를 둘러보자'
+        : n >= 3 ? '금고가 열렸다 — 주인의 방으로'
+        : `금고 잠금 ${n}/3 해제 — 구역을 돌자`;
     } else {
       objText = getObjective(game.flags);
     }

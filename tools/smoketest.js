@@ -1175,20 +1175,48 @@ dispatch('keyup', { key: 'ArrowLeft' });
 check('워프 후에도 전 맵으로 튕기지 않음(meadow 유지)', g.map === 'meadow');
 check('워프 직후 멈춤(도착칸에 정지)', g.player.x === 1 && g.player.y === 10);
 
-console.log('[68] 방탈출: 흔적의 방 (T2 — 개인정보·디지털 발자국)');
+console.log('[68] 1장 「전부 공짜 거리」 — 허브 진입 + 구역① 살금의 접수처');
 function pickChoice(idx) { // 월드 선택지 박스에서 idx번째를 고른다
   if (g.mode !== 'choice') throw new Error('선택 모드가 아님: ' + g.mode);
   let guard = 0;
   while (g.choice.cursor !== idx) { tap('ArrowDown'); if (guard++ > 20) throw new Error('선택 커서 이동 실패'); }
   tap('z');
 }
-// 마을 카페 입구(24,5)로 워프 진입 (인트로는 스킵)
+// 마을 네온 문(24,5) → 거리 진입 (인트로는 스킵). 퍼즐 로그·보상 카드도 리셋.
 g.flags.visited = g.flags.visited || {};
+g.flags.visited.freestreet = true;
 g.flags.visited.traceroom = true;
-g.flags.evCards = (g.flags.evCards || []).filter((id) => id !== 'ev_minimal' && id !== 'ev_footprint');
+g.flags.visited.boardplaza = true;
+g.flags.visited.warehouse = true;
+g.flags.evCards = (g.flags.evCards || []).filter(
+  (id) => id !== 'ev_minimal' && id !== 'ev_footprint' && id !== 'ev_consent');
+storage.set('ai-ethics-adventure-puzzle-0', JSON.stringify({}));
 g.dialog = null; g.mode = 'world'; g.map = 'village'; setPos(24, 6, 'up');
 hold('ArrowUp', 14);
-check('흔적의 방 입장', g.map === 'traceroom' && !!g.puzzleRun);
+check('마을 네온 문 → 거리 진입 (허브)', g.map === 'freestreet' && !g.puzzleRun);
+check('거리에 살금 2명(wander NPC)', MAPS.freestreet.npcs.filter((n) => n.name === '살금' && n.wander).length === 2);
+const getNpcDialogT = vm.runInContext('getNpcDialog', sandbox);
+check('살금 대사 2종 — 미안해하는 말투',
+  /미안/.test(getNpcDialogT('salgeum_st1', g.flags).join(' ')) &&
+  /미안/.test(getNpcDialogT('salgeum_st2', g.flags).join(' ')));
+
+// 순서 강제: 구역① 클리어 전엔 게시판 광장(새김)이 돌려보낸다
+g.dialog = null; g.mode = 'world'; setPos(22, 5, 'up');
+hold('ArrowUp', 12);
+check('구역① 전 — 광장 입장 거절(거리에 남음)', g.map === 'freestreet');
+check('새김이 돌려보내는 안내', g.mode === 'dialog' && /조각이 없네/.test(g.dialog.lines[0]));
+advanceDialog();
+// 금고문: 잠금 0/3 — 굳게 닫혀 있다
+g.dialog = null; g.mode = 'world'; setPos(14, 5, 'up');
+hold('ArrowUp', 12);
+check('잠금 0/3 — 금고문 잠김', g.map === 'freestreet' && g.mode === 'dialog');
+check('잠금 진행 안내(0/3)', g.dialog.lines.some((l) => /0\/3/.test(l)));
+advanceDialog();
+
+// 구역① 진입 (거리 왼쪽 문 5,4)
+g.dialog = null; g.mode = 'world'; setPos(5, 5, 'up');
+hold('ArrowUp', 14);
+check('살금의 접수처 입장', g.map === 'traceroom' && !!g.puzzleRun && g.puzzleRun.id === 'traces');
 check('정보 토큰 5종 소지 시작', Object.values(g.puzzleRun.held).filter(Boolean).length === 5);
 check('시작 단계는 tokens', g.puzzleRun.stalkers.length === 0);
 
@@ -1250,15 +1278,18 @@ setPos(3, 11, 'up'); tap('z');
 check('일반 출구 — 선택창 열림', g.mode === 'choice');
 pickChoice(0);
 check('클리어 대화 시작', g.mode === 'dialog');
+check('금고 잠금 해제 안내(1/3)', g.dialog.lines.some((l) => /1\/3/.test(l)));
 advanceDialog();
-check('클리어 → 마을 복귀', g.map === 'village' && !g.puzzleRun);
-check('증거 카드 2장 지급', g.flags.evCards.includes('ev_minimal') && g.flags.evCards.includes('ev_footprint'));
+check('클리어 → 거리 복귀(접수처 문 앞)', g.map === 'freestreet' && !g.puzzleRun &&
+  g.player.x === 5 && g.player.y === 5);
+check('구역① 보상은 ev_minimal 1장', g.flags.evCards.includes('ev_minimal') &&
+  !g.flags.evCards.includes('ev_footprint'));
 plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
 check('퍼즐 done/clears 기록', plog.traces.done === true && plog.traces.clears >= 1);
 check('입장~클리어 프레임 누적 기록', plog.traces.timeFrames > 0);
 
 // 재입장 가능(연습용) — clears 증가
-g.dialog = null; g.mode = 'world'; g.map = 'village'; setPos(24, 6, 'up');
+g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(5, 5, 'up');
 hold('ArrowUp', 14);
 check('재입장 가능', g.map === 'traceroom' && !!g.puzzleRun);
 g.puzzleRun.given = []; g.puzzleRun.boardFace = false; g.puzzleRun.held.nickname = true;
@@ -1266,7 +1297,85 @@ setPos(3, 11, 'up'); tap('z'); pickChoice(0); advanceDialog();
 plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
 check('재클리어로 clears 증가', plog.traces.clears >= 2);
 
-console.log('[69] T2.3 — 1장 보스 「수집몬」 설득 배틀 (주인의 방)');
+console.log('[68b] 구역② 새김의 게시판 광장 — 사본 3개 회수 (금고 사본은 회수 불가)');
+g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(22, 5, 'up');
+hold('ArrowUp', 14);
+check('구역① 클리어 후 광장 입장', g.map === 'boardplaza' && !!g.puzzleRun && g.puzzleRun.id === 'copies');
+check('떠도는 사본 3개', g.puzzleRun.copies.length === 3 && g.puzzleRun.collected === 0);
+// 새김에게 말 걸기 — 네 번째 사본(금고 안)은 회수 불가라고 말해 준다
+setPos(12, 3, 'up'); tap('z');
+check('새김 안내 — 금고 속 사본은 회수 불가', g.mode === 'dialog' &&
+  g.dialog.lines.some((l) => /새겨졌어/.test(l)) && g.dialog.lines.some((l) => /금고 안/.test(l)));
+advanceDialog();
+// 힌트 — 같은 로그 스키마(hintsUsed.copies)에 기록
+tap('h');
+check('광장 힌트 열림(copies 단계)', g.mode === 'hint');
+tap('z');
+plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+check('광장 힌트 로그 기록', plog.copies && plog.copies.hintsUsed.copies >= 1);
+// 사본 회수 — 플레이어를 사본 위치로 옮겨 접촉 (도망치지만 0.7배속이라 잡힌다)
+function grabCopy() {
+  const c = g.puzzleRun.copies.find((cc) => !cc.got);
+  g.player.px = c.px; g.player.py = c.py;
+  g.player.x = Math.round(c.px / 48); g.player.y = Math.round(c.py / 48);
+  step(1);
+}
+grabCopy(); grabCopy();
+check('사본 2개 회수', g.puzzleRun.collected === 2 && g.map === 'boardplaza');
+grabCopy();
+check('3개 회수 → 클리어 대화', g.mode === 'dialog');
+check('클리어 대사 — 금고 속 네 번째 사본 콜백', g.dialog.lines.some((l) => /금고 안/.test(l)));
+advanceDialog();
+check('광장 클리어 → 거리 복귀 + ev_footprint', g.map === 'freestreet' && !g.puzzleRun &&
+  g.flags.evCards.includes('ev_footprint'));
+plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+check('copies done/clears 기록(같은 스키마)', plog.copies.done === true && plog.copies.clears >= 1 &&
+  plog.copies.timeFrames > 0);
+
+console.log('[68c] 구역③ 배달 창고 — 차단 레버 순서 퍼즐 (오답 기록 포함)');
+g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(4, 14, 'down');
+hold('ArrowDown', 14);
+check('창고 입장', g.map === 'warehouse' && !!g.puzzleRun && g.puzzleRun.id === 'levers');
+check('첫 상자(1호·달 레인) 대기', g.puzzleRun.boxIdx === 0 && g.puzzleRun.diverted === 0);
+// 오답: 1호(달)를 별 레버(6,9)로 — 출하 + wrongTries 기록 + 새 상자
+setPos(6, 10, 'up'); tap('z');
+check('레버 — 선택창 열림', g.mode === 'choice');
+pickChoice(0);
+check('오답 → 출하 안내 대사', g.mode === 'dialog' && /출하구/.test(g.dialog.lines[0]));
+advanceDialog();
+check('오답 후 반송 0 유지(같은 상자 재등장)', g.puzzleRun.diverted === 0 && g.puzzleRun.boxIdx === 0);
+plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+check('오답이 wrongTries에 기록', plog.levers.wrongTries >= 1);
+// 정답 순서: 1호→달(11,9), 2호→별(6,9), 3호→나비(16,9)
+setPos(11, 10, 'up'); tap('z'); pickChoice(0); advanceDialog();
+check('1호 반송 (1/3)', g.puzzleRun.diverted === 1 && g.puzzleRun.boxIdx === 1);
+// 반송함(12,5) 조사
+setPos(12, 6, 'up'); tap('z');
+check('반송함 안내', g.mode === 'dialog' && /반송함/.test(g.dialog.lines[0]));
+advanceDialog();
+setPos(6, 10, 'up'); tap('z'); pickChoice(0); advanceDialog();
+check('2호 반송 (2/3)', g.puzzleRun.diverted === 2);
+setPos(16, 10, 'up'); tap('z'); pickChoice(0);
+check('3호 반송 → 클리어 대화', g.mode === 'dialog');
+advanceDialog();
+check('창고 클리어 → 거리 복귀 + ev_consent 「동의의 범위」', g.map === 'freestreet' && !g.puzzleRun &&
+  g.flags.evCards.includes('ev_consent'));
+plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+check('levers done + 오답 기록 유지(같은 스키마)', plog.levers.done === true && plog.levers.wrongTries >= 1);
+
+console.log('[68d] 금고 잠금 3개 해제 → 주인의 방 개방 + 복선 조사');
+g.flags.visited.ownerroom = true; // 인트로 스킵
+g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(14, 5, 'up');
+hold('ArrowUp', 12);
+check('잠금 3/3 → 주인의 방 진입', g.map === 'ownerroom');
+// 복선: 서랍의 낡은 사진 (9,1) — 조사하면 seenPhoto1 플래그
+check('조사 전 seenPhoto1 없음', !g.flags.seenPhoto1);
+setPos(9, 2, 'up'); tap('z');
+check('복선 — 낡은 사진 한 줄', g.mode === 'dialog' && /하얀 가운/.test(g.dialog.lines[0]));
+advanceDialog();
+check('복선 플래그 seenPhoto1 기록', g.flags.seenPhoto1 === true);
+
+console.log('[69] T2.3 — 1장 보스 「담아」 설득 배틀 (주인의 방)');
 const { PERSUADE } = vm.runInContext('({ PERSUADE })', sandbox);
 const TH = vm.runInContext('window.__test', sandbox);
 // 깨끗한 1장 상태로 리셋 (라이브러리 수집몬 처치 플래그 오염 검증을 위해)
@@ -1281,28 +1390,29 @@ check('콜백 인트로 — 토큰 2 중립(양쪽과 다름)',
   PERSUADE.sujipmon_boss.intro({ traceGiven: 2 }) !== PERSUADE.sujipmon_boss.intro({ traceGiven: 3 }) &&
   PERSUADE.sujipmon_boss.intro({ traceGiven: 2 }) !== PERSUADE.sujipmon_boss.intro({ traceGiven: 0 }));
 
-// ── 보스방 진입 게이트 ──
-// 퍼즐 로그를 미클리어로 두고 문이 잠겼는지 확인
-storage.set('ai-ethics-adventure-puzzle-0',
-  JSON.stringify({ traces: { done: false, clears: 0, hintsUsed: {}, wrongTries: 0, timeFrames: 0 } }));
-g.flags.visited = g.flags.visited || {}; g.flags.visited.traceroom = true;
-g.dialog = null; g.mode = 'world'; g.map = 'village'; setPos(24, 6, 'up');
-hold('ArrowUp', 14);
-check('흔적의 방 입장', g.map === 'traceroom' && !!g.puzzleRun);
-setPos(9, 1, 'up'); hold('ArrowUp', 12); // 위쪽 문(9,0)으로 진입 시도
-check('클리어 전 보스방 문 잠김(방에 남음)', g.map === 'traceroom');
-check('잠김 안내 대사 표시', g.mode === 'dialog');
-advanceDialog();
-// 클리어 상태로 바꾸면 문이 열린다
+// ── 금고문(보스방) 진입 게이트 — 잠금 3개 ──
+// 구역 1개만 클리어(잠금 1/3)면 금고가 잠겨 있다
 storage.set('ai-ethics-adventure-puzzle-0',
   JSON.stringify({ traces: { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 10 } }));
+g.flags.visited = g.flags.visited || {};
+g.flags.visited.freestreet = true; g.flags.visited.ownerroom = true;
+g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(14, 5, 'up');
+hold('ArrowUp', 12);
+check('잠금 1/3 — 금고문 잠김(거리에 남음)', g.map === 'freestreet');
+check('잠김 안내 대사 표시', g.mode === 'dialog' && g.dialog.lines.some((l) => /1\/3/.test(l)));
+advanceDialog();
+// 구역 3개 전부 클리어(잠금 3/3)면 열린다
+storage.set('ai-ethics-adventure-puzzle-0', JSON.stringify({
+  traces: { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 10 },
+  copies: { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 10 },
+  levers: { done: true, clears: 1, hintsUsed: {}, wrongTries: 1, timeFrames: 10 },
+}));
 g.flags.traceGiven = 3; // 콜백 인트로 3+ 경로를 실제 조우에서 확인
-g.dialog = null; g.mode = 'world'; setPos(9, 1, 'up'); hold('ArrowUp', 12);
-check('클리어 후 문 개방 → 주인의 방 진입', g.map === 'ownerroom');
-advanceDialog(); // 주인의 방 인트로
+g.dialog = null; g.mode = 'world'; setPos(14, 5, 'up'); hold('ArrowUp', 12);
+check('잠금 3/3 → 금고 개방 → 주인의 방 진입', g.map === 'ownerroom');
 
 // ── 보스 조우 → 설득 배틀 시작 ──
-setPos(5, 3, 'up'); tap('z'); // 수집몬(5,2)에게 말 걸기
+setPos(5, 3, 'up'); tap('z'); // 담아(5,2)에게 말 걸기
 check('보스 조우 대화 시작', g.mode === 'dialog');
 check('콜백 인트로(토큰 3+)가 조우에 반영', /여기 다 있어/.test(g.dialog.lines[0]));
 advanceDialog();
@@ -1370,21 +1480,21 @@ tap('z'); // 응답 닫기 → 승리 처리
 check('승리 대화 시작', g.mode === 'dialog');
 advanceDialog();
 check('1장 클리어 플래그', g.flags.chapter1Clear === true);
-check('보스 승리 후 카페 밖(마을) 복귀', g.map === 'village' && g.player.x === 24 && g.player.y === 6);
+check('보스 승리 후 금고 앞(거리) 복귀', g.map === 'freestreet' && g.player.x === 14 && g.player.y === 5);
 check('라이브러리 수집몬 처치 플래그 오염 없음', g.flags.defeated.sujipmon === false);
 check('보스는 도감 순서에 없음', !DEX_ORDER.includes('sujipmon_boss'));
 check('보스 설득 로그 기록', g.flags.pStats.gateRight === 2 && g.flags.pStats.gateWrong === 1 && g.flags.pStats.gateTimeout === 1);
 
-console.log('[70] 수업 모드 — 「1장 — 흔적의 방」 특별 항목');
+console.log('[70] 수업 모드 — 「1장 — 전부 공짜 거리」 특별 항목');
 g.dialog = null; g.mode = 'world';
 g.classmode.ret = 'world'; g.classmode.sel = 1; g.classmode.confirm = false; g.classmode.toast = 0;
 g.mode = 'classmode';
-tap('ArrowUp'); // 1 → 0(흔적의 방 특별 항목)
-check('수업 목록에 흔적의 방(TRACE_SEL=0) 진입', g.classmode.sel === 0);
+tap('ArrowUp'); // 1 → 0(전부 공짜 거리 특별 항목)
+check('수업 목록에 1장 특별 항목(TRACE_SEL=0) 진입', g.classmode.sel === 0);
 tap('z'); // 확인 단계
 check('확인 단계', g.classmode.confirm === true);
-tap('z'); // 적용 → 1장 시작 + 흔적의 방 입구 앞
-check('흔적의 방 수업: 마을 카페 입구 앞에서 시작', g.map === 'village' && g.player.x === 24 && g.player.y === 6);
-check('흔적의 방 수업: 1장 시작 상태', TJ.getStage(g.flags) === 1);
+tap('z'); // 적용 → 1장 시작 + 거리 입구
+check('1장 수업: 전부 공짜 거리 입구에서 시작', g.map === 'freestreet' && g.player.x === 14 && g.player.y === 17);
+check('1장 수업: 1장 시작 상태', TJ.getStage(g.flags) === 1);
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

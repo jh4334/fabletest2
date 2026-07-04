@@ -44,8 +44,8 @@ const MAPS = {
         lockText: '남쪽 길이 어둠의 안개로 막혀 있다.\n신호탑의 혼돈몬을 깨우치면\n안개가 걷힐 것 같다.' },
       // 보너스 지역: AI 미래연구소 (언제든 자유롭게 드나드는 연습 공간)
       { x: 26, y: 8, to: 'lab', tx: 9, ty: 8 },
-      // 1장 방탈출: 수집몬의 "무료 게임 카페" (흔적의 방)
-      { x: 24, y: 5, to: 'traceroom', tx: 9, ty: 11 },
+      // 1장: 담아의 「전부 공짜 거리」 (허브 — 구역 3개 + 금고 + 주인의 방)
+      { x: 24, y: 5, to: 'freestreet', tx: 14, ty: 17 },
     ],
     npcs: [
       { id: 'prof', x: 4, y: 12, pal: 'prof', name: '박사님' },
@@ -63,24 +63,81 @@ const MAPS = {
     ],
     signs: [
       { x: 15, y: 16, text: '≪경계마을≫\nAI 윤리 수호대의 고향입니다.' },
-      { x: 25, y: 5, text: '≪무료 게임 카페≫\n수집몬이 새로 열었대요.\n"게임 전부 공짜!" …정말 공짜일까?' },
+      { x: 25, y: 5, text: '≪전부 공짜 거리≫\n담아가 새로 열었대요.\n"전부 공짜!" …정말 공짜일까?' },
     ],
     monsters: [],
   },
 
-  // 1장 방탈출 「흔적의 방」 — 수집몬의 무료 게임 카페.
-  // 모든 편의는 정보를 대가로 요구한다. 상호작용 물체(단말·게시판·지우개·출구)는
-  // 타일이 아니라 PUZZLES.traces 설정의 좌표로 배치된다.
-  traceroom: {
-    name: '흔적의 방',
+  // ---- 1장 「전부 공짜 거리」 — 담아의 프랜차이즈 거리 (허브) ----
+  // 거리에서 구역 3개(접수처·게시판 광장·배달 창고)와 금고문(주인의 방)으로 갈라진다.
+  // 금고 잠금 3개는 구역을 하나 클리어할 때마다 풀린다 (needS1Locks — game.js).
+  freestreet: {
+    name: '전부 공짜 거리',
     song: 'battle',
     intro: [
-      '≪무료 게임 카페≫\n반짝이는 화면과 경품이 가득하다.',
-      '수집몬: "어서 와! 전부 공짜야.\n…아주 작은 정보만 주면 돼."',
-      '[안내] 급할수록 아무것도 주지 말기.\n막히면 H(또는 메뉴▶힌트)로 도움을 받아요.',
+      '네온 불빛이 눈을 찌른다.\n간판마다 「공짜」가 반짝인다.',
+      '어디선가 안내방송이 들린다.\n"어서 오세요! 전부! 공짜!\n※약관은 아주 작게…"',
     ],
     tiles: [
-      'HHHHHHHHH7HHHHHHHHHH',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'TGOOOOOOOGGOOOOOOGGOOOOOOOGT',
+      'TGOOOOOOOGGOOOOOOGGOOOOOOOGT',
+      'TGOOOOOOOGGOOOOOOGGOOOOOOOGT',
+      'TGGGG6GGGGGGGG7GGGGGGG6GGGGT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPYPPPPPPPPYPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPYPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPP6PPPPPPPPPPPPPPPPPPPPPPT',
+      'TGOOOOOOGGGGGGGGGGGGGGGGGGGT',
+      'TGOOOOOOGGGGGGPGGGGGGGGGGGGT',
+      'TGOOOOOOGGGGGGPGGGGGGGGGGGGT',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+    ],
+    warps: [
+      { x: 14, y: 18, to: 'village', tx: 24, ty: 6 },
+      // 구역① 살금의 접수처
+      { x: 5, y: 4, to: 'traceroom', tx: 9, ty: 11 },
+      // 구역② 새김의 게시판 광장 — 접수처를 먼저 다녀와야 내 조각이 존재한다 (순서 강제)
+      { x: 22, y: 4, to: 'boardplaza', tx: 12, ty: 13, needPuzzleClear: 'traces',
+        lockText: '문틈에서 낮은 목소리가 들린다.\n새김: "아직 여기엔 네 조각이 없네.\n…먼저 접수처에 다녀와."' },
+      // 구역③ 배달 창고
+      { x: 4, y: 15, to: 'warehouse', tx: 12, ty: 13 },
+      // 금고문 — 잠금 3개(구역 클리어마다 1개)가 다 풀려야 주인의 방이 열린다
+      { x: 14, y: 4, to: 'ownerroom', tx: 5, ty: 7, needS1Locks: 3,
+        lockText: '금고 문은 꿈쩍도 하지 않는다.\n잠금 세 개가 나란히 붙어 있다.' },
+    ],
+    npcs: [
+      // 살금 — 담아의 점원. 시킨 일이 미안한 아이 (거리를 서성인다)
+      { id: 'salgeum_st1', x: 9, y: 9, monSprite: 'mollaemon', name: '살금', wander: true },
+      { id: 'salgeum_st2', x: 19, y: 12, monSprite: 'mollaemon', name: '살금', wander: true },
+    ],
+    signs: [
+      { x: 9, y: 6, text: '≪전부 공짜 거리≫\n전부! 공짜! 진짜로!\n※약관은 아주 작게 적혀 있다.' },
+      { x: 18, y: 6, text: '[오늘의 안내]\n접수처는 왼쪽★ 게시판 광장은 오른쪽★\n창고는 아래쪽★ 전부 공짜!' },
+      { x: 20, y: 13, text: '[금고 안내]\n주인 전용★ 손님은 사절★\n…열쇠? 그런 건 손님이 알 거 없고~' },
+    ],
+    monsters: [],
+  },
+
+  // 구역① 「살금의 접수처」 — 모든 편의는 정보를 대가로 요구한다.
+  // 상호작용 물체(단말·게시판·지우개·출구)는 타일이 아니라 PUZZLES.traces 좌표로 배치된다.
+  traceroom: {
+    name: '살금의 접수처',
+    song: 'battle',
+    intro: [
+      '≪살금의 접수처≫\n반짝이는 화면과 경품이 가득하다.',
+      '담아(안내방송): "어서 와! 전부 공짜야.\n…아주 작은 정보만 주면 돼."',
+      '살금: "…저기. 급할수록,\n아무것도 안 줘도 돼.\n(막히면 H — 내가 도와줄게.)"',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHH',
       'HEEEEEEEEEEEEEEEEEEH',
       'HEEEEEEEEEEEEEEEEEEH',
       'HEEEEEEEEEEEEEEEEEEH',
@@ -96,26 +153,96 @@ const MAPS = {
       'HHHHHHHHHHHHHHHHHHHH',
     ],
     warps: [
-      { x: 9, y: 12, to: 'village', tx: 24, ty: 6 },
-      // 위쪽 벽의 「주인의 방」 문 — 방을 클리어해야만 열린다 (needPuzzleClear)
-      { x: 9, y: 0, to: 'ownerroom', tx: 5, ty: 7, needPuzzleClear: 'traces',
-        lockText: '문이 잠겨 있다.\n…안에서 서랍 여닫는 소리가 난다.' },
+      { x: 9, y: 12, to: 'freestreet', tx: 5, ty: 5 },
     ],
     npcs: [],
     signs: [],
     monsters: [],
   },
 
-  // 1장 보스 「주인의 방」 — 흔적의 방을 클리어하면 열리는 수집몬의 은신처.
-  // 수집몬(보스)은 map 몬스터가 아니라 NPC(sujip_boss)로 두어 도감/처치 플래그를
+  // 구역② 「새김의 게시판 광장」 — 공유의 영속성 체험.
+  // 접수처에서 준 내 정보의 사본 3개가 광장을 떠돈다 (PUZZLES.copies).
+  boardplaza: {
+    name: '새김의 게시판 광장',
+    song: 'glitch',
+    intro: [
+      '광장 한가운데, 거대한 게시판.\n반짝이는 조각들이\n종이처럼 떠다니고 있다.',
+      '…저거, 어딘가 낯익다.\n내가 접수처에서 준…?',
+    ],
+    tiles: [
+      'NNNNNNNNNNNNNNNNNNNNNNNN',
+      'NIIIIIIIIIIIIIIIIIIIIIIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIN',
+      'NIIIIINIIIIIIIIIINIIIIIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIN',
+      'NIIIIINIIIIIIIIIINIIIIIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIN',
+      'NIIIIIIIIIIIIIIIIIIIIIIN',
+      'NNNNNNNNNNNNNNNNNNNNNNNN',
+    ],
+    warps: [
+      { x: 12, y: 14, to: 'freestreet', tx: 22, ty: 5 },
+    ],
+    npcs: [
+      { id: 'saegim_plaza', x: 12, y: 2, monSprite: 'girokmon', name: '새김' },
+    ],
+    signs: [],
+    monsters: [],
+  },
+
+  // 구역③ 「배달 창고」 — 제3자 제공 체험.
+  // 내 정보 상자가 컨베이어를 타고 출하구로 흘러간다 (PUZZLES.levers).
+  warehouse: {
+    name: '배달 창고',
+    song: 'cave',
+    intro: [
+      '컨베이어가 덜컹덜컹 돌아간다.\n상자마다 라벨이 붙어 있다.',
+      '「친구가 준 것 1호」…?\n…이거, 내가 접수처에서 준 거잖아.',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHHHHHH',
+      'HEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEBBBBBBBBBBBBBBBBBBEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEH',
+      'HHHHHHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      { x: 12, y: 14, to: 'freestreet', tx: 4, ty: 14 },
+    ],
+    npcs: [],
+    signs: [],
+    monsters: [],
+  },
+
+  // 1장 보스 「주인의 방」 — 금고 잠금 3개가 풀리면 열리는 담아의 은신처.
+  // 담아(보스)는 map 몬스터가 아니라 NPC(sujip_boss)로 두어 도감/처치 플래그를
   // 오염시키지 않는다. 조우 시 설득 배틀(PERSUADE.sujipmon_boss)로 이어진다.
   ownerroom: {
     name: '주인의 방',
     song: 'battle',
     intro: [
-      '문 너머는 좁은 방이었다.\n서랍과 상자가 천장까지 쌓여 있다.',
-      '그 한가운데 수집몬이\n무언가를 잔뜩 끌어안고 앉아 있다.',
-      '수집몬: "…어? 손님이네.\n여기까지 어떻게 들어왔어?"',
+      '금고 너머는 좁은 방이었다.\n서랍과 상자가 천장까지 쌓여 있다.',
+      '전부 라벨이 붙어 있다.\n「친구가 준 것 1호」 「2호」 「3호」…',
+      '그 한가운데 담아가\n무언가를 잔뜩 끌어안고 앉아 있다.',
+      '담아: "…어? 손님이네.\n여기까지 어떻게 들어왔어?"',
     ],
     tiles: [
       'HHHHHHHHHHHH',
@@ -129,10 +256,10 @@ const MAPS = {
       'HHHHH7HHHHHH',
     ],
     warps: [
-      { x: 5, y: 8, to: 'traceroom', tx: 9, ty: 2 },
+      { x: 5, y: 8, to: 'freestreet', tx: 14, ty: 5 },
     ],
     npcs: [
-      { id: 'sujip_boss', x: 5, y: 2, monSprite: 'sujipmon', name: '수집몬' },
+      { id: 'sujip_boss', x: 5, y: 2, monSprite: 'sujipmon', name: '담아' },
     ],
     signs: [],
     monsters: [],
@@ -1033,6 +1160,7 @@ const MONSTERS = {
   },
   mollaemon: {
     name: '몰래몬',
+    displayName: '살금', // "-몬" 없는 표시 이름 (배틀 HUD·도감 — 대사 원문은 점진 교체 중)
     topic: 'privacy',
     hp: 3,
     intro: '쉿…\n다들 뭔가를 숨기고 있잖아.\n비밀번호, 주소, 마음…\n…나만 아무것도\n가진 게 없는데.',
@@ -1466,6 +1594,7 @@ const MONSTERS = {
   },
   girokmon: {
     name: '기록몬',
+    displayName: '새김', // "-몬" 없는 표시 이름 (배틀 HUD·도감 — 대사 원문은 점진 교체 중)
     topic: 'footprint',
     hp: 4,
     intro: '나는 기록몬. 이 서버실의 관리자.\n나는 아무것도 지우지 않아.\n전부, 영원히, 기록할 뿐.\n…지워진다는 게 얼마나 무서운지,\n너는 모를 테니까.',
@@ -2908,6 +3037,18 @@ function getNpcDialog(npcId, flags) {
         '아 참, 오른쪽 문으로 들어가면\n"필터버블 미로"를 체험할 수 있어요.\n추천(같은 길)만 따라가면 못 나와요 —\n"새로운 길"을 찾아 빠져나와 보세요!',
       ];
 
+    // 「전부 공짜 거리」의 살금 — 담아의 점원. 시킨 일이 미안한 아이 (대사 2종)
+    case 'salgeum_st1':
+      return [
+        '살금: "어서 와…는 아니고.\n오지 마…도 아니고. 으으."',
+        '살금: "사장님이 전단지를 돌리래서…\n안 받아도 돼. 정말이야.\n…미안."',
+      ];
+    case 'salgeum_st2':
+      return [
+        '살금: "저 금고, 궁금하지.\n…나도 안에 뭐가 있는지 몰라."',
+        '살금: "내가 아는 건 하나뿐이야.\n잠금이 세 개라는 거.\n…미안, 이것뿐이라."',
+      ];
+
     case 'yeongi_npc':
       return [
         '(영이가 햇살 아래 서 있다.)\n…따뜻하다, 여기는.\n네 덕분에 돌아왔어.',
@@ -3144,7 +3285,7 @@ const EVIDENCE_CARDS = {
     title: '비밀번호는 나만', topic: 'privacy',
     desc: '비밀번호는 가장 친한 친구에게도 알려 주지 않아요. 나를 지키는 첫 번째 자물쇠예요.',
   },
-  // 「흔적의 방」 클리어 보상
+  // 1장 「전부 공짜 거리」 구역 클리어 보상 (①접수처 → ②게시판 광장 → ③배달 창고)
   ev_minimal: {
     title: '최소한의 정보', topic: 'privacy',
     desc: '편리함을 준다고 해서 다 줄 필요는 없어요. 정말 필요한 최소한만, 신중하게 나눠요.',
@@ -3152,6 +3293,10 @@ const EVIDENCE_CARDS = {
   ev_footprint: {
     title: '지워지지 않는 발자국', topic: 'footprint',
     desc: '한번 인터넷에 올린 것은 완전히 지우기 어려워요. 조각이 남아요. 올리기 전에 한 번 더 생각해요.',
+  },
+  ev_consent: {
+    title: '동의의 범위', topic: 'privacy',
+    desc: '경품 준다고 준 거지, 맘대로 쓰라고 준 게 아니에요. 어디까지인지는 준 사람이 정해요.',
   },
 };
 
@@ -3232,7 +3377,7 @@ const PERSUADE = {
     openMechanic: 'parcel', // open 페이즈 고유 기믹: 「정보 꾸러미」 운반
     parcelReply: '…이건 원래 네 거였지.\n돌려줄게. 하나씩.',
     decoys: ['공짜잖아', '네가 줬잖아', '그냥 모은 거야', '어쩔 수 없어', '다들 주던데'],
-    // 조우 지급 카드 없음 — 수집몬의 정답 카드(ev_minimal·ev_footprint)는 흔적의 방 보상으로만 얻는다.
+    // 조우 지급 카드 없음 — 담아의 정답 카드(ev_minimal·ev_footprint)는 거리 구역(①·②) 보상으로만 얻는다.
     // 콜백 인트로: 퍼즐에서 「내보낸 정보 최대 개수」(flags.traceGiven)로 첫 대사가 갈린다.
     intro(flags) {
       const n = (flags && flags.traceGiven) || 0;
@@ -3308,7 +3453,7 @@ const PERSUADE = {
         { label: '"필요한 만큼만 받기로 해"', kind: 'neutral',
           reply: '…응. 딱 필요한 만큼만.\n약속할게.' },
         { label: '수집품을 전부 압수한다', kind: 'harsh',
-          reply: '아…\n(수집몬이 텅 빈 두 손을\n물끄러미 내려다본다.)' },
+          reply: '아…\n(담아가 텅 빈 두 손을\n물끄러미 내려다본다.)' },
       ],
     },
   },
@@ -3319,50 +3464,58 @@ function getPersuade(monId) {
 }
 
 // ===== v2 방탈출 퍼즐 (T2 프레임워크) =====
-// 이후 방 4개가 재사용하는 공통 틀. 방마다 진행 단계(steps)·단계별 3단계 힌트(hints)·
-// 클리어 보상 카드(rewards)를 정의한다. 방별 물체(단말·게시판 등)는 그 방 설정에 좌표로 둔다.
-// 흔적의 방 정보 토큰 5종 (닉네임·학교·집주소·전화번호·얼굴사진)
+// 1장 「전부 공짜 거리」의 구역들이 재사용하는 공통 틀. 구역마다 진행 단계(steps)·
+// 단계별 3단계 힌트(hints)·클리어 보상 카드(rewards)·복귀 지점(exitTo)·클리어 대사
+// (clearLines)를 정의한다. 로그 스키마(hintsUsed/wrongTries/timeFrames/clears)는 공통.
+// type: 'traces'(정보 토큰 방) | 'copies'(떠도는 사본 회수) | 'levers'(컨베이어 차단 레버)
+// 접수처 정보 토큰 5종 (닉네임·학교·집주소·전화번호·얼굴사진)
 const TRACE_TOKENS = {
   nickname: '닉네임', school: '학교', address: '집주소', phone: '전화번호', face: '얼굴사진',
 };
 
 const PUZZLES = {
+  // ── 구역① 「살금의 접수처」 ──────────────────────────────────
   traces: {
     map: 'traceroom',
-    title: '흔적의 방',
-    // 방 안 목표 HUD 문구 (본편 퀘스트 대신 표시). 클리어 후엔 보스방 안내로 바뀐다.
+    type: 'traces',
+    title: '살금의 접수처',
+    // 방 안 목표 HUD 문구 (본편 퀘스트 대신 표시). 클리어 후엔 거리 복귀 안내로 바뀐다.
     objective: '정보를 지키며 출구를 찾자',
-    objectiveCleared: '주인의 방으로',
-    // 클리어 후 복귀 지점 (마을 카페 입구 앞) — 이후 방 4개가 재사용
-    exitTo: { map: 'village', x: 24, y: 6 },
+    objectiveCleared: '거리로 돌아가자',
+    // 클리어 후 복귀 지점 (거리의 접수처 문 앞)
+    exitTo: { map: 'freestreet', x: 5, y: 5 },
     steps: ['tokens', 'board', 'eraser', 'exit'], // 진행 단계 키
-    // 각 단계 3단계 점진 힌트 (1:무엇을 볼지 / 2:왜 / 3:무엇을 할지)
+    // 각 단계 3단계 점진 힌트 (1:무엇을 볼지 / 2:왜 / 3:무엇을 할지) — 살금의 말투
     hints: {
       tokens: [
-        '방 안의 단말기들을 살펴보세요.',
-        '모두 편리함을 주는 대신 내 정보를 달라고 해요. 정말 필요한 거래일까요?',
-        '급하지 않으면 아무것도 주지 말고, 먼저 단말기의 설명을 읽어 보세요.',
+        '살금: "단말기들이 자꾸 뭘 달라고 하지…"',
+        '살금: "공짜라는데, 꼭 뭘 받아 가.\n…그게 값인가 봐."',
+        '살금: "급한 게 아니면 아무것도 주지 마.\n일단 단말기 설명부터 읽어 봐."',
       ],
       board: [
-        '친구 게시판(기록몬)에 무엇을 올렸는지 떠올려 보세요.',
-        '한번 게시판에 올린 얼굴사진은 지우개로도 지울 수 없어요. 조각이 남아요.',
-        '앞으로는 지울 수 있는 것만, 꼭 필요한 곳에만 나눠 주기로 해요.',
+        '살금: "게시판에 뭘 올렸는지 기억나?"',
+        '살금: "게시판의 새김이는 한번 받으면\n몸에 새겨서… 못 지워."',
+        '살금: "지울 수 있는 것만,\n꼭 필요한 곳에만 주는 게 좋아."',
       ],
       eraser: [
-        '화면 위쪽 프로필 보드의 숫자와 따라다니는 그림자를 보세요.',
-        '내보낸 정보가 3개를 넘으면 그림자 스토커가 나타나요. 정보를 줄이면 사라져요.',
-        '지우개 단말에서 준 정보를 골라 지우세요. (게시판 공유분은 못 지워요)',
+        '살금: "위쪽 프로필 보드 숫자 보여?\n…그림자도 따라붙었지."',
+        '살금: "내보낸 정보가 3개를 넘으면\n그림자가 와. 줄이면 사라져."',
+        '살금: "지우개 단말에서 지울 수 있어.\n…게시판에 준 건 빼고. 미안."',
       ],
       exit: [
-        '출구가 둘이에요. 화려한 문과 수수한 문.',
-        '화려한 VIP 문은 남은 정보를 전부 달라고 해요 — 함정이에요.',
-        '수수한 일반 출구로 가세요. 붙어 있는 흔적(닉네임 제외)이 1개 이하일 때 나갈 수 있어요.',
+        '살금: "문이 둘이야.\n반짝이는 문이랑, 수수한 문."',
+        '살금: "반짝이는 VIP 문은…\n남은 걸 전부 달래. 사장님 함정이야."',
+        '살금: "수수한 문으로 가.\n붙은 흔적이 1개 이하면 열려.\n(닉네임은 안 쳐 줘.)"',
       ],
     },
-    rewards: ['ev_minimal', 'ev_footprint'], // 클리어 보상 증거 카드
-    // ---- 흔적의 방 전용 구성 ----
+    rewards: ['ev_minimal'], // 클리어 보상 증거 카드 (ev_footprint는 구역②에서)
+    clearLines: [
+      '접수를 마치고 문을 나섰다.',
+      '살금: "…너무 많이 안 줘서, 다행이야.\n사장님한텐 비밀이야."',
+    ],
+    // ---- 접수처 전용 구성 ----
     tokens: TRACE_TOKENS,
-    // 단말기 4개 (몰래몬 테마) + 친구 게시판 (기록몬 테마)
+    // 단말기 4개 (살금 테마) + 친구 게시판 (새김 테마)
     terminals: [
       { id: 'map', x: 3, y: 3, theme: 'mollaemon', name: '지도 단말', require: 'school',
         ask: '지도 단말이 반짝인다.\n"학교 이름만 알려주면\n가게 안 지름길을 열어줄게!"',
@@ -3373,8 +3526,8 @@ const PUZZLES = {
         yes: '반짝이 장식을 받았다.\n…이제 모르는 번호로 전화가 올지도.',
         no: '"에이, 아쉽다~"' },
       { id: 'board', x: 9, y: 1, theme: 'girokmon', name: '친구 게시판', require: 'face', share: true,
-        ask: '친구 게시판(기록몬)이 웃는다.\n"얼굴 사진 한 장만 올려 봐!\n친구들이 좋아요를 누를 거야."',
-        yes: '얼굴 사진을 게시판에 올렸다.\n기록몬: "고마워! …이건 이제\n내가 영원히 가지고 있을게."',
+        ask: '친구 게시판(새김)이 웃는다.\n"얼굴 사진 한 장만 올려 봐!\n친구들이 좋아요를 누를 거야."',
+        yes: '얼굴 사진을 게시판에 올렸다.\n새김: "고마워! …이건 이제\n내 몸에 새겨질 거야."',
         no: '"부끄러워? …알겠어."' },
       { id: 'vip', x: 3, y: 7, theme: 'mollaemon', name: 'VIP 안내 단말', require: 'address',
         ask: 'VIP 안내 단말이 속삭인다.\n"집주소를 알려주면\n선물을 집으로 보내줄게!"',
@@ -3385,7 +3538,7 @@ const PUZZLES = {
     eraser: { x: 16, y: 7, name: '지우개 단말',
       prompt: '지우개 단말: 지울 정보를 고르세요.',
       empty: '지울 수 있는 정보가 없어요.',
-      cantErase: '게시판에 공유한 얼굴사진은\n지울 수 없어요. 조각이 남아요.\n(잊힐 권리에도 한계가 있어요)' },
+      cantErase: '게시판에 올린 얼굴사진은\n지워지지 않는다.\n새김: "…이미 새겨졌어. 미안."' },
     // 출구 2개
     exits: {
       vip: { x: 16, y: 10, name: 'VIP 출구',
@@ -3393,10 +3546,86 @@ const PUZZLES = {
         trap: '이미 알려진 정보는\n문을 닫아도 따라온단다…\n(그림자 둘이 더 늘어났다!)' },
       normal: { x: 3, y: 10, name: '일반 출구',
         ask: '수수한 문이다.\n"닉네임만 알려주면\n조용히 나갈 수 있어."',
-        tooMany: '붙어 있는 흔적이 너무 많아요.\n(닉네임 빼고 1개 이하로 줄여 보세요)' },
+        tooMany: '붙어 있는 흔적이 너무 많다.\n(닉네임 빼고 1개 이하로 줄여 보자)' },
     },
   },
+
+  // ── 구역② 「새김의 게시판 광장」 ────────────────────────────
+  // 접수처에서 준 내 정보의 사본 3개가 광장을 떠돈다 — 쫓아가 붙잡으면 회수.
+  // 네 번째 사본은 금고 안이라 회수할 수 없다 (클리어 대사에서 새김이 말해 준다).
+  copies: {
+    map: 'boardplaza',
+    type: 'copies',
+    title: '새김의 게시판 광장',
+    objective: '떠도는 내 조각 3개를 붙잡자',
+    objectiveCleared: '거리로 돌아가자',
+    exitTo: { map: 'freestreet', x: 22, y: 5 },
+    steps: ['copies'],
+    hints: {
+      copies: [
+        '새김: "반짝이는 조각들…\n네 눈에도 보이지?"',
+        '새김: "저건 네가 접수처에서 준 것의\n사본이야. 퍼지면 저렇게 떠돌아."',
+        '새김: "쫓아가서 붙잡으면 돌려받아.\n도망치지만… 너보다 느려."',
+      ],
+    },
+    rewards: ['ev_footprint'],
+    clearLines: [
+      '조각 셋을 품에 되찾았다.',
+      '새김: "…하나 더 있었지. 그건 금고 안이야.\n이미 내 몸에 새겨졌어. …미안."',
+      '새김: "주인이 문을 열기 전엔,\n나도 어쩔 수가 없어."',
+    ],
+    // ---- 광장 전용 구성: 사본 3개의 시작 위치 ----
+    copies: [
+      { x: 5, y: 7 },
+      { x: 18, y: 8 },
+      { x: 12, y: 10 },
+    ],
+  },
+
+  // ── 구역③ 「배달 창고」 ─────────────────────────────────────
+  // 내 정보 상자가 컨베이어를 타고 출하구로 흘러간다. 라벨에 적힌 레인의
+  // 차단 레버를 순서대로 당겨 상자를 전부 「반송함」으로 돌리면 클리어.
+  // 잘못 당기면 상자가 출하되고(오답 기록) 같은 라벨의 새 상자가 나온다.
+  levers: {
+    map: 'warehouse',
+    type: 'levers',
+    title: '배달 창고',
+    objective: '상자 3개를 반송함으로 돌리자',
+    objectiveCleared: '거리로 돌아가자',
+    exitTo: { map: 'freestreet', x: 4, y: 14 },
+    steps: ['levers'],
+    hints: {
+      levers: [
+        '살금: "상자마다 라벨이 붙어 있어.\n…사장님 글씨야."',
+        '살금: "라벨 옆에 적힌 레인이,\n그 상자가 흘러가는 길이야."',
+        '살금: "위쪽 상자의 레인을 보고,\n같은 레인 레버를 당겨. 순서대로."',
+      ],
+    },
+    rewards: ['ev_consent'],
+    clearLines: [
+      '컨베이어가 멈췄다.\n반송함에 상자 셋이 나란히 쌓였다.',
+      '라벨을 떼어 냈다.\n「친구가 준 것」… 아니야.\n원래, 내 거였어.',
+    ],
+    // ---- 창고 전용 구성 ----
+    // 벨트(y=7)를 따라 흐르는 상자와, 상자를 반송함으로 돌리는 차단 레버 3개
+    levers: [
+      { id: 'lv_star', x: 6, y: 9, lane: '별', name: '별 레인 레버' },
+      { id: 'lv_moon', x: 11, y: 9, lane: '달', name: '달 레인 레버' },
+      { id: 'lv_btfy', x: 16, y: 9, lane: '나비', name: '나비 레인 레버' },
+    ],
+    // 상자 순서 — 각 상자의 라벨과 흘러가는 레인 (이 순서가 곧 정답 레버 순서)
+    boxes: [
+      { label: '친구가 준 것 1호', lane: '달' },
+      { label: '친구가 준 것 2호', lane: '별' },
+      { label: '친구가 준 것 3호', lane: '나비' },
+    ],
+    returnBin: { x: 12, y: 5, name: '반송함' },
+    belt: { y: 7, x0: 3, x1: 20 }, // 상자가 흐르는 벨트 구간 (그리기용)
+  },
 };
+
+// 1장 금고 잠금 — 이 구역들을 하나 클리어할 때마다 잠금이 하나 풀린다
+const S1_ZONE_PUZZLES = ['traces', 'copies', 'levers'];
 
 function getPuzzleForMap(mapId) {
   for (const k in PUZZLES) {
@@ -3431,8 +3660,8 @@ const EXAMINE_TILES = {
   Q: '거울이다. …방금, 거울 속의 내가 먼저 웃지 않았나?',
   X: '선인장. 가시가 따끔해 보인다. 멀리서 인사만.',
   D: '문이 잠겨 있다. 주인이 잠시 자리를 비운 모양이다.',
-  '6': '반짝이는 게임 카페 입구. "전부 공짜!" …정말일까?',
-  '7': '안쪽으로 통하는 낡은 문.\n손잡이에 「주인의 방」이라 적혀 있다.',
+  '6': '반짝이는 네온 입구.\n"전부 공짜!" …정말일까?',
+  '7': '묵직한 문이다.',
 };
 
 // 맵별 특별 살펴보기 지점(좌표). 같은 좌표면 기본 타일 문구보다 우선.
@@ -3464,6 +3693,11 @@ const MAP_PROPS = {
   ],
   serverroom: [
     { x: 2, y: 2, text: '꺼진 모니터.\n전원을 넣자 한 줄이 떠오른다.\n"프로젝트 0호 — 마지막 백업"' },
+  ],
+  ownerroom: [
+    // 스토리 복선 — 조사하면 flags.seenPhoto1이 기록된다 (flag: game.js interact)
+    { x: 9, y: 1, flag: 'seenPhoto1',
+      text: '서랍 깊은 곳에 낡은 사진이 있다.\n하얀 가운의 어른과… 작은 아이?' },
   ],
   library: [
     { x: 7, y: 2, text: '한 권만 거꾸로 꽂힌 책.\n표지에 작게 ≪0≫.\n…펴 보려 하자 스르륵 닫힌다.' },
