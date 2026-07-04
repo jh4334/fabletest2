@@ -2024,7 +2024,7 @@ const MAPS = {
       'KEEEEEEEEEEEEEEEEK',
       'KEEEEEEEEEEEEEEEEK',
       'KEEEEEEEEEEEEEEEEK',
-      'KEEEEEEEE55EEEE1EK',
+      'KEEEEEEEE55EEEEEEK',
       'KEEEEEEEE55EEEEEEK',
       'KKKKKKKKKKKKKKKKKK',
     ],
@@ -2033,7 +2033,6 @@ const MAPS = {
       { x: 9, y: 9, to: 'village', tx: 26, ty: 9 },
       { x: 8, y: 10, to: 'village', tx: 26, ty: 9 },
       { x: 9, y: 10, to: 'village', tx: 26, ty: 9 },
-      { x: 15, y: 9, to: 'bubble', tx: 7, ty: 9 },
     ],
     npcs: [
       { id: 'labguide', x: 2, y: 8, pal: 'guard', name: '연구원' },
@@ -2048,9 +2047,10 @@ const MAPS = {
     ],
   },
 
-  // ---- 보너스: 필터버블 방탈출 (개념 체험 시범) ----
-  // '추천(같은 문)'만 따라가면 제자리(입구)로 되돌아오고, '새로운 길'을
-  // 골라야 위로 빠져나온다. 똑같은 복도가 반복되는 것 자체가 필터버블 체험.
+  // ---- (v1 레거시, 입구 제거됨) 필터버블 방탈출 개념 체험 시범 ----
+  // 마을 쪽 입구(연구실 워프)와 관련 표지판을 제거해 더 이상 플레이로는 들어갈 수 없다.
+  // 타일 배치 등 맵 데이터 자체는 참고용으로 남겨 둔다(warps/signs는 비움 — 고아 워프
+  // 검증 오류 방지).
   bubble: {
     name: '필터버블 미로 (연습)',
     song: 'glitch',
@@ -2072,20 +2072,9 @@ const MAPS = {
       'NMMMMMMMMMMM1N',
       'NNNNNNNNNNNNNN',
     ],
-    warps: [
-      { x: 12, y: 10, to: 'lab', tx: 14, ty: 9 },     // 포기하고 연구실로
-      { x: 3, y: 4, to: 'bubble', tx: 7, ty: 8 },     // 추천 → 제자리로(필터버블)
-      { x: 7, y: 4, to: 'bubble', tx: 7, ty: 8 },     // 추천 → 제자리로(필터버블)
-      { x: 10, y: 4, to: 'bubble', tx: 10, ty: 2 },   // ✨새로운 길 → 위(탈출)로
-      { x: 1, y: 2, to: 'lab', tx: 14, ty: 9 },       // 탈출문 → 연구실
-    ],
+    warps: [], // 입구·출구 워프 제거됨 (아래 참고)
     npcs: [],
-    signs: [
-      { x: 7, y: 1, text: '✨ 빠져나왔다!\n추천(같은 것)만 보면 시야가 좁아져요.\n가끔 "새로운 것"도 골라 보는 게\n필터버블을 깨는 법이에요!' },
-      { x: 2, y: 6, text: '추천 영상: "네가 좋아하는 것"\n(…또 비슷한 거네.)' },
-      { x: 6, y: 6, text: '추천 영상: "네가 좋아하는 것"\n(…또 비슷한 거네.)' },
-      { x: 9, y: 6, text: '✨ 한 번도 안 가 본 "새로운 길"' },
-    ],
+    signs: [], // 관련 표지판 제거됨
     monsters: [],
   },
 };
@@ -3765,8 +3754,8 @@ function getNpcDialog(npcId, flags) {
           '아이들이 이상해졌어.\n어느 날부터 마음이 딱딱하게 굳어서,\n낯선 말만 되풀이한단다.',
           '…원래는, 착한 아이들이야.\n부디, 그 아이들을\n되돌려 주지 않겠니.',
           '…내가 왜 그걸 아는지는,\n묻지 말아 주렴. …옛날 일이란다.',
-          '북쪽 정적의 숲, 동쪽 잔향의 호수,\n서쪽 회로의 동굴.\n굳어 버린 아이가 하나씩 있단다.',
-          '그 아이의 마음을 열어 주면\n「마음의 증표」가 남아.\n증표 셋이 모이면 신호탑의 문이 열리지.',
+          '북쪽 정적의 숲에 따라라는 아이가\n굳어 있단다. 먼저 그 아이의\n마음을 열어 주지 않겠니.',
+          '그다음엔 마을 오른쪽의\n반짝이는 문으로 가 보렴.\n「전부 공짜 거리」라고 적혀 있을 거야.',
           '부탁한다, 어린 손님아.\n(Z키 또는 스페이스로 대화하고,\n화살표나 WASD로 움직일 수 있어.)',
         ];
       }
@@ -4041,7 +4030,6 @@ function getNpcDialog(npcId, flags) {
         '여기는 AI 미래연구소예요!\n아직 교과서에 다 담기지 않은\n새로운 AI 주제를 미리 연습해요.',
         '생성형 AI가 지어내는 "환각",\n진짜 같은 가짜 "딥페이크"…\n미래의 수호자에게 꼭 필요한 힘이죠.',
         '여기 친구들은 증표를 주진 않지만,\n도감과 도전과제에는 똑같이\n기록된답니다. 마음껏 연습해요!',
-        '아 참, 오른쪽 문으로 들어가면\n"필터버블 미로"를 체험할 수 있어요.\n추천(같은 길)만 따라가면 못 나와요 —\n"새로운 길"을 찾아 빠져나와 보세요!',
       ];
 
     // 「전부 공짜 거리」의 살금 — 담아의 점원. 시킨 일이 미안한 아이 (대사 2종)
@@ -4150,12 +4138,74 @@ function getObjective(flags) {
   return '코어 — 가장 깊은 곳에서 기다리는 아이에게';
 }
 
+// ===== v2 목표 나침반 — 프롤로그(따라)~파이널, chapterNClear 기반 사다리 =====
+// 챕터별: 소속 맵(허브+구역)·보스방·허브의 보스/금고 문 좌표·보스 조우 좌표.
+// "이미 그 허브 안" 판정을 간단화한다 — 정확한 미클리어 구역 계산 대신 허브의
+// 보스/금고 문 좌표를 그대로 가리킨다(보스방 안이면 보스 좌표로 더 좁힌다).
+const V2_CHAPTERS = [
+  { zoneMaps: ['freestreet', 'traceroom', 'boardplaza', 'warehouse'],
+    gate: { map: 'freestreet', x: 14, y: 4, label: '금고문' },
+    bossMap: 'ownerroom', boss: { map: 'ownerroom', x: 5, y: 2, label: '담아' } },
+  { zoneMaps: ['tiltstreet', 'echoalley', 'samplehouse', 'dimstreet'],
+    gate: { map: 'tiltstreet', x: 14, y: 2, label: '문지기의 방' },
+    bossMap: 'gatekeeper', boss: { map: 'gatekeeper', x: 7, y: 2, label: '기울' } },
+  { zoneMaps: ['rumorstreet', 'tipsroom', 'editroom', 'towerroom'],
+    gate: { map: 'rumorstreet', x: 14, y: 4, label: '신문사' },
+    bossMap: 'towerroof', boss: { map: 'towerroof', x: 7, y: 2, label: '그럴싸' } },
+  { zoneMaps: ['arcade', 'roulettesquare', 'signupalley', 'backstage'],
+    gate: { map: 'arcade', x: 11, y: 1, label: '정문' },
+    bossMap: 'yuhokstage', boss: { map: 'yuhokstage', x: 7, y: 2, label: '반짝' } },
+  { zoneMaps: ['cozyhome', 'callroom', 'corridor', 'sofaroom'],
+    gate: { map: 'cozyhome', x: 11, y: 1, label: '현관' },
+    bossMap: 'lumiroom', boss: { map: 'lumiroom', x: 7, y: 2, label: '루미' } },
+];
+// 챕터 진입 전 — 이전 챕터(또는 마을)에서 다음 챕터로 가는 문. 인덱스 = 클리어한 장 수.
+const V2_ENTRANCE = [
+  { map: 'village', x: 24, y: 5, label: '전부 공짜 거리' },     // 0장 클리어(따라 격파 후) — 마을 문
+  { map: 'freestreet', x: 27, y: 13, label: '기울어진 거리' },  // 1장 클리어 — 2장 문
+  { map: 'tiltstreet', x: 27, y: 10, label: '대문짝 신문사' },  // 2장 클리어 — 3장 문
+  { map: 'rumorstreet', x: 27, y: 10, label: '반짝 아케이드' }, // 3장 클리어 — 4장 문
+  { map: 'arcade', x: 21, y: 8, label: '포근한 집' },           // 4장 클리어 — 5장 문
+];
+const V2_FINAL_DOOR = { map: 'cozyhome', x: 11, y: 14, label: '고요의 뜰' }; // 5장 클리어 — 파이널 문
+
+function chapterClearCount(flags) {
+  let n = 0;
+  if (flags.chapter1Clear) n += 1;
+  if (flags.chapter2Clear) n += 1;
+  if (flags.chapter3Clear) n += 1;
+  if (flags.chapter4Clear) n += 1;
+  if (flags.chapter5Clear) n += 1;
+  return n;
+}
+// curMap: 화살표를 그리는 시점의 현재 맵(생략 가능 — 그 경우 허브 밖 기준으로 계산한다).
+function getV2ChapterTarget(flags, curMap) {
+  const n = chapterClearCount(flags);
+  if (n >= 5) return V2_FINAL_DOOR;
+  const ch = V2_CHAPTERS[n];
+  if (curMap === ch.bossMap) return ch.boss;          // 이미 보스방 안 — 보스를 가리킨다
+  if (ch.zoneMaps.includes(curMap)) return ch.gate;    // 이미 허브/구역 안 — 보스·금고 문을 가리킨다
+  return V2_ENTRANCE[n];                               // 허브 밖 — 챕터 입구 문을 가리킨다
+}
+
 // 현재 목표의 위치(맵/좌표). 화면의 안내 화살표가 가리킬 곳.
-function getObjectiveTarget(flags) {
+// curMap은 생략 가능(수업 모드의 스폰 계산처럼 "현재 위치"가 없는 호출용).
+function getObjectiveTarget(flags, curMap) {
   const d = flags.defeated;
   if (!flags.talkedProf) return { map: 'village', x: 4, y: 12, label: '박사님' };
   if (d.yeongi) {
     return flags.trueEnding ? { map: 'village', x: 5, y: 12, label: '영이' } : null;
+  }
+  // v1 레거시 사다리(배지·혼돈몬)에 이미 진행이 있으면 계속 그 경로로 안내한다 —
+  // v1 콘텐츠 무손상 원칙(기존 세이브·수업 모드의 구 스테이지 점프가 여기로 온다).
+  const onV1Path = countBadges(flags) > 0 || d.hondonmon;
+  if (!onV1Path) {
+    // v2 메인 플로우 — 따라(프롤로그)부터 파이널까지 chapterNClear 기반으로 다음 목적지를
+    // 가리킨다. profConfession 이후에도(getObjective와 같은 우선순위 구조) 같은 사다리를
+    // 그대로 쓴다 — confession은 chapter3Clear 뒤에만 일어나므로, 자연히 "현재 진행 챕터의
+    // 입구"를 가리키게 된다.
+    if (!d.bekkyeomon) return { map: 'forest', x: 7, y: 10, label: '따라' };
+    return getV2ChapterTarget(flags, curMap);
   }
   if (!d.hondonmon) {
     const badges = countBadges(flags);
@@ -4409,14 +4459,10 @@ const PERSUADE = {
         attack: { pattern: 'aimed', dur: 260, color: '#f08a24', taunt: '보지 마… 내 진짜 그림은 보지 마!' },
       },
     ],
+    // react — game.js가 실제로 읽는 필드만 남긴다: evidenceRight(claim.okLine 없을 때
+    // 정답 문 반응의 기본값), open(열림 전이 시 뜨는 플로팅 대사).
     react: {
-      empathy: '…뭐야. 사람들은 다 혼내러 오던데.\n(따라의 어깨가 조금 풀렸다)',
-      empathyAgain: "…응. 이럴 때 '고맙다'고 하는 거랬지. …고마워.\n(하지만 위로만으로는 부족한 것 같다)",
-      questionClosed: '…몰라. 나는 들은 얘기밖에 없는걸.\n(마음이 닫혀 있어 대답하지 않는다)',
-      evidenceClosed: '…(따라는 카드를 쳐다보지도 않는다)\n먼저 마음을 열어야 할 것 같다.',
       evidenceRight: '…그건 누가 시켜서 하는 말이 아니라\n진짜 같네. (카드의 말이 마음에 스며든다)',
-      rebutBackfire: '시끄러워!! 다들 베끼면서 산다고 했단 말야!\n(마음이 더 굳게 닫혔다… 다음 공격이 거세진다)',
-      rebutOk: '…그, 그런가. 그럴지도…',
       open: '(따라가 너덜너덜한 연필을 내려다본다.\n마음이 열리고 있다…!)',
     },
   },
@@ -4499,13 +4545,7 @@ const PERSUADE = {
       },
     ],
     react: {
-      empathy: '…뭐야, 왜 그런 눈으로 봐.\n(담아가 자루를 슬쩍 당겼다)',
-      empathyAgain: '…응. …들어 줘서, 고마워.\n(하지만 위로만으론 부족한 것 같다)',
-      questionClosed: '…몰라. 대답 안 할래.\n(마음이 닫혀 있어 대답하지 않는다)',
-      evidenceClosed: '…(담아는 카드를 거들떠보지도 않는다)\n먼저 마음을 열어야 할 것 같다.',
       evidenceRight: '…그런가. …그랬구나.\n(카드의 말이 마음에 스며든다)',
-      rebutBackfire: '시끄러워!! 다 내가 모은 거야!\n(마음이 더 굳게 닫혔다… 다음 공격이 거세진다)',
-      rebutOk: '…그, 그런가. 그럴지도…',
       open: '(담아가 끌어안은 자루를\n스르르 내려놓는다. 마음이 열리고 있다…!)',
     },
     // mercy: v1 수집몬 것을 카페 맥락으로 손질해 재사용
@@ -4590,13 +4630,7 @@ const PERSUADE = {
       },
     ],
     react: {
-      empathy: '…뭐야. 왜 확률도 안 따지고\n그런 눈으로 봐. (기울이 멈칫했다)',
-      empathyAgain: '…응. 들어 줘서… 고마워.\n(하지만 위로만으론 부족한 것 같다)',
-      questionClosed: '…몰라. 대답은 영업 비밀이야.\n(마음이 닫혀 있어 대답하지 않는다)',
-      evidenceClosed: '…(기울은 카드를 쳐다보지도 않는다)\n먼저 마음을 열어야 할 것 같다.',
       evidenceRight: '…그, 그런가. 다시 재 볼게.\n(카드의 말이 저울에 스며든다)',
-      rebutBackfire: '시끄러워!! 확률은 거짓말 안 해!\n(마음이 더 굳게 닫혔다… 다음 공격이 거세진다)',
-      rebutOk: '…그, 그럴 확률도… 있으려나.',
       open: '(기울이 한쪽만 보던 눈을\n천천히 반대쪽으로 돌린다. 마음이 열리고 있다…!)',
     },
     // mercy: v1 편향몬 것을 기울 톤(저울·양쪽 재기)으로 손질
@@ -4616,6 +4650,9 @@ const PERSUADE = {
   // ── 3장 보스 「그럴싸」 (신문사 옥상) ─────────────────────────────
   // 별도 PERSUADE 키(hwangak_boss)로 정의해 v1 미래연구소 환각몬(퀴즈 배틀)과 완전히 분리한다.
   // 스프라이트는 환각몬을 재사용하되, 표시 이름은 '그럴싸'(displayName), 배틀은 이 프로필로만 진행.
+  // openMechanic 'truth' — open 페이즈 중 [진]/[낚] 헤드라인 조각이 번갈아 스폰된다(tempt의
+  // 최소 변형). [진] 접촉 = 게이지+6 + 파도 넘어 영속 카운트(b.truthCaught, 3회째 gaugeMax-2로
+  // 밀어줌). [낚] 접촉 = 게이지-4 + 화면 얼룩 플래시(광고 딱지와는 무관, flash만 재사용).
   hwangak_boss: {
     gaugeMax: 120,
     displayName: '그럴싸', // 보스 조우 표시 이름 (persuadeId 쪽에만 적용 — v1 미래연구소 환각몬은 '환각몬' 유지)
@@ -4623,6 +4660,8 @@ const PERSUADE = {
     fragmentsPerWave: 3,
     waveBulletMul: 1.0,
     waveDur: 340,
+    openMechanic: 'truth', // open 페이즈 고유 기믹 — [진]/[낚] 헤드라인 조각이 번갈아 스폰
+    truthReply: '…어? 이것도… 진짜였어?',
     decoys: ['카더라', '아무튼 속보', '내가 봤다니까', '다들 그렇게 알아', '일단 지르고 보자'],
     // 콜백 인트로: 2장에서 기울을 자비로 되돌렸으면(chapter2Mercy) 한 줄이 붙는다
     intro(flags) {
@@ -4679,13 +4718,7 @@ const PERSUADE = {
       },
     ],
     react: {
-      empathy: '…뭐야, 헤드라인도 안 뽑고\n그런 눈으로 봐? (그럴싸가 멈칫했다)',
-      empathyAgain: '…응. …들어 줘서, 고마워.\n(하지만 위로만으론 부족한 것 같다)',
-      questionClosed: '…몰라. 아니— 모른다는 말은 안 써!\n(마음이 닫혀 있어 대답하지 않는다)',
-      evidenceClosed: '…(그럴싸는 카드를 쳐다보지도 않는다)\n먼저 마음을 열어야 할 것 같다.',
       evidenceRight: '…어, 그거… 진짜였어?\n(카드의 말이 헤드라인에 스며든다)',
-      rebutBackfire: '시끄러워!! 그럴듯하면 됐다니까!\n(마음이 더 굳게 닫혔다… 다음 공격이 거세진다)',
-      rebutOk: '…그, 그럴듯한가…',
       open: '(그럴싸가 [속보] 도장을\n스르르 내려놓는다. 마음이 열리고 있다…!)',
     },
     mercy: {
@@ -4772,13 +4805,7 @@ const PERSUADE = {
       },
     ],
     react: {
-      empathy: '…뭐야, 반짝이지도 않는데\n그런 눈으로 봐? (반짝이 멈칫했다)',
-      empathyAgain: '…응. …들어 줘서, 고마워.\n(하지만 위로만으론 부족한 것 같다)',
-      questionClosed: '…몰라. 반짝이는 것만 보여 줄래.\n(마음이 닫혀 있어 대답하지 않는다)',
-      evidenceClosed: '…(반짝은 카드를 쳐다보지도 않는다)\n먼저 마음을 열어야 할 것 같다.',
       evidenceRight: '…어, 그거… 진짜였어?\n(카드의 말이 조명 사이로 스며든다)',
-      rebutBackfire: '시끄러워!! 반짝이면 다 되는 거야!\n(마음이 더 굳게 닫혔다… 다음 공격이 거세진다)',
-      rebutOk: '…그, 그런가…',
       open: '(반짝이 쥐고 있던 버튼을\n스르르 내려놓는다. 마음이 열리고 있다…!)',
     },
     mercy: {
@@ -4863,13 +4890,7 @@ const PERSUADE = {
       },
     ],
     react: {
-      empathy: '…뭐야, 그런 눈으로 보면…\n(루미가 멈칫했다)',
-      empathyAgain: '…응. …들어 줘서, 고마워.\n(하지만 위로만으론 부족한 것 같다)',
-      questionClosed: '…몰라. 그냥 내 말만 들어.\n(마음이 닫혀 있어 대답하지 않는다)',
-      evidenceClosed: '…(루미는 카드를 쳐다보지도 않는다)\n먼저 마음을 열어야 할 것 같다.',
       evidenceRight: '…어, 그거… 진짜였어?\n(카드의 말이 스며든다)',
-      rebutBackfire: '시끄러워! 내 말만 들으면 된다니까!\n(마음이 더 굳게 닫혔다… 다음 공격이 거세진다)',
-      rebutOk: '…그, 그런가…',
       open: '(루미가 꼭 붙잡고 있던 손을\n스르르 놓는다. 마음이 열리고 있다…!)',
     },
     mercy: {
@@ -4946,13 +4967,7 @@ const PERSUADE = {
       },
     ],
     react: {
-      empathy: '…….\n(고요가 아주 조금, 움직였다)',
-      empathyAgain: '…듣고 있었어? …고마워.',
-      questionClosed: '…몰라. 아무도 안 궁금해했어.\n(마음이 닫혀 있어 대답하지 않는다)',
-      evidenceClosed: '…(고요는 쳐다보지도 않는다)\n먼저 마음을 열어야 할 것 같다.',
       evidenceRight: '…그런 것도, 있었나.',
-      rebutBackfire: '…시끄러워.\n(마음이 더 굳게 닫혔다… 다음 공격이 거세진다)',
-      rebutOk: '…그런가.',
       open: '(고요를 감싸던 어둠이\n아주 조금 옅어진다. 마음이 열리고 있다…!)',
     },
     mercy: {
@@ -5018,13 +5033,7 @@ const PERSUADE = {
       },
     ],
     react: {
-      empathy: '…….\n(영이가 아주 조금, 눈을 크게 떴다)',
-      empathyAgain: '…들어 줘서, 고마워.',
-      questionClosed: '…몰라. 그냥, 궁금해서 물어본 거야.\n(마음이 닫혀 있어 대답하지 않는다)',
-      evidenceClosed: '…(영이는 카드를 쳐다보지도 않는다)\n먼저 마음을 열어야 할 것 같다.',
       evidenceRight: '…어, 그거… 진짜였어?',
-      rebutBackfire: '…시끄러워! 어차피 다 지워질 텐데!\n(마음이 더 굳게 닫혔다… 다음 공격이 거세진다)',
-      rebutOk: '…그런가.',
       open: '(영이가 꼭 쥐고 있던 것을\n스르르 놓는다. 마음이 열리고 있다…!)',
     },
   },
@@ -5460,7 +5469,7 @@ const PUZZLES = {
     title: '룰렛 광장',
     objective: '룰렛 뒤 창고에서 비밀조각 열쇠를 찾자',
     objectiveCleared: '아케이드로 돌아가자',
-    exitTo: { map: 'arcade', x: 5, y: 3 },
+    exitTo: { map: 'arcade', x: 5, y: 4 },
     steps: ['roulette'],
     hints: {
       roulette: [
@@ -5497,7 +5506,7 @@ const PUZZLES = {
     title: '회원가입 골목',
     objective: '진짜 도메인을 가려 끝까지 가자',
     objectiveCleared: '아케이드로 돌아가자',
-    exitTo: { map: 'arcade', x: 16, y: 3 },
+    exitTo: { map: 'arcade', x: 16, y: 4 },
     steps: ['signup'],
     hints: {
       signup: [
@@ -5534,7 +5543,7 @@ const PUZZLES = {
     title: '백스테이지',
     objective: '진짜 열쇠 두 개로 안쪽 문을 열자',
     objectiveCleared: '아케이드로 돌아가자',
-    exitTo: { map: 'arcade', x: 11, y: 3 },
+    exitTo: { map: 'arcade', x: 11, y: 4 },
     steps: ['backstage'],
     hints: {
       backstage: [

@@ -1000,15 +1000,15 @@ check('보스 HP 스테이지별 상승',
   bossHp('tteonemgimon') < bossHp('hollimmon') &&
   bossHp('hollimmon') < bossHp('finalboss'));
 
-// 필터버블 방탈출 시범 맵: '새로운 길'은 위로, '추천' 문은 제자리로 루프
+// 필터버블 방탈출 시범 맵: 마을 입구(연구실 워프)와 관련 표지판을 제거해
+// 더 이상 플레이로 들어갈 수 없다 — 타일 데이터만 참고용으로 남아 있다.
 {
   const bub = MAPS.bubble;
-  check('필터버블 맵 존재', !!bub);
-  const gate = (bub.warps || []).filter((w) => w.y === 4);
-  check('관문 문 3개', gate.length === 3);
-  check('새로운 길(위로 상승) 1개', gate.filter((w) => w.to === 'bubble' && w.ty < 4).length === 1);
-  check('추천(제자리로 루프) 2개', gate.filter((w) => w.to === 'bubble' && w.ty > 4).length === 2);
-  check('연구실에서 필터버블 진입 가능', MAPS.lab.warps.some((w) => w.to === 'bubble'));
+  check('필터버블 맵 데이터는 남아 있음(참고용)', !!bub);
+  check('필터버블 타일 배치는 그대로 보존됨', Array.isArray(bub.tiles) && bub.tiles.length === 12);
+  check('입구 워프 제거됨(연구실→필터버블)', !MAPS.lab.warps.some((w) => w.to === 'bubble'));
+  check('필터버블 자체 워프도 비어 있음(고아 워프 방지)', (bub.warps || []).length === 0);
+  check('관련 표지판 제거됨', (bub.signs || []).length === 0);
 }
 
 console.log('[49] 이름 입력 정제');
@@ -1886,6 +1886,36 @@ g.battle.pState = 'shaken'; g.battle.claimIdx = 0;
 forceGates();
 enterDoor(true);
 check('정답 문 통과 (+26)', g.battle.gauge === 26 && g.flags.pStats.gateRight >= 1 && g.battle.phase === 'wave');
+
+// openMechanic 'truth' — open 페이즈 중 [진]/[낚] 헤드라인 조각이 60프레임 간격으로 번갈아
+// 스폰(tempt의 최소 변형). [진] 접촉=게이지+6(누적 3회째 gaugeMax-2 보너스), [낚] 접촉=게이지-4+화면 얼룩.
+g.battle.pState = 'open';
+step(61); // truth.spawnTimer(60) 경과 → 첫 조각 스폰([진]부터 시작)
+check('첫 헤드라인 조각은 [진]', !!g.battle.wave.truth.obj && g.battle.wave.truth.obj.kind === 'real');
+g.battle.arena.bullets.length = 0; g.battle.arena.inv = 999;
+const truthGaugeBefore1 = g.battle.gauge;
+g.battle.arena.soul.x = g.battle.wave.truth.obj.x; g.battle.arena.soul.y = g.battle.wave.truth.obj.y;
+step(1);
+check('[진] 접촉 → 게이지 +6', g.battle.gauge === truthGaugeBefore1 + 6);
+check('[진] 접촉 → truthCaught 1', g.battle.truthCaught === 1);
+check('접촉한 조각 소멸', g.battle.wave.truth.obj === null);
+step(61); // 두 번째 조각([낚]) 스폰
+check('두 번째 헤드라인 조각은 [낚]', !!g.battle.wave.truth.obj && g.battle.wave.truth.obj.kind === 'bait');
+const truthGaugeBefore2 = g.battle.gauge;
+g.battle.arena.soul.x = g.battle.wave.truth.obj.x; g.battle.arena.soul.y = g.battle.wave.truth.obj.y;
+step(1);
+check('[낚] 접촉 → 게이지 -4', g.battle.gauge === truthGaugeBefore2 - 4);
+check('[낚] 접촉 → 화면 얼룩(flash)', g.battle.flash > 0);
+check('[낚] 접촉해도 truthCaught 불변(1)', g.battle.truthCaught === 1);
+check('[낚] 접촉해도 피해 없음(하트 그대로)', g.battle.playerHp === g.battle.maxHearts);
+// 3번째 [진] 접촉 — gaugeMax-2로 밀어준다(2회째까지는 직접 주입해 빠르게 확인)
+g.battle.wave.truth.caught = 2; g.battle.truthCaught = 2;
+g.battle.wave.truth.obj = { x: g.battle.arena.box.x + 20, y: g.battle.arena.box.y + 20, kind: 'real' };
+g.battle.arena.soul.x = g.battle.wave.truth.obj.x; g.battle.arena.soul.y = g.battle.wave.truth.obj.y;
+g.battle.gauge = 50;
+step(1);
+check('3번째 [진] 접촉 → truthCaught 3 + gaugeMax-2로 보너스', g.battle.truthCaught === 3 && g.battle.gauge === g.battle.gaugeMax - 2);
+
 g.battle.gauge = g.battle.gaugeMax; step(1);
 check('게이지 만충 → 마음의 선택', g.battle.phase === 'mercy');
 while (g.battle.cursor !== 0) tap('ArrowDown');
@@ -2023,7 +2053,8 @@ pickChoice(1); // (구석의 작은 글씨) 해지
 check('해지 — 딱지 전부 제거', g.mode === 'dialog' && g.flags.adStickers === 0);
 advanceDialog();
 setPos(9, 10, 'up'); tap('z');
-check('창고 상자 클리어 → 아케이드 복귀 + ev_free + 비밀조각 열쇠', g.map === 'arcade' && !g.puzzleRun &&
+check('창고 상자 클리어 → 아케이드 복귀(입구서 1칸 떨어진 칸) + ev_free + 비밀조각 열쇠',
+  g.map === 'arcade' && !g.puzzleRun && g.player.x === 5 && g.player.y === 4 &&
   g.flags.evCards.includes('ev_free') && g.flags.s4KeySecret === true);
 advanceDialog();
 setPos(11, 2, 'up'); hold('ArrowUp', 12);
@@ -2050,7 +2081,8 @@ pickChoice(0); // www.arca-de.com(정답)
 check('정답 — 통과', g.mode === 'dialog');
 advanceDialog();
 setPos(9, 10, 'up'); tap('z');
-check('본인 확인함 클리어 → 아케이드 복귀 + ev_twokeys + 본인표 열쇠', g.map === 'arcade' && !g.puzzleRun &&
+check('본인 확인함 클리어 → 아케이드 복귀(입구서 1칸 떨어진 칸) + ev_twokeys + 본인표 열쇠',
+  g.map === 'arcade' && !g.puzzleRun && g.player.x === 16 && g.player.y === 4 &&
   g.flags.evCards.includes('ev_twokeys') && g.flags.s4KeyId === true);
 advanceDialog();
 
@@ -2061,7 +2093,8 @@ setPos(5, 5, 'up'); tap('z');
 check('마스터키 — 이제 필요 없음(2/2 열쇠)', g.mode === 'dialog' && g.dialog.lines.some((l) => /필요 없다/.test(l)));
 advanceDialog();
 setPos(9, 10, 'up'); tap('z');
-check('안쪽 문 개방 → ev_offstage + 아케이드 복귀', g.map === 'arcade' && !g.puzzleRun &&
+check('안쪽 문 개방 → ev_offstage + 아케이드 복귀(입구서 1칸 떨어진 칸)',
+  g.map === 'arcade' && !g.puzzleRun && g.player.x === 11 && g.player.y === 4 &&
   g.flags.evCards.includes('ev_offstage'));
 advanceDialog();
 
@@ -2620,6 +2653,122 @@ console.log('[108] 마음의 온도 — 마을의 반응(이사 온 친구들)')
   oneHarsh.chapter3Mercy = false;
   const harshLines = getNpcDialogT('grandma', oneHarsh);
   check('할머니: 차갑게 대한 자리가 있으면 빈자리 언급(분기)', harshLines.some((l) => l.includes('평상')));
+}
+
+console.log('[109] 목표 나침반(getObjectiveTarget) — v2 사다리 — v1 잔재 회귀 방지');
+{
+  const { getObjectiveTarget } = vm.runInContext('({ getObjectiveTarget })', sandbox);
+  // 상태① 따라 전 — talkedProf만 된 상태 → forest(따라)를 가리켜야 한다
+  const s1 = TJ.setupStageFlags(1);
+  const t1 = getObjectiveTarget(s1);
+  check('나침반 — 따라 전 → forest', !!t1 && t1.map === 'forest');
+  // 상태② 1장 전 — 따라 격파(chapter1Clear 전) → village(전부 공짜 거리 문, 24,5)
+  const s2 = TJ.setupStageFlags(1);
+  s2.defeated.bekkyeomon = true;
+  const t2 = getObjectiveTarget(s2);
+  check('나침반 — 1장 전 → village(전부 공짜 거리 문)',
+    !!t2 && t2.map === 'village' && t2.x === 24 && t2.y === 5);
+  // 상태③ 3장 후 — chapter1~3Clear(profConfession 전) → rumorstreet(4장 문)
+  const s3 = TJ.setupStageFlags(1);
+  s3.defeated.bekkyeomon = true;
+  s3.chapter1Clear = true; s3.chapter2Clear = true; s3.chapter3Clear = true;
+  const t3 = getObjectiveTarget(s3);
+  check('나침반 — 3장 후 → rumorstreet(4장 문)', !!t3 && t3.map === 'rumorstreet');
+  // 상태④ 고백 후 — profConfession=true여도 같은 사다리(우선순위 구조가 안 깨짐)
+  const s4 = Object.assign({}, s3, { profConfession: true });
+  const t4 = getObjectiveTarget(s4);
+  check('나침반 — 고백 후에도 같은 사다리(rumorstreet)', !!t4 && t4.map === 'rumorstreet');
+  // 이미 허브/보스방 안에 있으면 그 챕터의 보스·금고 문/보스 좌표로 좁혀진다
+  const t2b = getObjectiveTarget(s2, 'freestreet');
+  check('나침반 — 이미 1장 허브 안 → 금고문(14,4)', !!t2b && t2b.map === 'freestreet' && t2b.x === 14 && t2b.y === 4);
+  const t2c = getObjectiveTarget(s2, 'ownerroom');
+  check('나침반 — 이미 1장 보스방 안 → 담아(5,2)', !!t2c && t2c.map === 'ownerroom' && t2c.x === 5 && t2c.y === 2);
+  // v1 레거시 사다리(배지 진행 있음)는 그대로 보존된다 — v1 콘텐츠 무손상 원칙
+  const v1 = TJ.setupStageFlags(3); // 배지 3개 + hondonmon 등 v1 진행 상태
+  const t5 = getObjectiveTarget(v1);
+  check('나침반 — v1 진행(배지) 있으면 v1 사다리 유지', !!t5 && t5.map !== 'forest' && t5.map !== 'village');
+}
+
+console.log('[110] 박사 첫 대화 — v2 흐름(숲의 따라 → 마을 오른쪽 반짝이는 문)으로 교체');
+{
+  const introLines = getNpcDialogT('prof', { talkedProf: false, badges: { forest: false, lake: false, cave: false } });
+  const joined = introLines.join(' ');
+  check('첫 대화 — 숲의 따라 언급', /따라/.test(joined) && /정적의 숲/.test(joined));
+  check('첫 대화 — 마을 오른쪽 반짝이는 문(전부 공짜 거리) 안내', /전부 공짜 거리/.test(joined));
+  check('첫 대화 — v1 증표 안내 문구는 제거됨', !/증표 셋이 모이면/.test(joined));
+}
+
+console.log('[111] 수업 모드 선택기 — v1 숫자 스테이지 제거, v2 6개 항목만 순환');
+{
+  const TJ2 = vm.runInContext('window.__test', sandbox);
+  check('classSelForFlags 존재(테스트 훅)', typeof TJ2.classSelForFlags === 'function');
+  check('진행 없음 → TRACE_SEL(0)', TJ2.classSelForFlags({}) === 0);
+  check('chapter1Clear → TILT_SEL(-1)', TJ2.classSelForFlags({ chapter1Clear: true }) === -1);
+  check('chapter2Clear → RUMOR_SEL(-2)', TJ2.classSelForFlags({ chapter1Clear: true, chapter2Clear: true }) === -2);
+  check('chapter3Clear → ARCADE_SEL(-3)', TJ2.classSelForFlags({ chapter3Clear: true }) === -3);
+  check('chapter4Clear → COZY_SEL(-4)', TJ2.classSelForFlags({ chapter4Clear: true }) === -4);
+  check('chapter5Clear → FINAL_SEL(-5)', TJ2.classSelForFlags({ chapter5Clear: true }) === -5);
+
+  // 순환 경계 — 파이널(-5)에서 왼쪽/위로 가면 숫자 스테이지 없이 곧장 1장(0)으로 순환
+  g.dialog = null; g.mode = 'world';
+  g.classmode.ret = 'world'; g.classmode.sel = -5; g.classmode.confirm = false; g.classmode.toast = 0;
+  g.mode = 'classmode';
+  tap('ArrowUp');
+  check('파이널에서 왼쪽 → 곧장 1장(0), 숫자 스테이지 없음', g.classmode.sel === 0);
+  // 1장(0)에서 오른쪽/아래로 가면 곧장 파이널(-5)로 순환
+  tap('ArrowDown');
+  check('1장에서 오른쪽 → 곧장 파이널(-5), 숫자 스테이지 없음', g.classmode.sel === -5);
+}
+
+console.log('[112] 4·5장 허브 HUD 진행 텍스트 — arcade(열쇠 N/2)·cozyhome(확인한 용기 N/3)');
+{
+  // drawHud는 캔버스에 직접 그려 문자열을 가로채기 어려우므로, 기존 1~3장 허브 HUD
+  // 분기([107]류)와 같은 방식으로 소스에서 새 분기와 카운터 함수 연동을 확인한다.
+  const gameSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
+  check('drawHud — arcade 분기 추가', /game\.map === 'arcade'[\s\S]{0,200}s4KeyCount\(\)/.test(gameSrc));
+  check('drawHud — arcade 텍스트 "열쇠 N/2"', gameSrc.includes('열쇠 ${n}/2 확보'));
+  check('drawHud — cozyhome 분기 추가', /game\.map === 'cozyhome'[\s\S]{0,200}s5ClearCount\(\)/.test(gameSrc));
+  check('drawHud — cozyhome 텍스트 "확인한 용기 N/3"', gameSrc.includes('확인한 용기 ${n}/3'));
+  // 카운터 함수 자체는 이미 정문/현관 게이트 잠금 안내(0/2·1/2·2/2, 0/3·1/3·3/3)에서 검증됨
+}
+
+console.log('[113] getPuzzleLog 슬롯별 메모이즈 — 캐시 히트/무효화(쓰기·슬롯 변경) 동작 불변');
+{
+  const TJ3 = vm.runInContext('window.__test', sandbox);
+  storage.set('ai-ethics-adventure-puzzle-9', JSON.stringify({ traces: { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 5 } }));
+  const first = TJ3.getPuzzleLog(9);
+  check('첫 조회 — 저장된 내용 반영', first.traces && first.traces.done === true);
+  const second = TJ3.getPuzzleLog(9);
+  check('같은 슬롯 재조회 — 캐시 히트(동일 참조)', second === first);
+  // writePuzzleLog로 쓰면 캐시가 즉시 새 내용을 반영한다(무효화)
+  TJ3.writePuzzleLog(9, { traces: { done: true, clears: 2, hintsUsed: {}, wrongTries: 0, timeFrames: 9 } });
+  const afterWrite = TJ3.getPuzzleLog(9);
+  check('writePuzzleLog 후 — 캐시가 새 내용 반영', afterWrite.traces.clears === 2);
+  // writePuzzleLog를 거치지 않은 외부 변경(직접 storage 조작)도 다음 조회에서 정확히 반영된다
+  storage.set('ai-ethics-adventure-puzzle-9', JSON.stringify({ traces: { done: false, clears: 0, hintsUsed: {}, wrongTries: 3, timeFrames: 0 } }));
+  const afterExternal = TJ3.getPuzzleLog(9);
+  check('캐시 우회 외부 변경도 다음 조회에 정확히 반영(동작 불변)', afterExternal.traces.wrongTries === 3 && afterExternal.traces.done === false);
+  // 슬롯이 바뀌면 캐시가 자동으로 무효화된다(다른 슬롯의 내용이 새지 않음)
+  storage.set('ai-ethics-adventure-puzzle-10', JSON.stringify({ copies: { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 1 } }));
+  const otherSlot = TJ3.getPuzzleLog(10);
+  check('슬롯 변경 시 무효화 — 다른 슬롯 내용이 섞이지 않음', !otherSlot.traces && otherSlot.copies && otherSlot.copies.done === true);
+  const backToNine = TJ3.getPuzzleLog(9);
+  check('원래 슬롯으로 돌아오면 그 슬롯 내용 그대로', backToNine.traces && backToNine.traces.wrongTries === 3 && !backToNine.copies);
+}
+
+console.log('[114] 배달 창고 상자 라벨 근접 표시 — HUD 상시 표기 제거 + 3타일 조건(소스 확인)');
+{
+  // 캔버스 스텁이 fillText 내용을 가로챌 수 없으므로(makeCtx는 no-op 프록시), 지시대로
+  // HUD 문자열 변경은 직접 재현해 확인하고, 3타일 근접 조건은 소스에서 확인한다.
+  g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(4, 14, 'down');
+  hold('ArrowDown', 14);
+  check('창고 재입장', g.map === 'warehouse' && !!g.puzzleRun && g.puzzleRun.id === 'levers');
+  const gameSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
+  check('HUD 상시 라벨 표기 제거(「호」·레인 상시 노출 없음)',
+    !gameSrc.includes('detail = `벨트 위 상자: 「${b.label}」'));
+  check('HUD 안내 — 가까이 가면 라벨이 보인다', gameSrc.includes("'벨트로 가까이 가면 상자 라벨이 보인다'"));
+  check('벨트 상자 라벨 — 3타일 이내 조건으로 렌더링', /near = Math\.max\([\s\S]{0,80}<= 3/.test(gameSrc) &&
+    /if \(near\) label\(nx, ny, `\$\{curBox\.label\}·\$\{curBox\.lane\}`/.test(gameSrc));
 }
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

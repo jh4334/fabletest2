@@ -87,6 +87,7 @@
     choiceRet: 'world',
     hint: null,          // 퍼즐 힌트 오버레이 { step, level, hints }
     hintRet: 'world',
+    introDim: null,      // 새 게임 인트로 암전 { fadeFrame } — startNewGame에서 세팅
   };
 
   const SLOT_COUNT = 3;
@@ -957,6 +958,17 @@
     bind('t-menu', 'menu');
     bind('t-pause', 'cancel');
 
+    // 「선생님」 버튼 — 타이틀(슬롯 화면)에서만 보임(CSS: body.touch.title-slots). 키보드
+    // T와 달리 자체 로직으로 처리한다(터치 전용 진입점이라 KEYMAP 흐름을 안 탄다).
+    const teacherBtn = document.getElementById('t-teacher');
+    if (teacherBtn) {
+      const onTeacher = (e) => {
+        e.preventDefault(); Sound.resume();
+        if (game.mode === 'title' && game.titleScreen === 'slots') openTeacherRoom();
+      };
+      teacherBtn.addEventListener('touchstart', onTeacher);
+    }
+
     // 가상 스틱 (이동) — 손가락 방향으로 상하좌우를 누른 효과를 낸다.
     const DIRS4 = ['up', 'down', 'left', 'right'];
     const stick = document.getElementById('t-stick');
@@ -1497,11 +1509,30 @@
   // 퍼즐 로그: 슬롯별 localStorage. { <puzzleId>: { done, clears, hintsUsed:{단계:횟수}, wrongTries, timeFrames } }
   const PUZZLE_KEY = 'ai-ethics-adventure-puzzle';
   function puzzleKey(slot) { return PUZZLE_KEY + '-' + slot; }
+  // 슬롯별 메모이즈 캐시 — { slot, raw(캐시 당시의 localStorage 원문), data(파싱 결과) }.
+  // raw 문자열이 그대로면 JSON.parse를 건너뛴다(자주 호출되는 isPuzzleCleared 등의 비용 절감).
+  // writePuzzleLog가 쓰면 raw가 바뀌어 자동 무효화되고, 슬롯이 바뀌어도 자동 무효화된다.
+  let puzzleLogCache = null;
   function getPuzzleLog(slot) {
-    try { return JSON.parse(localStorage.getItem(puzzleKey(slot))) || {}; } catch (e) { return {}; }
+    let raw;
+    try { raw = localStorage.getItem(puzzleKey(slot)); } catch (e) { raw = undefined; }
+    if (puzzleLogCache && puzzleLogCache.slot === slot && puzzleLogCache.raw === raw) {
+      return puzzleLogCache.data;
+    }
+    let data;
+    try { data = JSON.parse(raw) || {}; } catch (e) { data = {}; }
+    puzzleLogCache = { slot, raw, data };
+    return data;
   }
   function writePuzzleLog(slot, data) {
-    try { localStorage.setItem(puzzleKey(slot), JSON.stringify(data)); } catch (e) { noteStorageFail(); }
+    try {
+      const raw = JSON.stringify(data);
+      localStorage.setItem(puzzleKey(slot), raw);
+      puzzleLogCache = { slot, raw, data };
+    } catch (e) {
+      noteStorageFail();
+      puzzleLogCache = null; // 쓰기 실패 — 다음 조회는 저장소에서 다시 읽는다
+    }
   }
   function puzzleEntry(log, id) {
     if (!log[id]) log[id] = { done: false, clears: 0, hintsUsed: {}, wrongTries: 0, timeFrames: 0 };
@@ -2618,7 +2649,11 @@
       const nx = Math.round(bx - cx), ny = Math.round(belt.y * TS - cy - 6);
       const curBox = puz.boxes[run.boxIdx];
       box(nx, ny, '#8a6a20', '▣', '#fff2a8');
-      label(nx, ny, `${curBox.label}·${curBox.lane}`, '#fff2a8');
+      // 라벨(「…N호」·레인)은 플레이어가 상자 3타일 이내로 가까이 갔을 때만 보인다
+      // (멀리서도 늘 보이면 레인을 굳이 확인하러 다가갈 이유가 없어져 창고 퍼즐의 긴장이 죽는다).
+      const boxTileX = bx / TS, boxTileY = belt.y;
+      const near = Math.max(Math.abs(game.player.x - boxTileX), Math.abs(game.player.y - boxTileY)) <= 3;
+      if (near) label(nx, ny, `${curBox.label}·${curBox.lane}`, '#fff2a8');
       return;
     }
     if (puz.type === 'retrain') {
@@ -2925,9 +2960,9 @@
       title = `되찾은 조각 ${run.collected}/3`;
       detail = '떠도는 조각을 쫓아가 붙잡자';
     } else if (run.puzzle.type === 'levers') {
-      const b = run.puzzle.boxes[run.boxIdx];
       title = `반송 ${run.diverted}/${run.puzzle.boxes.length}`;
-      detail = `벨트 위 상자: 「${b.label}」 — ${b.lane} 레인`;
+      // 상자 라벨·레인은 더 이상 상시 표시하지 않는다 — 가까이 가야 보인다(drawPuzzleObjects)
+      detail = '벨트로 가까이 가면 상자 라벨이 보인다';
     } else if (run.puzzle.type === 'voices') {
       title = `다른 목소리 ${run.voices.length}/3`;
       detail = '반짝이지 않는 문 뒤를 찾아보자';
@@ -3623,13 +3658,14 @@
     b.dodgeDone = true;
     b.phase = 'dodge';
     const boxW = 300, boxH = 170;
+    const boxY = 190; // 상자 위 안내 문구가 하트 HUD(y100~144) 아래로 오도록 내림 (PBOX_CENTER_Y 참고)
     // 스테이지가 올라갈수록 회피 구간이 길고·빠르고·촘촘해진다 (1장 쉽게 → 5장 어렵게)
     const stage = (MONSTER_DEX[b.monId] && MONSTER_DEX[b.monId].stage) || 1;
     const diffMul = game.difficulty === 'easy' ? 0.75 : game.difficulty === 'hard' ? 1.2 : 1;
     b.dodge = {
       t: 0, dur: Math.round(atk.dur * diffMul * (1 + (stage - 1) * 0.06)),
-      box: { x: Math.round(LW / 2 - boxW / 2), y: 150, w: boxW, h: boxH },
-      soul: { x: LW / 2, y: 235 },
+      box: { x: Math.round(LW / 2 - boxW / 2), y: boxY, w: boxW, h: boxH },
+      soul: { x: LW / 2, y: boxY + boxH / 2 },
       bullets: [],
       spawnTimer: 30,
       inv: 0,
@@ -4219,8 +4255,11 @@
   }
 
   // ── 배틀 상자·하트 지오메트리 (파도·문 공용) ──
+  // y=190(과거 150) — 상자 위 안내 문구 두 줄이 하트 HUD(y100~144) 아래로
+  // 내려오도록 40px 더 내렸다(레이아웃 겹침 수정, drawArenaGuide 참고).
   const PBOX = { w: 320, h: 180 };
-  function persuadeBox() { return { x: Math.round(LW / 2 - PBOX.w / 2), y: 150, w: PBOX.w, h: PBOX.h }; }
+  const PBOX_CENTER_Y = 280; // 190 + 180/2 — shrink 축소 시 중심을 유지하는 기준
+  function persuadeBox() { return { x: Math.round(LW / 2 - PBOX.w / 2), y: 190, w: PBOX.w, h: PBOX.h }; }
   // 루미(보스) open 페이즈 고유 기믹 — 상자 축소(shrink). 파도마다 한 단계씩 좁아지고
   // (b.shrinkLevel — 파도 넘어 영속), 정답 문을 통과하면 한 단계 회복된다. 최소 200×120.
   const SHRINK_STEP = { w: 24, h: 12 };
@@ -4234,7 +4273,7 @@
     box.w = Math.max(SHRINK_MIN.w, PBOX.w - lvl * SHRINK_STEP.w);
     box.h = Math.max(SHRINK_MIN.h, PBOX.h - lvl * SHRINK_STEP.h);
     box.x = Math.round(LW / 2 - box.w / 2);
-    box.y = Math.round(240 - box.h / 2); // 원래 상자 중심(150+180/2=240)을 유지하며 좁아진다
+    box.y = Math.round(PBOX_CENTER_Y - box.h / 2); // 원래 상자 중심을 유지하며 좁아진다
     // 하트가 좁아진 상자 밖에 남지 않도록 즉시 다시 가둔다
     const arena = b.arena;
     arena.soul.x = Math.max(box.x + SOUL_R, Math.min(box.x + box.w - SOUL_R, arena.soul.x));
@@ -4372,6 +4411,9 @@
       // 반짝(보스) open 페이즈 고유 기믹 — 반짝이는 보상 아이템: 건드리면 역효과, 240프레임
       // 버티면 소멸+보상. 버틴 횟수(resisted)는 파도가 바뀌어도 이어진다(최대 3).
       tempt: { obj: null, resisted: b.temptResisted || 0, spawnTimer: 60 },
+      // 그럴싸(보스) open 페이즈 고유 기믹 — [진]/[낚] 헤드라인 조각이 60프레임 간격으로
+      // 번갈아 스폰된다. 잡은 [진] 개수(caught)는 파도가 바뀌어도 이어진다(최대 3).
+      truth: { obj: null, caught: b.truthCaught || 0, spawnTimer: 60, nextKind: 'real' },
     };
     // 고요(보스) open 페이즈 고유 기믹 — 어둠 속, 하트 주변만 보인다. 배틀 전체에서 딱 한 번,
     // 첫 open 파도에서 탄막이 나오기 전 스폰 위치를 잠깐 깜빡여 예고한다(darkWarnT).
@@ -4476,6 +4518,9 @@
       updateTempt(b);
       if (!game.battle) return; // 접촉 피해로 탈진했으면 여기서 중단
     }
+    // 그럴싸(보스) open 페이즈 — [진]/[낚] 헤드라인 조각: [진]=게이지+6(누적 3회째 보너스),
+    // [낚]=게이지-4+화면 얼룩(피해 없음)
+    if (b.p.openMechanic === 'truth' && b.pState === 'open') updateTruth(b);
 
     if (b.gauge >= b.gaugeMax) { persuadeTriumph(); return; }
 
@@ -4588,13 +4633,55 @@
       persuadeGaugeSync(b);
     }
   }
+  // 그럴싸(보스) open 페이즈 고유 기믹 — [진]/[낚] 헤드라인 조각이 60프레임 간격으로 번갈아
+  // 스폰된다(tempt의 최소 변형). [진] 접촉 = 게이지+6 + 누적 카운트(파도 넘어 영속, 3회째
+  // gaugeMax-2로 밀어줌). [낚] 접촉 = 게이지-4 + 화면 얼룩 플래시(피해·광고 딱지는 없음).
+  function updateTruth(b) {
+    const w = b.wave, tr = w.truth, arena = b.arena, box = arena.box;
+    if (!tr.obj) {
+      tr.spawnTimer -= 1;
+      if (tr.spawnTimer <= 0) {
+        tr.obj = {
+          x: box.x + 30 + Math.random() * (box.w - 60),
+          y: box.y + 30 + Math.random() * (box.h - 60),
+          kind: tr.nextKind,
+        };
+        tr.nextKind = tr.nextKind === 'real' ? 'bait' : 'real';
+      }
+      return;
+    }
+    const dx = tr.obj.x - arena.soul.x, dy = tr.obj.y - arena.soul.y;
+    if (dx * dx + dy * dy < (SOUL_R + 10) * (SOUL_R + 10)) {
+      if (tr.obj.kind === 'real') {
+        // [진] 접촉 — 게이지 +6, 파도 넘어 영속 카운트(최대 3, 3회째 만충 직전으로 밀어줌)
+        tr.caught = Math.min(3, tr.caught + 1);
+        b.truthCaught = tr.caught;
+        b.gauge = clamp(b.gauge + 6, 0, b.gaugeMax);
+        if (tr.caught >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2);
+        pushFloat((b.p.truthReply || '…어, 진짜였어?') + `\n(진짜를 알아챘다! ${tr.caught}/3)`);
+        Sound.correct();
+        persuadeGaugeSync(b);
+      } else {
+        // [낚] 접촉 — 게이지 -4 + 화면 얼룩(피해·광고 딱지는 없음)
+        b.gauge = clamp(b.gauge - 4, 0, b.gaugeMax);
+        b.flash = 12;
+        pushFloat('그럴싸: "…거봐, 그럴듯하지?"\n(낚였다… 마음이 식었다)');
+        Sound.bump();
+      }
+      tr.obj = null;
+      tr.spawnTimer = 60;
+    }
+  }
 
   // ── 응답의 문(gates): 타임 슬로우 + 문 3개 ──
   const GATE_SLOTS = ['tl', 'tr', 'bc'];
+  // 문 폭 66→78(+12) — 「서툴러도 내 것」처럼 긴 gateLabel이 문 폭을 넘던 문제 수정.
+  // 최소 상자(SHRINK_MIN.w=200)에서도 tl·tr 사이 32px 여유가 남아 문끼리 겹치지 않는다.
+  const DOOR_W = 78, DOOR_H = 46;
   function doorRect(box, slot) {
-    if (slot === 'tl') return { x: box.x + 6, y: box.y + 6, w: 66, h: 46 };
-    if (slot === 'tr') return { x: box.x + box.w - 72, y: box.y + 6, w: 66, h: 46 };
-    return { x: box.x + box.w / 2 - 33, y: box.y + box.h - 52, w: 66, h: 46 }; // bc
+    if (slot === 'tl') return { x: box.x + 6, y: box.y + 6, w: DOOR_W, h: DOOR_H };
+    if (slot === 'tr') return { x: box.x + box.w - 6 - DOOR_W, y: box.y + 6, w: DOOR_W, h: DOOR_H };
+    return { x: box.x + box.w / 2 - DOOR_W / 2, y: box.y + box.h - 6 - DOOR_H, w: DOOR_W, h: DOOR_H }; // bc
   }
   function buildGates(b) {
     const box = b.arena.box;
@@ -6593,6 +6680,16 @@
   // 파이널 「고요의 뜰 → 코어」 수업 특별 항목 (sel = -5)
   const FINAL_SEL = -5;
   const MIN_SEL = FINAL_SEL; // 선택기 하한
+  // 지금 슬롯의 진행(chapterNClear)에 맞는 특별 항목을 고른다 — 「선생님 방」을 열 때
+  // 커서가 실제 진행에 가까운 장에서 시작하게 한다(v1 숫자 스테이지는 더 이상 쓰지 않는다).
+  function classSelForFlags(flags) {
+    if (flags.chapter5Clear) return FINAL_SEL;
+    if (flags.chapter4Clear) return COZY_SEL;
+    if (flags.chapter3Clear) return ARCADE_SEL;
+    if (flags.chapter2Clear) return RUMOR_SEL;
+    if (flags.chapter1Clear) return TILT_SEL;
+    return TRACE_SEL;
+  }
   // 1장 시작 상태로 맞추고, 전부 공짜 거리 입구에 서서 시작한다.
   function applyTraceRoomClass() {
     const flags = setupStageFlags(1);
@@ -6692,7 +6789,7 @@
     }
     const cm = game.classmode;
     cm.ret = ret;
-    cm.sel = Math.max(1, Math.min(STAGE_COUNT, getStage(game.flags)));
+    cm.sel = classSelForFlags(game.flags);
     cm.confirm = false;
     cm.toast = 0;
     game.mode = 'classmode';
@@ -6714,7 +6811,6 @@
         else if (cm.sel === RUMOR_SEL) applyRumorStreetClass();
         else if (cm.sel === TILT_SEL) applyTiltStreetClass();
         else if (cm.sel === TRACE_SEL) applyTraceRoomClass();
-        else applyStageJump(cm.sel);
         cm.confirm = false;
         cm.toast = 90;
         Sound.badge();
@@ -6723,20 +6819,13 @@
       if (justPressed('cancel') || justPressed('menu')) { cm.confirm = false; Sound.blip(); }
       return;
     }
-    // 스테이지 1~5 + 특별 항목 「1장 — 전부 공짜 거리」(0)·「2장 — 기울어진 거리」(-1)를 한 바퀴로 순환
-    if (justPressed('left') || justPressed('up')) { cm.sel = cm.sel <= MIN_SEL ? STAGE_COUNT : cm.sel - 1; Sound.blip(); }
-    if (justPressed('right') || justPressed('down')) { cm.sel = cm.sel >= STAGE_COUNT ? MIN_SEL : cm.sel + 1; Sound.blip(); }
+    // 특별 항목 6개(「1장 — 전부 공짜 거리」~「파이널 — 고요의 뜰 → 코어」)만 한 바퀴로 순환한다.
+    // v1 숫자 스테이지(1~5) 항목은 제거되었다 — v2 항목만 남는다.
+    if (justPressed('left') || justPressed('up')) { cm.sel = cm.sel <= MIN_SEL ? TRACE_SEL : cm.sel - 1; Sound.blip(); }
+    if (justPressed('right') || justPressed('down')) { cm.sel = cm.sel >= TRACE_SEL ? MIN_SEL : cm.sel + 1; Sound.blip(); }
     if (justPressed('action')) { cm.confirm = true; Sound.select(); return; }
     if (justPressed('cancel') || justPressed('menu')) { closeClassMode(); }
   }
-  // 스테이지별 한 줄 소개(선생님이 고르기 쉽게)
-  const STAGE_BLURB = {
-    1: '개인정보 · 저작권 · 가짜정보 · 공정함 · 절제',
-    2: '고운 말 · 필터버블 · 사람 확인 · 소문 · 경청 · 계정 보안 · 디지털 발자국',
-    3: '환경 · 투명성 · 책임 · 절약 · 정직 · 데이터 수집과 동의',
-    4: '창의성 · 일자리 · AI와 사람 · 진짜 나 · 사칭 · 다크패턴 · 설득',
-    5: '전체 복습 · 어둠대왕몬 · 코어(존재의 가치)',
-  };
   function drawClassMode() {
     const cm = game.classmode;
     ctx.fillStyle = '#000';
@@ -6749,9 +6838,7 @@
     ctx.font = '13px monospace';
     ctx.fillText('오늘 수업할 스테이지를 골라 바로 시작해요. (지금 학생 슬롯에 적용)', 24, 64);
 
-    // 특별 항목: 「1장 — 전부 공짜 거리」·「2장 — 기울어진 거리」·「3장 — 대문짝 신문사」·
-    // 「4장 — 반짝 아케이드」 (방탈출 수업)
-    const isTrace = cm.sel === TRACE_SEL;
+    // 특별 항목 6개(v2 항목만 순환) — 「1장 — 전부 공짜 거리」는 그 외 모든 값이 아닐 때(else)로 처리한다.
     const isTilt = cm.sel === TILT_SEL;
     const isRumor = cm.sel === RUMOR_SEL;
     const isArcade = cm.sel === ARCADE_SEL;
@@ -6762,7 +6849,7 @@
       : isArcade ? '4장 시작 상태 · 반짝 아케이드 입구'
       : isRumor ? '3장 시작 상태 · 대문짝 신문사 입구'
       : isTilt ? '2장 시작 상태 · 기울어진 거리 입구'
-      : isTrace ? '1장 시작 상태 · 전부 공짜 거리 입구' : `${cm.sel}스테이지`;
+      : '1장 시작 상태 · 전부 공짜 거리 입구';
 
     // 스테이지 선택기
     ctx.textAlign = 'center';
@@ -6782,15 +6869,9 @@
     } else if (isTilt) {
       ctx.font = 'bold 30px monospace';
       ctx.fillText('2장 — 기울어진 거리', LW / 2, 176);
-    } else if (isTrace) {
+    } else {
       ctx.font = 'bold 30px monospace';
       ctx.fillText('1장 — 전부 공짜 거리', LW / 2, 176);
-    } else {
-      ctx.font = 'bold 56px monospace';
-      ctx.fillText(`${cm.sel}`, LW / 2, 180);
-      ctx.fillStyle = '#aaa';
-      ctx.font = '15px monospace';
-      ctx.fillText(`/ ${STAGE_COUNT} 스테이지`, LW / 2, 210);
     }
     ctx.fillStyle = '#fff';
     ctx.font = '15px monospace';
@@ -6799,8 +6880,7 @@
       : isArcade ? '다크패턴 · 광고 · 2단계 인증 (구역 3개 → 반짝 보스)'
       : isRumor ? '가짜 뉴스 분별 · 출처 확인 · 정정 보도 (구역 3개 → 그럴싸 보스)'
       : isTilt ? '경청 · 필터버블 · 스스로 고르기 (구역 3개 → 기울 보스)'
-      : isTrace ? '개인정보 · 디지털 발자국 · 동의 (구역 3개 → 담아 보스)'
-      : (STAGE_BLURB[cm.sel] || ''), LW / 2, 250);
+      : '개인정보 · 디지털 발자국 · 동의 (구역 3개 → 담아 보스)', LW / 2, 250);
     ctx.fillStyle = '#666';
     ctx.font = '13px monospace';
     ctx.fillText('◀ ▶ 스테이지/수업 고르기', LW / 2, 286);
@@ -7293,6 +7373,27 @@
     }
     drawAdStickers();
     drawSofaWarmth();
+    drawIntroDim();
+  }
+
+  // 새 게임 인트로 암전 — 컴퓨터실 장면(대화 첫 3줄) 동안 화면을 거의 가리고,
+  // 4번째 줄부터 120프레임에 걸쳐 서서히 걷는다. 대화 박스(drawDialog)는 이 함수
+  // 뒤에 그려지므로 이 오버레이 위로 온전히 보인다. reduceFx면 페이드 없이 즉시 걷힌다.
+  function drawIntroDim() {
+    if (!game.introDim) return;
+    const idx = game.dialog ? game.dialog.idx : 4; // 대화가 이미 끝났으면 다 걷힌 것으로 취급
+    if (idx < 3) {
+      ctx.fillStyle = 'rgba(0,0,0,0.92)';
+      ctx.fillRect(0, 0, LW, LH);
+      return;
+    }
+    if (game.reduceFx) { game.introDim = null; return; } // 페이드 없이 즉시 전환
+    game.introDim.fadeFrame = Math.max(0, game.introDim.fadeFrame) + 1;
+    const t = Math.min(1, game.introDim.fadeFrame / 120);
+    const alpha = 0.92 * (1 - t);
+    if (alpha <= 0.003) { game.introDim = null; return; }
+    ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+    ctx.fillRect(0, 0, LW, LH);
   }
 
   // 5장 구역③ 「소파 코너」 — 앉아 있는 동안 화면에 따뜻한 색 오버레이가 점점 짙어진다.
@@ -7351,7 +7452,9 @@
     ctx.font = fs(13, true);
     const tw = ctx.measureText(txt).width;
     const bw = tw + 28, bh = game.largeText ? 32 : 28;
-    const bx = Math.round(LW / 2 - bw / 2), by = 70;
+    // 퍼즐 HUD(drawPuzzleHud, by=8~최대 74px 높이)와 세로로 겹치지 않도록,
+    // 방탈출 중에는 그 아래로 내려서 그린다.
+    const bx = Math.round(LW / 2 - bw / 2), by = game.puzzleRun ? 86 : 70;
     const fade = Math.min(1, game.notice.t / 40);
     ctx.globalAlpha = fade;
     utBox(bx, by, bw, bh, 6);
@@ -7405,7 +7508,7 @@
   // 현재 맵에서 다음 목표를 향해 한 걸음 더 가야 할 타일을 찾는다.
   // 목표가 다른 맵에 있으면, 그곳으로 가는 경로상의 다음 워프 타일을 가리킨다.
   function nextWaypoint(flags, curMap) {
-    const target = getObjectiveTarget(flags);
+    const target = getObjectiveTarget(flags, curMap);
     if (!target) return null;
     if (target.map === curMap) return { x: target.x, y: target.y };
     const prev = { [curMap]: null };
@@ -7436,7 +7539,7 @@
   //  · 목표가 같은 맵·화면 안: 그 칸 위에 통통 튀는 ▼ 마커로 "여기!" 표시
   //  · 그 외: 플레이어를 도는 큰 방향 화살표 + 하단에 목적지 이름
   function drawObjectiveArrow() {
-    const target = getObjectiveTarget(game.flags);
+    const target = getObjectiveTarget(game.flags, game.map);
     if (!target) return;
     const wp = nextWaypoint(game.flags, game.map);
     if (!wp) return;
@@ -7586,6 +7689,18 @@
       objText = game.flags.chapter3Clear ? '거리를 둘러보자'
         : n >= 3 ? '신문사 옥상 — 그럴싸를 만나자'
         : `소문의 출처를 찾자 — 신문사 ${n}/3층`;
+    } else if (game.map === 'arcade') {
+      // 4장 허브 HUD — 열쇠(비밀조각·본인표) 진행을 상시 가시화
+      const n = s4KeyCount();
+      objText = game.flags.chapter4Clear ? '아케이드를 둘러보자'
+        : n >= 2 ? '정문이 열렸다 — 반짝의 무대로'
+        : `열쇠 ${n}/2 확보 — 구역을 돌자`;
+    } else if (game.map === 'cozyhome') {
+      // 5장 허브 HUD — 확인하는 용기(구역 3개) 진행을 상시 가시화
+      const n = s5ClearCount();
+      objText = game.flags.chapter5Clear ? '집을 둘러보자'
+        : n >= 3 ? '현관이 열렸다 — 루미의 방으로'
+        : `확인한 용기 ${n}/3 — 방을 둘러보자`;
     } else {
       objText = getObjective(game.flags);
     }
@@ -7901,22 +8016,40 @@
     }
   }
 
+  // 상자 폭을 넘는 글자는 말줄임(…)으로 자른다 — 호출 전에 ctx.font를 맞춰 둘 것
+  // (측정이 폰트에 따라 달라진다).
+  function ellipsizeToWidth(text, maxW) {
+    if (ctx.measureText(text).width <= maxW) return text;
+    let t = text;
+    while (t.length > 1 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1);
+    return t + '…';
+  }
+
+  // 마음 조각 배틀(파도·문)·회피 상자 위 안내 문구 — 상자 폭 이내로 말줄임하고,
+  // 상자가 하트 HUD/몬스터 자리에서 충분히 떨어져 있는 y(box.y-28/-10)에 그린다.
+  function drawArenaGuide(box, taunt, guide) {
+    const maxW = box.w - 16;
+    const cx = box.x + box.w / 2;
+    ctx.textAlign = 'center';
+    if (taunt) {
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 18px monospace';
+      ctx.fillText(ellipsizeToWidth(taunt, maxW), cx, box.y - 28);
+    }
+    ctx.fillStyle = '#888';
+    ctx.font = '13px monospace';
+    ctx.fillText(ellipsizeToWidth(guide, maxW), cx, box.y - 10);
+    ctx.textAlign = 'left';
+  }
+
   function drawDodge(b) {
     const d = b.dodge;
     if (!d || !b.attack) return;
-    ctx.textAlign = 'center';
-    // 보스의 외침
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 18px monospace';
-    ctx.fillText(b.attack.taunt, LW / 2, d.box.y - 26);
-    ctx.fillStyle = '#888';
-    ctx.font = '13px monospace';
-    ctx.fillText(
+    // 보스의 외침 + 조작 안내
+    drawArenaGuide(d.box, b.attack.taunt,
       b.isPersuade
         ? '화살표로 하트를 움직여 피하세요!  (하트가 다 닳으면 물러나요)'
-        : '화살표로 하트를 움직여 피하세요!  (하트는 0이 되지 않아요)',
-      LW / 2, d.box.y - 6);
-    ctx.textAlign = 'left';
+        : '화살표로 하트를 움직여 피하세요!  (하트는 0이 되지 않아요)');
 
     // 박스
     ctx.strokeStyle = '#fff';
@@ -7972,17 +8105,10 @@
   // 마음 조각 배틀 — 파도(탄막+조각)와 문(응답)을 한 상자 안에서 그린다.
   function drawPersuadeArena(b) {
     const arena = b.arena, box = arena.box;
-    ctx.textAlign = 'center';
     // 몬스터의 외침 + 조작 안내
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 18px monospace';
-    if (b.attack) ctx.fillText(b.attack.taunt, LW / 2, box.y - 30);
-    ctx.fillStyle = '#888';
-    ctx.font = '13px monospace';
-    ctx.fillText(b.phase === 'gates'
+    drawArenaGuide(box, b.attack ? b.attack.taunt : null, b.phase === 'gates'
       ? '마음에 닿는 문으로 하트를 넣어요! (자물쇠 문은 아직 못 열어요)'
-      : '✦를 주워 속마음을 들어요. 탄막은 피하고!', LW / 2, box.y - 12);
-    ctx.textAlign = 'left';
+      : '✦를 주워 속마음을 들어요. 탄막은 피하고!');
 
     // 박스 — 루미(보스)는 포근한 색 테두리로 표시된다(축소 기믹 진행 중 안내)
     ctx.strokeStyle = b.p.openMechanic === 'shrink' ? '#e0a583' : '#fff';
@@ -8056,6 +8182,16 @@
           ctx.fillText('반짝', tp.obj.x, tp.obj.y - 12);
         }
       }
+      // 그럴싸(보스) [진]/[낚] 헤드라인 조각 — 색약 모드는 okColor/badColor로 색 구분
+      if (b.p.openMechanic === 'truth' && b.pState === 'open') {
+        const tr = b.wave.truth;
+        if (tr.obj) {
+          const isReal = tr.obj.kind === 'real';
+          ctx.fillStyle = isReal ? okColor() : badColor();
+          ctx.font = 'bold 14px monospace';
+          ctx.fillText(isReal ? '[진]' : '[낚]', tr.obj.x, tr.obj.y + 5);
+        }
+      }
       ctx.textAlign = 'left';
       // 남은 파도 시간 바
       const frac = Math.max(0, 1 - b.wave.t / b.wave.dur);
@@ -8073,6 +8209,15 @@
         ctx.font = '14px monospace';
         for (let i = 0; i < 3; i++) {
           ctx.fillStyle = i < resisted ? '#333' : '#ffd644';
+          ctx.fillText('●', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
+        }
+      }
+      // 그럴싸(보스) [진] 적중 표시 — 잡은 개수(caught)만큼 불이 들어온다
+      if (b.p.openMechanic === 'truth' && b.pState === 'open') {
+        const caught = b.wave.truth.caught || 0;
+        ctx.font = '14px monospace';
+        for (let i = 0; i < 3; i++) {
+          ctx.fillStyle = i < caught ? okColor() : '#555';
           ctx.fillText('●', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
         }
       }
@@ -8272,6 +8417,9 @@
     recordPlayDay(slot);
     checkCosmeticUnlocks(slot);
     Sound.playSong(MAPS[game.map].song);
+    // 인트로 암전 — 첫 3줄(컴퓨터실 장면) 동안 화면을 거의 검게 덮는다.
+    // 4번째 줄(idx===3, "저 어른에게 물어보자")부터 걷히기 시작한다(drawWorld에서 처리).
+    game.introDim = { fadeFrame: -1 };
     startDialog([
       '방과 후, 텅 빈 컴퓨터실.\n낡은 태블릿 하나가\n혼자 켜져 있다.',
       `${game.playerName}이(가) 화면에 손을 대는 순간—\n빛이 손끝을 붙잡고 끌어당긴다.\n…떨어진다.`,
@@ -8725,6 +8873,9 @@
       const showHintBtn = game.mode === 'battle' && game.battle &&
         game.battle.phase === 'question' && !game.battle.hintUsed;
       document.body.classList.toggle('battle-hint', showHintBtn);
+      // 터치 기기는 키보드 T가 없어 「선생님 방」에 못 들어간다 — 타이틀(슬롯 화면)일 때만
+      // 작은 DOM 버튼을 보여 준다(battle-hint와 같은 body class 토글 패턴).
+      document.body.classList.toggle('title-slots', game.mode === 'title' && game.titleScreen === 'slots');
     } catch (err) {
       crashed = true;
       try { console.error('[AI윤리어드벤처] 프레임 오류:', err); } catch (e) { /* 무시 */ }
@@ -8810,7 +8961,8 @@
     getCustomQuizzes, importCustomQuizzes, clearCustomQuizzes, customQuizTemplate, challengeTopics,
     collectedCards, cardUnlocked, buildCertText, LEARN_CARDS, HOF_CATS,
     sanitizeName, probeStorage, getStorageOk: () => storageOk,
-    buildClassCsv, setupStageFlags, getStage, stageSpawn, applyStageJump,
+    buildClassCsv, setupStageFlags, getStage, stageSpawn, applyStageJump, classSelForFlags,
+    getPuzzleLog, writePuzzleLog,
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록

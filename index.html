@@ -142,6 +142,19 @@
     color: #2a2410;
   }
 
+  /* 선생님(교사 전용 방) — 타이틀의 슬롯 화면에서만, 오른쪽 아래에 작고 눈에 띄지 않게 */
+  #t-teacher { display: none; }
+  body.title-slots #t-teacher {
+    display: flex;
+    right: calc(14px + env(safe-area-inset-right));
+    bottom: calc(14px + env(safe-area-inset-bottom));
+    --b: clamp(34px, 7vmin, 42px);
+    font-size: clamp(10px, 2.2vmin, 12px);
+    border-radius: 10px;
+    background: rgba(28,30,46,.4);
+    opacity: .7;
+  }
+
   /* ---- 세로 모드일 때 가로로 돌리라는 안내 ---- */
   #rotate-hint {
     display: none;
@@ -228,6 +241,7 @@
   <div class="tbtn" id="t-hint" role="button" aria-label="50:50 힌트">힌트</div>
   <div class="tbtn" id="t-menu" role="button" aria-label="도감 열기">도감</div>
   <div class="tbtn" id="t-pause" role="button" aria-label="메뉴 열기">메뉴</div>
+  <div class="tbtn" id="t-teacher" role="button" aria-label="선생님 방 열기">선생님</div>
 </div>
 <div id="rotate-hint">
   <div class="ico">📱</div>
