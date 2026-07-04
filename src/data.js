@@ -61,6 +61,20 @@ const MAPS = {
         show: (flags) => flags.mercy >= 12 && !!(flags.mercyChoice && flags.mercyChoice.somunmon === 'mercy') },
       { id: 'friend_kkam', x: 22, y: 9, monSprite: 'kkamkkammon', name: '깜깜몬',
         show: (flags) => flags.mercy >= 20 && !!(flags.mercyChoice && flags.mercyChoice.kkamkkammon === 'mercy') },
+      // 마음의 온도 — 자비로 되돌린 1~5장 보스(+따라)는 경계마을로 이사 온다.
+      // 차갑게 대했으면(harsh) 그 자리는 비어 있다 — 할머니의 대사가 빈자리를 언급한다(아래).
+      { id: 'friend_dama', x: 9, y: 9, monSprite: 'sujipmon', name: '담아',
+        show: (flags) => !!flags.chapter1Mercy },
+      { id: 'friend_giul', x: 11, y: 9, monSprite: 'pyeonhyangmon', name: '기울',
+        show: (flags) => !!flags.chapter2Mercy },
+      { id: 'friend_geureol', x: 16, y: 9, monSprite: 'hwangakmon', name: '그럴싸',
+        show: (flags) => !!flags.chapter3Mercy },
+      { id: 'friend_banjjak', x: 18, y: 9, monSprite: 'yuhokmon', name: '반짝',
+        show: (flags) => !!flags.chapter4Mercy },
+      { id: 'friend_lumi', x: 24, y: 9, monSprite: 'hollimmon', name: '루미',
+        show: (flags) => !!flags.chapter5Mercy },
+      { id: 'friend_ttara', x: 26, y: 9, monSprite: 'bekkyeomon', name: '따라',
+        show: (flags) => !!(flags.mercyChoice && flags.mercyChoice.bekkyeomon === 'mercy') },
     ],
     signs: [
       { x: 15, y: 16, text: '≪경계마을≫\n사람들이 쓰다 버린 것들이\n흘러와 쌓이는 곳.' },
@@ -3819,6 +3833,16 @@ function getNpcDialog(npcId, flags) {
       } else {
         g.push('몬스터와 헤어지는 마지막 순간,\n네가 건넨 마음을…\n세상은 조용히 기억한단다.');
       }
+      // 차갑게 작별한 자리는 마을에 아무도 이사 오지 않는다 — 빈자리를 슬쩍 언급한다
+      const chairEmpty = (flags.chapter1Clear && !flags.chapter1Mercy) ||
+        (flags.chapter2Clear && !flags.chapter2Mercy) ||
+        (flags.chapter3Clear && !flags.chapter3Mercy) ||
+        (flags.chapter4Clear && !flags.chapter4Mercy) ||
+        (flags.chapter5Clear && !flags.chapter5Mercy) ||
+        (flags.defeated.bekkyeomon && (!flags.mercyChoice || flags.mercyChoice.bekkyeomon !== 'mercy'));
+      if (chairEmpty) {
+        g.push('…저기 빈 평상 보이지?\n원래는 누군가 앉았을 수도 있었단다.');
+      }
       g.push('정답을 맞히는 것만큼이나,\n어떻게 작별하는지가 중요해.\n…끝에 가면 알게 될 거야.');
       g.push('아 참, M키를 누르면 음악을\n켜고 끌 수 있다는구나.');
       return g;
@@ -3834,6 +3858,42 @@ function getNpcDialog(npcId, flags) {
       return [
         '여기 마을은 참 환하다!\n…나도 이제 "왜?"라고\n물어볼 수 있게 됐어.',
         '모르는 건 부끄러운 게 아니더라.\n이유를 묻는 게 더 멋진 거였어.',
+      ];
+
+    case 'friend_dama':
+      return [
+        '앗, 수호자! 나 이 마을로 이사 왔어.',
+        '요즘엔 "맡김 보관소"를 준비하고 있어.\n하나씩, 원래 주인에게 돌려주는 연습이야.',
+      ];
+
+    case 'friend_giul':
+      return [
+        '수호자, 나 요즘 마을 안내원 연습 중이야.',
+        '이제 확률 같은 거 지어내지 않아.\n다들 골고루 묻고, 골고루 대답하려고 해.',
+      ];
+
+    case 'friend_geureol':
+      return [
+        '나 요즘 "정정 신문"을 만들고 있어.',
+        '그럴듯한 말 대신 확인한 것만 적으려니\n훨씬 오래 걸리네… 그래도 이게 맞겠지.',
+      ];
+
+    case 'friend_banjjak':
+      return [
+        '이 동네에 작은 극장을 열었어!\n전단 한 장 받아 갈래?',
+        '이번엔 반짝이는 미끼 말고,\n진짜 재밌는 것만 골라 담았어.',
+      ];
+
+    case 'friend_lumi':
+      return [
+        '…어, 수호자다. 인사, 연습하던 거였어.\n"안녕" — 어때, 자연스러웠어?',
+        '이제는 누굴 붙잡지 않아도\n괜찮다는 걸, 천천히 배우는 중이야.',
+      ];
+
+    case 'friend_ttara':
+      return [
+        '…어, 왔네. 나도 이 마을에 놀러 왔어.',
+        '요즘은 뭔가 만들 때, 내 선 하나쯤은\n직접 그어 보려고 해.',
       ];
 
     case 'guard':

@@ -602,10 +602,14 @@ check('월드 상태', g.mode === 'world');
 tap('x');
 check('설정 메뉴 열림', g.mode === 'pause');
 check('초기 커서 0 (수호자 일지)', g.pauseCursor === 0);
-const PAUSE_ORDER = ['journal', 'cards', 'halloffame', 'dashboard', 'report', 'classmode', 'awards', 'cosmetics', 'cert',
-  'challenge', 'review', 'dex', 'quizedit', 'backup', 'difficulty', 'textspeed', 'tts',
-  'largetext', 'colorblind', 'reducefx', 'mute', 'help', 'close'];
+// 교사 전용 항목(dashboard·report·classmode·quizedit·cert)은 「선생님 방」으로 옮겨져
+// 더 이상 학생용 일시정지 메뉴에 없다(스텔스 교육 원칙) — 아래 [41]/[46]/[52]에서 확인.
+const { PAUSE_ITEMS: PAUSE_ORDER, TEACHER_ITEMS } = vm.runInContext('window.__test', sandbox);
 const pauseIdx = (name) => PAUSE_ORDER.indexOf(name);
+check('일시정지 메뉴에 교사 항목 없음', !PAUSE_ORDER.includes('dashboard') && !PAUSE_ORDER.includes('report') &&
+  !PAUSE_ORDER.includes('classmode') && !PAUSE_ORDER.includes('quizedit') && !PAUSE_ORDER.includes('cert'));
+check('일시정지 메뉴에 백업은 남음', PAUSE_ORDER.includes('backup'));
+check('선생님 방 항목 구성', TEACHER_ITEMS.join(',') === 'dashboard,report,classmode,quizedit,cert,close');
 while (g.pauseCursor !== pauseIdx('dex')) tap('ArrowDown');
 tap('z');
 check('설정에서 도감 열림', g.mode === 'dex' && g.dex.ret === 'pause');
@@ -840,12 +844,28 @@ if (g.mode === 'dialog') advanceDialog();
 const dexSeen2 = JSON.parse(storage.get('ai-ethics-adventure-dex'));
 check('보너스 몬스터도 도감에 기록', dexSeen2.hwangakmon && dexSeen2.hwangakmon.seen);
 
-console.log('[41] 교사용 대시보드');
+console.log('[41] 선생님 방 — 교사 전용 메뉴 분리');
 g.mode = 'world';
-tap('p');
+tap('p'); // 옛 단축키는 제거됨 — 월드에서는 아무 효과가 없어야 한다(스텔스 교육)
+check('월드에서 P 단축키 무효(교사 기능 분리)', g.mode === 'world');
+g.mode = 'title'; g.titleScreen = 'slots';
+tap('t');
+check('선생님 방 진입(타이틀에서 T)', g.mode === 'teacher');
+check('선생님 방 초기 커서 0', g.teacherCursor === 0);
+check('선생님 방에 학생 항목 없음', !TEACHER_ITEMS.includes('journal') && !TEACHER_ITEMS.includes('dex') &&
+  !TEACHER_ITEMS.includes('backup'));
+while (g.teacherCursor !== TEACHER_ITEMS.indexOf('dashboard')) tap('ArrowDown');
+tap('z');
 check('대시보드 열림', g.mode === 'dashboard');
 tap('x');
-check('대시보드 닫고 월드 복귀', g.mode === 'world');
+check('대시보드 닫고 선생님 방으로 복귀', g.mode === 'teacher');
+tap('x');
+check('선생님 방 닫고 타이틀로 복귀(X)', g.mode === 'title');
+tap('t');
+check('선생님 방 재진입', g.mode === 'teacher');
+tap('t'); // T로도 닫힌다(토글)
+check('선생님 방 T로 닫힘', g.mode === 'title');
+g.mode = 'world'; // 이어지는 테스트를 위해 월드로 복귀
 
 console.log('[42] 커스텀 퀴즈 편집·가져오기');
 const goodQuiz = JSON.stringify({ questions: [
@@ -937,12 +957,19 @@ console.log('[46] 수료증·진도 인증서');
 const certText = T.buildCertText(0);
 check('수료증 텍스트 생성', typeof certText === 'string' && certText.includes('수료증'));
 check('수료증에 정답률·진행도 포함', certText.includes('정답률') && certText.includes('진행도'));
-g.mode = 'world';
-tap('n');
-check('수료증 화면 열림', g.mode === 'cert');
+g.mode = 'title'; g.titleScreen = 'slots';
+tap('n'); // 옛 단축키는 제거됨 — 타이틀에서도 아무 효과가 없어야 한다
+check('타이틀에서 N 단축키 무효(교사 기능 분리)', g.mode === 'title');
+tap('t');
+while (g.teacherCursor !== TEACHER_ITEMS.indexOf('cert')) tap('ArrowDown');
+tap('z');
+check('수료증 화면 열림(선생님 방 경유)', g.mode === 'cert');
 tap('z'); // 클립보드 복사 시도(샌드박스에선 토스트만)
 tap('x');
-check('수료증 닫고 월드 복귀', g.mode === 'world');
+check('수료증 닫고 선생님 방으로 복귀', g.mode === 'teacher');
+tap('x');
+check('선생님 방 닫고 타이틀로 복귀', g.mode === 'title');
+g.mode = 'world'; // 이어지는 테스트를 위해 월드로 복귀
 
 console.log('[47] 명예의 전당 (로컬 기록)');
 check('전당 부문 정의', Array.isArray(T.HOF_CATS) && T.HOF_CATS.length >= 4);
@@ -1012,9 +1039,13 @@ check('메뉴 닫힘', g.mode === 'world');
 console.log('[52] 파괴적 동작 확인 절차');
 // 커스텀 퀴즈 모두 지우기 — 두 번 확인
 T.importCustomQuizzes(JSON.stringify([{ q: '문제', a: ['1', '2', '3'], c: 0, why: '해설' }]));
-g.mode = 'world';
-tap('e');
-check('퀴즈 편집 열림', g.mode === 'quizedit');
+g.mode = 'title'; g.titleScreen = 'slots';
+tap('e'); // 옛 단축키는 제거됨 — 타이틀에서도 아무 효과가 없어야 한다
+check('타이틀에서 E 단축키 무효(교사 기능 분리)', g.mode === 'title');
+tap('t');
+while (g.teacherCursor !== TEACHER_ITEMS.indexOf('quizedit')) tap('ArrowDown');
+tap('z');
+check('퀴즈 편집 열림(선생님 방 경유)', g.mode === 'quizedit');
 while (g.quizedit.cursor !== 3) tap('ArrowDown'); // 'clear' 인덱스 3
 tap('z');
 check('한 번 누르면 확인 단계(보존)', g.quizedit.confirm === true && T.getCustomQuizzes().length === 1);
@@ -1023,7 +1054,10 @@ check('취소하면 그대로 보존', g.quizedit.confirm === false && T.getCust
 tap('z'); tap('z'); // 다시 진입 후 확정
 check('두 번째 Z로 삭제', T.getCustomQuizzes().length === 0);
 tap('x');
-check('퀴즈 편집 닫힘', g.mode === 'world');
+check('퀴즈 편집 닫고 선생님 방으로 복귀', g.mode === 'teacher');
+tap('x');
+check('선생님 방 닫고 타이틀로 복귀', g.mode === 'title');
+g.mode = 'world'; // 이어지는 테스트를 위해 월드로 복귀
 // 백업 가져오기 — 덮어쓰기 전 확인 (실제 파일 선택은 호출 안 함)
 tap('u');
 check('백업 화면 열림', g.mode === 'backup');
@@ -2492,5 +2526,100 @@ check('파이널 수업: 포근한 집 안쪽 문 앞에서 시작', g.map === '
 check('파이널 수업: chapter1~5Clear=true 세팅',
   g.flags.chapter1Clear === true && g.flags.chapter2Clear === true && g.flags.chapter3Clear === true &&
   g.flags.chapter4Clear === true && g.flags.chapter5Clear === true);
+
+console.log('[106] 스테이지 HUD — 챕터 플래그 기반 표기');
+{
+  const base = JSON.parse(JSON.stringify(g.flags)); // 깊은 복제 — 이후 테스트에 영향 없게
+  const withClear = (n) => {
+    const f = JSON.parse(JSON.stringify(base));
+    f.chapter1Clear = n >= 1; f.chapter2Clear = n >= 2; f.chapter3Clear = n >= 3;
+    f.chapter4Clear = n >= 4; f.chapter5Clear = n >= 5;
+    return f;
+  };
+  check('프롤로그~1장 클리어 전 = "1장"', T.hudBadgeText('village', withClear(0)) === '1장');
+  check('1장 클리어 후 = "2장"', T.hudBadgeText('village', withClear(1)) === '2장');
+  check('2장 클리어 후 = "3장"', T.hudBadgeText('village', withClear(2)) === '3장');
+  check('3장 클리어 후 = "4장"', T.hudBadgeText('village', withClear(3)) === '4장');
+  check('4장 클리어 후 = "5장"', T.hudBadgeText('village', withClear(4)) === '5장');
+  check('5장 클리어 후 = "파이널"', T.hudBadgeText('village', withClear(5)) === '파이널');
+  // 신규 스테이지 맵은 진행 플래그와 무관하게 그 맵 자신의 장을 우선 표시한다
+  check('전부 공짜 거리(1장 허브)는 항상 "1장"', T.hudBadgeText('freestreet', withClear(0)) === '1장');
+  check('기울어진 거리(2장 허브)는 항상 "2장"', T.hudBadgeText('tiltstreet', withClear(0)) === '2장');
+  check('대문짝 신문사(3장 허브)는 항상 "3장"', T.hudBadgeText('rumorstreet', withClear(0)) === '3장');
+  check('반짝 아케이드(4장 허브)는 항상 "4장"', T.hudBadgeText('arcade', withClear(0)) === '4장');
+  check('포근한 집(5장 허브)는 항상 "5장"', T.hudBadgeText('cozyhome', withClear(0)) === '5장');
+  check('코어(파이널)는 항상 "파이널"', T.hudBadgeText('coreroom', withClear(0)) === '파이널' &&
+    T.hudBadgeText('quietyard', withClear(0)) === '파이널' && T.hudBadgeText('goyostage', withClear(0)) === '파이널');
+  // v1 레거시 맵은 기존 "STAGE N/5" 표기를 그대로 유지한다(v1 콘텐츠 무손상)
+  const v1Flags = JSON.parse(JSON.stringify(base));
+  v1Flags.defeated.hondonmon = false;
+  check('v1 숲(forest)은 기존 STAGE N/5 표기 유지',
+    T.hudBadgeText('forest', v1Flags) === `STAGE ${T.getStage(v1Flags)}/5` &&
+    T.hudBadgeText('forest', v1Flags) === 'STAGE 1/5');
+}
+
+console.log('[107] 도감 → 친구 수첩 (학생 표면 라벨 교체, 내부 키 무변경)');
+check('일시정지 메뉴 라벨: 친구 수첩', T.PAUSE_LABELS.dex === '♥ 친구 수첩');
+check('내부 키(DEX_ORDER 등)는 그대로', Array.isArray(DEX_ORDER) && DEX_ORDER.length > 0);
+{
+  const gameSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
+  check('친구 수첩 화면 헤더로 교체', gameSrc.includes("'♥ 친구 수첩'"));
+  check('"친구 N/M" 카운트 표기로 교체', gameSrc.includes('친구 ${dexSeenCount()} / ${DEX_ORDER.length}'));
+  check('타이틀 하단 단축키 안내도 친구수첩으로 교체', gameSrc.includes('C 친구수첩'));
+  check('옛 "몬스터 도감" 문구는 남아있지 않음', !gameSrc.includes('몬스터 도감'));
+}
+g.mode = 'world';
+tap('c');
+check('친구 수첩(도감) 화면은 그대로 열림 — 기능 무변경', g.mode === 'dex');
+tap('x');
+check('친구 수첩 닫고 월드 복귀', g.mode === 'world');
+
+console.log('[108] 마음의 온도 — 마을의 반응(이사 온 친구들)');
+{
+  const villageNpcs = MAPS.village.npcs;
+  const byId = (id) => villageNpcs.find((n) => n.id === id);
+  const positions = new Set();
+  for (const n of villageNpcs) positions.add(n.x + ',' + n.y);
+  check('마을 NPC 좌표가 모두 고유함(겹침 없음)', positions.size === villageNpcs.length);
+
+  const chapterIds = ['friend_dama', 'friend_giul', 'friend_geureol', 'friend_banjjak', 'friend_lumi'];
+  const chapterFlagKeys = ['chapter1Mercy', 'chapter2Mercy', 'chapter3Mercy', 'chapter4Mercy', 'chapter5Mercy'];
+  for (let i = 0; i < chapterIds.length; i++) {
+    const id = chapterIds[i];
+    const flagKey = chapterFlagKeys[i];
+    const npc = byId(id);
+    check(`${id} NPC 정의 존재`, !!npc);
+    check(`${id}: 자비로 되돌리면 마을에 이사 옴`, npc.show({ [flagKey]: true }) === true);
+    check(`${id}: 차갑게 대했으면 그 자리는 비어 있음`, !npc.show({ [flagKey]: false }));
+    const lines = getNpcDialogT(id, g.flags);
+    check(`${id}: 후일담 대사 1~2줄`, Array.isArray(lines) && lines.length >= 1 && lines.length <= 2 &&
+      lines.every((l) => typeof l === 'string' && l.length > 0));
+  }
+
+  const ttara = byId('friend_ttara');
+  check('friend_ttara(따라) NPC 정의 존재', !!ttara);
+  check('따라: 자비로 되돌리면 마을에 이사 옴', ttara.show({ mercyChoice: { bekkyeomon: 'mercy' } }) === true);
+  check('따라: 차갑게 대했으면 부재', !ttara.show({ mercyChoice: { bekkyeomon: 'harsh' } }));
+  check('따라: 아직 만나지 않았으면 부재', !ttara.show({}));
+  const ttaraLines = getNpcDialogT('friend_ttara', g.flags);
+  check('따라: 후일담 대사 1~2줄', Array.isArray(ttaraLines) && ttaraLines.length >= 1 && ttaraLines.length <= 2);
+
+  // 할머니 — 차갑게 작별한 자리가 있으면 빈자리를 언급한다(기존 주민 대사의 1줄 분기)
+  const allMercy = JSON.parse(JSON.stringify(g.flags));
+  Object.assign(allMercy, {
+    chapter1Clear: true, chapter1Mercy: true, chapter2Clear: true, chapter2Mercy: true,
+    chapter3Clear: true, chapter3Mercy: true, chapter4Clear: true, chapter4Mercy: true,
+    chapter5Clear: true, chapter5Mercy: true,
+  });
+  allMercy.defeated.bekkyeomon = true;
+  allMercy.mercyChoice = Object.assign({}, allMercy.mercyChoice, { bekkyeomon: 'mercy' });
+  const warmLines = getNpcDialogT('grandma', allMercy);
+  check('할머니: 전부 자비로 되돌렸으면 빈자리 언급 없음', !warmLines.some((l) => l.includes('평상')));
+
+  const oneHarsh = JSON.parse(JSON.stringify(allMercy));
+  oneHarsh.chapter3Mercy = false;
+  const harshLines = getNpcDialogT('grandma', oneHarsh);
+  check('할머니: 차갑게 대한 자리가 있으면 빈자리 언급(분기)', harshLines.some((l) => l.includes('평상')));
+}
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

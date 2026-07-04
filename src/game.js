@@ -61,6 +61,7 @@
     notice: { text: '', t: 0 }, // 월드 상단 안내 토스트 (해금 알림 등)
     helpRet: 'title',
     pauseCursor: 0,
+    teacherCursor: 0,    // 「선생님 방」 메뉴 커서
     titleScreen: 'slots', // slots | name | delete
     slotCursor: 0,
     currentSlot: 0,
@@ -822,7 +823,13 @@
     if (e.repeat) return;
     Sound.resume();
     if (e.key === 'm' || e.key === 'M') { Sound.toggleMute(); return; }
-    if (e.key === 't' || e.key === 'T') { cycleTextSpeed(); return; }
+    if (e.key === 't' || e.key === 'T') {
+      // 타이틀 화면에서는 「선생님 방」(교사 전용 메뉴)을 연다 — 그 외에는 기존대로 자막 속도.
+      if (game.mode === 'title' && game.titleScreen === 'slots') { openTeacherRoom(); return; }
+      if (game.mode === 'teacher') { closeTeacherRoom(); return; }
+      cycleTextSpeed();
+      return;
+    }
     if (e.key === 'g' || e.key === 'G') { toggleLargeText(); return; }
     if (e.key === 'h' || e.key === 'H') {
       if (game.mode === 'hint') { advanceHint(); return; }
@@ -871,28 +878,12 @@
       if (game.mode === 'backup') { closeBackup(); return; }
       return;
     }
-    if (e.key === 'p' || e.key === 'P') { // 교사용 대시보드
-      if (game.mode === 'world') { openDashboard('world'); return; }
-      if (game.mode === 'title' && game.titleScreen === 'slots') { openDashboard('title'); return; }
-      if (game.mode === 'dashboard') { closeDashboard(); return; }
-      return;
-    }
-    if (e.key === 'e' || e.key === 'E') { // 커스텀 퀴즈 편집(Edit)
-      if (game.mode === 'world') { openQuizEdit('world'); return; }
-      if (game.mode === 'title' && game.titleScreen === 'slots') { openQuizEdit('title'); return; }
-      if (game.mode === 'quizedit') { closeQuizEdit(); return; }
-      return;
-    }
+    // 대시보드(P)·커스텀 퀴즈 편집(E)·수료증(N) 직접 단축키는 제거되었다 —
+    // 이제 「선생님 방」(타이틀에서 T)을 통해서만 연다(스텔스 교육 원칙).
     if (e.key === 'l' || e.key === 'L') { // 배움 카드(Learn)
       if (game.mode === 'world') { openCards('world'); return; }
       if (game.mode === 'title' && game.titleScreen === 'slots') { openCards('title'); return; }
       if (game.mode === 'cards') { closeCards(); return; }
-      return;
-    }
-    if (e.key === 'n' || e.key === 'N') { // 수료증(iNjeungseo)
-      if (game.mode === 'world') { openCert('world'); return; }
-      if (game.mode === 'title' && game.titleScreen === 'slots') { openCert('title'); return; }
-      if (game.mode === 'cert') { closeCert(); return; }
       return;
     }
     if (e.key === 'f' || e.key === 'F') { // 명예의 전당(Fame)
@@ -4766,10 +4757,10 @@
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px monospace';
-    ctx.fillText('♥ 몬스터 도감', 24, 38);
+    ctx.fillText('♥ 친구 수첩', 24, 38);
     ctx.fillStyle = '#888';
     ctx.font = '15px monospace';
-    ctx.fillText(`수집 ${dexSeenCount()} / ${DEX_ORDER.length}`, 24, 62);
+    ctx.fillText(`친구 ${dexSeenCount()} / ${DEX_ORDER.length}`, 24, 62);
 
     // 왼쪽: 목록 (커서 주변으로 스크롤)
     const listX = 24, listY = 84, rowH = 30, visible = 13;
@@ -5034,8 +5025,11 @@
 
   // ---------- 설정·일시정지 메뉴 ----------
   // 터치 기기에는 키보드 단축키(J/Q/B/I 등)가 없으므로, 모든 기능을 메뉴로 연다.
-  const PAUSE_ITEMS = ['journal', 'cards', 'halloffame', 'dashboard', 'report', 'classmode', 'awards', 'cosmetics', 'cert',
-    'challenge', 'review', 'dex', 'quizedit', 'backup', 'difficulty', 'textspeed', 'tts',
+  // 교사 전용 기능(대시보드·리포트·수업 모드·커스텀 퀴즈·수료증)은 「선생님 방」으로
+  // 옮겨졌다 — 학생 표면(일시정지 메뉴)에는 교사 어휘가 보이지 않는다(스텔스 교육 원칙).
+  // 단, 데이터 백업은 학생도 쓰는 기능이라 그대로 남겨 둔다.
+  const PAUSE_ITEMS = ['journal', 'cards', 'halloffame', 'awards', 'cosmetics',
+    'challenge', 'review', 'dex', 'backup', 'difficulty', 'textspeed', 'tts',
     'largetext', 'colorblind', 'reducefx', 'mute', 'help', 'close'];
   // 방탈출 중에는 「힌트」 항목을 맨 위에 붙인다 (터치 기기에서 H키 대체)
   function pauseItems() {
@@ -5054,7 +5048,7 @@
     cert: '🎓 수료증',
     challenge: '▶ 도전 극장',
     review: '★ 다시 만나기',
-    dex: '♥ 몬스터 도감',
+    dex: '♥ 친구 수첩',
     quizedit: '✎ 커스텀 퀴즈',
     backup: '⇄ 데이터 백업·복원',
     difficulty: '난이도',
@@ -5180,6 +5174,74 @@
     // 스크롤 표시
     if (start > 0) { ctx.fillStyle = '#888'; ctx.textAlign = 'center'; ctx.fillText('▲', boxX + boxW - 16, boxY + 56); }
     if (start + shown < items.length) { ctx.fillStyle = '#888'; ctx.textAlign = 'center'; ctx.fillText('▼', boxX + boxW - 16, boxY + boxH - 22); }
+
+    ctx.fillStyle = '#777';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('↑↓ 선택 · Z 결정 · X 닫기', LW / 2, boxY + boxH - 12);
+    ctx.textAlign = 'left';
+  }
+
+  // ---------- 선생님 방 (교사 전용 메뉴) ----------
+  // 타이틀 화면에서 T 키로 연다. 학생용 일시정지 메뉴와 완전히 분리해 두어,
+  // 학생이 보는 화면에는 교사 어휘·기능이 노출되지 않는다(스텔스 교육 원칙).
+  // 각 항목은 기존 화면(대시보드·리포트·수업 모드·커스텀 퀴즈·수료증)을 그대로 재사용하되,
+  // ret에 'teacher'를 넘겨 닫을 때 이 방으로 되돌아오게 한다.
+  const TEACHER_ITEMS = ['dashboard', 'report', 'classmode', 'quizedit', 'cert', 'close'];
+
+  function openTeacherRoom() {
+    game.teacherCursor = 0;
+    game.mode = 'teacher';
+    Sound.select();
+  }
+  function closeTeacherRoom() {
+    game.mode = 'title';
+    Sound.select();
+  }
+  function updateTeacherRoom() {
+    const n = TEACHER_ITEMS.length;
+    if (justPressed('up')) { game.teacherCursor = (game.teacherCursor + n - 1) % n; Sound.blip(); }
+    if (justPressed('down')) { game.teacherCursor = (game.teacherCursor + 1) % n; Sound.blip(); }
+    if (justPressed('cancel')) { closeTeacherRoom(); return; }
+    if (justPressed('action')) {
+      const item = TEACHER_ITEMS[game.teacherCursor];
+      if (item === 'dashboard') openDashboard('teacher');
+      else if (item === 'report') openReport('teacher');
+      else if (item === 'classmode') openClassMode('teacher');
+      else if (item === 'quizedit') openQuizEdit('teacher');
+      else if (item === 'cert') openCert('teacher');
+      else if (item === 'close') closeTeacherRoom();
+    }
+  }
+  function drawTeacherRoom() {
+    ctx.fillStyle = '#0b0e1a';
+    ctx.fillRect(0, 0, LW, LH);
+
+    const rowH = 34;
+    const boxW = 340, boxH = 64 + TEACHER_ITEMS.length * rowH;
+    const boxX = Math.round(LW / 2 - boxW / 2);
+    const boxY = Math.round(LH / 2 - boxH / 2);
+    utBox(boxX, boxY, boxW, boxH, 8);
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 17px monospace';
+    ctx.fillText('선생님 방', boxX + 22, boxY + 30);
+
+    let ty = boxY + 62;
+    for (let i = 0; i < TEACHER_ITEMS.length; i++) {
+      const item = TEACHER_ITEMS[i];
+      drawChoiceLine(PAUSE_LABELS[item], boxX + 22, ty, i === game.teacherCursor);
+      const val = pauseValueLabel(item);
+      if (val) {
+        ctx.fillStyle = warnColor();
+        ctx.font = '13px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(val, boxX + boxW - 22, ty);
+        ctx.textAlign = 'left';
+      }
+      ty += rowH;
+    }
 
     ctx.fillStyle = '#777';
     ctx.font = '12px monospace';
@@ -6607,6 +6669,27 @@
     save();
   }
   function openClassMode(ret) {
+    // 「선생님 방」은 타이틀에서 열 수 있어, 아직 세션에 슬롯이 로드되지 않았을 수 있다
+    // (이어하기를 누르기 전). 그 경우 커서가 가리키는 슬롯을 미리 불러와, 이어하기와
+    // 같은 상태에서 스테이지를 맞출 수 있게 한다.
+    if (!game.flags) {
+      const slot = activeSlot();
+      const s = loadSlot(slot);
+      game.currentSlot = slot;
+      if (s) {
+        game.playerName = s.name || '수호자';
+        game.map = (s.map && MAPS[s.map]) ? s.map : 'village';
+        game.flags = Object.assign(newFlags(), s.flags);
+        game.flags.badges = Object.assign({ forest: false, lake: false, cave: false }, s.flags.badges);
+        game.flags.defeated = Object.assign(newFlags().defeated, s.flags.defeated);
+      } else {
+        game.playerName = '수호자';
+        game.map = 'village';
+        game.flags = newFlags();
+      }
+      const p = game.player;
+      p.x = 13; p.y = 16; p.px = 13 * TS; p.py = 16 * TS; p.moving = false; p.dir = 'up';
+    }
     const cm = game.classmode;
     cm.ret = ret;
     cm.sel = Math.max(1, Math.min(STAGE_COUNT, getStage(game.flags)));
@@ -7436,11 +7519,49 @@
     ctx.textAlign = 'left';
   }
 
+  // v2 신규 스테이지 맵(전부 공짜 거리~코어) → 장 번호를 맵 자체에 고정한다.
+  // HUD가 진행 플래그로 다시 계산하지 않고 그 스테이지의 장을 우선 보여 주기 위함.
+  const MAP_CHAPTER = {
+    freestreet: 1, traceroom: 1, boardplaza: 1, warehouse: 1, ownerroom: 1,
+    tiltstreet: 2, echoalley: 2, samplehouse: 2, dimstreet: 2, gatekeeper: 2,
+    rumorstreet: 3, tipsroom: 3, editroom: 3, towerroom: 3, towerroof: 3,
+    arcade: 4, roulettesquare: 4, signupalley: 4, backstage: 4, yuhokstage: 4,
+    cozyhome: 5, callroom: 5, corridor: 5, sofaroom: 5, lumiroom: 5,
+    quietyard: 'final', goyostage: 'final', coreroom: 'final',
+  };
+  // v1 레거시 맵 — 기존 "STAGE N/5" 표기를 그대로 유지한다(v1 콘텐츠 무손상 원칙).
+  const V1_LEGACY_MAPS = new Set([
+    'forest', 'lake', 'cave', 'tower', 'meadow', 'windhill', 'fogswamp',
+    'desert', 'ruins', 'oasis', 'temple', 'snow', 'castle', 'serverroom',
+    'library', 'mirrors', 'garden', 'core', 'lab', 'bubble',
+  ]);
+  // 챕터 플래그 기반 HUD 표기: 프롤로그~1장 클리어 전 = "1장", chapterNClear 이후 =
+  // "(N+1)장", chapter5Clear 이후 = "파이널". 신규 스테이지 맵은 그 맵 자신의 장을 우선한다.
+  function chapterBadgeLabel(mapId, flags) {
+    const fixed = MAP_CHAPTER[mapId];
+    if (fixed === 'final') return '파이널';
+    if (fixed) return `${fixed}장`;
+    if (flags.chapter5Clear) return '파이널';
+    if (flags.chapter4Clear) return '5장';
+    if (flags.chapter3Clear) return '4장';
+    if (flags.chapter2Clear) return '3장';
+    if (flags.chapter1Clear) return '2장';
+    return '1장';
+  }
+
+  // HUD 좌상단 뱃지 텍스트("STAGE N/5" 또는 "N장"/"파이널") — v1 맵은 기존 표기,
+  // 그 외(신규 스테이지 맵 포함)는 챕터 플래그 기반 표기를 쓴다.
+  function hudBadgeText(mapId, flags) {
+    return V1_LEGACY_MAPS.has(mapId)
+      ? `STAGE ${getStage(flags)}/5`
+      : chapterBadgeLabel(mapId, flags);
+  }
+
   function drawHud() {
     // 스테이지 + 지역 이름 + 목표
     const m = MAPS[game.map];
     ctx.font = 'bold 14px monospace';
-    const title = `STAGE ${getStage(game.flags)}/5 · ${m.name}`;
+    const title = `${hudBadgeText(game.map, game.flags)} · ${m.name}`;
     // 방탈출 중에는 본편 퀘스트 대신 방 맥락 목표를 보여 준다 (클리어 후엔 보스방 안내)
     let objText;
     if (game.puzzleRun) {
@@ -8091,12 +8212,15 @@
       ctx.fillText('스틱으로 슬롯 선택 · Ⓐ로 시작', LW / 2, 462);
       ctx.fillStyle = '#9aa8c8';
       ctx.font = '13px monospace';
-      ctx.fillText('도감·챌린지·대시보드·백업 등 모든 기능은 [메뉴] 버튼에', LW / 2, 484);
+      ctx.fillText('친구수첩·챌린지·백업 등 모든 기능은 [메뉴] 버튼에', LW / 2, 484);
     } else {
       ctx.font = '12px monospace';
-      ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 도감 · Q 도전극장 · J 일지 · B 도전과제 · K 꾸미기 · L 기억조각`, LW / 2, 456);
-      ctx.fillText(`F 명예의전당 · N 수료증 · P 대시보드 · E 커스텀퀴즈 · U 백업 · I 도움말`, LW / 2, 472);
-      ctx.fillText(`M 음악 · T 자막(${TEXT_SPEED_LABEL[game.textSpeed]}) · 난이도(${DIFF_LABEL[game.difficulty]})`, LW / 2, 488);
+      ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 친구수첩 · Q 도전극장 · J 일지 · B 도전과제 · K 꾸미기 · L 기억조각`, LW / 2, 456);
+      ctx.fillText(`F 명예의전당 · U 백업 · I 도움말 · M 음악 · 난이도(${DIFF_LABEL[game.difficulty]})`, LW / 2, 472);
+      ctx.fillStyle = '#555';
+      ctx.font = '11px monospace';
+      ctx.fillText('t: 선생님 방', LW / 2, 488);
+      ctx.fillStyle = '#777';
     }
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
@@ -8107,7 +8231,7 @@
       .map((k) => (seen[k] ? names[k] : '???')).join(' · ');
     ctx.fillStyle = '#e0453a';
     ctx.font = '13px monospace';
-    ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   도감 ${dexSeenCount()}/${DEX_ORDER.length}`, LW / 2, 500);
+    ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   친구 ${dexSeenCount()}/${DEX_ORDER.length}`, LW / 2, 500);
 
     // 저장 불가 환경 경고 (비공개 모드·저장공간 가득 등)
     if (!storageOk) {
@@ -8531,6 +8655,10 @@
         updatePause();
         drawPause();
         break;
+      case 'teacher':
+        updateTeacherRoom();
+        drawTeacherRoom();
+        break;
       case 'choice':
         updateChoice();
         drawWorld();
@@ -8684,6 +8812,7 @@
     sanitizeName, probeStorage, getStorageOk: () => storageOk,
     buildClassCsv, setupStageFlags, getStage, stageSpawn, applyStageJump,
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
+    chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록
     persuadeAvail: () => (game.battle ? availableClaims(game.battle).map((c) => c.text) : []),
     // 파이널 「고요의 뜰」 — 맵별 어둠 단계 확인용
