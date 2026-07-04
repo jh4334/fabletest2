@@ -137,7 +137,10 @@
       sawBattleTip: false, // 첫 전투 1회 안내 표시 여부
       traceGiven: 0,       // 접수처에서 내보낸 정보 최대 개수(닉네임 제외) — 보스 콜백 인트로용
       chapter1Clear: false, // 1장 보스(담아) 설득 완료
+      chapter1Mercy: false, // 1장 보스를 자비로 되돌렸는가 (2장 콜백 인트로용)
+      chapter2Clear: false, // 2장 보스(기울) 설득 완료
       seenPhoto1: false,   // 스토리 복선 — 주인의 방 서랍의 낡은 사진을 봤다
+      seenPhoto2: false,   // 스토리 복선 2호 — 표본 창고 모서리 선반의 ×표 사진
     };
   }
 
@@ -1416,6 +1419,27 @@
         px(9, 8, 2, 2, '#d0b060'); // 손잡이
         break;
       }
+      case '8': { // 기울어진 포장 (기울어진 거리) — 사선 줄무늬가 한쪽으로 쏠린 바닥
+        px(0, 0, 16, 16, '#4a4658');
+        for (let i = -3; i < 16; i += 4) {
+          for (let k = 0; k < 16; k++) {
+            const x = i + Math.floor(k / 2); // 완만한 사선
+            if (x >= 0 && x < 16) px(x, k, 1, 1, '#565064');
+          }
+        }
+        px(2, 12, 3, 1, '#3c3848'); // 갈라진 틈
+        px(10, 4, 4, 1, '#3c3848');
+        break;
+      }
+      case '9': { // 칙칙한 문 (반짝이지 않는 문 — 메아리 골목의 출구들)
+        px(0, 0, 16, 16, '#3a3a42');
+        px(3, 1, 10, 14, '#55555e');
+        px(4, 2, 8, 13, '#6a6a74');
+        px(4, 2, 1, 13, '#7c7c86');
+        px(11, 2, 1, 13, '#4a4a52');
+        px(9, 8, 2, 2, '#8a8a94'); // 손잡이 (광 없음)
+        break;
+      }
       default:
         px(0, 0, 16, 16, '#f0f');
     }
@@ -1499,6 +1523,11 @@
   function s1LockCount() {
     return S1_ZONE_PUZZLES.filter((id) => isPuzzleCleared(id)).length;
   }
+  // 2장 저울 — 구역(메아리 골목·표본 창고·꺼진 거리)을 클리어할 때마다 기울기가 하나 준다.
+  // s2ClearCount()가 클리어한 구역 수, 저울 기울기 = 3 - s2ClearCount().
+  function s2ClearCount() {
+    return S2_ZONE_PUZZLES.filter((id) => isPuzzleCleared(id)).length;
+  }
 
   // 방 입장/퇴장에 맞춰 런타임 상태를 맞춘다 (checkWarp에서 호출)
   function syncPuzzleRun() {
@@ -1527,6 +1556,19 @@
       // 구역③: 컨베이어 상자 + 차단 레버
       run.boxIdx = 0;   // 지금 벨트를 흐르는 상자 (puzzle.boxes 인덱스)
       run.diverted = 0; // 반송함으로 돌린 상자 수 (3이면 클리어)
+    } else if (puzzle.type === 'voices') {
+      // 2장 구역①: 다른 목소리 수집 + 반짝 문 루프 카운트
+      run.voices = [];  // 들은 목소리 NPC id들
+      run.loops = 0;    // 반짝 문 루프 횟수 (연출 단계)
+    } else if (puzzle.type === 'retrain') {
+      // 2장 구역②: 반례 사진 수집 + 판독기 투입
+      run.photos = 0;   // 챙긴 반례 사진 수 (최대 3)
+      run.taken = [];   // 이미 챙긴 선반 인덱스
+      run.fed = 0;      // 판독기에 투입한 수 (3이면 클리어)
+    } else if (puzzle.type === 'lamps') {
+      // 2장 구역③: 램프 점등
+      run.lit = puzzle.lamps.map(() => false);
+      run.litCount = 0;
     } else {
       // 구역①(traces): 정보 토큰 방
       run.held = { nickname: true, school: true, address: true, phone: true, face: true };
@@ -1548,6 +1590,9 @@
   function puzzleStep(run) {
     if (run.puzzle.type === 'copies') return 'copies';
     if (run.puzzle.type === 'levers') return 'levers';
+    if (run.puzzle.type === 'voices') return 'voices';
+    if (run.puzzle.type === 'retrain') return 'retrain';
+    if (run.puzzle.type === 'lamps') return 'lamps';
     const spent = givenTokens(run);
     if (spent.length === 0) return 'tokens';
     if (spent.filter((k) => k !== 'nickname').length >= 3) return 'eraser';
@@ -1577,6 +1622,8 @@
     if (run.warnCool > 0) run.warnCool -= 1;
     if (run.puzzle.type === 'copies') { updateCopies(run); return; }
     if (run.puzzle.type === 'levers') return; // 컨베이어 상자는 timeFrames로 그리기에서 움직인다
+    // 2장 구역들은 조사·접촉으로만 진행 (매 프레임 갱신할 물체 없음)
+    if (run.puzzle.type === 'voices' || run.puzzle.type === 'retrain' || run.puzzle.type === 'lamps') return;
     // ── traces: 스토커 추격(반 속도, walkable 체크) + 접촉 처리 ──
     if (boardCount(run) > run.maxBoard) run.maxBoard = boardCount(run); // 최고치 추적
     const p = game.player;
@@ -1634,9 +1681,25 @@
     if (!run || run.map !== mapId) return null;
     const puz = run.puzzle;
     if (puz.type === 'copies') return null; // 광장의 사본은 접촉(추격)으로만 회수
+    if (puz.type === 'voices') return null; // 다른 목소리는 NPC 대화로만 수집
     if (puz.type === 'levers') {
       for (const lv of puz.levers) if (lv.x === x && lv.y === y) return { kind: 'lever', ref: lv };
       if (puz.returnBin.x === x && puz.returnBin.y === y) return { kind: 'bin' };
+      return null;
+    }
+    if (puz.type === 'retrain') {
+      for (let i = 0; i < puz.photos.length; i++) {
+        const ph = puz.photos[i];
+        if (ph.x === x && ph.y === y) return { kind: 'photo', idx: i };
+      }
+      if (puz.reader.x === x && puz.reader.y === y) return { kind: 'reader' };
+      return null;
+    }
+    if (puz.type === 'lamps') {
+      for (let i = 0; i < puz.lamps.length; i++) {
+        const lp = puz.lamps[i];
+        if (lp.x === x && lp.y === y) return { kind: 'lamp', idx: i };
+      }
       return null;
     }
     for (const t of puz.terminals) if (t.x === x && t.y === y) return { kind: 'terminal', ref: t };
@@ -1658,6 +1721,73 @@
     else if (obj.kind === 'normal') openNormalExit();
     else if (obj.kind === 'lever') openLever(obj.ref);
     else if (obj.kind === 'bin') openReturnBin();
+    else if (obj.kind === 'photo') openPhoto(obj.idx);
+    else if (obj.kind === 'reader') openReader();
+    else if (obj.kind === 'lamp') openLamp(obj.idx);
+    return true;
+  }
+  // 2장 구역②: 반례 사진 선반 조사 → 수집 (라벨 개그 포함)
+  function openPhoto(idx) {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    if (run.taken.includes(idx)) {
+      startDialog(['…이미 챙긴 선반이다.'], puz.title);
+      return;
+    }
+    run.taken.push(idx);
+    run.photos += 1;
+    Sound.correct();
+    game.notice = { text: `반례 사진을 챙겼다! (${run.photos}/3)`, t: 120 };
+    startDialog([puz.photos[idx].found], puz.title);
+  }
+  // 2장 구역②: 판독기 단말 — 반례 사진을 한 장씩 투입 (투입마다 판정 교정)
+  function openReader() {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    const rd = puz.reader;
+    const avail = run.photos - run.fed;
+    if (avail <= 0) { startDialog([rd.empty], rd.name); return; }
+    startChoice(`${rd.prompt}\n(가진 반례 사진 ${avail}장)`, ['넣는다', '그만둔다'], (i) => {
+      if (i === 0) {
+        const line = rd.steps[Math.min(run.fed, rd.steps.length - 1)];
+        run.fed += 1;
+        Sound.select();
+        if (run.fed >= 3) { clearPuzzle(run); return; }
+        startDialog([line, `(판독기에 ${run.fed}/3장 투입)`], rd.name);
+      } else if (i > 0) {
+        startDialog(['(판독기에서 손을 뗐다)'], rd.name);
+      }
+    });
+  }
+  // 2장 구역③: 램프 조사 → 점등 (3개면 클리어)
+  function openLamp(idx) {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    if (run.lit[idx]) { startDialog(['이미 켜진 램프다.\n주변이 환하다.'], puz.title); return; }
+    run.lit[idx] = true;
+    run.litCount += 1;
+    Sound.correct();
+    game.notice = { text: `램프에 불을 켰다! (${run.litCount}/3)`, t: 120 };
+    if (run.litCount >= 3) { clearPuzzle(run); return; }
+    startDialog(['탁 — 램프에 불이 들어왔다.\n주변이 조금 환해진다.'], puz.title);
+  }
+  // 2장 구역①: 다른 목소리 NPC 대화 → 수집 (interact의 NPC 분기에서 호출)
+  function collectVoice(npcId) {
+    const run = game.puzzleRun;
+    if (!run || run.puzzle.type !== 'voices') return false;
+    const puz = run.puzzle;
+    const line = puz.voiceLines[npcId];
+    if (!line) return false;
+    if (!run.voices.includes(npcId)) {
+      run.voices.push(npcId);
+      Sound.correct();
+      game.notice = { text: `다른 목소리를 들었다 (${run.voices.length}/3)`, t: 120 };
+      if (run.voices.length >= 3) {
+        startDialog([line, '…셋 다, 조금씩 다른 이야기였다.'], '다른 목소리', () => clearPuzzle(run));
+        return true;
+      }
+    }
+    startDialog([line], '다른 목소리');
     return true;
   }
   // 구역③: 차단 레버 — 지금 흐르는 상자의 레인과 맞으면 반송, 틀리면 출하(오답 기록)
@@ -1769,7 +1899,8 @@
     if (!game.flags.evCards) game.flags.evCards = [];
     const fresh = puz.rewards.filter((id) => !game.flags.evCards.includes(id));
     if (fresh.length) game.flags.evCards = game.flags.evCards.concat(fresh);
-    const locksBefore = s1LockCount();
+    const isS2 = S2_ZONE_PUZZLES.includes(run.id);
+    const locksBefore = isS2 ? s2ClearCount() : s1LockCount();
     recordPuzzleClear(run.id, run.timeFrames);
     // 접수처에서 내보낸 정보 최고치를 기록 (보스 콜백 인트로 분기용) — 이전 최고치와 비교해 유지
     if (puz.type === 'traces') {
@@ -1787,12 +1918,19 @@
     Sound.playSong(MAPS[exit.map].song);
     const lines = (puz.clearLines || ['방을 빠져나왔다.']).slice();
     for (const id of fresh) lines.push(`◆ 증거 카드 「${EVIDENCE_CARDS[id].title}」 획득!`);
-    // 금고 잠금 진행 안내 (이번 클리어로 잠금이 새로 풀렸을 때만)
-    const locks = s1LockCount();
+    // 잠금/저울 진행 안내 (이번 클리어로 새로 풀렸을 때만)
+    const locks = isS2 ? s2ClearCount() : s1LockCount();
     if (locks > locksBefore) {
-      lines.push(locks >= 3
-        ? '철컹 — 거리의 금고에서\n마지막 잠금이 풀리는 소리가 났다!'
-        : `철컥. 거리의 금고에서\n잠금 풀리는 소리가 났다. (${locks}/3)`);
+      if (isS2) {
+        const tilt = 3 - locks;
+        lines.push(tilt <= 0
+          ? '광장 쪽에서, 거대한 저울이\n수평으로 맞춰지는 소리가 났다!'
+          : `광장의 거대한 저울이\n기울기를 하나 낮췄다. (기울기 ${tilt}/3)`);
+      } else {
+        lines.push(locks >= 3
+          ? '철컹 — 거리의 금고에서\n마지막 잠금이 풀리는 소리가 났다!'
+          : `철컥. 거리의 금고에서\n잠금 풀리는 소리가 났다. (${locks}/3)`);
+      }
     }
     save();
     startDialog(lines, puz.title);
@@ -1876,7 +2014,8 @@
     if (justPressed('action') || justPressed('cancel')) { closeHint(); return; }
   }
   const HINT_STEP_LABEL = { tokens: '정보 토큰', board: '게시판', eraser: '지우개', exit: '출구',
-    copies: '떠도는 조각', levers: '차단 레버' };
+    copies: '떠도는 조각', levers: '차단 레버',
+    voices: '다른 목소리', retrain: '반례 사진', lamps: '램프' };
   function drawHint() {
     drawWorld();
     ctx.fillStyle = 'rgba(0,0,0,0.72)';
@@ -1935,6 +2074,7 @@
       ctx.fillText(mark, nx + TS / 2, ny + TS / 2 + 8);
       ctx.textAlign = 'left';
     };
+    if (puz.type === 'voices') return; // 메아리 골목: 그릴 물체 없음 (문·NPC는 타일/엔티티로)
     if (puz.type === 'copies') {
       // 구역②: 떠도는 내 정보 사본 (반짝이는 조각)
       for (const c of run.copies) {
@@ -1965,6 +2105,32 @@
       label(nx, ny, `${curBox.label}·${curBox.lane}`, '#fff2a8');
       return;
     }
+    if (puz.type === 'retrain') {
+      // 2장 구역②: 반례 사진 선반 3개 + 판독기 단말
+      for (let i = 0; i < puz.photos.length; i++) {
+        const ph = puz.photos[i];
+        const nx = Math.round(ph.x * TS - cx), ny = Math.round(ph.y * TS - cy - 6);
+        const taken = run.taken.includes(i);
+        box(nx, ny + bob, taken ? '#3a3a3a' : '#6a4a2a', taken ? '·' : '▤', taken ? '#666' : '#ffd6a0');
+        label(nx, ny, taken ? '(빈 선반)' : '반례 사진', taken ? '#888' : '#ffd6a0');
+      }
+      const rd = puz.reader;
+      const rnx = Math.round(rd.x * TS - cx), rny = Math.round(rd.y * TS - cy - 6);
+      box(rnx, rny, '#2a4a6a', '⟳', '#a8d8ff');
+      label(rnx, rny, `판독기 ${run.fed}/3`, '#a8d8ff');
+      return;
+    }
+    if (puz.type === 'lamps') {
+      // 2장 구역③: 램프 3개 (점등 상태 표시)
+      for (let i = 0; i < puz.lamps.length; i++) {
+        const lp = puz.lamps[i];
+        const nx = Math.round(lp.x * TS - cx), ny = Math.round(lp.y * TS - cy - 6);
+        const on = run.lit[i];
+        box(nx, ny + (on ? 0 : bob), on ? '#8a6a20' : '#2a2a2a', on ? '☀' : '✦', on ? '#fff2a8' : '#556');
+        label(nx, ny, on ? '켜짐' : '램프', on ? '#fff2a8' : '#88a');
+      }
+      return;
+    }
     for (const t of puz.terminals) {
       const nx = Math.round(t.x * TS - cx), ny = Math.round(t.y * TS - cy - 6);
       const given = run.given.includes(t.require) || (t.share && run.boardFace);
@@ -1986,6 +2152,103 @@
       drawSprite(ctx, STALKER_SPRITE, Math.round(s.px - cx), Math.round(s.py - cy - 6 + bob), SCALE);
     }
   }
+  // 2장 허브 — 중앙의 거대한 저울 (기울기 = 3 - 클리어한 구역 수)
+  function drawTiltScale(cx, cy) {
+    const sx = Math.round(14 * TS - cx) + TS / 2;
+    const sy = Math.round(9 * TS - cy) + TS / 2;
+    const tilt = 3 - s2ClearCount();
+    const ang = (game.reduceFx ? 0 : 1) * tilt * 0.14; // 기울기에 비례해 저울대가 기운다
+    // 기둥
+    ctx.fillStyle = '#5a4a3a';
+    ctx.fillRect(sx - 3, sy - 4, 6, 26);
+    ctx.fillStyle = '#3a2f24';
+    ctx.fillRect(sx - 12, sy + 22, 24, 5);
+    // 저울대 (기운 막대)
+    const armL = 26;
+    const dx = Math.cos(ang) * armL, dy = Math.sin(ang) * armL;
+    ctx.strokeStyle = '#c8a24a';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(sx - dx, sy - 6 - dy);
+    ctx.lineTo(sx + dx, sy - 6 + dy);
+    ctx.stroke();
+    // 접시 두 개 (한쪽만 잔뜩)
+    const drawPan = (px, py, load) => {
+      ctx.strokeStyle = '#a8863a'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px, py + 8); ctx.stroke();
+      ctx.fillStyle = '#b9962f';
+      ctx.fillRect(px - 7, py + 8, 14, 3);
+      if (load) { ctx.fillStyle = '#d8b64a'; ctx.fillRect(px - 5, py + 2, 10, 6); }
+    };
+    drawPan(sx - dx, sy - 6 - dy, tilt > 0);       // 무거운(내려간) 쪽에 짐
+    drawPan(sx + dx, sy - 6 + dy, false);
+    // 라벨
+    ctx.font = fs(10, true);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = tilt > 0 ? '#ffd644' : '#8de08d';
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
+    const txt = tilt > 0 ? `기울기 ${tilt}/3` : '수평!';
+    ctx.strokeText(txt, sx, sy - 22);
+    ctx.fillText(txt, sx, sy - 22);
+    ctx.textAlign = 'left';
+  }
+  // 2장 구역③ — 어둠(꺼진 거리). 플레이어와 켜진 램프 주변만 밝다. reduceFx면 균일 딤.
+  function drawDarkness(cx, cy) {
+    const run = game.puzzleRun;
+    if (run.litCount >= 3) return; // 다 켜지면 완전히 밝다
+    if (game.reduceFx) {
+      // 광과민성 배려: 방사형 대신 균일한 옅은 딤
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(0, 0, LW, LH);
+      return;
+    }
+    const p = game.player;
+    const cxp = Math.round(p.px - cx) + TS / 2;
+    const cyp = Math.round(p.py - cy - 6) + TS / 2;
+    const R = TS * 4; // 시야 반경 ~4타일
+    const grad = ctx.createRadialGradient(cxp, cyp, TS * 0.6, cxp, cyp, R);
+    if (grad && grad.addColorStop) {
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(0.7, 'rgba(0,0,0,0.55)');
+      grad.addColorStop(1, 'rgba(0,0,0,0.92)');
+      ctx.fillStyle = grad;
+    } else {
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    }
+    ctx.fillRect(0, 0, LW, LH);
+    // 켜진 램프 주변도 밝게 뚫어 준다 (destination-out으로 어둠을 지운다)
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    for (let i = 0; i < run.puzzle.lamps.length; i++) {
+      if (!run.lit[i]) continue;
+      const lp = run.puzzle.lamps[i];
+      const lx = Math.round(lp.x * TS - cx) + TS / 2;
+      const ly = Math.round(lp.y * TS - cy) + TS / 2;
+      const lg = ctx.createRadialGradient(lx, ly, TS * 0.4, lx, ly, TS * 3);
+      if (lg && lg.addColorStop) {
+        lg.addColorStop(0, 'rgba(0,0,0,0.9)');
+        lg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = lg;
+        ctx.fillRect(lx - TS * 3, ly - TS * 3, TS * 6, TS * 6);
+      }
+    }
+    ctx.restore();
+  }
+  // 2장 구역① — 메아리 골목의 비네트. 루프할수록 가장자리가 짙어진다. reduceFx면 생략.
+  function drawEchoVignette() {
+    const run = game.puzzleRun;
+    const lv = Math.min(run.loops || 0, 3);
+    if (lv <= 0 || game.reduceFx) return;
+    const grad = ctx.createRadialGradient(LW / 2, LH / 2, LH * 0.3, LW / 2, LH / 2, LH * 0.75);
+    if (grad && grad.addColorStop) {
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(1, `rgba(10,6,20,${0.18 * lv})`);
+      ctx.fillStyle = grad;
+    } else {
+      ctx.fillStyle = `rgba(10,6,20,${0.14 * lv})`;
+    }
+    ctx.fillRect(0, 0, LW, LH);
+  }
   // 구역 HUD — 화면 위쪽 상시 표시 (traces: 프로필 보드 / copies: 회수 수 / levers: 지금 상자)
   function drawPuzzleHud() {
     const run = game.puzzleRun;
@@ -1997,6 +2260,15 @@
       const b = run.puzzle.boxes[run.boxIdx];
       title = `반송 ${run.diverted}/${run.puzzle.boxes.length}`;
       detail = `벨트 위 상자: 「${b.label}」 — ${b.lane} 레인`;
+    } else if (run.puzzle.type === 'voices') {
+      title = `다른 목소리 ${run.voices.length}/3`;
+      detail = '반짝이지 않는 문 뒤를 찾아보자';
+    } else if (run.puzzle.type === 'retrain') {
+      title = `반례 ${run.photos}/3 · 판독기 ${run.fed}/3`;
+      detail = '반례 사진을 모아 판독기에 넣자';
+    } else if (run.puzzle.type === 'lamps') {
+      title = `램프 ${run.litCount}/3`;
+      detail = '어둠 속 램프를 찾아 불을 켜자';
     } else {
       const given = givenTokens(run);
       const nonNick = given.filter((k) => k !== 'nickname');
@@ -2054,6 +2326,38 @@
           '담아: "덕분에 하나씩 돌려주고 있어.\n…빈손인데, 이상하게 안 허전해."',
           '담아: "라벨도 다 떼는 중이야.\n「친구가 준 것」이 아니라…\n원래, 친구 거였으니까."',
         ], '담아');
+        return;
+      }
+      // 2장 보스(기울) — 아직 설득하지 않았으면 마음 조각 배틀로, 이후엔 되돌린 친구로
+      if (npc.id === 'pyeong_boss') {
+        if (!game.flags.chapter2Clear) { startBattleIntro('pyeonhyangmon', 'pyeonhyang_boss'); return; }
+        startDialog([
+          '기울: "요즘은 양쪽 다 재 봐.\n…시간은 좀 걸리는데, 안 기울어."',
+          '기울: "틀릴 확률? …있지.\n근데 그게, 이상한 게 아니더라고."',
+        ], '기울');
+        return;
+      }
+      // 2장 구역① 다른 목소리 3명 — 대화하면 조각 수집
+      if (npc.id === 'voice1' || npc.id === 'voice2' || npc.id === 'voice3') {
+        if (collectVoice(npc.id)) return;
+      }
+      // 2장 구역① 골목 주민 — 토씨까지 같은 말을 반복
+      if ((npc.id === 'echo1' || npc.id === 'echo2') && game.puzzleRun && game.puzzleRun.puzzle.echoLine) {
+        startDialog([game.puzzleRun.puzzle.echoLine], '골목 주민');
+        return;
+      }
+      // 2장 허브 안내인 뱅뱅 — 명랑하게 같은 곳만 안내
+      if (npc.id === 'bangbang') {
+        startDialog([
+          '뱅뱅: "이쪽! 다들 가는 길은 이쪽이야!\n…어제도 안내했던가? 아무튼 이쪽!"',
+        ], '뱅뱅');
+        return;
+      }
+      // 2장 허브 주민 또또 2명 — 떨어져 있는데 토씨까지 같은 말
+      if (npc.id === 'ttotto1' || npc.id === 'ttotto2') {
+        startDialog([
+          '또또: "많이 본 게 맞는 거야.\n다들 그러던데. …많이 본 게 맞는 거야."',
+        ], '또또');
         return;
       }
       // 구역②의 새김 — 퍼즐 진행 상태(회수·클리어)에 따라 대사가 달라진다
@@ -2116,6 +2420,21 @@
       return;
     }
     const ch = tileAt(game.map, f.x, f.y);
+    // 2장 거리의 거대한 저울 — 구역 클리어마다 기울기가 준다 (14,9 = 'H')
+    if (game.map === 'tiltstreet' && f.x === 14 && f.y === 9) {
+      const tilt = 3 - s2ClearCount();
+      if (tilt <= 0) {
+        startDialog([
+          '거대한 저울이 수평이 되었다.\n저울 뒤로 문이 열려 있다.\n(위로 걸어 들어가 보자)',
+        ], '거대한 저울');
+      } else {
+        startDialog([
+          `거대한 저울이 한쪽으로\n크게 기울어 있다. (기울기 ${tilt}/3)`,
+          '한쪽 접시에만 무언가가\n잔뜩 쌓여 있다. 반대쪽은 텅 비었다.',
+        ], '거대한 저울');
+      }
+      return;
+    }
     // 거리의 금고문 — 잠금 3개(구역 클리어마다 하나)의 진행을 보여 준다
     if (game.map === 'freestreet' && ch === '7') {
       const n = s1LockCount();
@@ -2182,6 +2501,20 @@
       startDialog([w.lockText || '문이 잠겨 있다.', `금고 잠금 ${s1LockCount()}/${w.needS1Locks} 해제.`]);
       return;
     }
+    // 플래그 게이트 (예: 2장 입구 — chapter1Clear 전엔 잠김)
+    if (w.needFlag && !game.flags[w.needFlag]) {
+      pushBack();
+      Sound.bump();
+      startDialog([w.lockText || '문이 잠겨 있다.']);
+      return;
+    }
+    // 2장 저울 게이트 — 구역 클리어 수만큼 기울기가 준다 (0이면 보스 문 개방)
+    if (w.needS2Scale && s2ClearCount() < w.needS2Scale) {
+      pushBack();
+      Sound.bump();
+      startDialog([w.lockText || '문이 잠겨 있다.', `저울 기울기 ${3 - s2ClearCount()}/3 — 골목을 더 살펴보자.`]);
+      return;
+    }
     game.map = w.to;
     p.x = w.tx; p.y = w.ty;
     p.px = w.tx * TS; p.py = w.ty * TS;
@@ -2194,6 +2527,19 @@
     Sound.warp();
     Sound.playSong(MAPS[w.to].song);
     syncPuzzleRun(); // 방탈출 방 입장/퇴장에 맞춰 런타임 상태 초기화/해제
+    // 2장 구역① 메아리 골목 — 반짝 문 루프 연출 (입구로 되돌아왔다)
+    if (w.loop && game.puzzleRun && game.puzzleRun.puzzle.type === 'voices') {
+      const run = game.puzzleRun;
+      run.loops = (run.loops || 0) + 1;
+      let msg;
+      if (run.loops === 1) msg = '…또 여기잖아?';
+      else if (run.loops === 2) msg = '골목이 아까보다 좁아 보인다.';
+      else msg = '뱅뱅: "이상하지? …나갈 문은, 반짝이지 않아."';
+      game.notice = { text: msg, t: 150 };
+      Sound.bump();
+      save();
+      return; // 루프는 인트로 재생 없이 종료
+    }
     // 처음 방문하는 맵의 인트로 연출
     const dest = MAPS[w.to];
     if (dest.intro && !game.flags.visited[w.to]) {
@@ -2640,6 +2986,7 @@
     const b = game.battle;
     const mon = b.mon;
     game.flags.chapter1Clear = true;
+    game.flags.chapter1Mercy = (b.mercyChoiceKind === 'mercy'); // 2장 콜백 인트로용
     if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
     save();
     checkCosmeticUnlocks(game.currentSlot);
@@ -2662,11 +3009,40 @@
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.freestreet.song));
   }
 
+  // 2장 보스 승리 — chapter2Clear 플래그 + 2장 마무리 대사 후 저울 앞(광장)으로 복귀.
+  // v1 편향몬(퀴즈)과 별개이므로 defeated.pyeonhyangmon/도감은 건드리지 않는다.
+  function winChapter2Boss() {
+    const b = game.battle;
+    const mon = b.mon;
+    game.flags.chapter2Clear = true;
+    if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
+    save();
+    checkCosmeticUnlocks(game.currentSlot);
+    game.battle = null;
+    game.mode = 'world';
+    // 저울 앞(광장)으로 복귀
+    game.map = 'tiltstreet';
+    const p = game.player;
+    p.x = 14; p.y = 10; p.px = 14 * TS; p.py = 10 * TS; p.moving = false; p.dir = 'up';
+    held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
+    stickDir = null; stickRepeatFrames = 0;
+    Sound.badge();
+    Sound.playSong(MAPS.tiltstreet.song);
+    const lines = [mon.win];
+    if (b.mercyChoiceKind === 'mercy') {
+      lines.push('💛 기울의 한쪽으로 굳었던 마음이\n반대쪽으로도 천천히 열렸어요. 또 한 친구를 되돌렸다!');
+    }
+    lines.push('☆ 2장 클리어! ☆\n광장의 거대한 저울이,\n천천히 수평으로 내려앉았다.');
+    lines.push('기울이 한쪽 접시의 짐을\n반대쪽에도 하나씩 옮겨 담기 시작했다.');
+    startDialog(lines, mon.name, () => Sound.playSong(MAPS.tiltstreet.song));
+  }
+
   function winBattle() {
     const b = game.battle;
     const mon = b.mon;
     // 1장 보스(수집몬) — 별도 진행 플래그로 처리해 도감/처치 플래그(라이브러리 수집몬)를 오염시키지 않는다
     if (b.persuadeId === 'sujipmon_boss') { winChapter1Boss(); return; }
+    if (b.persuadeId === 'pyeonhyang_boss') { winChapter2Boss(); return; }
     game.flags.defeated[b.monId] = true;
     recordDexSeen(b.monId, b.mercyChoiceKind);
     if (!game.flags.mercyChoice) game.flags.mercyChoice = {};
@@ -4956,11 +5332,25 @@
   }
   // 수업 모드 특별 항목 「1장 — 전부 공짜 거리」 (스테이지 번호가 아닌 방탈출 수업용)
   const TRACE_SEL = 0;
+  // 2장 「기울어진 거리」 수업 특별 항목 (sel = -1)
+  const TILT_SEL = -1;
+  const MIN_SEL = TILT_SEL; // 선택기 하한
   // 1장 시작 상태로 맞추고, 전부 공짜 거리 입구에 서서 시작한다.
   function applyTraceRoomClass() {
     const flags = setupStageFlags(1);
     game.flags = flags;
     game.map = 'freestreet';
+    const p = game.player;
+    p.x = 14; p.y = 17; p.px = 14 * TS; p.py = 17 * TS;
+    p.moving = false; p.dir = 'up';
+    save();
+  }
+  // 2장 시작 상태(1장 클리어 직후)로 맞추고, 기울어진 거리 입구에 서서 시작한다.
+  function applyTiltStreetClass() {
+    const flags = setupStageFlags(1);
+    flags.chapter1Clear = true; // 2장은 1장 클리어 후 상태
+    game.flags = flags;
+    game.map = 'tiltstreet';
     const p = game.player;
     p.x = 14; p.y = 17; p.px = 14 * TS; p.py = 17 * TS;
     p.moving = false; p.dir = 'up';
@@ -4985,7 +5375,9 @@
     if (cm.toast > 0) return; // 적용 안내 표시 중엔 입력 잠금
     if (cm.confirm) {
       if (justPressed('action')) {
-        if (cm.sel === TRACE_SEL) applyTraceRoomClass(); else applyStageJump(cm.sel);
+        if (cm.sel === TILT_SEL) applyTiltStreetClass();
+        else if (cm.sel === TRACE_SEL) applyTraceRoomClass();
+        else applyStageJump(cm.sel);
         cm.confirm = false;
         cm.toast = 90;
         Sound.badge();
@@ -4994,9 +5386,9 @@
       if (justPressed('cancel') || justPressed('menu')) { cm.confirm = false; Sound.blip(); }
       return;
     }
-    // 스테이지 1~5 + 특별 항목 「1장 — 흔적의 방」(TRACE_SEL=0)을 한 바퀴로 순환
-    if (justPressed('left') || justPressed('up')) { cm.sel = cm.sel <= TRACE_SEL ? STAGE_COUNT : cm.sel - 1; Sound.blip(); }
-    if (justPressed('right') || justPressed('down')) { cm.sel = cm.sel >= STAGE_COUNT ? TRACE_SEL : cm.sel + 1; Sound.blip(); }
+    // 스테이지 1~5 + 특별 항목 「1장 — 전부 공짜 거리」(0)·「2장 — 기울어진 거리」(-1)를 한 바퀴로 순환
+    if (justPressed('left') || justPressed('up')) { cm.sel = cm.sel <= MIN_SEL ? STAGE_COUNT : cm.sel - 1; Sound.blip(); }
+    if (justPressed('right') || justPressed('down')) { cm.sel = cm.sel >= STAGE_COUNT ? MIN_SEL : cm.sel + 1; Sound.blip(); }
     if (justPressed('action')) { cm.confirm = true; Sound.select(); return; }
     if (justPressed('cancel') || justPressed('menu')) { closeClassMode(); }
   }
@@ -5020,14 +5412,19 @@
     ctx.font = '13px monospace';
     ctx.fillText('오늘 수업할 스테이지를 골라 바로 시작해요. (지금 학생 슬롯에 적용)', 24, 64);
 
-    // 특별 항목: 「1장 — 전부 공짜 거리」 (방탈출 수업)
+    // 특별 항목: 「1장 — 전부 공짜 거리」·「2장 — 기울어진 거리」 (방탈출 수업)
     const isTrace = cm.sel === TRACE_SEL;
-    const selLabel = isTrace ? '1장 시작 상태 · 전부 공짜 거리 입구' : `${cm.sel}스테이지`;
+    const isTilt = cm.sel === TILT_SEL;
+    const selLabel = isTilt ? '2장 시작 상태 · 기울어진 거리 입구'
+      : isTrace ? '1장 시작 상태 · 전부 공짜 거리 입구' : `${cm.sel}스테이지`;
 
     // 스테이지 선택기
     ctx.textAlign = 'center';
     ctx.fillStyle = themeAccent();
-    if (isTrace) {
+    if (isTilt) {
+      ctx.font = 'bold 30px monospace';
+      ctx.fillText('2장 — 기울어진 거리', LW / 2, 176);
+    } else if (isTrace) {
       ctx.font = 'bold 30px monospace';
       ctx.fillText('1장 — 전부 공짜 거리', LW / 2, 176);
     } else {
@@ -5039,7 +5436,9 @@
     }
     ctx.fillStyle = '#fff';
     ctx.font = '15px monospace';
-    ctx.fillText(isTrace ? '개인정보 · 디지털 발자국 · 동의 (구역 3개 → 담아 보스)' : (STAGE_BLURB[cm.sel] || ''), LW / 2, 250);
+    ctx.fillText(isTilt ? '경청 · 필터버블 · 스스로 고르기 (구역 3개 → 기울 보스)'
+      : isTrace ? '개인정보 · 디지털 발자국 · 동의 (구역 3개 → 담아 보스)'
+      : (STAGE_BLURB[cm.sel] || ''), LW / 2, 250);
     ctx.fillStyle = '#666';
     ctx.font = '13px monospace';
     ctx.fillText('◀ ▶ 스테이지/수업 고르기', LW / 2, 286);
@@ -5458,6 +5857,8 @@
 
     // 방탈출 물체 (단말·게시판·지우개·출구) — 타일 위, 엔티티 아래
     if (game.puzzleRun) drawPuzzleObjects(cx, cy);
+    // 2장 허브 — 중앙의 거대한 저울 (구역 클리어마다 기울기가 준다)
+    if (game.map === 'tiltstreet') drawTiltScale(cx, cy);
 
     // NPC
     for (const npc of m.npcs) {
@@ -5507,6 +5908,10 @@
       Math.round(p.px - cx), Math.round(p.py - cy - 6), SCALE, null, p.dir === 'right');
 
     if (game.puzzleRun) drawStalkers(cx, cy);
+
+    // 2장 구역 연출 — 어둠(꺼진 거리)·비네트(메아리 골목). HUD 아래에 깔린다.
+    if (game.puzzleRun && game.puzzleRun.puzzle.type === 'lamps') drawDarkness(cx, cy);
+    if (game.puzzleRun && game.puzzleRun.puzzle.type === 'voices') drawEchoVignette();
 
     drawHud();
     if (!game.puzzleRun) drawObjectiveArrow();
@@ -5714,6 +6119,12 @@
       objText = game.flags.chapter1Clear ? '거리를 둘러보자'
         : n >= 3 ? '금고가 열렸다 — 주인의 방으로'
         : `금고 잠금 ${n}/3 해제 — 구역을 돌자`;
+    } else if (game.map === 'tiltstreet') {
+      // 2장 허브 HUD — 저울 기울기를 상시 가시화
+      const tilt = 3 - s2ClearCount();
+      objText = game.flags.chapter2Clear ? '거리를 둘러보자'
+        : tilt <= 0 ? '저울이 수평이다 — 문지기의 방으로'
+        : `저울 기울기 ${tilt}/3 — 골목을 살펴보자`;
     } else {
       objText = getObjective(game.flags);
     }

@@ -31,7 +31,7 @@ for (const [id, m] of Object.entries(MAPS)) {
   m.tiles.forEach((row, y) => {
     if (row.length !== w) err(`${id} y=${y}: 길이 ${row.length} != ${w}`);
     for (const ch of row) {
-      if (!'GPFSBCM1TWOHDRK*NYZJXEVILQ234A567'.includes(ch)) err(`${id} y=${y}: 알 수 없는 타일 '${ch}'`);
+      if (!'GPFSBCM1TWOHDRK*NYZJXEVILQ234A56789'.includes(ch)) err(`${id} y=${y}: 알 수 없는 타일 '${ch}'`);
     }
   });
 }

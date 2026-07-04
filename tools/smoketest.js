@@ -1497,4 +1497,151 @@ tap('z'); // 적용 → 1장 시작 + 거리 입구
 check('1장 수업: 전부 공짜 거리 입구에서 시작', g.map === 'freestreet' && g.player.x === 14 && g.player.y === 17);
 check('1장 수업: 1장 시작 상태', TJ.getStage(g.flags) === 1);
 
+console.log('[71] 2장 「기울어진 거리」 — 진입 게이트 + 구역① 메아리 골목');
+g.flags = TJ.setupStageFlags(1);
+g.currentSlot = 0;
+storage.set('ai-ethics-adventure-puzzle-0', JSON.stringify({}));
+g.flags.visited = g.flags.visited || {};
+g.flags.evCards = [];
+// 진입 게이트: chapter1Clear 전에는 잠김
+g.flags.chapter1Clear = false;
+g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(26, 13, 'right');
+hold('ArrowRight', 12);
+check('2장 입구 — chapter1Clear 전 잠김(거리에 남음)', g.map === 'freestreet' && g.mode === 'dialog');
+check('잠김 안내(기울어 보인다)', g.dialog.lines.some((l) => /기울어 보인다/.test(l)));
+advanceDialog();
+// chapter1Clear 후 개방
+g.flags.chapter1Clear = true;
+g.flags.visited.tiltstreet = true; // 인트로 스킵
+g.dialog = null; g.mode = 'world'; setPos(26, 13, 'right');
+hold('ArrowRight', 12);
+check('chapter1Clear 후 2장 허브 진입', g.map === 'tiltstreet');
+check('허브에 뱅뱅(wander) + 또또 2명',
+  MAPS.tiltstreet.npcs.filter((n) => n.name === '또또').length === 2 &&
+  MAPS.tiltstreet.npcs.some((n) => n.name === '뱅뱅' && n.wander));
+
+// 저울 조사 — 기울기 3/3
+setPos(14, 10, 'up'); tap('z');
+check('저울 조사 — 기울기 3/3', g.mode === 'dialog' && g.dialog.lines.some((l) => /기울기 3\/3/.test(l)));
+advanceDialog();
+// 보스 문(14,2) 잠김 (저울 3/3)
+setPos(14, 3, 'up'); hold('ArrowUp', 12);
+check('저울 3/3 — 보스 문 잠김(허브에 남음)', g.map === 'tiltstreet' && g.mode === 'dialog');
+advanceDialog();
+
+// 구역① 메아리 골목 진입 (5,5 반짝 문)
+g.flags.visited.echoalley = true;
+g.dialog = null; g.mode = 'world'; setPos(5, 6, 'up'); hold('ArrowUp', 12);
+check('구역① 메아리 골목 입장', g.map === 'echoalley' && !!g.puzzleRun && g.puzzleRun.id === 'voices');
+check('다른 목소리 0/3 시작', g.puzzleRun.voices.length === 0);
+// 반짝 루프 문(13,11) → 입구(11,13)로 되돌아온다
+g.dialog = null; g.mode = 'world'; setPos(13, 12, 'up'); hold('ArrowUp', 12);
+check('반짝 문 루프 — 입구(11,13)로 되돌아옴', g.map === 'echoalley' && g.player.x === 11 && g.player.y === 13);
+check('루프 카운트 + 안내(또 여기잖아)', g.puzzleRun.loops === 1 && /또 여기/.test(g.notice.text));
+// 다른 목소리 3명 대화 (칙칙한 문 뒤 위쪽 방)
+setPos(5, 4, 'up'); tap('z'); advanceDialog();
+check('다른 목소리 1 수집', g.puzzleRun.voices.length === 1);
+setPos(11, 4, 'up'); tap('z'); advanceDialog();
+check('다른 목소리 2 수집', g.puzzleRun.voices.length === 2);
+setPos(17, 4, 'up'); tap('z');
+check('다른 목소리 3 수집 → 클리어 대화', g.mode === 'dialog');
+advanceDialog();
+check('구역① 클리어 → 허브 복귀 + ev_othervoice',
+  g.map === 'tiltstreet' && !g.puzzleRun && g.flags.evCards.includes('ev_othervoice'));
+let s2log = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+check('voices done 기록', s2log.voices && s2log.voices.done === true);
+
+console.log('[72] 구역② 표본 창고 — 반례 3 수집 + 판독기 3 투입 + 복선 2호');
+g.flags.visited.samplehouse = true;
+g.dialog = null; g.mode = 'world'; g.map = 'tiltstreet'; setPos(22, 6, 'up'); hold('ArrowUp', 12);
+check('구역② 표본 창고 입장', g.map === 'samplehouse' && !!g.puzzleRun && g.puzzleRun.id === 'retrain');
+// 복선 2호 — 모서리 선반(0,13) 조사 → seenPhoto2
+check('조사 전 seenPhoto2 없음', !g.flags.seenPhoto2);
+setPos(1, 13, 'left'); tap('z');
+check('복선 2호 — ×표 사진 한 줄', g.mode === 'dialog' && /×표/.test(g.dialog.lines[0]));
+advanceDialog();
+check('복선 seenPhoto2 기록', g.flags.seenPhoto2 === true);
+// 반례 사진 3장 수집
+setPos(4, 4, 'up'); tap('z'); advanceDialog();
+check('반례 1 수집', g.puzzleRun.photos === 1);
+setPos(11, 4, 'up'); tap('z'); advanceDialog();
+setPos(18, 4, 'up'); tap('z'); advanceDialog();
+check('반례 3 수집', g.puzzleRun.photos === 3);
+// 판독기(11,8) 3장 투입
+setPos(11, 9, 'up'); tap('z'); pickChoice(0); advanceDialog();
+check('판독기 1 투입', g.puzzleRun.fed === 1);
+setPos(11, 9, 'up'); tap('z'); pickChoice(0); advanceDialog();
+setPos(11, 9, 'up'); tap('z'); pickChoice(0);
+check('판독기 3 투입 → 클리어 대화', g.mode === 'dialog');
+advanceDialog();
+check('구역② 클리어 → 허브 복귀 + ev_scale',
+  g.map === 'tiltstreet' && !g.puzzleRun && g.flags.evCards.includes('ev_scale'));
+
+console.log('[73] 구역③ 꺼진 거리 — 램프 3 점등');
+g.flags.visited.dimstreet = true;
+g.dialog = null; g.mode = 'world'; g.map = 'tiltstreet'; setPos(5, 16, 'up'); hold('ArrowUp', 12);
+check('구역③ 꺼진 거리 입장', g.map === 'dimstreet' && !!g.puzzleRun && g.puzzleRun.id === 'lamps');
+// 램프 3개 점등 (8,11)/(11,9)/(14,11)
+setPos(8, 12, 'up'); tap('z'); advanceDialog();
+check('램프 1 점등', g.puzzleRun.litCount === 1);
+setPos(11, 10, 'up'); tap('z'); advanceDialog();
+setPos(14, 12, 'up'); tap('z');
+check('램프 3 점등 → 클리어 대화', g.mode === 'dialog');
+advanceDialog();
+check('구역③ 클리어 → 허브 복귀 + ev_mypath',
+  g.map === 'tiltstreet' && !g.puzzleRun && g.flags.evCards.includes('ev_mypath'));
+
+console.log('[74] 저울 0/3 → 문지기의 방 + 기울 마음 조각 배틀');
+// 콜백 인트로(데이터 레벨)
+check('콜백 인트로 — 자비 경로에 콜백 한 줄', /이상한/.test(PERSUADE.pyeonhyang_boss.intro({ chapter1Mercy: true })));
+check('콜백 인트로 — 비자비 경로엔 콜백 없음', !/이상한/.test(PERSUADE.pyeonhyang_boss.intro({ chapter1Mercy: false })));
+// 저울 조사 — 수평
+setPos(14, 10, 'up'); tap('z');
+check('저울 조사 — 수평', g.mode === 'dialog' && g.dialog.lines.some((l) => /수평/.test(l)));
+advanceDialog();
+// 보스 문(14,2) 진입 (저울 0/3)
+g.flags.visited.gatekeeper = true;
+g.flags.chapter1Mercy = true; // 콜백 조우 확인용
+g.dialog = null; g.mode = 'world'; setPos(14, 3, 'up'); hold('ArrowUp', 12);
+check('저울 0/3 → 문지기의 방 진입', g.map === 'gatekeeper');
+// 기울 조우 → 배틀
+setPos(7, 3, 'up'); tap('z');
+check('보스 조우 대화 시작', g.mode === 'dialog');
+check('콜백 인트로(자비)가 조우에 반영', g.dialog.lines.some((l) => /이상한/.test(l)));
+advanceDialog();
+check('기울 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'wave');
+check('스프라이트/도감 id는 pyeonhyangmon', g.battle.monId === 'pyeonhyangmon');
+check('설득 프로필 id는 pyeonhyang_boss', g.battle.persuadeId === 'pyeonhyang_boss');
+check('표시 이름은 기울(persuadeId 계층)', g.battle.mon.name === '기울');
+check('게이지 최대 120', g.battle.gaugeMax === 120);
+// 정답 문 1회 (claim0 = ev_othervoice 소지 → 열림 정답 +32)
+g.battle.pState = 'open'; g.battle.gauge = 55; g.battle.claimIdx = 0;
+forceGates();
+enterDoor(true);
+check('열림 정답 문 통과 (+32)', g.battle.gauge === 87 && g.flags.pStats.gateRight >= 1);
+// 게이지 만충 → 자비 → 승리
+g.battle.gauge = g.battle.gaugeMax; step(1);
+check('게이지 만충 → 마음의 선택', g.battle.phase === 'mercy');
+while (g.battle.cursor !== 0) tap('ArrowDown');
+tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
+tap('z');
+check('승리 대화 시작', g.mode === 'dialog');
+advanceDialog();
+check('2장 클리어 플래그', g.flags.chapter2Clear === true);
+check('보스 승리 후 저울 앞(허브) 복귀', g.map === 'tiltstreet' && g.player.x === 14 && g.player.y === 10);
+check('v1 편향몬 처치 플래그 오염 없음', g.flags.defeated.pyeonhyangmon === false);
+check('보스는 도감 순서에 없음', !DEX_ORDER.includes('pyeonhyang_boss'));
+
+console.log('[75] 수업 모드 — 「2장 — 기울어진 거리」 특별 항목');
+g.dialog = null; g.mode = 'world';
+g.classmode.ret = 'world'; g.classmode.sel = 1; g.classmode.confirm = false; g.classmode.toast = 0;
+g.mode = 'classmode';
+tap('ArrowUp'); // 1 → 0 (TRACE_SEL)
+tap('ArrowUp'); // 0 → -1 (TILT_SEL)
+check('수업 목록에 2장 특별 항목(TILT_SEL=-1) 진입', g.classmode.sel === -1);
+tap('z'); check('확인 단계', g.classmode.confirm === true);
+tap('z'); // 적용 → 2장 시작 + 기울어진 거리 입구
+check('2장 수업: 기울어진 거리 입구에서 시작', g.map === 'tiltstreet' && g.player.x === 14 && g.player.y === 17);
+check('2장 수업: chapter1Clear=true 세팅', g.flags.chapter1Clear === true);
+
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

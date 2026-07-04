@@ -3,8 +3,9 @@
 // 타일 종류
 //  G 풀  P 길  F 꽃  S 모래  B 다리  C 동굴바닥  M 탑바닥  1 탑문(워프)
 //  T 나무  W 물  O 지붕  H 벽  D 문(장식)  R 바위  K 동굴벽  * 수정  N 탑벽  Y 표지판
+//  8 기울어진 포장(2장 거리)  9 칙칙한 문(2장 — 반짝이지 않는 문)
 
-const WALKABLE = new Set(['G', 'P', 'F', 'S', 'B', 'C', 'M', 'Z', 'E', 'I', '2', '4', 'A', '1', '5', '6', '7']);
+const WALKABLE = new Set(['G', 'P', 'F', 'S', 'B', 'C', 'M', 'Z', 'E', 'I', '2', '4', 'A', '1', '5', '6', '7', '8', '9']);
 
 const MAPS = {
   village: {
@@ -92,7 +93,7 @@ const MAPS = {
       'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
       'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
       'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPYPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPYPPPPPP9',
       'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
       'TPPP6PPPPPPPPPPPPPPPPPPPPPPT',
       'TGOOOOOOGGGGGGGGGGGGGGGGGGGT',
@@ -112,6 +113,9 @@ const MAPS = {
       // 금고문 — 잠금 3개(구역 클리어마다 1개)가 다 풀려야 주인의 방이 열린다
       { x: 14, y: 4, to: 'ownerroom', tx: 5, ty: 7, needS1Locks: 3,
         lockText: '금고 문은 꿈쩍도 하지 않는다.\n잠금 세 개가 나란히 붙어 있다.' },
+      // 2장 「기울어진 거리」 — 담아를 되돌린 뒤에야(chapter1Clear) 열리는 동쪽 문
+      { x: 27, y: 13, to: 'tiltstreet', tx: 14, ty: 17, needFlag: 'chapter1Clear',
+        lockText: '동쪽에 낯선 문이 하나 생겼다.\n문 너머가 이상하게… 기울어 보인다.\n지금은 굳게 잠겨 있다.' },
     ],
     npcs: [
       // 살금 — 담아의 점원. 시킨 일이 미안한 아이 (거리를 서성인다)
@@ -260,6 +264,211 @@ const MAPS = {
     ],
     npcs: [
       { id: 'sujip_boss', x: 5, y: 2, monSprite: 'sujipmon', name: '담아' },
+    ],
+    signs: [],
+    monsters: [],
+  },
+
+  // ==== 2장 「기울어진 거리」 — 기울의 추천 거리 (허브) ====
+  // 사선으로 기운 포장(8 타일)과 반짝 추천 문(6)·칙칙한 문(9)의 대비.
+  // 중앙 저울(14,9)의 기울기는 구역 3개를 클리어할 때마다 -1, 0이 되면 보스 문(7,14,2) 개방.
+  tiltstreet: {
+    name: '기울어진 거리',
+    song: 'glitch',
+    intro: [
+      '문을 넘자 거리가 한쪽으로\n비스듬히 기울어 보인다.\n똑바로 선 것 같은데, 자꾸 미끄러진다.',
+      '반짝이는 문들이 한 방향만 가리킨다.\n"이쪽! 다들 가는 길은 이쪽!"',
+      '광장 한가운데, 거대한 저울 하나가\n한쪽으로 잔뜩 기울어 있다.',
+    ],
+    tiles: [
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'T888888888OOOOOOOO888888888T',
+      'T8OOOOO88888887888888OOOOO8T',
+      'T8OOOOO88888888888888OOOOO8T',
+      'T88888888888888888888888888T',
+      'T88886888888888888888868888T',
+      'T8888888888888Y888888888888T',
+      'T88888888888888888888888888T',
+      'T88888888888888888888888888T',
+      'T8888888888888H888888888888T',
+      'T88888888888888888888888888T',
+      'T88888888888888888888888888T',
+      'T88888888888888888888888888T',
+      'T88888888888888888888888888T',
+      'T88888888888888888888888888T',
+      'T888898Y8888888888888888888T',
+      'T88888888888888888888888888T',
+      'T88888888888888888888888888T',
+      'T88888888888888888888888888T',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+    ],
+    warps: [
+      { x: 14, y: 18, to: 'freestreet', tx: 26, ty: 13 },
+      // 구역① 메아리 골목 (반짝 추천 문)
+      { x: 5, y: 5, to: 'echoalley', tx: 11, ty: 13 },
+      // 구역② 표본 창고 (반짝 추천 문)
+      { x: 22, y: 5, to: 'samplehouse', tx: 11, ty: 13 },
+      // 구역③ 꺼진 거리 (칙칙한 문)
+      { x: 5, y: 15, to: 'dimstreet', tx: 11, ty: 13 },
+      // 문지기의 방 — 저울이 수평(기울기 0)이 되어야 열린다 (needS2Scale)
+      { x: 14, y: 2, to: 'gatekeeper', tx: 7, ty: 8, needS2Scale: 3,
+        lockText: '저울이 아직 기울어 있다.\n수평이 되기 전엔, 저울 뒤 문이\n꿈쩍도 하지 않는다.' },
+    ],
+    npcs: [
+      // 뱅뱅 — 추천 문 안내인. 명랑하게 같은 곳만 안내한다 (거리를 서성인다)
+      { id: 'bangbang', x: 14, y: 13, monSprite: 'gatimmon', name: '뱅뱅', wander: true },
+      // 또또 2명 — 떨어져 있는데 토씨까지 같은 말을 반복
+      { id: 'ttotto1', x: 9, y: 7, monSprite: 'musimon', name: '또또' },
+      { id: 'ttotto2', x: 19, y: 11, monSprite: 'musimon', name: '또또' },
+    ],
+    signs: [
+      { x: 14, y: 6, text: '≪기울어진 거리≫\n반짝이는 문은 이쪽! …저쪽도 이쪽!\n전부 이쪽! (안내: 뱅뱅)' },
+      { x: 7, y: 15, text: '[안내] 이쪽은 볼 것 없음!\n돌아가!! 아무것도 없을 확률 99%!\n(안내: 뱅뱅)' },
+    ],
+    monsters: [],
+  },
+
+  // 구역① 「메아리 골목」 — 반짝 문은 전부 입구로 되돌아오는 루프(loop). 칙칙한
+  // 문(9) 3개 뒤 방에 「다른 목소리」 3명이 골목 주민과 다른 의견을 각자 말한다.
+  echoalley: {
+    name: '메아리 골목',
+    song: 'glitch',
+    intro: [
+      '좁은 골목이다. 반짝이는 문이\n여기저기서 "이쪽!" 하고 부른다.',
+      '벽 너머로 같은 목소리가 메아리친다.\n"…맞아. …맞아. …다들 그렇게 말해."',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHHHH',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'HHH9HHHHH9HHHHHHHHH9HH',
+      'H88888888888888888888H',
+      'H88888688888868868888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'HHHHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      { x: 11, y: 14, to: 'tiltstreet', tx: 5, ty: 6 },
+      // 반짝 추천 문 — 전부 입구(11,13)로 되돌아오는 루프
+      { x: 6, y: 11, to: 'echoalley', tx: 11, ty: 13, loop: true },
+      { x: 13, y: 11, to: 'echoalley', tx: 11, ty: 13, loop: true },
+      { x: 16, y: 11, to: 'echoalley', tx: 11, ty: 13, loop: true },
+    ],
+    npcs: [
+      // 골목 주민 — 같은 의견을 미묘하게 반복
+      { id: 'echo1', x: 4, y: 12, pal: 'kid', name: '골목 주민' },
+      { id: 'echo2', x: 16, y: 13, pal: 'guard', name: '골목 주민' },
+      // 다른 목소리 3명 (칙칙한 문 뒤 위쪽 방)
+      { id: 'voice1', x: 5, y: 3, pal: 'traveler', name: '다른 목소리' },
+      { id: 'voice2', x: 11, y: 3, pal: 'mittens', name: '다른 목소리' },
+      { id: 'voice3', x: 17, y: 3, pal: 'merchant', name: '다른 목소리' },
+    ],
+    signs: [],
+    monsters: [],
+  },
+
+  // 구역② 「표본 창고」 — 선반의 오판정 라벨 개그 + 반례 사진 3장 수집 → 판독기 투입.
+  samplehouse: {
+    name: '표본 창고',
+    song: 'cave',
+    intro: [
+      '선반마다 라벨이 붙어 있다.\n「위험 99%」 「안전 100%」 「불량 100%」…',
+      '…라벨과 사진이, 하나도 안 맞는다.',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHHHH',
+      'HEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEH',
+      'HHHHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      { x: 11, y: 14, to: 'tiltstreet', tx: 22, ty: 6 },
+    ],
+    npcs: [],
+    signs: [],
+    monsters: [],
+  },
+
+  // 구역③ 「꺼진 거리」 — 어두운 맵. 램프 3개를 점등하면 출구가 열린다.
+  dimstreet: {
+    name: '꺼진 거리',
+    song: 'cave',
+    intro: [
+      '안내판과 달리, 골목은 캄캄하다.\n한 발짝 앞도 잘 보이지 않는다.',
+      '…어둠 속에, 꺼진 램프 몇 개가\n희미하게 서 있다.',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHHHH',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'H88888888888888888888H',
+      'HHHHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      { x: 11, y: 14, to: 'tiltstreet', tx: 5, ty: 16 },
+    ],
+    npcs: [],
+    signs: [],
+    monsters: [],
+  },
+
+  // 2장 보스 「문지기의 방」 — 저울이 수평이 되면 열린다. 기울(보스)은 NPC로 두어
+  // v1 편향몬(퀴즈 배틀)의 도감/처치 플래그를 오염시키지 않는다. 조우 → PERSUADE.pyeonhyang_boss.
+  gatekeeper: {
+    name: '문지기의 방',
+    song: 'battle',
+    intro: [
+      '저울 뒤는 좁은 방이었다.\n벽마다 한쪽으로 치우친 그래프가\n잔뜩 붙어 있다.',
+      '그 한가운데, 기울이\n한쪽 접시만 뚫어져라 바라보며 서 있다.',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHH',
+      'H888888888888H',
+      'H888888888888H',
+      'H888888888888H',
+      'H888888888888H',
+      'H888888888888H',
+      'H888888888888H',
+      'H888888888888H',
+      'H888888888888H',
+      'HHHHHHH8HHHHHH',
+    ],
+    warps: [
+      { x: 7, y: 9, to: 'tiltstreet', tx: 14, ty: 3 },
+    ],
+    npcs: [
+      { id: 'pyeong_boss', x: 7, y: 2, monSprite: 'pyeonhyangmon', name: '기울' },
     ],
     signs: [],
     monsters: [],
@@ -3298,6 +3507,19 @@ const EVIDENCE_CARDS = {
     title: '동의의 범위', topic: 'privacy',
     desc: '경품 준다고 준 거지, 맘대로 쓰라고 준 게 아니에요. 어디까지인지는 준 사람이 정해요.',
   },
+  // 2장 「기울어진 거리」 구역 클리어 보상 (①메아리 골목 → ②표본 창고 → ③꺼진 거리)
+  ev_othervoice: {
+    title: '다른 목소리', topic: 'listen',
+    desc: '다들 같은 말을 해도, 다르게 생각하는 사람은 꼭 있어요. 그 목소리도 들어 봐야 세상이 넓어져요.',
+  },
+  ev_scale: {
+    title: '고장 난 저울', topic: 'bias',
+    desc: '한쪽 접시에만 잔뜩 올려 두면 저울은 늘 그쪽으로 기울어요. 치우친 표본은 판단을 기울게 해요.',
+  },
+  ev_mypath: {
+    title: '내가 고른 길', topic: 'filterbubble',
+    desc: '추천만 따라가면 세상이 좁아져요. 가끔은 안 가 본 길을 내가 직접 골라 걸어 봐요.',
+  },
 };
 
 const PERSUADE = {
@@ -3454,6 +3676,95 @@ const PERSUADE = {
           reply: '…응. 딱 필요한 만큼만.\n약속할게.' },
         { label: '수집품을 전부 압수한다', kind: 'harsh',
           reply: '아…\n(담아가 텅 빈 두 손을\n물끄러미 내려다본다.)' },
+      ],
+    },
+  },
+
+  // ── 2장 보스 「편향몬」 (문지기의 방) ─────────────────────────────
+  // 별도 PERSUADE 키(pyeonhyang_boss)로 정의해 v1 동굴 편향몬(퀴즈 배틀)과 완전히 분리한다.
+  // 스프라이트는 편향몬을 재사용하되, 표시 이름은 '기울'(displayName), 배틀은 이 프로필로만 진행.
+  pyeonhyang_boss: {
+    gaugeMax: 120,
+    displayName: '기울', // 보스 조우 표시 이름 (persuadeId 쪽에만 적용 — v1 동굴 편향몬은 '편향몬' 유지)
+    closedThreshold: 3,
+    fragmentsPerWave: 3,
+    waveBulletMul: 1.0,
+    waveDur: 340,
+    decoys: ['확률 87%', '영업 비밀', '많이 본 게 정답', '다들 그러던데', '아무튼 위험'],
+    // 콜백 인트로: 1장에서 담아를 자비로 되돌렸으면(chapter1Mercy) 한 줄이 붙는다 (퍼센트 개그)
+    intro(flags) {
+      let s = '…멈춰! 당신이 수상할 확률, 87%!\n근거? …그건 영업 비밀이지.';
+      if (flags && flags.chapter1Mercy) {
+        s += '\n\n담아가 그러던데. …너, 이상한 애라며?\n한쪽만 안 보는 이상한 애일 확률… 100%.';
+      }
+      return s;
+    },
+    win: '…내 저울이, 한쪽으로만\n기울어 있었네. 다시 잴게.\n이번엔… 양쪽 다 올려 보고.',
+    claims: [
+      {
+        text: '많이 본 쪽이 정답이야.\n다들 그러던데? 확률 87%!',
+        hint: '"…다른 쪽은 세어 본 적도 없어.\n무서워서, 한쪽만 봤거든."\n(「다른 목소리」를 들려주자!)',
+        fragments: ['…다른 쪽은, 세어 본 적도 없어.', '틀리는 게 무서워서… 한쪽만 봤거든.'],
+        gateLabel: '다른 목소리', // ev_othervoice
+        counters: ['ev_othervoice'],
+        okLine: '…많이 본 거랑 맞는 건\n다른 거였구나. 87%… 아니었네.',
+        onWrong: '…아무튼 다들 그랬어. 확률로 이겨.\n(기울이 접시를 툭 쳤다)',
+        attack: { pattern: 'sides', dur: 280, color: '#e0a53a', taunt: '다수결! 확률! 87%!' },
+      },
+      {
+        text: '내 저울은 정확해. 오차 0%!\n한 번도 안 틀렸다고!',
+        hint: '"…사실은 한쪽 접시만 보고 재.\n반대쪽은 아예 비어 있어."\n(「고장 난 저울」을 보여 주자!)',
+        fragments: ['…사실은 한쪽 접시만 보고 재.', '반대쪽은… 아예 비어 있어.'],
+        gateLabel: '저울을 봐', // ev_scale
+        counters: ['ev_scale'],
+        okLine: '…한쪽만 잔뜩 올려 두면\n늘 그쪽으로 기우는 거였어.\n0% 아니었네.',
+        onWrong: '…시끄러워! 오차 0%라니까!\n(기울이 저울을 감쌌다)',
+        attack: { pattern: 'wall', dur: 280, color: '#8d6cd6', taunt: '오차 0%! 완벽! 완벽!' },
+      },
+      {
+        text: '안 가 본 길은 위험해!\n위험할 확률… 아무튼, 높아!',
+        hint: '"…가 본 적이 없으니까,\n그냥 위험하다고 해 버린 거야."\n(「내가 고른 길」을 직접 걸어 보자!)',
+        fragments: ['…가 본 적이 없으니까,', '그냥, 위험하다고 해 버린 거야.'],
+        gateLabel: '가 봤어', // ev_mypath
+        counters: ['ev_mypath'],
+        okLine: '…안 가 본 길이라고\n위험한 건 아니었구나.\n…나도, 가 볼걸.',
+        onWrong: '…위험하다니까! 몇 프론지는\n묻지 마! (기울이 눈을 감았다)',
+        attack: { pattern: 'zigzag', dur: 300, color: '#5cb85c', taunt: '위험! 위험 확률 높음!' },
+      },
+      {
+        text: '…내가 너를 잘못 봤을 확률은,\n몇 프로야?',
+        best: 'empathy', // 정답은 카드가 아니라 공감 — 속마음(틀리는 게 무섭다)을 안아 준다
+        unlockAt: 70,    // 마음이 열린 뒤에야 꺼내는 속마음
+        hint: '"…틀리는 게, 무서웠어.\n그래서 한쪽만 보기로 한 거야."\n(증거 말고 「공감하기」로 안아 주자!)',
+        fragments: ['…틀리는 게, 무서웠어.', '그래서, 한쪽만 보기로 한 거야…'],
+        gateLabel: '0%야', // best=empathy — 잘못 본 게 아니라고 안아 주는 말
+        revealNote: '이건 확률로 풀 게 아니야 — 「공감하기」로 마음을 안아 주자!',
+        counters: [],
+        okLine: '…그래. 다시 재 볼게. 이번엔, 양쪽 다.',
+        onWrong: '…거봐. 너도 날 이상하게 보잖아.\n(기울이 고개를 돌렸다)',
+        attack: { pattern: 'aimed', dur: 320, color: '#e07a5f', taunt: '틀릴 확률… 무서워… 보지 마!' },
+      },
+    ],
+    react: {
+      empathy: '…뭐야. 왜 확률도 안 따지고\n그런 눈으로 봐. (기울이 멈칫했다)',
+      empathyAgain: '…응. 들어 줘서… 고마워.\n(하지만 위로만으론 부족한 것 같다)',
+      questionClosed: '…몰라. 대답은 영업 비밀이야.\n(마음이 닫혀 있어 대답하지 않는다)',
+      evidenceClosed: '…(기울은 카드를 쳐다보지도 않는다)\n먼저 마음을 열어야 할 것 같다.',
+      evidenceRight: '…그, 그런가. 다시 재 볼게.\n(카드의 말이 저울에 스며든다)',
+      rebutBackfire: '시끄러워!! 확률은 거짓말 안 해!\n(마음이 더 굳게 닫혔다… 다음 공격이 거세진다)',
+      rebutOk: '…그, 그럴 확률도… 있으려나.',
+      open: '(기울이 한쪽만 보던 눈을\n천천히 반대쪽으로 돌린다. 마음이 열리고 있다…!)',
+    },
+    // mercy: v1 편향몬 것을 기울 톤(저울·양쪽 재기)으로 손질
+    mercy: {
+      prompt: '기울이 기울어진 저울 앞에서\n너를 빤히 바라본다.',
+      options: [
+        { label: '"이번엔 양쪽 다 재 보자" (손을 내민다)', kind: 'mercy',
+          reply: '…양쪽 다?\n틀려도… 같이 다시 재 주는 거야?\n…그러면, 해 볼 수 있을 것 같아.' },
+        { label: '"한쪽만 보면 틀리기 쉬워"', kind: 'neutral',
+          reply: '…응. 한쪽만 보면\n기울어진다는 거… 이제 알아.' },
+        { label: '저울을 강제로 반대로 기울인다', kind: 'harsh',
+          reply: '아…\n(기울이 이번엔 반대쪽으로만\n기울어 버린 저울을 바라본다.)' },
       ],
     },
   },
@@ -3622,10 +3933,114 @@ const PUZZLES = {
     returnBin: { x: 12, y: 5, name: '반송함' },
     belt: { y: 7, x0: 3, x1: 20 }, // 상자가 흐르는 벨트 구간 (그리기용)
   },
+
+  // ── 2장 구역① 「메아리 골목」 (type: voices) ─────────────────────
+  // 반짝 문은 전부 입구로 되돌아온다(loop). 칙칙한 문 뒤 「다른 목소리」 3명을 들으면 클리어.
+  voices: {
+    map: 'echoalley',
+    type: 'voices',
+    title: '메아리 골목',
+    objective: '다른 목소리 3명을 찾아 듣자',
+    objectiveCleared: '거리로 돌아가자',
+    exitTo: { map: 'tiltstreet', x: 5, y: 6 },
+    steps: ['voices'],
+    hints: {
+      voices: [
+        '뱅뱅: "반짝이는 문이 제일 잘 보이지?\n다들 그쪽으로 가!"',
+        '뱅뱅: "…근데 이상하지?\n반짝이는 문으로 나가도, 또 여기야."',
+        '뱅뱅: "나갈 문은, 반짝이지 않아.\n칙칙한 문 뒤에… 다른 목소리들이 있어."',
+      ],
+    },
+    rewards: ['ev_othervoice'],
+    clearLines: [
+      '세 사람의 다른 이야기를 들었다.',
+      '골목이 조금, 넓어 보인다.',
+    ],
+    // 다른 목소리 NPC별 한마디 (골목 주민과 다른 의견) — 각자 다르게 말한다
+    voiceLines: {
+      voice1: '"다들 이쪽이 좋대. …근데 난,\n저쪽 길이 더 좋더라. 조용하고."',
+      voice2: '"인기 있는 게 꼭 맞는 건 아니야.\n난 안 유명한 가게가 더 맛있던데?"',
+      voice3: '"남들이 위험하다던 길, 가 봤어.\n…생각보다, 아무 일도 없더라."',
+    },
+    // 골목 주민 — 토씨까지 같은 말을 반복
+    echoLine: '"…맞아. 다들 이쪽이래.\n그러니까 이쪽이 맞아. …맞아."',
+  },
+
+  // ── 2장 구역② 「표본 창고」 (type: retrain) ──────────────────────
+  // 오판정 라벨 선반에서 반례 사진 3장을 모아 판독기에 투입하면 판정이 교정된다.
+  retrain: {
+    map: 'samplehouse',
+    type: 'retrain',
+    title: '표본 창고',
+    objective: '반례 사진 3장을 찾아 판독기에 넣자',
+    objectiveCleared: '거리로 돌아가자',
+    exitTo: { map: 'tiltstreet', x: 22, y: 6 },
+    steps: ['retrain'],
+    hints: {
+      retrain: [
+        '"선반 라벨이랑 사진이,\n하나도 안 맞아…"',
+        '"라벨이 틀린 선반에서\n사진을 꺼내면 「반례」가 돼."',
+        '"반례 사진 3장을 판독기에 넣으면,\n판독기가 다시 배운대. 넣어 봐."',
+      ],
+    },
+    rewards: ['ev_scale'],
+    clearLines: [
+      '판독기가 새로 배웠다.\n"꽃이 위험할 확률: 99% → 3%…?!"',
+      '한쪽으로 기울어 있던 판정이,\n조금 반듯해졌다.',
+    ],
+    // 반례 사진 선반 3곳 (조사=수집)
+    photos: [
+      { x: 4, y: 3, found: '「위험 99%」…라벨 아래 있는 건,\n활짝 핀 꽃 사진이다.\n(반례 사진을 챙겼다)' },
+      { x: 11, y: 3, found: '「안전 100%」…라벨 아래 있는 건,\n수상한 자물쇠 따개 사진이다.\n(반례 사진을 챙겼다)' },
+      { x: 18, y: 3, found: '「불량 100%」…라벨 아래 있는 건,\n멀쩡한 곰인형 사진이다.\n(반례 사진을 챙겼다)' },
+    ],
+    // 판독기 단말 — 반례 사진을 한 장씩 투입 (투입마다 판정 교정)
+    reader: { x: 11, y: 8, name: '판독기 단말',
+      prompt: '판독기 단말이 깜빡인다.\n반례 사진을 한 장 넣을까요?',
+      empty: '넣을 반례 사진이 없어요.\n선반에서 먼저 찾아와요.',
+      steps: [
+        '재계산 중…\n꽃이 위험할 확률: 99% → …42%?',
+        '재계산 중…\n꽃이 위험할 확률: 42% → …12%?',
+        '재계산 중…\n꽃이 위험할 확률: 12% → …3%?!',
+      ],
+    },
+  },
+
+  // ── 2장 구역③ 「꺼진 거리」 (type: lamps) ────────────────────────
+  // 어두운 맵. 램프 3개를 조사로 점등하면 맵이 밝아지며 클리어.
+  lamps: {
+    map: 'dimstreet',
+    type: 'lamps',
+    title: '꺼진 거리',
+    objective: '램프 3개에 불을 켜자',
+    objectiveCleared: '거리로 돌아가자',
+    exitTo: { map: 'tiltstreet', x: 5, y: 16 },
+    steps: ['lamps'],
+    hints: {
+      lamps: [
+        '"한 발짝 앞도 안 보여…\n하지만 발밑은 디딜 수 있어."',
+        '"어둠 속에 꺼진 램프가 서 있어.\n다가가서 불을 켜 봐."',
+        '"램프를 다 켜면 골목 전체가\n밝아지고, 나갈 길이 보일 거야."',
+      ],
+    },
+    rewards: ['ev_mypath'],
+    clearLines: [
+      '세 번째 램프에 불이 들어오자,\n골목 전체가 환해졌다.',
+      '아무것도 없다던 길에,\n갈림길이 여럿 나 있었다.',
+    ],
+    // 램프 3개 (시야 반경 내 간격)
+    lamps: [
+      { x: 8, y: 11 },
+      { x: 11, y: 9 },
+      { x: 14, y: 11 },
+    ],
+  },
 };
 
 // 1장 금고 잠금 — 이 구역들을 하나 클리어할 때마다 잠금이 하나 풀린다
 const S1_ZONE_PUZZLES = ['traces', 'copies', 'levers'];
+// 2장 저울 — 이 구역들을 하나 클리어할 때마다 저울 기울기가 하나 줄어든다 (0이면 보스 문 개방)
+const S2_ZONE_PUZZLES = ['voices', 'retrain', 'lamps'];
 
 function getPuzzleForMap(mapId) {
   for (const k in PUZZLES) {
@@ -3662,6 +4077,8 @@ const EXAMINE_TILES = {
   D: '문이 잠겨 있다. 주인이 잠시 자리를 비운 모양이다.',
   '6': '반짝이는 네온 입구.\n"전부 공짜!" …정말일까?',
   '7': '묵직한 문이다.',
+  '8': '비스듬히 기운 포장이다.\n똑바로 선 것 같은데 자꾸 미끄러진다.',
+  '9': '칙칙한 문이다. 반짝이지 않아서\n아무도 눈여겨보지 않는다.',
 };
 
 // 맵별 특별 살펴보기 지점(좌표). 같은 좌표면 기본 타일 문구보다 우선.
@@ -3698,6 +4115,15 @@ const MAP_PROPS = {
     // 스토리 복선 — 조사하면 flags.seenPhoto1이 기록된다 (flag: game.js interact)
     { x: 9, y: 1, flag: 'seenPhoto1',
       text: '서랍 깊은 곳에 낡은 사진이 있다.\n하얀 가운의 어른과… 작은 아이?' },
+  ],
+  // 2장 표본 창고 — 오판정 라벨 개그(선반) + 복선 2호(모서리 선반)
+  samplehouse: [
+    { x: 3, y: 0, text: '선반 라벨: 「위험 99%」\n…라벨 아래엔, 방긋 웃는\n강아지 사진이 붙어 있다.' },
+    { x: 11, y: 0, text: '선반 라벨: 「안전 100%」\n…라벨 아래엔, 뾰족한\n가위 사진이 붙어 있다.' },
+    { x: 18, y: 0, text: '선반 라벨: 「전부 위험」\n…라벨 아래 칸은,\n그냥 텅 비어 있다.' },
+    // 복선 2호 — 조사하면 flags.seenPhoto2 (설명 없이 이 한 줄만)
+    { x: 0, y: 13, flag: 'seenPhoto2',
+      text: '모서리 선반의 사진 뭉치.\n…한 아이의 사진마다, ×표가\n그어져 있다.' },
   ],
   library: [
     { x: 7, y: 2, text: '한 권만 거꾸로 꽂힌 책.\n표지에 작게 ≪0≫.\n…펴 보려 하자 스르륵 닫힌다.' },
