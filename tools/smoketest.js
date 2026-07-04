@@ -1377,6 +1377,7 @@ check('복선 플래그 seenPhoto1 기록', g.flags.seenPhoto1 === true);
 
 console.log('[69] T2.3 — 1장 보스 「담아」 설득 배틀 (주인의 방)');
 const { PERSUADE } = vm.runInContext('({ PERSUADE })', sandbox);
+const { getObjective } = vm.runInContext('({ getObjective })', sandbox);
 const TH = vm.runInContext('window.__test', sandbox);
 // 깨끗한 1장 상태로 리셋 (라이브러리 수집몬 처치 플래그 오염 검증을 위해)
 g.flags = TJ.setupStageFlags(1);
@@ -1684,5 +1685,225 @@ tap('z'); check('확인 단계', g.classmode.confirm === true);
 tap('z'); // 적용 → 2장 시작 + 기울어진 거리 입구
 check('2장 수업: 기울어진 거리 입구에서 시작', g.map === 'tiltstreet' && g.player.x === 14 && g.player.y === 17);
 check('2장 수업: chapter1Clear=true 세팅', g.flags.chapter1Clear === true);
+
+// ==================== S3 「대문짝 신문사」 ====================
+g.flags.visited.rumorstreet = true;
+g.flags.visited.tipsroom = true;
+g.flags.visited.editroom = true;
+g.flags.visited.towerroom = true;
+g.flags.visited.towerroof = true;
+
+console.log('[76] 3장 「대문짝 신문사」 — 진입 게이트(chapter2Clear)');
+g.dialog = null; g.mode = 'world'; g.map = 'tiltstreet';
+g.flags.chapter2Clear = false;
+setPos(26, 10, 'right');
+hold('ArrowRight', 12);
+check('3장 입구 — chapter2Clear 전 잠김(거리에 남음)', g.map === 'tiltstreet' && g.mode === 'dialog');
+advanceDialog();
+g.flags.chapter2Clear = true;
+g.dialog = null; g.mode = 'world'; setPos(26, 10, 'right'); hold('ArrowRight', 12);
+check('chapter2Clear 후 3장 허브 진입', g.map === 'rumorstreet' && g.player.x === 14 && g.player.y === 17);
+
+console.log('[77] 소문 거리 허브 — 잠긴 상점 + 겁먹은 주민 (송출 전)');
+setPos(5, 5, 'up'); tap('z');
+check('상점 문 잠김 대사', g.mode === 'dialog' && g.dialog.lines.some((l) => /소문 때문에 문 닫았어요/.test(l)));
+advanceDialog();
+setPos(9, 9, 'up'); tap('z');
+check('겁먹은 주민 — 같은 헛소문 반복', g.mode === 'dialog' && g.dialog.lines.some((l) => /우물물/.test(l)));
+advanceDialog();
+
+console.log('[78] 3장 1층 「제보함」 — 순서 강제 + 오답([속보]) + 정답 채택 → 클리어');
+g.dialog = null; g.mode = 'world'; setPos(14, 5, 'up'); hold('ArrowUp', 12);
+check('신문사 1층 진입', g.map === 'tipsroom' && !!g.puzzleRun && g.puzzleRun.id === 'tips');
+setPos(16, 2, 'right'); hold('ArrowRight', 12);
+check('2층 잠김(1층에 남음)', g.map === 'tipsroom' && g.mode === 'dialog');
+advanceDialog();
+// 제보 5장 조사
+setPos(5, 4, 'up'); tap('z'); advanceDialog();
+setPos(14, 4, 'up'); tap('z'); advanceDialog();
+setPos(5, 10, 'up'); tap('z'); advanceDialog();
+setPos(14, 10, 'up'); tap('z'); advanceDialog();
+setPos(9, 7, 'up'); tap('z'); advanceDialog();
+// 채택함 — 오답(제보③, 출처 없음) 먼저
+setPos(9, 11, 'up'); tap('z');
+check('채택함 열림(제보 5+그만두기)', g.mode === 'choice' && g.choice.options.length === 6);
+while (g.choice.cursor !== 2) tap('ArrowDown'); // idx2 = 제보③(수상함)
+tap('z');
+check('오답 채택 → [속보] 대화', g.mode === 'dialog');
+advanceDialog();
+let plog3 = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+check('오답이 wrongTries에 기록', plog3.tips.wrongTries >= 1);
+// 정답 두 장 채택 → 클리어
+setPos(9, 11, 'up'); tap('z');
+check('채택함 재오픈(남은 4+그만두기)', g.mode === 'choice' && g.choice.options.length === 5);
+tap('z'); // cursor0 = 제보①(출처 있음)
+check('정답 채택 1회', g.mode === 'dialog');
+advanceDialog();
+setPos(9, 11, 'up'); tap('z');
+tap('z'); // remain=[1,3,4] → cursor0 = 제보②(출처 있음) → 클리어
+check('제보함 클리어 → 허브 복귀 + ev_check', g.map === 'rumorstreet' && !g.puzzleRun &&
+  g.flags.evCards.includes('ev_check'));
+advanceDialog();
+
+console.log('[79] 3장 2층 「편집실」 — 순서 강제 + 오답 재시도 + 정답 지목 + 복선 seenArticle');
+g.dialog = null; g.mode = 'world'; setPos(14, 5, 'up'); hold('ArrowUp', 12);
+check('1층 재입장(클리어 후에도 재도전 가능)', g.map === 'tipsroom');
+setPos(16, 2, 'right'); hold('ArrowRight', 12);
+check('1층 클리어 후 2층 개방', g.map === 'editroom' && g.player.x === 9 && g.player.y === 1);
+check('편집실 퍼즐 시작', !!g.puzzleRun && g.puzzleRun.id === 'compare');
+setPos(16, 2, 'right'); hold('ArrowRight', 12);
+check('3층 잠김(2층에 남음)', g.map === 'editroom' && g.mode === 'dialog');
+advanceDialog();
+check('조사 전 seenArticle 없음', !g.flags.seenArticle);
+setPos(17, 12, 'up'); tap('z');
+check('복선 3호 — 미송출 기사 한 줄', g.mode === 'dialog' && g.dialog.lines.some((l) => /프로젝트 0호/.test(l)));
+advanceDialog();
+check('복선 seenArticle 기록', g.flags.seenArticle === true);
+// 사진① — 오답 후 정답(좌우 반전)
+setPos(5, 5, 'up'); tap('z');
+check('사진① 3지선다 오픈', g.mode === 'choice' && g.choice.options.length === 3);
+while (g.choice.cursor !== 1) tap('ArrowDown'); // 오답
+tap('z');
+check('오답 — 다시 봐야겠다', g.mode === 'dialog');
+advanceDialog();
+setPos(5, 5, 'up'); tap('z');
+tap('z'); // cursor0 = 좌우 반전(정답)
+check('사진① 정답 → 대조 1/3', g.mode === 'dialog');
+advanceDialog();
+// 사진② — 손가락 6개(정답, idx1)
+setPos(14, 5, 'up'); tap('z');
+while (g.choice.cursor !== 1) tap('ArrowDown');
+tap('z');
+advanceDialog();
+// 사진③ — 날짜가 미래(정답, idx2) → 클리어
+setPos(9, 10, 'up'); tap('z');
+while (g.choice.cursor !== 2) tap('ArrowDown');
+tap('z');
+check('편집실 클리어 → 허브 복귀 + ev_original', g.map === 'rumorstreet' && !g.puzzleRun &&
+  g.flags.evCards.includes('ev_original'));
+advanceDialog();
+
+console.log('[80] 3장 3층 「송출탑」 — 순서 강제 + 3단계(오답 포함) + 허브 해제(rumorFixed)');
+g.dialog = null; g.mode = 'world'; setPos(14, 5, 'up'); hold('ArrowUp', 12);
+check('1층 재진입', g.map === 'tipsroom');
+setPos(16, 2, 'right'); hold('ArrowRight', 12);
+check('1층 클리어 후 2층 통과 가능', g.map === 'editroom');
+setPos(16, 2, 'right'); hold('ArrowRight', 12);
+check('2층 클리어 후 3층 개방', g.map === 'towerroom' && g.player.x === 9 && g.player.y === 1);
+setPos(16, 2, 'right'); hold('ArrowRight', 12);
+check('옥상 잠김(3층에 남음)', g.map === 'towerroom' && g.mode === 'dialog');
+advanceDialog();
+// ①정정문 — 오답 후 정답
+setPos(5, 5, 'up'); tap('z');
+check('정정문 3지선다 오픈', g.mode === 'choice' && g.choice.options.length === 3);
+tap('z'); // cursor0 = 과장된 문장(오답)
+check('오답 — 다시 골라야겠다', g.mode === 'dialog');
+advanceDialog();
+setPos(5, 5, 'up'); tap('z');
+while (g.choice.cursor !== 1) tap('ArrowDown'); // idx1 = 정정문(정답)
+tap('z');
+check('①정정문 완료', g.mode === 'dialog');
+advanceDialog();
+// ②출처 붙이기 — 오답 후 정답
+setPos(14, 5, 'up'); tap('z');
+check('출처 5지선다 오픈', g.mode === 'choice' && g.choice.options.length === 5);
+while (g.choice.cursor !== 2) tap('ArrowDown'); // idx2 = 제보③(출처 없음)
+tap('z');
+check('오답 — 다시 골라야겠다', g.mode === 'dialog');
+advanceDialog();
+setPos(14, 5, 'up'); tap('z');
+tap('z'); // cursor0 = 제보①(출처 있음)
+check('②출처 붙이기 완료', g.mode === 'dialog');
+advanceDialog();
+// ③송출 레버
+check('송출 전 — rumorFixed 아직 false', g.flags.rumorFixed === false);
+setPos(9, 10, 'up'); tap('z');
+check('레버 확인 열림', g.mode === 'choice');
+tap('z'); // 당긴다
+check('송출탑 클리어 → 허브 복귀 + ev_fix + rumorFixed', g.map === 'rumorstreet' && !g.puzzleRun &&
+  g.flags.evCards.includes('ev_fix') && g.flags.rumorFixed === true);
+advanceDialog();
+// 허브 해제 — 상점/주민 대사 변화
+setPos(5, 5, 'up'); tap('z');
+check('상점 문 열림 대사(송출 후)', g.mode === 'dialog' && g.dialog.lines.some((l) => /오해가 풀려서/.test(l)));
+advanceDialog();
+setPos(9, 9, 'up'); tap('z');
+check('주민 대사 교체(송출 후, 헛소문 사라짐)', g.mode === 'dialog' && !g.dialog.lines.some((l) => /우물물/.test(l)));
+advanceDialog();
+
+console.log('[81] 그럴싸 마음 조각 배틀 — 콜백(chapter2Mercy) + 배틀 + 승리 → chapter3Clear');
+check('콜백 인트로 — 자비 경로에 콜백 한 줄', /확률 밖의 애/.test(PERSUADE.hwangak_boss.intro({ chapter2Mercy: true })));
+check('콜백 인트로 — 비자비 경로엔 콜백 없음', !/확률 밖의 애/.test(PERSUADE.hwangak_boss.intro({ chapter2Mercy: false })));
+g.flags.chapter2Mercy = true; // 콜백 조우 확인용
+g.dialog = null; g.mode = 'world'; g.map = 'towerroom'; setPos(16, 2, 'right'); hold('ArrowRight', 12);
+check('옥상 개방(3층 클리어 후)', g.map === 'towerroof');
+setPos(7, 3, 'up'); tap('z');
+check('보스 조우 대화 시작', g.mode === 'dialog');
+check('콜백 인트로(자비)가 조우에 반영', g.dialog.lines.some((l) => /확률 밖의 애/.test(l)));
+advanceDialog();
+check('그럴싸 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'wave');
+check('스프라이트/도감 id는 hwangakmon', g.battle.monId === 'hwangakmon');
+check('설득 프로필 id는 hwangak_boss', g.battle.persuadeId === 'hwangak_boss');
+check('표시 이름은 그럴싸(persuadeId 계층)', g.battle.mon.name === '그럴싸');
+check('게이지 최대 120', g.battle.gaugeMax === 120);
+check('닫힘·게이지0·파도에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'wave');
+// 닫힘 상태에선 문이 전부 잠겨 있다 — 동요로 전환 후 문 판정을 확인한다 (전환 메커니즘 자체는 다른 테스트에서 검증됨)
+g.battle.pState = 'shaken'; g.battle.claimIdx = 0;
+forceGates();
+enterDoor(true);
+check('정답 문 통과 (+26)', g.battle.gauge === 26 && g.flags.pStats.gateRight >= 1 && g.battle.phase === 'wave');
+g.battle.gauge = g.battle.gaugeMax; step(1);
+check('게이지 만충 → 마음의 선택', g.battle.phase === 'mercy');
+while (g.battle.cursor !== 0) tap('ArrowDown');
+tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
+tap('z');
+check('승리 대화 시작', g.mode === 'dialog');
+advanceDialog();
+check('3장 클리어 플래그', g.flags.chapter3Clear === true);
+check('보스 승리 후 신문사 입구(허브) 복귀', g.map === 'rumorstreet' && g.player.x === 14 && g.player.y === 5);
+check('v1 환각몬 처치 플래그 오염 없음', g.flags.defeated.hwangakmon === false);
+check('보스는 도감 순서에 없음', !DEX_ORDER.includes('hwangak_boss'));
+
+console.log('[82] 박사 고백 이벤트 — chapter3Clear 후 마을 자동 진입 + 복선 반영 + 1회성');
+check('진입 전 profConfession 없음', !g.flags.profConfession);
+// 수업 모드 점프(setupStageFlags)로 중간에 플래그가 초기화되었으므로 복선 상태를 다시 맞춘다.
+// seenPhoto1은 "봤음"(반영 분기), seenPhoto2는 "못 봤음"(미반영 분기)으로 대비시켜 확인한다.
+g.flags.seenPhoto1 = true;
+g.flags.seenPhoto2 = false;
+g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(14, 17, 'down');
+hold('ArrowDown', 12); step(2);
+check('마을 진입 시 박사 고백 자동 시작', g.map === 'village' && g.mode === 'dialog');
+check('고백 대사 — 프로젝트 0호', g.dialog.lines.some((l) => /프로젝트 0호/.test(l)));
+check('복선 반영 — seenPhoto1 있음', g.dialog.lines.some((l) => /주인의 방에서 본 사진/.test(l)));
+check('복선 미반영 — seenPhoto2 없으면 해당 줄 없음', !g.dialog.lines.some((l) => /×표 사진들도/.test(l)));
+check('복선 반영 — seenArticle 있음', g.dialog.lines.some((l) => /송출되지 못한 그 기사/.test(l)));
+check('profConfession 즉시 기록(재진입 방지)', g.flags.profConfession === true);
+advanceDialog();
+check('getObjective — 영이의 조각을 따라가자 분기', getObjective(g.flags).includes('영이의 조각'));
+setPos(5, 12, 'left'); tap('z');
+check('박사 대사 갱신(고백 이후)', g.mode === 'dialog' && g.dialog.lines.some((l) => /영이의 흔적/.test(l)));
+advanceDialog();
+g.flags.seenPhoto2 = true; // 원복
+// 1회성 확인 — 마을을 나갔다 다시 들어와도 재발생하지 않는다
+g.flags.visited.freestreet = true; // 수업 모드 점프로 초기화된 방문 기록 복구(인트로 재생 방지)
+setPos(24, 6, 'up'); hold('ArrowUp', 12);
+check('마을 → 거리로 이동', g.map === 'freestreet');
+g.dialog = null; g.mode = 'world';
+setPos(14, 17, 'down'); hold('ArrowDown', 12); step(2);
+check('재진입해도 고백이 재발생하지 않음', g.map === 'village' && g.mode === 'world');
+
+console.log('[83] 수업 모드 — 「3장 — 대문짝 신문사」 특별 항목');
+g.dialog = null; g.mode = 'world';
+g.classmode.ret = 'world'; g.classmode.sel = 1; g.classmode.confirm = false; g.classmode.toast = 0;
+g.mode = 'classmode';
+tap('ArrowUp'); // 1 → 0 (TRACE_SEL)
+tap('ArrowUp'); // 0 → -1 (TILT_SEL)
+tap('ArrowUp'); // -1 → -2 (RUMOR_SEL)
+check('수업 목록에 3장 특별 항목(RUMOR_SEL=-2) 진입', g.classmode.sel === -2);
+tap('z'); check('확인 단계', g.classmode.confirm === true);
+tap('z'); // 적용 → 3장 시작 + 대문짝 신문사 입구
+check('3장 수업: 대문짝 신문사 입구에서 시작', g.map === 'rumorstreet' && g.player.x === 14 && g.player.y === 17);
+check('3장 수업: chapter1Clear/chapter2Clear=true 세팅',
+  g.flags.chapter1Clear === true && g.flags.chapter2Clear === true);
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

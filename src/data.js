@@ -291,7 +291,7 @@ const MAPS = {
       'T88888888888888888888888888T',
       'T88888888888888888888888888T',
       'T8888888888888H888888888888T',
-      'T88888888888888888888888888T',
+      'T888888888888888888888888889',
       'T88888888888888888888888888T',
       'T88888888888888888888888888T',
       'T88888888888888888888888888T',
@@ -313,6 +313,9 @@ const MAPS = {
       // 문지기의 방 — 저울이 수평(기울기 0)이 되어야 열린다 (needS2Scale)
       { x: 14, y: 2, to: 'gatekeeper', tx: 7, ty: 8, needS2Scale: 3,
         lockText: '저울이 아직 기울어 있다.\n수평이 되기 전엔, 저울 뒤 문이\n꿈쩍도 하지 않는다.' },
+      // 3장 「대문짝 신문사」 — 기울을 되돌린 뒤에야(chapter2Clear) 열리는 동쪽 문
+      { x: 27, y: 10, to: 'rumorstreet', tx: 14, ty: 17, needFlag: 'chapter2Clear',
+        lockText: '동쪽 벽에 낯선 문이 하나 더 생겼다.\n문 너머가 소란스럽다. …[속보]?\n지금은 굳게 잠겨 있다.' },
     ],
     npcs: [
       // 뱅뱅 — 추천 문 안내인. 명랑하게 같은 곳만 안내한다 (거리를 서성인다)
@@ -469,6 +472,198 @@ const MAPS = {
     ],
     npcs: [
       { id: 'pyeong_boss', x: 7, y: 2, monSprite: 'pyeonhyangmon', name: '기울' },
+    ],
+    signs: [],
+    monsters: [],
+  },
+
+  // ==== 3장 「대문짝 신문사」 — 소문 거리(허브) ====
+  // 가짜 헤드라인이 마을을 잠근 상태로 시작한다. 신문사 건물(1~3층)을 순서대로
+  // 클리어하면 송출 완료 순간(flags.rumorFixed) 거리가 풀린다 — 상점 문 개방 +
+  // 주민 대사 교체. 옥상의 그럴싸를 되돌리면 3장 클리어.
+  rumorstreet: {
+    name: '소문 거리',
+    song: 'glitch',
+    intro: [
+      '거리 곳곳에 대문짝만 한 헤드라인이\n[속보]라며 붙어 있다.',
+      '상점마다 문이 굳게 닫혀 있다.\n"…소문 때문에요." 다들 그렇게만 말한다.',
+      '거리 끝, 신문사 건물이 보인다.\n소문의 출처를 찾으려면… 저기부터다.',
+    ],
+    tiles: [
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'TGOOOOOOOGGOOOOOOGGOOOOOOOGT',
+      'TGOOOOOOOGGOOOOOOGGOOOOOOOGT',
+      'TGOOOOOOOGGOOOOOOGGOOOOOOOGT',
+      'TGGGGDGGGGGGGG6GGGGGGGDGGGGT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPYPPPPPPPPYPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPDPPPPPPPPPPPPPPPPPPPPPPT',
+      'TGOOOOOOGGGGGGGGGGGGGGGGGGGT',
+      'TGOOOOOOGGGGGGPGGGGGGGGGGGGT',
+      'TGOOOOOOGGGGGGPGGGGGGGGGGGGT',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+    ],
+    warps: [
+      // 신문사 건물 입구 — 언제나 열려 있다 (1층부터 순서대로 진행)
+      { x: 14, y: 4, to: 'tipsroom', tx: 9, ty: 1 },
+      // 기울어진 거리로 복귀
+      { x: 14, y: 18, to: 'tiltstreet', tx: 26, ty: 10 },
+    ],
+    npcs: [
+      // 겁먹은 주민 — 송출 완료(rumorFixed) 전엔 같은 헛소문을 반복한다
+      { id: 'rumor_villager1', x: 9, y: 8, pal: 'kid', name: '겁먹은 주민' },
+      { id: 'rumor_villager2', x: 18, y: 8, pal: 'grandma', name: '겁먹은 주민' },
+    ],
+    signs: [
+      { x: 9, y: 6, text: '[속보] 우물물을 마시면\n로봇이 된다?! …충격 실화??' },
+      { x: 18, y: 6, text: '[단독] 정체불명의 침입자,\n거리를 활보 중?! (그거 너 아니야?)' },
+    ],
+    monsters: [],
+  },
+
+  // 1층 「제보함」 — 제보 쪽지 5장(출처 있음 2 / 수상함 3) 중 출처 있는 것만 채택.
+  tipsroom: {
+    name: '제보함',
+    song: 'battle',
+    intro: [
+      '≪제보함≫\n쪽지가 산더미처럼 쌓여 있다.',
+      '헛소: "다 그럴듯해 보이지?\n…근데 진짜는 출처가 붙어 있어."',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      { x: 9, y: 12, to: 'rumorstreet', tx: 14, ty: 5 },
+      // 위층(편집실) — 출처 있는 제보 2장을 채택해야 열린다
+      { x: 17, y: 2, to: 'editroom', tx: 9, ty: 1, needPuzzleClear: 'tips',
+        lockText: '위층 계단 앞에 헛소가 팔짱을 끼고 서 있다.\n"…아직 못 올라가. 출처부터 확인하고 와."' },
+    ],
+    npcs: [
+      { id: 'heossso', x: 2, y: 2, monSprite: 'geojitmon', name: '헛소' },
+    ],
+    signs: [],
+    monsters: [],
+  },
+
+  // 2층 「편집실」 — 원본 대조기로 반전 사진의 단서 3개를 지목. 서랍에 복선(seenArticle).
+  editroom: {
+    name: '편집실',
+    song: 'glitch',
+    intro: [
+      '≪편집실≫\n책상마다 사진이 나란히 붙어 있다.',
+      '붙임: "원본이랑 나란히 놓고 보면\n…어딘가 달라. 찾아볼래?"',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      { x: 9, y: 12, to: 'rumorstreet', tx: 14, ty: 5 },
+      // 위층(송출탑) — 사진 3장의 단서를 모두 지목해야 열린다
+      { x: 17, y: 2, to: 'towerroom', tx: 9, ty: 1, needPuzzleClear: 'compare',
+        lockText: '위층 계단이 닫혀 있다.\n붙임: "…아직 사진들, 다 못 봤잖아."' },
+    ],
+    npcs: [
+      { id: 'buteum', x: 2, y: 2, monSprite: 'hapseongmon', name: '붙임' },
+    ],
+    signs: [],
+    monsters: [],
+  },
+
+  // 3층 「송출탑」 — 정정문 고르기 → 출처 붙이기 → 송출 레버, 3단계 작업.
+  towerroom: {
+    name: '송출탑',
+    song: 'glitch',
+    intro: [
+      '≪송출탑≫\n낡은 단말 세 대가 나란히 놓여 있다.',
+      '"거짓은 1클릭이었는데…\n정정은, 이렇게나 손이 많이 가는구나."',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      { x: 9, y: 12, to: 'rumorstreet', tx: 14, ty: 5 },
+      // 옥상(그럴싸) — 정정 보도 3단계를 마쳐야 열린다
+      { x: 17, y: 2, to: 'towerroof', tx: 7, ty: 8, needPuzzleClear: 'broadcast',
+        lockText: '옥상으로 가는 문이 잠겨 있다.\n정정 보도가 아직 끝나지 않았다.' },
+    ],
+    npcs: [],
+    signs: [],
+    monsters: [],
+  },
+
+  // 3장 보스 「신문사 옥상」 — 정정 보도가 끝나면 열린다. 그럴싸(보스)는 NPC로 두어
+  // v1 미래연구소 환각몬(퀴즈 배틀)의 도감/처치 플래그를 오염시키지 않는다. 조우 → PERSUADE.hwangak_boss.
+  towerroof: {
+    name: '신문사 옥상',
+    song: 'battle',
+    intro: [
+      '옥상 문을 열자 바람이 훅 불어온다.\n대문짝만 한 헤드라인 판이 세워져 있다.',
+      '그 앞에 그럴싸가\n펜을 쥔 채 서성이고 있다.',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHH',
+      'HMMMMMMMMMMMMH',
+      'HMMMMMMMMMMMMH',
+      'HMMMMMMMMMMMMH',
+      'HMMMMMMMMMMMMH',
+      'HMMMMMMMMMMMMH',
+      'HMMMMMMMMMMMMH',
+      'HMMMMMMMMMMMMH',
+      'HMMMMMMMMMMMMH',
+      'HHHHHHHMHHHHHH',
+    ],
+    warps: [
+      { x: 7, y: 9, to: 'towerroom', tx: 17, ty: 3 },
+    ],
+    npcs: [
+      { id: 'hwangak_boss', x: 7, y: 2, monSprite: 'hwangakmon', name: '그럴싸' },
     ],
     signs: [],
     monsters: [],
@@ -3037,6 +3232,12 @@ function getNpcDialog(npcId, flags) {
           '…그 아이를, 영이를\n만나 주어서 고맙구나.',
         ];
       }
+      if (flags.profConfession) {
+        return [
+          '박사: "…영이의 흔적을 찾고 있구나.\n조각들을, 잘 부탁한다."',
+          '박사: "…미안한 마음뿐이야.\n부디, 그 아이를 찾아 주렴."',
+        ];
+      }
       if (flags.defeated.finalboss) {
         return [
           '어둠대왕몬이 남긴 말이\n마음에 걸리는구나.\n"나조차 누군가의 조각"이라니…',
@@ -3298,12 +3499,17 @@ function getStage(flags) {
 // 현재 목표 텍스트
 function getObjective(flags) {
   const d = flags.defeated;
-  if (!flags.talkedProf) return '박사님과 이야기하기 (마을 왼쪽 아래)';
   if (d.yeongi) {
     return flags.trueEnding
       ? '모든 이야기의 끝. 영이가 마을에서 기다려요'
       : '엔딩 도달. …모두의 마음을 안아 주면 다른 결말이 있을지도';
   }
+  // 박사 고백 이후 — 조각들이 영이의 기억이었다는 걸 알게 된 뒤의 목표.
+  // (talkedProf보다 먼저 — 고백까지 본 플레이어의 목표가 퇴행하지 않게)
+  if (flags.profConfession) {
+    return '영이의 조각을 따라가자 — 어디서 본 낯익은 얼굴들';
+  }
+  if (!flags.talkedProf) return '박사님과 이야기하기 (마을 왼쪽 아래)';
   // 1장 — 숲·호수·동굴
   if (!d.hondonmon) {
     const badges = countBadges(flags);
@@ -3519,6 +3725,19 @@ const EVIDENCE_CARDS = {
   ev_mypath: {
     title: '내가 고른 길', topic: 'filterbubble',
     desc: '추천만 따라가면 세상이 좁아져요. 가끔은 안 가 본 길을 내가 직접 골라 걸어 봐요.',
+  },
+  // 3장 「대문짝 신문사」 구역 클리어 보상 (①제보함 → ②편집실 → ③송출탑)
+  ev_check: {
+    title: '출처 확인', topic: 'rumor',
+    desc: '놀라운 소식일수록 어디서 나온 이야기인지부터 확인해요. 출처가 없으면 아직 사실이 아니에요.',
+  },
+  ev_original: {
+    title: '원본 대조', topic: 'deepfake',
+    desc: '그럴듯해 보여도 원본과 나란히 놓고 비교해 봐요. 손가락 개수, 방향, 날짜… 작은 흠이 진실을 알려줘요.',
+  },
+  ev_fix: {
+    title: '바로잡는 손', topic: 'rumor',
+    desc: '거짓은 한 번의 클릭으로 퍼지지만, 바로잡는 데는 몇 단계가 필요해요. 그래도 꼭 정정해야 해요.',
   },
 };
 
@@ -3767,6 +3986,94 @@ const PERSUADE = {
           reply: '…응. 한쪽만 보면\n기울어진다는 거… 이제 알아.' },
         { label: '저울을 강제로 반대로 기울인다', kind: 'harsh',
           reply: '아…\n(기울이 이번엔 반대쪽으로만\n기울어 버린 저울을 바라본다.)' },
+      ],
+    },
+  },
+
+  // ── 3장 보스 「그럴싸」 (신문사 옥상) ─────────────────────────────
+  // 별도 PERSUADE 키(hwangak_boss)로 정의해 v1 미래연구소 환각몬(퀴즈 배틀)과 완전히 분리한다.
+  // 스프라이트는 환각몬을 재사용하되, 표시 이름은 '그럴싸'(displayName), 배틀은 이 프로필로만 진행.
+  hwangak_boss: {
+    gaugeMax: 120,
+    displayName: '그럴싸', // 보스 조우 표시 이름 (persuadeId 쪽에만 적용 — v1 미래연구소 환각몬은 '환각몬' 유지)
+    closedThreshold: 3,
+    fragmentsPerWave: 3,
+    waveBulletMul: 1.0,
+    waveDur: 340,
+    decoys: ['카더라', '아무튼 속보', '내가 봤다니까', '다들 그렇게 알아', '일단 지르고 보자'],
+    // 콜백 인트로: 2장에서 기울을 자비로 되돌렸으면(chapter2Mercy) 한 줄이 붙는다
+    intro(flags) {
+      let s = '[속보] 수상한 침입자, 옥상에 등장!\n…이유는 몰라. 아니, 모른다는 말은 안 써!';
+      if (flags && flags.chapter2Mercy) {
+        s += '\n\n기울이 그러던데,\n너 확률 밖의 애라며?';
+      }
+      return s;
+    },
+    win: '…"모른다"도, 쓸 수 있는 말이었어.\n다음 호부터는, 확인부터 하고 쓸게.',
+    claims: [
+      {
+        text: '[속보] 모르면 그럴듯하게!\n독자는 빈칸을 싫어해!',
+        hint: '"…사실은, 빈칸을 채울 수가 없어서\n그런 거야. 확인할 데가 없었거든."\n(「출처 확인」을 보여 주자!)',
+        fragments: ['…사실은, 빈칸을 채울 수가 없어서 그런 거야.', '확인할 데가… 없었거든.'],
+        gateLabel: '출처부터', // ev_check
+        counters: ['ev_check'],
+        okLine: '…확인. 그런 게 있었구나.\n빈칸은, 그냥 비워 둬도 되는 거였어?',
+        onWrong: '…빈칸은 무조건 메워야지!\n안 그럼 기사가 안 나가잖아!\n(그럴싸가 목청을 높였다)',
+        attack: { pattern: 'rain', dur: 280, color: '#e0a53a', taunt: '[속보] 모르면 그럴듯하게!' },
+      },
+      {
+        text: '[단독] 그럴듯하면\n진짜나 마찬가지야!',
+        hint: '"…원본이랑 맞춰 보면 들통날까 봐,\n아예 안 열어 본 거야."\n(「원본 대조」를 보여 주자!)',
+        fragments: ['…원본이랑 맞춰 보면 들통날까 봐,', '아예… 안 열어 본 거야.'],
+        gateLabel: '원본을 봐', // ev_original
+        counters: ['ev_original'],
+        okLine: '…맞춰 보니, 진짜가 아니었네.\n그럴듯한 거랑 진짜는… 다른 거였어.',
+        onWrong: '…비교할 시간이 어딨어! 그럴듯하면\n됐지! (그럴싸가 사진을 감췄다)',
+        attack: { pattern: 'sides', dur: 280, color: '#5599e0', taunt: '[단독] 그럴듯하면 진짜나 마찬가지!' },
+      },
+      {
+        text: '[긴급] 한번 나간 기사는\n못 돌려! 그러니까 그냥 가!',
+        hint: '"…정정하려면 세 단계나 거쳐야 하는데,\n거짓말은 한 번 클릭이면 끝이거든."\n(「바로잡는 손」을 보여 주자!)',
+        fragments: ['…정정하려면, 세 단계나 거쳐야 하는데,', '거짓말은… 한 번 클릭이면 끝이거든.'],
+        gateLabel: '바로잡자', // ev_fix
+        counters: ['ev_fix'],
+        okLine: '…세 단계라도, 해야 하는 거였구나.\n빠른 것만… 좇았나 봐.',
+        onWrong: '…이미 다 봤는데 이제 와서 뭘!\n늦었어! (그럴싸가 인쇄기를 더 세게 돌렸다)',
+        attack: { pattern: 'wall', dur: 300, color: '#c0392b', taunt: '[긴급] 한번 나간 기사는 못 돌려!' },
+      },
+      {
+        text: '…"모릅니다"도, 기사가 될 수\n있을까?',
+        best: 'empathy', // 정답은 카드가 아니라 공감 — "모른다"를 못 말하는 속마음을 안아 준다
+        unlockAt: 70,    // 마음이 열린 뒤에야 꺼내는 속마음
+        hint: '"…모른다고 하면, 아무도 안 볼까 봐\n무서웠어."\n(증거 말고 「공감하기」로 안아 주자!)',
+        fragments: ['…모른다고 하면,', '아무도 안 볼까 봐… 무서웠어.'],
+        gateLabel: '될 수 있어', // best=empathy — "모른다"도 기사가 될 수 있다고 안아 주는 말
+        revealNote: '이건 증거로 풀 게 아니야 — 「공감하기」로 마음을 안아 주자!',
+        counters: [],
+        okLine: '…내일 1면, 정해졌어.\n[정정] 어제의 저를 정정합니다.',
+        onWrong: '…그것 봐, 모른다고 하면 다들 떠나잖아.\n(그럴싸가 헤드라인 뒤에 숨었다)',
+        attack: { pattern: 'aimed', dur: 320, color: '#e07a5f', taunt: '몰라… 아니, 모른다는 말은 안 해!' },
+      },
+    ],
+    react: {
+      empathy: '…뭐야, 헤드라인도 안 뽑고\n그런 눈으로 봐? (그럴싸가 멈칫했다)',
+      empathyAgain: '…응. …들어 줘서, 고마워.\n(하지만 위로만으론 부족한 것 같다)',
+      questionClosed: '…몰라. 아니— 모른다는 말은 안 써!\n(마음이 닫혀 있어 대답하지 않는다)',
+      evidenceClosed: '…(그럴싸는 카드를 쳐다보지도 않는다)\n먼저 마음을 열어야 할 것 같다.',
+      evidenceRight: '…어, 그거… 진짜였어?\n(카드의 말이 헤드라인에 스며든다)',
+      rebutBackfire: '시끄러워!! 그럴듯하면 됐다니까!\n(마음이 더 굳게 닫혔다… 다음 공격이 거세진다)',
+      rebutOk: '…그, 그럴듯한가…',
+      open: '(그럴싸가 [속보] 도장을\n스르르 내려놓는다. 마음이 열리고 있다…!)',
+    },
+    mercy: {
+      prompt: '그럴싸가 헤드라인 판 앞에서\n펜을 쥔 채 너를 바라본다.',
+      options: [
+        { label: '"다음엔 확인하고 쓰자" (손을 내민다)', kind: 'mercy',
+          reply: '…확인하고?\n그래도… 재미있는 기사가 될까?\n…한번, 해 볼게.' },
+        { label: '"모른다고 써도 괜찮아"', kind: 'neutral',
+          reply: '…응. "모른다"도\n기사가 될 수 있다는 거… 알겠어.' },
+        { label: '헤드라인 판을 뒤집어 버린다', kind: 'harsh',
+          reply: '아…\n(그럴싸가 텅 빈 1면을\n물끄러미 바라본다.)' },
       ],
     },
   },
@@ -4037,12 +4344,141 @@ const PUZZLES = {
       { x: 14, y: 11 },
     ],
   },
+
+  // ── 3장 1층 「제보함」 (type: tips) ──────────────────────────────
+  // 제보 쪽지 5장(출처 있음 2 / 수상함 3) 중 출처 있는 것만 채택함에 제출한다.
+  // 잘못 채택하면 오답 기록 + 그 쪽지가 [속보]로 벽에 붙는 연출.
+  tips: {
+    map: 'tipsroom',
+    type: 'tips',
+    title: '제보함',
+    objective: '제보 5장을 살펴 출처를 확인하자',
+    objectiveCleared: '거리로 돌아가자',
+    exitTo: { map: 'rumorstreet', x: 14, y: 5 },
+    steps: ['tips'],
+    hints: {
+      tips: [
+        '헛소: "제보 다섯 장이 다 그럴듯해 보이지?"',
+        '헛소: "…근데 진짜는 어딘가 출처가 적혀 있어.\n«확인됨» 같은 거."',
+        '헛소: "출처 있는 두 장만 채택함에 넣어.\n나머지는… 넣어 봤자 [속보]로 붙을 뿐이야."',
+      ],
+    },
+    rewards: ['ev_check'],
+    clearLines: [
+      '출처 있는 제보 둘을 채택함에 넣었다.',
+      '헛소: "…이걸로, 하나는 확실해졌어."',
+    ],
+    // 제보 쪽지 5장 — sourced:true(출처 있음) 2장만 정답
+    notes: [
+      { x: 5, y: 3, sourced: true, label: '제보① 우물물 괴담',
+        text: '"우물물 마시면 로봇이 된대!"\n…아래에 작게 «상수도관리소 발표문 첨부»\n라고 적혀 있다.' },
+      { x: 14, y: 3, sourced: true, label: '제보② 신호등 이상',
+        text: '"신호등이 AI한테 조종당한대!"\n…아래에 «교통관제센터 공문, 3월 12일»\n출처가 붙어 있다.' },
+      { x: 5, y: 9, sourced: false, label: '제보③ 놀이터 괴담',
+        text: '"놀이터 미끄럼틀 밑에 뭔가 있다더라…"\n…출처: 없음. "누가 그러던데"뿐이다.' },
+      { x: 14, y: 9, sourced: false, label: '제보④ 급식 괴담',
+        text: '"오늘 급식에 이상한 게 들어갔대…"\n…출처: 없음. "…라더라"로 시작한다.' },
+      { x: 9, y: 6, sourced: false, label: '제보⑤ 전학생 소문',
+        text: '"전학 온 애가 사실 로봇이래…"\n…출처: 없음. 웅성거림뿐이다.' },
+    ],
+    // 채택함 — 제보를 골라 제출한다
+    submitBox: { x: 9, y: 10, name: '채택함' },
+  },
+
+  // ── 3장 2층 「편집실」 (type: compare) ────────────────────────────
+  // 사진 3건을 원본과 비교해 단서(좌우 반전/손가락 6개/날짜가 미래)를 3지선다로 지목.
+  compare: {
+    map: 'editroom',
+    type: 'compare',
+    title: '편집실',
+    objective: '사진 3장을 원본과 비교하자',
+    objectiveCleared: '거리로 돌아가자',
+    exitTo: { map: 'rumorstreet', x: 14, y: 5 },
+    steps: ['compare'],
+    hints: {
+      compare: [
+        '붙임: "원본이랑 실린 사진, 나란히 놓아 봤어?"',
+        '붙임: "…어딘가 다른 데가 있을 거야.\n손, 방향, 아니면 날짜."',
+        '붙임: "다른 점을 골라 봐.\n세 장 다 맞히면 판정이 바로잡혀."',
+      ],
+    },
+    rewards: ['ev_original'],
+    clearLines: [
+      '사진 세 장의 차이를 모두 찾아냈다.',
+      '붙임: "…나도, 이제 의심하는 법을 알겠어."',
+    ],
+    // 3지선다 보기 (모든 사진 공용) — clue 값이 정답 인덱스에 대응
+    options: ['좌우 반전', '손가락 6개', '날짜가 미래'],
+    photos: [
+      { x: 5, y: 4, clue: 'flip',
+        found: '나란히 놓고 보니…\n원본은 오른손을, 실린 사진은\n왼손을 들고 있다.' },
+      { x: 14, y: 4, clue: 'fingers',
+        found: '자세히 보니…\n실린 사진 속 손가락이 6개다.' },
+      { x: 9, y: 9, clue: 'date',
+        found: '사진 구석의 날짜가…\n아직 오지 않은 다음 달이다.' },
+    ],
+  },
+
+  // ── 3장 3층 「송출탑」 (type: broadcast) ──────────────────────────
+  // 정정 보도 3단계: ①정정문 고르기 ②출처 붙이기 ③송출 레버.
+  broadcast: {
+    map: 'towerroom',
+    type: 'broadcast',
+    title: '송출탑',
+    objective: '정정 보도 3단계를 마치자',
+    objectiveCleared: '거리로 돌아가자',
+    exitTo: { map: 'rumorstreet', x: 14, y: 5 },
+    steps: ['correct', 'source', 'lever'],
+    hints: {
+      correct: [
+        '"화면 속 세 문장 중 하나만 정정문이야."',
+        '"과장하지 않고, 있는 그대로 쓴 문장을 찾아봐."',
+        '"소리치지 않는 문장, 그게 정정문이야."',
+      ],
+      source: [
+        '"정정문에도 출처가 필요해."',
+        '"1층에서 봤던 제보 중,\n출처가 있던 두 장을 떠올려 봐."',
+        '"출처 있는 제보를 골라 붙여."',
+      ],
+      lever: [
+        '"이제 마지막, 송출 레버뿐이야."',
+        '"당기면 정정 보도가 나간다.\n되돌릴 수 없어. …그래도 당겨야 해."',
+        '"레버를 당겨 보자."',
+      ],
+    },
+    rewards: ['ev_fix'],
+    clearLines: [
+      '철컹! 송출 레버가 당겨졌다.',
+      '스피커에서 정정 보도가 흘러나온다.\n"…어제의 보도를 정정합니다."',
+      '거리 쪽에서 술렁이는 소리가 들린다.',
+    ],
+    // ①정정문 고르기 — 과장 없는 문장이 정답
+    corrections: [
+      { text: '[속보] 완전히 거짓이었다!\n초대형 스캔들!!', ok: false },
+      { text: '오늘 아침 보도를 정정합니다.\n사실과 다른 부분이 있었습니다.', ok: true },
+      { text: '…몰랐던 일이니\n그냥 넘어가겠습니다.', ok: false },
+    ],
+    // ②출처 붙이기 — 1층 쪽지 중 출처 있는 것을 선택
+    sources: [
+      { label: '제보① 우물물 괴담', ok: true },
+      { label: '제보② 신호등 이상', ok: true },
+      { label: '제보③ 놀이터 괴담', ok: false },
+      { label: '제보④ 급식 괴담', ok: false },
+      { label: '제보⑤ 전학생 소문', ok: false },
+    ],
+    terminal1: { x: 5, y: 4, name: '정정문 단말' },
+    terminal2: { x: 14, y: 4, name: '출처 단말' },
+    lever: { x: 9, y: 9, name: '송출 레버' },
+  },
 };
 
 // 1장 금고 잠금 — 이 구역들을 하나 클리어할 때마다 잠금이 하나 풀린다
 const S1_ZONE_PUZZLES = ['traces', 'copies', 'levers'];
 // 2장 저울 — 이 구역들을 하나 클리어할 때마다 저울 기울기가 하나 줄어든다 (0이면 보스 문 개방)
 const S2_ZONE_PUZZLES = ['voices', 'retrain', 'lamps'];
+// 3장 신문사 — 층을 하나 클리어할 때마다 진행도가 하나 늘어난다 (허브 HUD 표시용.
+// 층 개방 자체는 needPuzzleClear로 개별 강제되므로 집계는 표시 전용이다)
+const S3_ZONE_PUZZLES = ['tips', 'compare', 'broadcast'];
 
 function getPuzzleForMap(mapId) {
   for (const k in PUZZLES) {
@@ -4126,6 +4562,11 @@ const MAP_PROPS = {
     // 복선 2호 — 조사하면 flags.seenPhoto2 (설명 없이 이 한 줄만)
     { x: 0, y: 13, flag: 'seenPhoto2',
       text: '모서리 선반의 사진 뭉치.\n…한 아이의 사진마다, ×표가\n그어져 있다.' },
+  ],
+  // 3장 편집실 — 복선 3호(미송출 기사 서랍)
+  editroom: [
+    { x: 17, y: 11, flag: 'seenArticle',
+      text: '미송출 기사함이다.\n"[단독] 프로젝트 0호, 오늘 폐기…\n…기사는 끝내 나가지 못했다."' },
   ],
   library: [
     { x: 7, y: 2, text: '한 권만 거꾸로 꽂힌 책.\n표지에 작게 ≪0≫.\n…펴 보려 하자 스르륵 닫힌다.' },

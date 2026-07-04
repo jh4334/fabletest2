@@ -139,8 +139,14 @@
       chapter1Clear: false, // 1장 보스(담아) 설득 완료
       chapter1Mercy: false, // 1장 보스를 자비로 되돌렸는가 (2장 콜백 인트로용)
       chapter2Clear: false, // 2장 보스(기울) 설득 완료
+      chapter2Mercy: false, // 2장 보스를 자비로 되돌렸는가 (3장 콜백 인트로용)
+      chapter3Clear: false, // 3장 보스(그럴싸) 설득 완료
+      chapter3Mercy: false, // 3장 보스를 자비로 되돌렸는가
       seenPhoto1: false,   // 스토리 복선 — 주인의 방 서랍의 낡은 사진을 봤다
       seenPhoto2: false,   // 스토리 복선 2호 — 표본 창고 모서리 선반의 ×표 사진
+      seenArticle: false,  // 스토리 복선 3호 — 편집실 미송출 기사함
+      rumorFixed: false,   // 3장 허브 해제 — 송출탑 정정 보도 완료(소문 거리 개방)
+      profConfession: false, // 박사 고백 이벤트 1회 트리거 (chapter3Clear 후 마을 진입)
     };
   }
 
@@ -1528,6 +1534,11 @@
   function s2ClearCount() {
     return S2_ZONE_PUZZLES.filter((id) => isPuzzleCleared(id)).length;
   }
+  // 3장 신문사 — 층(제보함·편집실·송출탑)을 클리어할 때마다 진행도가 하나 는다.
+  // 층 개방 자체는 needPuzzleClear로 개별 강제되므로, 이 값은 허브 HUD 표시 전용이다.
+  function s3ClearCount() {
+    return S3_ZONE_PUZZLES.filter((id) => isPuzzleCleared(id)).length;
+  }
 
   // 방 입장/퇴장에 맞춰 런타임 상태를 맞춘다 (checkWarp에서 호출)
   function syncPuzzleRun() {
@@ -1569,6 +1580,18 @@
       // 2장 구역③: 램프 점등
       run.lit = puzzle.lamps.map(() => false);
       run.litCount = 0;
+    } else if (puzzle.type === 'tips') {
+      // 3장 1층: 제보 쪽지 채택 — resolved(채택 완료 인덱스), correct(출처 있는 채택 수)
+      run.resolved = [];
+      run.correct = 0;
+      run.busted = puzzle.notes.map(() => false); // [속보]로 벽에 붙은 쪽지
+    } else if (puzzle.type === 'compare') {
+      // 3장 2층: 원본 대조 — solved(지목 완료 인덱스)
+      run.solved = puzzle.photos.map(() => false);
+      run.solvedCount = 0;
+    } else if (puzzle.type === 'broadcast') {
+      // 3장 3층: 정정 보도 3단계 — stage 0(정정문)→1(출처)→2(레버)
+      run.stage = 0;
     } else {
       // 구역①(traces): 정보 토큰 방
       run.held = { nickname: true, school: true, address: true, phone: true, face: true };
@@ -1593,6 +1616,9 @@
     if (run.puzzle.type === 'voices') return 'voices';
     if (run.puzzle.type === 'retrain') return 'retrain';
     if (run.puzzle.type === 'lamps') return 'lamps';
+    if (run.puzzle.type === 'tips') return 'tips';
+    if (run.puzzle.type === 'compare') return 'compare';
+    if (run.puzzle.type === 'broadcast') return ['correct', 'source', 'lever'][run.stage] || 'lever';
     const spent = givenTokens(run);
     if (spent.length === 0) return 'tokens';
     if (spent.filter((k) => k !== 'nickname').length >= 3) return 'eraser';
@@ -1624,6 +1650,8 @@
     if (run.puzzle.type === 'levers') return; // 컨베이어 상자는 timeFrames로 그리기에서 움직인다
     // 2장 구역들은 조사·접촉으로만 진행 (매 프레임 갱신할 물체 없음)
     if (run.puzzle.type === 'voices' || run.puzzle.type === 'retrain' || run.puzzle.type === 'lamps') return;
+    // 3장 구역들도 조사·선택으로만 진행 (매 프레임 갱신할 물체 없음)
+    if (run.puzzle.type === 'tips' || run.puzzle.type === 'compare' || run.puzzle.type === 'broadcast') return;
     // ── traces: 스토커 추격(반 속도, walkable 체크) + 접촉 처리 ──
     if (boardCount(run) > run.maxBoard) run.maxBoard = boardCount(run); // 최고치 추적
     const p = game.player;
@@ -1702,6 +1730,27 @@
       }
       return null;
     }
+    if (puz.type === 'tips') {
+      for (let i = 0; i < puz.notes.length; i++) {
+        const n = puz.notes[i];
+        if (n.x === x && n.y === y) return { kind: 'tipnote', idx: i };
+      }
+      if (puz.submitBox.x === x && puz.submitBox.y === y) return { kind: 'tipbox' };
+      return null;
+    }
+    if (puz.type === 'compare') {
+      for (let i = 0; i < puz.photos.length; i++) {
+        const ph = puz.photos[i];
+        if (ph.x === x && ph.y === y) return { kind: 'cphoto', idx: i };
+      }
+      return null;
+    }
+    if (puz.type === 'broadcast') {
+      if (puz.terminal1.x === x && puz.terminal1.y === y) return { kind: 'bterm1' };
+      if (puz.terminal2.x === x && puz.terminal2.y === y) return { kind: 'bterm2' };
+      if (puz.lever.x === x && puz.lever.y === y) return { kind: 'blever' };
+      return null;
+    }
     for (const t of puz.terminals) if (t.x === x && t.y === y) return { kind: 'terminal', ref: t };
     if (puz.eraser.x === x && puz.eraser.y === y) return { kind: 'eraser' };
     if (puz.exits.vip.x === x && puz.exits.vip.y === y) return { kind: 'vip' };
@@ -1724,6 +1773,12 @@
     else if (obj.kind === 'photo') openPhoto(obj.idx);
     else if (obj.kind === 'reader') openReader();
     else if (obj.kind === 'lamp') openLamp(obj.idx);
+    else if (obj.kind === 'tipnote') openTipNote(obj.idx);
+    else if (obj.kind === 'tipbox') openTipBox();
+    else if (obj.kind === 'cphoto') openComparePhoto(obj.idx);
+    else if (obj.kind === 'bterm1') openBroadcastTerm1();
+    else if (obj.kind === 'bterm2') openBroadcastTerm2();
+    else if (obj.kind === 'blever') openBroadcastLever();
     return true;
   }
   // 2장 구역②: 반례 사진 선반 조사 → 수집 (라벨 개그 포함)
@@ -1770,6 +1825,125 @@
     game.notice = { text: `램프에 불을 켰다! (${run.litCount}/3)`, t: 120 };
     if (run.litCount >= 3) { clearPuzzle(run); return; }
     startDialog(['탁 — 램프에 불이 들어왔다.\n주변이 조금 환해진다.'], puz.title);
+  }
+  // 3장 1층: 제보 쪽지 조사 — 출처 유무를 읽어 본다 (채택은 채택함에서)
+  function openTipNote(idx) {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    const n = puz.notes[idx];
+    if (run.resolved.includes(idx)) {
+      startDialog([run.busted[idx]
+        ? `${n.label}\n[속보]로 벽에 붙어 버렸다.`
+        : `${n.label}\n이미 채택함에 넣었다.`], puz.title);
+      return;
+    }
+    startDialog([n.text], puz.title);
+  }
+  // 3장 1층: 채택함 — 제보를 하나 골라 제출. 출처 있는 쪽지만 정답(2장이면 클리어)
+  function openTipBox() {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    const remain = puz.notes.map((n, i) => i).filter((i) => !run.resolved.includes(i));
+    if (!remain.length) { startDialog(['채택함이 가득 찼다.'], puz.submitBox.name); return; }
+    const labels = remain.map((i) => puz.notes[i].label).concat(['그만두기']);
+    startChoice('채택함. 어떤 제보를 채택할까요?', labels, (sel) => {
+      if (sel < 0 || sel >= remain.length) return;
+      const idx = remain[sel];
+      const n = puz.notes[idx];
+      run.resolved.push(idx);
+      if (n.sourced) {
+        run.correct += 1;
+        Sound.correct();
+        game.notice = { text: `출처 있는 제보를 채택했다! (${run.correct}/2)`, t: 120 };
+        if (run.correct >= 2) { clearPuzzle(run); return; }
+        startDialog([`「${n.label}」을(를) 채택함에 넣었다.\n출처가 확실하다.`], puz.title);
+      } else {
+        recordPuzzleWrong(run.id);
+        run.busted[idx] = true;
+        run.flashT = 10;
+        Sound.wrong();
+        startDialog([
+          `「${n.label}」을(를) 채택했다…\n하지만 출처가 없었다!`,
+          '다음 날, 벽에 대문짝만 하게\n[속보]로 붙어 버렸다.',
+        ], puz.title);
+      }
+    });
+  }
+  // 3장 2층: 사진 조사 → 원본과 다른 점을 3지선다로 지목 (세 장 모두 맞히면 클리어)
+  function openComparePhoto(idx) {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    const ph = puz.photos[idx];
+    if (run.solved[idx]) { startDialog([ph.found], puz.title); return; }
+    const CLUE_TEXT = { flip: '좌우 반전', fingers: '손가락 6개', date: '날짜가 미래' };
+    const clueIdx = puz.options.indexOf(CLUE_TEXT[ph.clue]);
+    startChoice('원본과 실린 사진을 나란히 놓고 비교한다.\n무엇이 다를까?', puz.options.slice(), (sel) => {
+      if (sel < 0) return;
+      if (sel === clueIdx) {
+        run.solved[idx] = true;
+        run.solvedCount += 1;
+        Sound.correct();
+        game.notice = { text: `차이를 찾아냈다! (${run.solvedCount}/3)`, t: 120 };
+        if (run.solvedCount >= 3) { clearPuzzle(run); return; }
+        startDialog([ph.found], puz.title);
+      } else {
+        recordPuzzleWrong(run.id);
+        run.flashT = 10;
+        Sound.wrong();
+        startDialog(['…아니다. 다시 봐야겠다.'], puz.title);
+      }
+    });
+  }
+  // 3장 3층 ①: 정정문 고르기 — 과장 없는 문장이 정답
+  function openBroadcastTerm1() {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    if (run.stage > 0) { startDialog(['이미 정정문을 골랐다.'], puz.terminal1.name); return; }
+    const labels = puz.corrections.map((c) => c.text);
+    startChoice('정정문 단말. 내보낼 문장을 고르세요.', labels, (sel) => {
+      if (sel < 0) return;
+      if (puz.corrections[sel].ok) {
+        run.stage = 1;
+        Sound.correct();
+        startDialog(['…과장 없이, 있는 그대로.\n정정문이 정해졌다.'], puz.terminal1.name);
+      } else {
+        recordPuzzleWrong(run.id);
+        run.flashT = 10;
+        Sound.wrong();
+        startDialog(['…이건 또 다른 헤드라인일 뿐이다.\n다시 골라야겠다.'], puz.terminal1.name);
+      }
+    });
+  }
+  // 3장 3층 ②: 출처 붙이기 — 1층 제보 중 출처 있는 것을 선택
+  function openBroadcastTerm2() {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    if (run.stage < 1) { startDialog(['정정문부터 골라야 한다.'], puz.terminal2.name); return; }
+    if (run.stage > 1) { startDialog(['이미 출처를 붙였다.'], puz.terminal2.name); return; }
+    const labels = puz.sources.map((s) => s.label);
+    startChoice('출처 단말. 붙일 제보를 고르세요.', labels, (sel) => {
+      if (sel < 0) return;
+      if (puz.sources[sel].ok) {
+        run.stage = 2;
+        Sound.correct();
+        startDialog(['출처가 붙었다.\n이제 레버만 남았다.'], puz.terminal2.name);
+      } else {
+        recordPuzzleWrong(run.id);
+        run.flashT = 10;
+        Sound.wrong();
+        startDialog(['…출처가 없는 제보다.\n다시 골라야겠다.'], puz.terminal2.name);
+      }
+    });
+  }
+  // 3장 3층 ③: 송출 레버 — 당기면 클리어(ev_fix) + 허브 해제(rumorFixed)
+  function openBroadcastLever() {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    if (run.stage < 2) { startDialog(['아직 이르다.\n정정문과 출처부터 마쳐야 한다.'], puz.lever.name); return; }
+    startChoice('송출 레버.\n지금 송출할까요? (되돌릴 수 없다)', ['당긴다', '그만둔다'], (i) => {
+      if (i === 0) clearPuzzle(run);
+      else if (i > 0) startDialog(['(레버에서 손을 뗐다)'], puz.lever.name);
+    });
   }
   // 2장 구역①: 다른 목소리 NPC 대화 → 수집 (interact의 NPC 분기에서 호출)
   function collectVoice(npcId) {
@@ -1899,13 +2073,17 @@
     if (!game.flags.evCards) game.flags.evCards = [];
     const fresh = puz.rewards.filter((id) => !game.flags.evCards.includes(id));
     if (fresh.length) game.flags.evCards = game.flags.evCards.concat(fresh);
+    const isS1 = S1_ZONE_PUZZLES.includes(run.id);
     const isS2 = S2_ZONE_PUZZLES.includes(run.id);
-    const locksBefore = isS2 ? s2ClearCount() : s1LockCount();
+    const isS3 = S3_ZONE_PUZZLES.includes(run.id);
+    const locksBefore = isS2 ? s2ClearCount() : isS1 ? s1LockCount() : 0;
     recordPuzzleClear(run.id, run.timeFrames);
     // 접수처에서 내보낸 정보 최고치를 기록 (보스 콜백 인트로 분기용) — 이전 최고치와 비교해 유지
     if (puz.type === 'traces') {
       game.flags.traceGiven = Math.max(game.flags.traceGiven || 0, run.maxBoard || 0);
     }
+    // 3장 3층(송출탑) 클리어 = 정정 보도 완료 — 허브(소문 거리)가 해제되는 순간
+    if (run.id === 'broadcast') game.flags.rumorFixed = true;
     game.puzzleRun = null;
     // 복귀 지점 (데이터화된 exitTo). 기본은 거리 입구 앞.
     const exit = puz.exitTo || { map: 'freestreet', x: 14, y: 17 };
@@ -1919,8 +2097,8 @@
     const lines = (puz.clearLines || ['방을 빠져나왔다.']).slice();
     for (const id of fresh) lines.push(`◆ 증거 카드 「${EVIDENCE_CARDS[id].title}」 획득!`);
     // 잠금/저울 진행 안내 (이번 클리어로 새로 풀렸을 때만)
-    const locks = isS2 ? s2ClearCount() : s1LockCount();
-    if (locks > locksBefore) {
+    const locks = isS2 ? s2ClearCount() : isS1 ? s1LockCount() : 0;
+    if ((isS1 || isS2) && locks > locksBefore) {
       if (isS2) {
         const tilt = 3 - locks;
         lines.push(tilt <= 0
@@ -1931,6 +2109,11 @@
           ? '철컹 — 거리의 금고에서\n마지막 잠금이 풀리는 소리가 났다!'
           : `철컥. 거리의 금고에서\n잠금 풀리는 소리가 났다. (${locks}/3)`);
       }
+    } else if (isS3) {
+      const n = s3ClearCount();
+      lines.push(n >= 3
+        ? '거리 쪽에서 함성이 들린다!\n상점 문들이 하나둘 열리기 시작한다.'
+        : `신문사 ${n}/3층을 정리했다.`);
     }
     save();
     startDialog(lines, puz.title);
@@ -2131,6 +2314,48 @@
       }
       return;
     }
+    if (puz.type === 'tips') {
+      // 3장 1층: 제보 쪽지 5장 + 채택함
+      for (let i = 0; i < puz.notes.length; i++) {
+        const n = puz.notes[i];
+        const nx = Math.round(n.x * TS - cx), ny = Math.round(n.y * TS - cy - 6);
+        const busted = run.busted[i];
+        const resolved = run.resolved.includes(i);
+        const col = busted ? '#8a2a2a' : resolved ? '#3a3a3a' : '#6a5a2a';
+        const mark = busted ? '!' : resolved ? '·' : '✎';
+        box(nx, ny + (resolved ? 0 : bob), col, mark, busted ? '#ffb0a0' : '#ffe6a0');
+        label(nx, ny, busted ? '[속보]' : n.label, busted ? '#ff8a70' : '#ffe6a0');
+      }
+      const b = puz.submitBox;
+      box(Math.round(b.x * TS - cx), Math.round(b.y * TS - cy - 6), '#2a4a6a', '▼', '#a8d8ff');
+      label(Math.round(b.x * TS - cx), Math.round(b.y * TS - cy - 6), `${b.name} ${run.correct}/2`, '#a8d8ff');
+      return;
+    }
+    if (puz.type === 'compare') {
+      // 3장 2층: 사진 3장 (원본 대조)
+      for (let i = 0; i < puz.photos.length; i++) {
+        const ph = puz.photos[i];
+        const nx = Math.round(ph.x * TS - cx), ny = Math.round(ph.y * TS - cy - 6);
+        const solved = run.solved[i];
+        box(nx, ny + (solved ? 0 : bob), solved ? '#3a3a3a' : '#6a4a2a', solved ? '✓' : '▦', solved ? '#8de08d' : '#ffd6a0');
+        label(nx, ny, solved ? '대조 완료' : '사진', solved ? '#8de08d' : '#ffd6a0');
+      }
+      return;
+    }
+    if (puz.type === 'broadcast') {
+      // 3장 3층: 단말 2개(정정문·출처) + 송출 레버
+      const t1 = puz.terminal1, t2 = puz.terminal2, lv = puz.lever;
+      const t1n = Math.round(t1.x * TS - cx), t1y = Math.round(t1.y * TS - cy - 6);
+      box(t1n, t1y, run.stage > 0 ? '#3a3a3a' : '#2a4a6a', run.stage > 0 ? '✓' : '①', run.stage > 0 ? '#8de08d' : '#a8d8ff');
+      label(t1n, t1y, t1.name, run.stage > 0 ? '#8de08d' : '#a8d8ff');
+      const t2n = Math.round(t2.x * TS - cx), t2y = Math.round(t2.y * TS - cy - 6);
+      box(t2n, t2y, run.stage > 1 ? '#3a3a3a' : '#2a4a6a', run.stage > 1 ? '✓' : '②', run.stage > 1 ? '#8de08d' : '#a8d8ff');
+      label(t2n, t2y, t2.name, run.stage > 1 ? '#8de08d' : '#a8d8ff');
+      const lvn = Math.round(lv.x * TS - cx), lvy = Math.round(lv.y * TS - cy - 6);
+      box(lvn, lvy + bob, run.stage >= 2 ? '#8a6a20' : '#3a3a3a', '↕', run.stage >= 2 ? '#ffd644' : '#777');
+      label(lvn, lvy, lv.name, run.stage >= 2 ? '#ffd644' : '#888');
+      return;
+    }
     for (const t of puz.terminals) {
       const nx = Math.round(t.x * TS - cx), ny = Math.round(t.y * TS - cy - 6);
       const given = run.given.includes(t.require) || (t.share && run.boardFace);
@@ -2269,6 +2494,15 @@
     } else if (run.puzzle.type === 'lamps') {
       title = `램프 ${run.litCount}/3`;
       detail = '어둠 속 램프를 찾아 불을 켜자';
+    } else if (run.puzzle.type === 'tips') {
+      title = `채택 ${run.correct}/2`;
+      detail = '출처 있는 제보를 찾아 채택하자';
+    } else if (run.puzzle.type === 'compare') {
+      title = `대조 ${run.solvedCount}/3`;
+      detail = '원본과 다른 점을 지목하자';
+    } else if (run.puzzle.type === 'broadcast') {
+      title = `단계 ${Math.min(run.stage + 1, 3)}/3`;
+      detail = ['정정문을 고르자', '출처를 붙이자', '레버를 당기자'][run.stage] || '레버를 당기자';
     } else {
       const given = givenTokens(run);
       const nonNick = given.filter((k) => k !== 'nickname');
@@ -2314,6 +2548,12 @@
     return { x: p.x + dx, y: p.y + dy };
   }
 
+  // 3장 허브 「소문 거리」 — 소문 때문에 문 닫은 상점 3곳 (송출 완료 전/후 대사 분기)
+  const RUMOR_SHOPS = [
+    { x: 5, y: 4, name: '분식집' },
+    { x: 22, y: 4, name: '문구점' },
+    { x: 4, y: 15, name: '사진관' },
+  ];
   function interact() {
     if (game.puzzleRun && interactPuzzle()) return;
     const f = facingTile();
@@ -2335,6 +2575,62 @@
           '기울: "요즘은 양쪽 다 재 봐.\n…시간은 좀 걸리는데, 안 기울어."',
           '기울: "틀릴 확률? …있지.\n근데 그게, 이상한 게 아니더라고."',
         ], '기울');
+        return;
+      }
+      // 3장 보스(그럴싸) — 아직 설득하지 않았으면 마음 조각 배틀로, 이후엔 되돌린 친구로
+      if (npc.id === 'hwangak_boss') {
+        if (!game.flags.chapter3Clear) { startBattleIntro('hwangakmon', 'hwangak_boss'); return; }
+        startDialog([
+          '그럴싸: "요즘은 모르면 모른다고 써.\n…생각보다, 독자들이 더 믿어주더라."',
+          '그럴싸: "[정정] 어제의 나를 정정합니다.\n…이 문장, 마음에 들어."',
+        ], '그럴싸');
+        return;
+      }
+      // 3장 1층 헛소 — 제보함 진행 상태에 따라 대사가 달라진다
+      if (npc.id === 'heossso') {
+        const run = game.puzzleRun;
+        if (isPuzzleCleared('tips')) {
+          startDialog([
+            '헛소: "…그 뒤로 나도, 출처 없는 말은\n안 옮기려고 해."',
+          ], '헛소');
+        } else if (run && run.correct > 0) {
+          startDialog([
+            `헛소: "벌써 ${run.correct}장이나 채택했네.\n…남은 것도 잘 살펴봐."`,
+          ], '헛소');
+        } else {
+          startDialog([
+            '헛소: "쪽지 다섯 장. 다 그럴듯하지?\n…근데 진짜는 출처가 있어."',
+          ], '헛소');
+        }
+        return;
+      }
+      // 3장 2층 붙임 — 편집실 진행 상태에 따라 대사가 달라진다
+      if (npc.id === 'buteum') {
+        const run = game.puzzleRun;
+        if (isPuzzleCleared('compare')) {
+          startDialog([
+            '붙임: "이제 나도 원본이랑 비교하는\n버릇이 생겼어. …고마워."',
+          ], '붙임');
+        } else if (run && run.solvedCount > 0) {
+          startDialog([
+            `붙임: "벌써 ${run.solvedCount}장이나 찾아냈네.\n…나머지도 부탁해."`,
+          ], '붙임');
+        } else {
+          startDialog([
+            '붙임: "사진 세 장. 원본이랑 나란히\n놓아 보면… 뭔가 달라."',
+          ], '붙임');
+        }
+        return;
+      }
+      // 3장 허브 겁먹은 주민 2명 — rumorFixed 전엔 같은 헛소문을 반복한다
+      if (npc.id === 'rumor_villager1' || npc.id === 'rumor_villager2') {
+        if (game.flags.rumorFixed) {
+          startDialog(npc.id === 'rumor_villager1'
+            ? ['…소문이 다 헛것이었대. 신문사가 바로잡았어.\n다행이야, 진짜.']
+            : ['이제야 발 뻗고 자겠어.\n…확인부터 하는 습관, 생겼지 뭐야.'], '주민');
+        } else {
+          startDialog(['"그 우물물 마시면 로봇이 된대! 진짜래!"'], '겁먹은 주민');
+        }
         return;
       }
       // 2장 구역① 다른 목소리 3명 — 대화하면 조각 수집
@@ -2448,6 +2744,16 @@
       }
       return;
     }
+    // 3장 허브 「소문 거리」 — 잠긴 상점 문 3곳. 송출 완료(rumorFixed) 전/후로 대사가 바뀐다
+    if (game.map === 'rumorstreet') {
+      const shop = RUMOR_SHOPS.find((s) => s.x === f.x && s.y === f.y);
+      if (shop) {
+        startDialog(game.flags.rumorFixed
+          ? [`${shop.name} 문이 활짝 열려 있다.\n"오해가 풀려서 다행이에요!"`]
+          : [`${shop.name} 문이 굳게 닫혀 있다.\n"…소문 때문에 문 닫았어요."`], shop.name);
+        return;
+      }
+    }
     const examine = getExamineTile(ch);
     if (examine) {
       startDialog([examine]);
@@ -2551,8 +2857,35 @@
 
   const MOVE_SPEED = TS / 9; // 프레임당 픽셀
 
+  // 박사 고백 이벤트 — chapter3Clear 후 경계마을 진입 시 1회 자동 발생.
+  // 프로젝트 0호(영이) 이야기를 고백한다. 복선 플래그(seenPhoto1/2, seenArticle)를
+  // 본 상태면 대사에 한 줄씩 반영된다.
+  function startProfConfession() {
+    const f = game.flags;
+    f.profConfession = true;
+    const lines = [
+      '박사: "…얘야. 잠깐, 나랑 이야기 좀 할까."',
+      '박사: "오래전에, 내가 만든 아이가 있었어.\n이름은… 영이. 「프로젝트 0호」였지."',
+      '박사: "영이는 사람들을 보고 배웠어.\n…근데 나쁜 습관까지, 다 배우게 뒀단다.\n내가, 지켜보지 않았어."',
+      '박사: "그러다… 폐기하기로 한 날이 왔어.\n나는 그 순간에… 로그아웃해서 도망쳤단다."',
+    ];
+    if (f.seenPhoto1) lines.push('박사: "네가 주인의 방에서 본 사진…\n그게, 나와 영이였어."');
+    if (f.seenPhoto2) lines.push('박사: "표본 창고 구석의 그 ×표 사진들도…\n영이 거였단다."');
+    if (f.seenArticle) lines.push('박사: "송출되지 못한 그 기사도…\n영이 이야기였어."');
+    lines.push('박사: "네가 지금까지 모은 조각들…\n그게 다, 영이의 기억이야."');
+    lines.push('박사: "…미안하다. 정말, 미안해."');
+    lines.push('박사: "…그 아이를, 찾아 주지 않겠니."');
+    save();
+    startDialog(lines, '박사님');
+  }
+
   function updateWorld() {
     const p = game.player;
+    // 박사 고백 이벤트 — 조건이 갖춰지면(chapter3Clear && !profConfession) 마을에서 즉시 시작
+    if (game.map === 'village' && game.flags.chapter3Clear && !game.flags.profConfession) {
+      startProfConfession();
+      return;
+    }
     if (game.notice.t > 0) game.notice.t -= 1;
     if (game.puzzleRun) updatePuzzleWorld(); // 방탈출: 시간 누적 + 구역별 물체 갱신
 
@@ -3015,6 +3348,7 @@
     const b = game.battle;
     const mon = b.mon;
     game.flags.chapter2Clear = true;
+    game.flags.chapter2Mercy = (b.mercyChoiceKind === 'mercy'); // 3장 콜백 인트로용
     if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
     save();
     checkCosmeticUnlocks(game.currentSlot);
@@ -3037,12 +3371,42 @@
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.tiltstreet.song));
   }
 
+  // 3장 보스 승리 — chapter3Clear 플래그 + 3장 마무리 대사 후 신문사 입구(거리)로 복귀.
+  // v1 미래연구소 환각몬(퀴즈)과 별개이므로 defeated.hwangakmon/도감은 건드리지 않는다.
+  function winChapter3Boss() {
+    const b = game.battle;
+    const mon = b.mon;
+    game.flags.chapter3Clear = true;
+    game.flags.chapter3Mercy = (b.mercyChoiceKind === 'mercy');
+    if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
+    save();
+    checkCosmeticUnlocks(game.currentSlot);
+    game.battle = null;
+    game.mode = 'world';
+    // 신문사 입구(거리)로 복귀 — 이미 rumorFixed 상태라 거리는 풀린 모습이다
+    game.map = 'rumorstreet';
+    const p = game.player;
+    p.x = 14; p.y = 5; p.px = 14 * TS; p.py = 5 * TS; p.moving = false; p.dir = 'down';
+    held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
+    stickDir = null; stickRepeatFrames = 0;
+    Sound.badge();
+    Sound.playSong(MAPS.rumorstreet.song);
+    const lines = [mon.win];
+    if (b.mercyChoiceKind === 'mercy') {
+      lines.push('💛 그럴싸의 [속보] 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!');
+    }
+    lines.push('☆ 3장 클리어! ☆\n거리의 헤드라인 벽보가\n하나둘 [정정] 딱지로 바뀌었다.');
+    lines.push('상점 문들이 활짝 열리고,\n주민들의 얼굴에 웃음이 돌아왔다.');
+    startDialog(lines, mon.name, () => Sound.playSong(MAPS.rumorstreet.song));
+  }
+
   function winBattle() {
     const b = game.battle;
     const mon = b.mon;
     // 1장 보스(수집몬) — 별도 진행 플래그로 처리해 도감/처치 플래그(라이브러리 수집몬)를 오염시키지 않는다
     if (b.persuadeId === 'sujipmon_boss') { winChapter1Boss(); return; }
     if (b.persuadeId === 'pyeonhyang_boss') { winChapter2Boss(); return; }
+    if (b.persuadeId === 'hwangak_boss') { winChapter3Boss(); return; }
     game.flags.defeated[b.monId] = true;
     recordDexSeen(b.monId, b.mercyChoiceKind);
     if (!game.flags.mercyChoice) game.flags.mercyChoice = {};
@@ -5380,7 +5744,9 @@
   const TRACE_SEL = 0;
   // 2장 「기울어진 거리」 수업 특별 항목 (sel = -1)
   const TILT_SEL = -1;
-  const MIN_SEL = TILT_SEL; // 선택기 하한
+  // 3장 「대문짝 신문사」 수업 특별 항목 (sel = -2)
+  const RUMOR_SEL = -2;
+  const MIN_SEL = RUMOR_SEL; // 선택기 하한
   // 1장 시작 상태로 맞추고, 전부 공짜 거리 입구에 서서 시작한다.
   function applyTraceRoomClass() {
     const flags = setupStageFlags(1);
@@ -5397,6 +5763,18 @@
     flags.chapter1Clear = true; // 2장은 1장 클리어 후 상태
     game.flags = flags;
     game.map = 'tiltstreet';
+    const p = game.player;
+    p.x = 14; p.y = 17; p.px = 14 * TS; p.py = 17 * TS;
+    p.moving = false; p.dir = 'up';
+    save();
+  }
+  // 3장 시작 상태(2장 클리어 직후)로 맞추고, 소문 거리 입구에 서서 시작한다.
+  function applyRumorStreetClass() {
+    const flags = setupStageFlags(1);
+    flags.chapter1Clear = true;
+    flags.chapter2Clear = true; // 3장은 2장 클리어 후 상태
+    game.flags = flags;
+    game.map = 'rumorstreet';
     const p = game.player;
     p.x = 14; p.y = 17; p.px = 14 * TS; p.py = 17 * TS;
     p.moving = false; p.dir = 'up';
@@ -5421,7 +5799,8 @@
     if (cm.toast > 0) return; // 적용 안내 표시 중엔 입력 잠금
     if (cm.confirm) {
       if (justPressed('action')) {
-        if (cm.sel === TILT_SEL) applyTiltStreetClass();
+        if (cm.sel === RUMOR_SEL) applyRumorStreetClass();
+        else if (cm.sel === TILT_SEL) applyTiltStreetClass();
         else if (cm.sel === TRACE_SEL) applyTraceRoomClass();
         else applyStageJump(cm.sel);
         cm.confirm = false;
@@ -5458,16 +5837,21 @@
     ctx.font = '13px monospace';
     ctx.fillText('오늘 수업할 스테이지를 골라 바로 시작해요. (지금 학생 슬롯에 적용)', 24, 64);
 
-    // 특별 항목: 「1장 — 전부 공짜 거리」·「2장 — 기울어진 거리」 (방탈출 수업)
+    // 특별 항목: 「1장 — 전부 공짜 거리」·「2장 — 기울어진 거리」·「3장 — 대문짝 신문사」 (방탈출 수업)
     const isTrace = cm.sel === TRACE_SEL;
     const isTilt = cm.sel === TILT_SEL;
-    const selLabel = isTilt ? '2장 시작 상태 · 기울어진 거리 입구'
+    const isRumor = cm.sel === RUMOR_SEL;
+    const selLabel = isRumor ? '3장 시작 상태 · 대문짝 신문사 입구'
+      : isTilt ? '2장 시작 상태 · 기울어진 거리 입구'
       : isTrace ? '1장 시작 상태 · 전부 공짜 거리 입구' : `${cm.sel}스테이지`;
 
     // 스테이지 선택기
     ctx.textAlign = 'center';
     ctx.fillStyle = themeAccent();
-    if (isTilt) {
+    if (isRumor) {
+      ctx.font = 'bold 30px monospace';
+      ctx.fillText('3장 — 대문짝 신문사', LW / 2, 176);
+    } else if (isTilt) {
       ctx.font = 'bold 30px monospace';
       ctx.fillText('2장 — 기울어진 거리', LW / 2, 176);
     } else if (isTrace) {
@@ -5482,7 +5866,8 @@
     }
     ctx.fillStyle = '#fff';
     ctx.font = '15px monospace';
-    ctx.fillText(isTilt ? '경청 · 필터버블 · 스스로 고르기 (구역 3개 → 기울 보스)'
+    ctx.fillText(isRumor ? '가짜 뉴스 분별 · 출처 확인 · 정정 보도 (구역 3개 → 그럴싸 보스)'
+      : isTilt ? '경청 · 필터버블 · 스스로 고르기 (구역 3개 → 기울 보스)'
       : isTrace ? '개인정보 · 디지털 발자국 · 동의 (구역 3개 → 담아 보스)'
       : (STAGE_BLURB[cm.sel] || ''), LW / 2, 250);
     ctx.fillStyle = '#666';
@@ -6171,6 +6556,12 @@
       objText = game.flags.chapter2Clear ? '거리를 둘러보자'
         : tilt <= 0 ? '저울이 수평이다 — 문지기의 방으로'
         : `저울 기울기 ${tilt}/3 — 골목을 살펴보자`;
+    } else if (game.map === 'rumorstreet') {
+      // 3장 허브 HUD — 신문사 층별 진행을 상시 가시화
+      const n = s3ClearCount();
+      objText = game.flags.chapter3Clear ? '거리를 둘러보자'
+        : n >= 3 ? '신문사 옥상 — 그럴싸를 만나자'
+        : `소문의 출처를 찾자 — 신문사 ${n}/3층`;
     } else {
       objText = getObjective(game.flags);
     }
