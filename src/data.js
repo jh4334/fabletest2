@@ -4207,6 +4207,11 @@ const V2_ENTRANCE = [
   { map: 'arcade', x: 21, y: 8, label: '포근한 집' },           // 4장 클리어 — 5장 문
 ];
 const V2_FINAL_DOOR = { map: 'cozyhome', x: 11, y: 14, label: '고요의 뜰' }; // 5장 클리어 — 파이널 문
+// 파이널 문 이후(고요의 뜰 1~3 → 고요 조우 → 코어 봉헌 제단 → 영이 등장)의 세부 구간.
+// V2_FINAL_DOOR 하나로는 "이미 뜰 안이다/고요를 이미 이겼다/영이가 기다린다" 같은 단계를
+// 구분할 수 없어, 리뷰 사이클 3에서 이 세 방(quietyard*, goyostage, coreroom) 전체에
+// "고요의 뜰로 가라"는 문구·화살표가 그대로 남는 문제가 있었다(파이널 중 나침반 역행).
+const FINAL_ZONE_MAPS = ['quietyard', 'quietyard2', 'quietyard3'];
 
 function chapterClearCount(flags) {
   let n = 0;
@@ -4217,10 +4222,30 @@ function chapterClearCount(flags) {
   if (flags.chapter5Clear) n += 1;
   return n;
 }
+
+// 5장까지 모두 클리어한 뒤(n>=5) 파이널 단계별 목표를 세분화한다. getV2ChapterTarget·
+// getV2ObjectiveText 양쪽에서 같은 우선순위로 쓴다 — 진행이 가장 앞선 신호부터 확인한다.
+function getFinalStage(flags, curMap) {
+  if (flags.shrineDone) {
+    return { text: '영이가 기다린다 — 코어 안쪽', target: { map: 'coreroom', x: 7, y: 4, label: '영이' } };
+  }
+  if (flags.goyoClear) {
+    return { text: '코어의 제단을 살피자 — 여덟 개의 속삭임', target: { map: 'coreroom', x: 7, y: 1, label: '제단' } };
+  }
+  if (curMap === 'goyostage') {
+    return { text: '고요를 만나자', target: { map: 'goyostage', x: 7, y: 2, label: '고요' } };
+  }
+  if (curMap && FINAL_ZONE_MAPS.includes(curMap)) {
+    // 세 방 모두 다음 뜰로 넘어가는 출구 좌표가 (9,12)로 같다.
+    return { text: '고요의 뜰을 지나 나아가자', target: { map: curMap, x: 9, y: 12, label: '다음 뜰' } };
+  }
+  return { text: '고요의 뜰로 — 마지막 이야기가 기다린다', target: V2_FINAL_DOOR };
+}
+
 // curMap: 화살표를 그리는 시점의 현재 맵(생략 가능 — 그 경우 허브 밖 기준으로 계산한다).
 function getV2ChapterTarget(flags, curMap) {
   const n = chapterClearCount(flags);
-  if (n >= 5) return V2_FINAL_DOOR;
+  if (n >= 5) return getFinalStage(flags, curMap).target;
   const ch = V2_CHAPTERS[n];
   if (curMap === ch.bossMap) return ch.boss;          // 이미 보스방 안 — 보스를 가리킨다
   if (ch.zoneMaps.includes(curMap)) return ch.gate;    // 이미 허브/구역 안 — 보스·금고 문을 가리킨다
@@ -4240,7 +4265,7 @@ const V2_GATE_TEXT = ['금고문으로', '문지기의 방으로', '신문사로
 const V2_BOSS_TEXT = ['담아를', '기울을', '그럴싸를', '반짝을', '루미를'];
 function getV2ObjectiveText(flags, curMap) {
   const n = chapterClearCount(flags);
-  if (n >= 5) return '고요의 뜰로 — 마지막 이야기가 기다린다';
+  if (n >= 5) return getFinalStage(flags, curMap).text;
   const ch = V2_CHAPTERS[n];
   if (curMap === ch.bossMap) return `${V2_BOSS_TEXT[n]} 만나자`;
   if (ch.zoneMaps.includes(curMap)) return `${V2_GATE_TEXT[n]} — 구역을 돌자`;
