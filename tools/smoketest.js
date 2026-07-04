@@ -2323,4 +2323,174 @@ check('5장 수업: chapter1~4Clear=true 세팅',
   g.flags.chapter1Clear === true && g.flags.chapter2Clear === true &&
   g.flags.chapter3Clear === true && g.flags.chapter4Clear === true);
 
+// ==================== 파이널 「고요의 뜰 → 코어」 ====================
+const { SONGS } = vm.runInContext('({ SONGS })', sandbox);
+const { coreMercyCount, SHRINE_WHISPERS } = vm.runInContext('({ coreMercyCount, SHRINE_WHISPERS })', sandbox);
+const { QUIET_DIM_LEVEL } = vm.runInContext('({ QUIET_DIM_LEVEL: window.__test.QUIET_DIM_LEVEL })', sandbox);
+g.flags.visited.cozyhome = true;
+g.flags.visited.quietyard = true;
+g.flags.visited.quietyard2 = true;
+g.flags.visited.quietyard3 = true;
+g.flags.visited.goyostage = true;
+g.flags.visited.coreroom = true;
+// 수업 모드 점프([99])는 새 진행을 시뮬레이션하므로 evCards가 비어 있다 — 완주한 플레이어를
+// 가정해 모든 증거 카드를 지급한다(고요·영이 전투의 카드 게이트·봉헌 퍼즐 테스트 전제).
+g.flags.evCards = Object.keys(EVIDENCE_CARDS);
+
+console.log('[100] 파이널 진입 게이트 — cozyhome 안쪽 문(needFlag chapter5Clear)');
+g.dialog = null; g.mode = 'world'; g.map = 'cozyhome';
+g.flags.chapter5Clear = false;
+setPos(11, 13, 'down');
+hold('ArrowDown', 12);
+check('chapter5Clear 전 잠김(집에 남음)', g.map === 'cozyhome' && g.mode === 'dialog');
+advanceDialog();
+g.flags.chapter5Clear = true;
+g.dialog = null; g.mode = 'world'; setPos(11, 13, 'down'); hold('ArrowDown', 12);
+check('chapter5Clear 후 고요의 뜰 진입', g.map === 'quietyard' && g.player.x === 9 && g.player.y === 1);
+
+console.log('[101] 고요의 뜰 — 구역을 지날 때마다 BGM 트랙이 줄고 화면이 어두워짐');
+check('구역① 2트랙 · 어둠 단계 0', MAPS.quietyard.song === 'quietyard' &&
+  SONGS.quietyard.tracks.length === 2 && QUIET_DIM_LEVEL.quietyard === 0);
+check('무관심의 문장 표지판(구역①)', MAPS.quietyard.signs.length >= 1);
+setPos(9, 11, 'down'); hold('ArrowDown', 12);
+check('구역② 진입 — 1트랙(악기 하나 소거) · 어둠 단계 1', g.map === 'quietyard2' &&
+  SONGS.quietyard2.tracks.length === 1 && QUIET_DIM_LEVEL.quietyard2 === 1);
+setPos(9, 11, 'down'); hold('ArrowDown', 12);
+check('구역③ 진입 — 가장 조용함(1트랙) · 어둠 단계 2', g.map === 'quietyard3' &&
+  SONGS.quietyard3.tracks.length === 1 && QUIET_DIM_LEVEL.quietyard3 === 2);
+check('무관심의 문장 표지판(구역③, 지워지는 연출)', MAPS.quietyard3.signs.length >= 1);
+
+console.log('[102] 고요 보스전 — 침묵 루트 강화 + 주장 3개 + dark 기믹(예고 1회)');
+check('여정 자비 0(침묵 루트 조건) — 배틀에 그대로 반영', g.flags.mercy === 0);
+setPos(9, 11, 'down'); hold('ArrowDown', 12);
+check('고요 보스방(어둠 단계 3) 진입', g.map === 'goyostage' && QUIET_DIM_LEVEL.goyostage === 3);
+setPos(7, 3, 'up'); tap('z');
+check('보스 조우 대화 시작', g.mode === 'dialog');
+advanceDialog();
+check('고요 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'wave');
+check('스프라이트/도감 id는 finalboss(어둠대왕몬 재사용)', g.battle.monId === 'finalboss');
+check('설득 프로필 id는 goyo_boss', g.battle.persuadeId === 'goyo_boss');
+check('표시 이름은 고요(persuadeId 계층)', g.battle.mon.name === '고요');
+check('침묵 루트 강화 — 자비 0(≤6)이라 gaugeMax 140', g.battle.gaugeMax === 140);
+check('침묵 루트 함수 직접 확인 — gaugeMax/waveBulletMul', PERSUADE.goyo_boss.gaugeMax({ mercy: 6 }) === 140 &&
+  PERSUADE.goyo_boss.gaugeMax({ mercy: 7 }) === 100 &&
+  PERSUADE.goyo_boss.waveBulletMul({ mercy: 6 }) === 1.15 && PERSUADE.goyo_boss.waveBulletMul({ mercy: 7 }) === 1.0);
+check('주장① "…아무도, 대답하지 않았어" / 카드(ev_answer)', g.battle.p.claims[0].text.includes('아무도') &&
+  g.battle.p.claims[0].text.includes('대답하지 않았어') && g.battle.p.claims[0].counters.includes('ev_answer'));
+check('주장② "…너도, 갈 거잖아" / 카드(ev_offstage)', g.battle.p.claims[1].text.includes('너도') &&
+  g.battle.p.claims[1].text.includes('갈 거잖아') && g.battle.p.claims[1].counters.includes('ev_offstage'));
+check('주장③ "…왜, 아직 있어?" / best=empathy·unlockAt 60', g.battle.p.claims[2].text.includes('왜') &&
+  g.battle.p.claims[2].text.includes('아직 있어') && g.battle.p.claims[2].best === 'empathy' &&
+  g.battle.p.claims[2].unlockAt === 60);
+check('openMechanic dark', g.battle.p.openMechanic === 'dark');
+// open 페이즈에서 첫 파도 진입 시, 탄막이 나오기 전 한 번 예고(darkWarned/darkWarnT)
+g.battle.pState = 'open';
+forceGates();
+enterDoor(true); // 정답 문 통과(ev_answer 소지) → 다음 파도(open) 진입
+check('첫 open 파도 — 탄막 예고 1회(darkWarned + darkWarnT 30)', g.battle.darkWarned === true &&
+  g.battle.wave.darkWarnT === 30 && g.battle.wave.spawnTimer === 60);
+// 게이지 만충 → 마음의 선택 → 자비 → 승리
+g.battle.gauge = g.battle.gaugeMax; step(1);
+check('게이지 만충 → 마음의 선택', g.battle.phase === 'mercy');
+while (g.battle.cursor !== 0) tap('ArrowDown');
+tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
+tap('z');
+check('승리 대화 시작', g.mode === 'dialog');
+advanceDialog();
+check('flags.mercy 누적 — 새 보스의 자비 선택도 +1(공용 처리 확인)', g.flags.mercy === 1);
+check('goyoClear/goyoMercy 플래그', g.flags.goyoClear === true && g.flags.goyoMercy === true);
+check('코어로 입장', g.map === 'coreroom' && g.player.x === 7 && g.player.y === 8);
+check('v1 어둠대왕몬(그림자성) 처치 플래그 오염 없음', g.flags.defeated.finalboss === false);
+check('보스는 도감 순서에 없음', !DEX_ORDER.includes('goyo_boss'));
+
+console.log('[103] 코어 — 여덟 의자(coreMercyCount = 자비 수) + 봉헌 퍼즐(정답·오답 기록)');
+check('영이는 아직 안 보임(shrineDone 전)', !g.flags.shrineDone);
+check('의자 수 = 자비 수(0)', coreMercyCount(g.flags) === 0);
+g.flags.mercyChoice = g.flags.mercyChoice || {};
+g.flags.mercyChoice.bekkyeomon = 'mercy';
+g.flags.chapter1Mercy = true;
+g.flags.chapter3Mercy = true;
+check('의자 수 = 자비 수(3)', coreMercyCount(g.flags) === 3);
+g.flags.chapter2Mercy = true; g.flags.chapter4Mercy = true; g.flags.chapter5Mercy = true;
+check('의자 수 = 자비 수(6, 여덟 석 중 최대)', coreMercyCount(g.flags) === 6);
+
+setPos(7, 2, 'up'); tap('z');
+check('제단 조사 — 봉헌 안내 대화', g.mode === 'dialog');
+advanceDialog();
+check('첫 속삭임 — 선택창 열림', g.mode === 'choice' && g.choice.options.length === g.flags.evCards.filter((id) => EVIDENCE_CARDS[id]).length + 1);
+// 오답 선택 — 소지 카드 중 정답이 아닌 카드를 일부러 골라 오답 기록을 확인한다
+{
+  const owned = g.flags.evCards.filter((id) => EVIDENCE_CARDS[id]);
+  const wrongIdx = owned.findIndex((id) => id !== SHRINE_WHISPERS[0].answer);
+  pickChoice(wrongIdx);
+}
+check('오답 대사', g.mode === 'dialog');
+advanceDialog();
+check('오답 기록(shrineWrong=1) + 진행(shrineIdx=1) — 오답 허용', g.flags.shrineWrong === 1 && g.flags.shrineIdx === 1);
+// 나머지 속삭임은 정답 카드로 진행해 완료까지 확인한다
+for (let i = 1; i < SHRINE_WHISPERS.length; i++) {
+  setPos(7, 2, 'up'); tap('z'); // 제단을 다시 조사 → 다음 속삭임
+  check(`속삭임 ${i + 1}/${SHRINE_WHISPERS.length} 선택창 열림`, g.mode === 'choice');
+  const owned = g.flags.evCards.filter((id) => EVIDENCE_CARDS[id]);
+  const idx = owned.indexOf(SHRINE_WHISPERS[i].answer);
+  if (idx < 0) throw new Error('테스트 전제 오류: 정답 카드 미소지 - ' + SHRINE_WHISPERS[i].answer);
+  pickChoice(idx);
+  advanceDialog();
+}
+check('봉헌 퍼즐 완료(shrineDone=true, shrineIdx=8) — 영이 등장', g.flags.shrineDone === true &&
+  g.flags.shrineIdx === SHRINE_WHISPERS.length);
+
+console.log('[104] 영이 배틀 — 주장 3개("나를 만든 건 사람인데, 왜 나만 벌 받아?" 포함) → 기존 v1 winBattle의 yeongi 분기(진엔딩 계산) 재사용');
+g.dialog = null; g.mode = 'world';
+setPos(7, 5, 'up'); tap('z');
+check('영이 조우 대화 시작', g.mode === 'dialog');
+advanceDialog();
+check('영이 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true);
+check('스프라이트/도감 id는 yeongi', g.battle.monId === 'yeongi');
+check('설득 프로필 id는 yeongi_boss', g.battle.persuadeId === 'yeongi_boss');
+check('표시 이름은 영이(MONSTERS.yeongi 그대로)', g.battle.mon.name === '영이');
+check('기믹 없음(openMechanic 미정의)', g.battle.p.openMechanic === undefined);
+check('탄막 최소(느린 rain, waveBulletMul 0.6)', g.battle.p.waveBulletMul === 0.6);
+check('주장① "나를 만든 건 사람인데, 왜 나만 벌 받아?" 포함', g.battle.p.claims[0].text.includes('나를 만든 건 사람인데') &&
+  g.battle.p.claims[0].text.includes('왜 나만 벌 받아') && g.battle.p.claims[0].attack.pattern === 'rain');
+check('주장③ best=empathy', g.battle.p.claims[2].best === 'empathy');
+check('보스는 도감 순서에 없음', !DEX_ORDER.includes('yeongi_boss'));
+
+// 진엔딩(home) 경로 — 자비 20 이상 누적 + 마지막 선택 "함께 돌아가자"(mercy)
+g.flags.mercy = 25;
+g.battle.gauge = g.battle.gaugeMax; step(1);
+check('게이지 만충 → 마음의 선택(영이 기존 mercy 그대로 재사용)', g.battle.phase === 'mercy' &&
+  g.battle.mon.mercy.prompt.includes('이만 사라져야 할까'));
+while (g.battle.cursor !== 0) tap('ArrowDown'); // "함께 돌아가자"(mercy)
+tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
+tap('z');
+check('승리 대화 시작', g.mode === 'dialog');
+advanceDialog();
+check('flags.mercy 누적(25→26, 공용 처리 확인) + defeated.yeongi', g.flags.mercy === 26 && g.flags.defeated.yeongi === true);
+check('진엔딩 계산 재사용 — computeEnding(mercy,26) === home', g.flags.endingId === 'home' && g.flags.trueEnding === true);
+check('진엔딩 연출 진입(ending/true)', g.mode === 'ending' && g.endingType === 'true');
+const endingsSeenFinal = JSON.parse(storage.get('ai-ethics-adventure-endings') || '{}');
+check('엔딩 기록(recordEndingSeen) — home 기록됨', endingsSeenFinal.home === true);
+const gameSrcFinal = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
+check('진엔딩 화면에 교실 아침 대사 추가', gameSrcFinal.includes('태블릿 화면 밖, 아침 해') &&
+  gameSrcFinal.includes('옆에 박사님이 서 있다'));
+
+console.log('[105] 수업 모드 — 「파이널 — 고요의 뜰 → 코어」 특별 항목');
+g.mode = 'ending'; g.mode = 'world'; g.dialog = null;
+g.classmode.ret = 'world'; g.classmode.sel = 1; g.classmode.confirm = false; g.classmode.toast = 0;
+g.mode = 'classmode';
+tap('ArrowUp'); // 1 → 0 (TRACE_SEL)
+tap('ArrowUp'); // 0 → -1 (TILT_SEL)
+tap('ArrowUp'); // -1 → -2 (RUMOR_SEL)
+tap('ArrowUp'); // -2 → -3 (ARCADE_SEL)
+tap('ArrowUp'); // -3 → -4 (COZY_SEL)
+tap('ArrowUp'); // -4 → -5 (FINAL_SEL)
+check('수업 목록에 파이널 특별 항목(FINAL_SEL=-5) 진입', g.classmode.sel === -5);
+tap('z'); check('확인 단계', g.classmode.confirm === true);
+tap('z'); // 적용 → 파이널 시작 + 포근한 집 안쪽 문 앞
+check('파이널 수업: 포근한 집 안쪽 문 앞에서 시작', g.map === 'cozyhome' && g.player.x === 11 && g.player.y === 13);
+check('파이널 수업: chapter1~5Clear=true 세팅',
+  g.flags.chapter1Clear === true && g.flags.chapter2Clear === true && g.flags.chapter3Clear === true &&
+  g.flags.chapter4Clear === true && g.flags.chapter5Clear === true);
+
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

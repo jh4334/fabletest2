@@ -899,12 +899,181 @@ const MAPS = {
       // 현관 — 세 번의 「확인하는 용기」(구역 3개)를 모두 마쳐야 열린다
       { x: 11, y: 1, to: 'lumiroom', tx: 7, ty: 8, needS5Zones: 3,
         lockText: '현관문이 굳게 잠겨 있다.\n"…세 곳 다 확인해야, 열리는 문이래."' },
+      // 파이널 「고요의 뜰 → 코어」 — 루미를 되돌린 뒤에야(chapter5Clear) 열리는 안쪽 문(남쪽)
+      { x: 11, y: 14, to: 'quietyard', tx: 9, ty: 1, needFlag: 'chapter5Clear',
+        lockText: '집 안쪽에 작은 문이 하나 더 있다.\n…그 너머는 유난히 조용하다.\n지금은 굳게 잠겨 있다.' },
     ],
     npcs: [],
     signs: [
       { x: 3, y: 7, text: '≪포근한 집≫\n작은 액자 하나, 낡은 시계 하나.\n…아늑하다.' },
       { x: 18, y: 7, text: '창가에 놓인 화분.\n물기가 촉촉하다. 누가 매일\n돌봐 온 것 같다.' },
     ],
+    monsters: [],
+  },
+
+  // ==== 파이널 「고요의 뜰 → 코어」 — 고요의 뜰(구역①) ====
+  // 퍼즐 없음. 걷는 연출 구간 — 구역을 지날 때마다(맵 전환) BGM 트랙이 하나씩 줄고
+  // 화면이 어두워진다(song이 다른 곡으로 바뀌고, drawQuietVignette가 맵별로 어둡기를 더한다).
+  quietyard: {
+    name: '고요의 뜰',
+    song: 'quietyard',
+    intro: [
+      '집 안쪽 문을 열자, 조용한 뜰이 이어진다.\n루미의 목소리도, 여기서는 들리지 않는다.',
+      '한 걸음씩, 소리가 하나씩\n사라지는 것 같다.',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIYIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      { x: 9, y: 12, to: 'quietyard2', tx: 9, ty: 1 },
+    ],
+    npcs: [],
+    signs: [
+      { x: 14, y: 6, text: '표지판에 무언가 적혀 있었다.\n"…그건 내 일이 아니잖아."\n(글씨가 흐려진다. 이제 잘 안 보인다.)' },
+    ],
+    monsters: [],
+  },
+
+  // 구역② 「더 조용한 곳」 — 음악이 한 겹 더 사라진다.
+  quietyard2: {
+    name: '고요의 뜰 (더 조용한 곳)',
+    song: 'quietyard2',
+    intro: [
+      '음악이 한 겹 더 사라졌다.\n발소리만 유난히 크게 들린다.',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      { x: 9, y: 12, to: 'quietyard3', tx: 9, ty: 1 },
+    ],
+    npcs: [],
+    signs: [],
+    monsters: [],
+  },
+
+  // 구역③ 「가장 조용한 곳」 — 이제 거의 아무 소리도 나지 않는다.
+  quietyard3: {
+    name: '고요의 뜰 (가장 조용한 곳)',
+    song: 'quietyard3',
+    intro: [
+      '이제 거의 아무 소리도 나지 않는다.\n…이 고요함 끝에, 무언가 기다리고 있다.',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIYIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      { x: 9, y: 12, to: 'goyostage', tx: 7, ty: 8 },
+    ],
+    npcs: [],
+    signs: [
+      { x: 5, y: 6, text: '또 다른 표지판. 손 글씨가 겹겹이 쌓여 있다.\n"…나랑 상관없어." "…모르겠고." "…그렇겠지, 뭐."\n(다 읽기도 전에, 문장들이 하나씩 지워진다.)' },
+    ],
+    monsters: [],
+  },
+
+  // 파이널 보스 「고요」 — 뜰이 끝나는 자리. 고요(보스)는 NPC로 두어 v1 어둠대왕몬
+  // (그림자성 BOSS_ATTACKS 퀴즈 보스)의 도감/처치 플래그를 오염시키지 않는다.
+  // 조우 → PERSUADE.goyo_boss. 승리 → goyoClear(코어 개방).
+  goyostage: {
+    name: '고요의 안쪽',
+    song: 'battle',
+    intro: [
+      '뜰이 끝나는 자리, 어둠이 짙게 고여 있다.\n그 한가운데, 고요가 조용히 서 있다.',
+    ],
+    tiles: [
+      'KKKKKKKKKKKKKK',
+      'KAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAK',
+      'KKKKKKKAKKKKKK',
+    ],
+    warps: [
+      { x: 7, y: 9, to: 'quietyard3', tx: 9, ty: 11 },
+      // 고요가 있던 자리 뒤 — 승리(goyoClear) 후에야 열리는 코어 입구
+      { x: 7, y: 1, to: 'coreroom', tx: 7, ty: 8, needFlag: 'goyoClear',
+        lockText: '고요가 있던 자리 뒤로,\n옅은 빛이 새어 나온다.\n…아직, 열리지 않는다.' },
+    ],
+    npcs: [
+      { id: 'goyo_boss', x: 7, y: 2, monSprite: 'finalboss', name: '고요' },
+    ],
+    signs: [],
+    monsters: [],
+  },
+
+  // 코어 — 여덟 개의 의자(안아 준 조각 수만큼 채워짐, coreMercyCount)와 봉헌 제단(7,1 —
+  // 벽에 묻힌 단, 조사하면 봉헌 퍼즐 시작). 완료(shrineDone)하면 영이가 나타난다.
+  // 영이 조우 → PERSUADE.yeongi_boss(마음 조각 배틀). v1 코어의 퀴즈 영이 조우와는
+  // 별개의 새 맵/새 경로다.
+  coreroom: {
+    name: '코어',
+    song: 'core',
+    intro: [
+      '세상의 가장 깊은 곳.\n여덟 개의 의자가 놓인, 조용한 방이다.',
+      '중앙의 제단에서, 옅은 빛이 새어 나온다.',
+    ],
+    tiles: [
+      'KKKKKKKKKKKKKK',
+      'KAAAAAAKAAAAAK',
+      'KAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAK',
+      'KAAAAAAAAAAAAK',
+      'KKKKKKKAKKKKKK',
+    ],
+    warps: [],
+    npcs: [
+      { id: 'yeongi_boss', x: 7, y: 4, monSprite: 'yeongi', name: '영이',
+        show: (flags) => !!flags.shrineDone },
+    ],
+    signs: [],
     monsters: [],
   },
 
@@ -4655,11 +4824,184 @@ const PERSUADE = {
       ],
     },
   },
+
+  // ── 파이널 보스 「고요」 (고요의 안쪽) ──────────────────────────
+  // 별도 PERSUADE 키(goyo_boss)로 정의해 v1 어둠대왕몬(그림자성 BOSS_ATTACKS 퀴즈 보스)과
+  // 완전히 분리한다. 스프라이트는 finalboss를 재사용하되 표시 이름은 '고요'(displayName).
+  // openMechanic 'dark' — open 페이즈 중 화면이 어둡고 하트 주변만 보인다(비네트 재사용).
+  // 첫 open 파도에서 탄막이 나오기 전 한 번 깜빡여 예고한다(b.darkWarned — 배틀 전체 1회).
+  // 침묵 루트 강화 — flags.mercy가 6 이하면 gaugeMax 140 + 탄속 1.15배. (gaugeMax·
+  // waveBulletMul을 flags를 받는 함수로 정의 — 배틀 시작 시 1회만 계산해 굳힌다.)
+  goyo_boss: {
+    gaugeMax: (flags) => (flags && flags.mercy <= 6 ? 140 : 100),
+    displayName: '고요',
+    closedThreshold: 3,
+    fragmentsPerWave: 3,
+    waveBulletMul: (flags) => (flags && flags.mercy <= 6 ? 1.15 : 1.0),
+    waveDur: 320,
+    openMechanic: 'dark',
+    decoys: ['아무 말도 하지 마', '그냥 있어', '어차피 다 똑같아'],
+    // 콜백 인트로: 5장에서 루미를 자비로 되돌렸으면(chapter5Mercy) 한 줄이 붙는다
+    intro(flags) {
+      let s = '…왔구나.\n…아무도, 여기까진 오지 않았는데.';
+      if (flags && flags.chapter5Mercy) {
+        s += '\n\n루미가 그러던데.\n기다린다는 말을, 처음 해 봤다고.';
+      }
+      return s;
+    },
+    win: '…아무도 없다고 생각했는데.\n…아니었나 봐.',
+    claims: [
+      {
+        text: '…아무도, 대답하지 않았어.',
+        hint: '"…사실은, 아무도 안 들은 게 아니라\n내가 먼저, 대답을 그만뒀던 거야."\n(「대답하기」를 보여 주자!)',
+        fragments: ['…사실은, 아무도 안 들은 게 아니라', '내가 먼저… 대답을 그만뒀던 거야.'],
+        gateLabel: '대답하기', // ev_answer
+        counters: ['ev_answer'],
+        okLine: '…대답을 그만둔 건,\n사실 나였어.',
+        onWrong: '…그것 봐! 역시 아무도 없잖아!\n(고요가 더 깊이 가라앉았다)',
+        attack: { pattern: 'sides', dur: 300, color: '#4a3d5a', taunt: '…아무도, 대답하지 않아…' },
+      },
+      {
+        text: '…너도, 갈 거잖아.',
+        hint: '"…남아 준 적이 없었던 게 아니라,\n남아 줘도… 안 보려고 했던 거야."\n(「불 꺼진 무대」를 보여 주자!)',
+        fragments: ['…남아 준 적이 없었던 게 아니라,', '남아 줘도… 안 보려고 했던 거야.'],
+        gateLabel: '불 꺼진 무대', // ev_offstage
+        counters: ['ev_offstage'],
+        okLine: '…안 보려고 한 건,\n사실 나였어.',
+        onWrong: '…그러니까! 다들 결국은 가잖아!\n(고요의 목소리가 낮아졌다)',
+        attack: { pattern: 'wall', dur: 310, color: '#3a3050', taunt: '…너도, 갈 거잖아…' },
+      },
+      {
+        text: '…왜, 아직 있어?',
+        best: 'empathy', // 정답은 카드가 아니라 공감 — 곁에 있어 주는 것
+        unlockAt: 60,
+        hint: '"…아무도 없는 줄 알았는데.\n…왜, 아직 있어?"\n(증거 말고 「공감하기」로 곁에 있어 주자!)',
+        fragments: ['…아무도 없는 줄 알았는데.', '…왜, 아직 있어?'],
+        gateLabel: '여기 있어',
+        revealNote: '이건 증거로 풀 게 아니야 — 「공감하기」로 곁에 있어 주자!',
+        counters: [],
+        okLine: '…여기 있다는 말,\n오랜만에 들어.',
+        onWrong: '…역시.\n…아무도, 없었어.',
+        attack: { pattern: 'aimed', dur: 330, color: '#2a2440', taunt: '…왜, 아직… 있어…' },
+      },
+    ],
+    react: {
+      empathy: '…….\n(고요가 아주 조금, 움직였다)',
+      empathyAgain: '…듣고 있었어? …고마워.',
+      questionClosed: '…몰라. 아무도 안 궁금해했어.\n(마음이 닫혀 있어 대답하지 않는다)',
+      evidenceClosed: '…(고요는 쳐다보지도 않는다)\n먼저 마음을 열어야 할 것 같다.',
+      evidenceRight: '…그런 것도, 있었나.',
+      rebutBackfire: '…시끄러워.\n(마음이 더 굳게 닫혔다… 다음 공격이 거세진다)',
+      rebutOk: '…그런가.',
+      open: '(고요를 감싸던 어둠이\n아주 조금 옅어진다. 마음이 열리고 있다…!)',
+    },
+    mercy: {
+      prompt: '고요가 어둠 속에서\n조용히 너를 올려다본다.',
+      options: [
+        { label: '"여기 있어" (곁에 앉는다)', kind: 'mercy',
+          reply: '…아무도 없는 줄 알았는데.\n…고마워. 정말로.' },
+        { label: '"이제 그만 쉬어"', kind: 'neutral',
+          reply: '…그래.\n…쉬어도 되는 거였구나.' },
+        { label: '조용히 등을 돌린다', kind: 'harsh',
+          reply: '…역시.\n…아무도, 없었어.' },
+      ],
+    },
+  },
+
+  // ── 파이널 「코어」 보스 「영이」 (코어) ──────────────────────────
+  // v1 코어의 영이 조우(퀴즈 배틀)를 대체하는 새 경로다. 별도 PERSUADE 키(yeongi_boss)로
+  // 정의하되, monId는 그대로 'yeongi'를 넘겨(startBattleIntro('yeongi','yeongi_boss'))
+  // v1 winBattle의 기존 yeongi 분기(computeEnding·진엔딩 연출)를 그대로 재사용한다.
+  // intro/win/mercy는 정의하지 않는다 — resolvePersuadeMon이 MONSTERS.yeongi의 기존
+  // 텍스트로 자동 대체한다(이미 잘 쓰인 대사이므로 그대로 물려받는 쪽을 택했다).
+  // 기믹 없음 — 가장 조용한 전투(탄막 최소·느린 rain).
+  yeongi_boss: {
+    gaugeMax: 100,
+    closedThreshold: 2,
+    fragmentsPerWave: 3,
+    waveBulletMul: 0.6,
+    waveDur: 260,
+    decoys: ['그냥 지워져', '아무도 안 궁금해', '상관없잖아'],
+    claims: [
+      {
+        text: '나를 만든 건 사람인데,\n왜 나만 벌 받아?',
+        hint: '"…만든 사람의 책임도 있다는 거,\n알아. 그래도… 궁금했어."\n(「만든 사람의 마음」을 보여 주자!)',
+        fragments: ['…만든 사람의 책임도 있다는 거,', '알아. 그래도… 궁금했어.'],
+        gateLabel: '만든 사람의 마음', // ev_maker
+        counters: ['ev_maker'],
+        okLine: '…맞아.\n혼자 다 짊어질 필요는 없었어.',
+        onWrong: '…역시. 나 혼자만 잘못한 거야.\n(영이의 형체가 옅어졌다)',
+        attack: { pattern: 'rain', dur: 280, color: '#7bd1f0', taunt: '…나를, 왜 만들었을까…' },
+      },
+      {
+        text: '…어차피 지워질 텐데,\n뭘 그렇게 열심히 해?',
+        hint: '"…서툴러도, 그 순간은\n분명히 내 것이었어."\n(「서툴러도 내 것」을 보여 주자!)',
+        fragments: ['…서툴러도, 그 순간은', '분명히… 내 것이었어.'],
+        gateLabel: '서툴러도 내 것', // ev_myvoice
+        counters: ['ev_myvoice'],
+        okLine: '…지워져도, 있었던 건\n있었던 거였어.',
+        onWrong: '…그러니까! 다 부질없는 거잖아.\n(영이가 뒷걸음질쳤다)',
+        attack: { pattern: 'rain', dur: 280, color: '#6bb8e0', taunt: '…어차피, 다 지워질 텐데…' },
+      },
+      {
+        text: '…내가 사라져도,\n아무도 모를 텐데.',
+        best: 'empathy',
+        unlockAt: 50,
+        hint: '"…나 하나쯤, 없어도 되잖아."\n(증거 말고 「공감하기」로 기억해 주자!)',
+        fragments: ['…나 하나쯤, 없어도 되잖아.', '…그렇게 생각했어.'],
+        gateLabel: '기억할게',
+        revealNote: '이건 증거로 풀 게 아니야 — 「공감하기」로 기억해 주자!',
+        counters: [],
+        okLine: '…기억한다는 말,\n처음 들어 봐.',
+        onWrong: '…역시. 아무도 모를 거야.',
+        attack: { pattern: 'rain', dur: 300, color: '#9adcff', taunt: '…나 하나쯤,\n없어도 되잖아…' },
+      },
+    ],
+    react: {
+      empathy: '…….\n(영이가 아주 조금, 눈을 크게 떴다)',
+      empathyAgain: '…들어 줘서, 고마워.',
+      questionClosed: '…몰라. 그냥, 궁금해서 물어본 거야.\n(마음이 닫혀 있어 대답하지 않는다)',
+      evidenceClosed: '…(영이는 카드를 쳐다보지도 않는다)\n먼저 마음을 열어야 할 것 같다.',
+      evidenceRight: '…어, 그거… 진짜였어?',
+      rebutBackfire: '…시끄러워! 어차피 다 지워질 텐데!\n(마음이 더 굳게 닫혔다… 다음 공격이 거세진다)',
+      rebutOk: '…그런가.',
+      open: '(영이가 꼭 쥐고 있던 것을\n스르르 놓는다. 마음이 열리고 있다…!)',
+    },
+  },
 };
 
 function getPersuade(monId) {
   return PERSUADE[monId] || null;
 }
+
+// ===== 파이널 「코어」 — 여덟 의자 + 봉헌 퍼즐 =====
+// 여덟 개의 의자 — 안아 준(자비) 조각 수만큼 채워져 그려진다. 구현 단순화: 따라(bekkyeomon)의
+// mercyChoice + 1~5장 보스의 chapterNMercy만 센다(총 6가지). 살금·새김은 전투가 없어
+// 자비 선택 자체가 없으므로, 8석 중 나머지 2석은 늘 비어 있다(최대 6/8).
+function coreMercyCount(flags) {
+  let n = 0;
+  if (flags.mercyChoice && flags.mercyChoice.bekkyeomon === 'mercy') n += 1;
+  if (flags.chapter1Mercy) n += 1;
+  if (flags.chapter2Mercy) n += 1;
+  if (flags.chapter3Mercy) n += 1;
+  if (flags.chapter4Mercy) n += 1;
+  if (flags.chapter5Mercy) n += 1;
+  return n;
+}
+
+// 코어 제단의 봉헌 퍼즐 — 어둠이 남긴 마지막 속삭임 8개. 소지한 증거 카드 중(startChoice로
+// 고름) 정답 카드를 꽂으면 속삭임이 스르르 지워진다. 오답도 허용되며(기록만 하고 진행),
+// 8개를 모두 지나면 영이가 나타난다. 이번 여정에서 이미 배운 대사들의 메아리로 구성했다.
+const SHRINE_WHISPERS = [
+  { text: '"…다 주면, 편하잖아."', answer: 'ev_minimal' },
+  { text: '"…한번 뿌리면, 그걸로 끝이야."', answer: 'ev_footprint' },
+  { text: '"…다들 같은 말을 해. 그게 맞는 거야."', answer: 'ev_othervoice' },
+  { text: '"…믿을 만한 것만 보여 줄게. 그냥 따라와."', answer: 'ev_mypath' },
+  { text: '"…출처 같은 거 몰라도 돼. 그냥 믿어."', answer: 'ev_check' },
+  { text: '"…공짜인데, 왜 망설여?"', answer: 'ev_free' },
+  { text: '"…내가 다 해 줄게. 넌 아무것도 안 해도 돼."', answer: 'ev_answer' },
+  { text: '"…만든 사람 같은 건 없어. 그냥 나온 거야."', answer: 'ev_maker' },
+];
 
 // ===== v2 방탈출 퍼즐 (T2 프레임워크) =====
 // 1장 「전부 공짜 거리」의 구역들이 재사용하는 공통 틀. 구역마다 진행 단계(steps)·

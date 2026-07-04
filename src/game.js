@@ -158,6 +158,11 @@
       chapter5Mercy: false, // 5장 보스를 자비로 되돌렸는가 (다음 장 콜백용)
       heardLumi: false,    // 스토리 복선 5호 — 잠긴 복도 너머 베란다에서 흔들리는 루미 목소리
       lumiTrust: 0,        // 5장 허브 — 루미의 목소리 안내 순서 카운터(신뢰 구간→소유 구간)
+      goyoClear: false,    // 파이널 보스(고요) 설득 완료 — 코어 개방
+      goyoMercy: false,    // 고요를 자비로 되돌렸는가
+      shrineIdx: 0,        // 코어 제단 봉헌 퍼즐 진행(0~8, SHRINE_WHISPERS 길이)
+      shrineWrong: 0,      // 봉헌 퍼즐 오답 횟수(기록용)
+      shrineDone: false,   // 봉헌 퍼즐 완료 — 영이 등장
     };
   }
 
@@ -2882,6 +2887,45 @@
     }
     ctx.fillRect(0, 0, LW, LH);
   }
+  // 파이널 「고요의 뜰」 — 구역을 지날 때마다(맵 전환) 화면이 한 단계씩 어두워진다.
+  // 퍼즐 없음 — 순수하게 맵 id로만 정해지는 단계(같은 비네트 방식 재사용).
+  const QUIET_DIM_LEVEL = { quietyard: 0, quietyard2: 1, quietyard3: 2, goyostage: 3 };
+  function drawQuietVignette() {
+    const lv = QUIET_DIM_LEVEL[game.map];
+    if (!lv) return; // 0(구역①) 또는 해당 없음 → 표시 안 함
+    if (game.reduceFx) {
+      ctx.fillStyle = `rgba(5,5,12,${0.14 * lv})`;
+      ctx.fillRect(0, 0, LW, LH);
+      return;
+    }
+    const grad = ctx.createRadialGradient(LW / 2, LH / 2, LH * 0.25, LW / 2, LH / 2, LH * 0.75);
+    if (grad && grad.addColorStop) {
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(1, `rgba(5,5,12,${0.2 * lv})`);
+      ctx.fillStyle = grad;
+    } else {
+      ctx.fillStyle = `rgba(5,5,12,${0.16 * lv})`;
+    }
+    ctx.fillRect(0, 0, LW, LH);
+  }
+  // 코어 — 여덟 개의 의자. 안아 준(자비) 조각 수만큼(coreMercyCount) 채워져 그려진다.
+  const CORE_CHAIR_SPOTS = [
+    { x: 3, y: 3 }, { x: 5, y: 3 }, { x: 9, y: 3 }, { x: 11, y: 3 },
+    { x: 3, y: 6 }, { x: 5, y: 6 }, { x: 9, y: 6 }, { x: 11, y: 6 },
+  ];
+  function drawCoreChairs(cx, cy) {
+    const filled = coreMercyCount(game.flags);
+    ctx.textAlign = 'center';
+    ctx.font = '16px monospace';
+    for (let i = 0; i < CORE_CHAIR_SPOTS.length; i++) {
+      const s = CORE_CHAIR_SPOTS[i];
+      const sx = Math.round(s.x * TS - cx) + TS / 2;
+      const sy = Math.round(s.y * TS - cy) + TS / 2;
+      ctx.fillStyle = i < filled ? '#ffd644' : '#3a3a4a';
+      ctx.fillText('◐', sx, sy + 6);
+    }
+    ctx.textAlign = 'left';
+  }
   // 구역 HUD — 화면 위쪽 상시 표시 (traces: 프로필 보드 / copies: 회수 수 / levers: 지금 상자)
   function drawPuzzleHud() {
     const run = game.puzzleRun;
@@ -3040,6 +3084,22 @@
         ], '루미');
         return;
       }
+      // 파이널 보스(고요) — 아직 설득하지 않았으면 마음 조각 배틀로, 이후엔 되돌린 친구로
+      if (npc.id === 'goyo_boss') {
+        if (!game.flags.goyoClear) { startBattleIntro('finalboss', 'goyo_boss'); return; }
+        startDialog([
+          '고요: "…아직, 여기 있었네."',
+          '고요: "…그래도 돼. …고마워."',
+        ], '고요');
+        return;
+      }
+      // 파이널 「코어」의 영이 — 마음 조각 배틀. 승리는 기존 v1 winBattle의 yeongi 분기로
+      // 그대로 이어져 computeEnding(진엔딩 계산)이 재사용된다.
+      if (npc.id === 'yeongi_boss') {
+        if (!game.flags.defeated.yeongi) { startBattleIntro('yeongi', 'yeongi_boss'); return; }
+        startDialog(['…이미, 대답을 들었잖아.'], '영이');
+        return;
+      }
       // 3장 1층 헛소 — 제보함 진행 상태에 따라 대사가 달라진다
       if (npc.id === 'heossso') {
         const run = game.puzzleRun;
@@ -3170,6 +3230,11 @@
       return;
     }
     const ch = tileAt(game.map, f.x, f.y);
+    // 코어의 봉헌 제단 — 벽에 묻힌 단(7,1). 조사하면 봉헌 퍼즐이 시작된다.
+    if (game.map === 'coreroom' && f.x === 7 && f.y === 1) {
+      interactAltar();
+      return;
+    }
     // 2장 거리의 거대한 저울 — 구역 클리어마다 기울기가 준다 (14,9 = 'H')
     if (game.map === 'tiltstreet' && f.x === 14 && f.y === 9) {
       const tilt = 3 - s2ClearCount();
@@ -3933,6 +3998,35 @@
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.cozyhome.song));
   }
 
+  // 파이널 보스(고요) 승리 — goyoClear 플래그 + 코어 개방 연출 후 코어로 입장.
+  // v1 어둠대왕몬(그림자성 BOSS_ATTACKS 퀴즈)과 별개이므로 defeated.finalboss/도감은
+  // 건드리지 않는다(v1 그림자성 보스전 무손상).
+  function winGoyoBoss() {
+    const b = game.battle;
+    const mon = b.mon;
+    game.flags.goyoClear = true;
+    game.flags.goyoMercy = (b.mercyChoiceKind === 'mercy');
+    if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
+    save();
+    checkCosmeticUnlocks(game.currentSlot);
+    game.battle = null;
+    game.mode = 'world';
+    // 코어로 입장
+    game.map = 'coreroom';
+    const p = game.player;
+    p.x = 7; p.y = 8; p.px = 7 * TS; p.py = 8 * TS; p.moving = false; p.dir = 'up';
+    held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
+    stickDir = null; stickRepeatFrames = 0;
+    Sound.badge();
+    Sound.playSong(MAPS.coreroom.song);
+    const lines = [mon.win];
+    if (b.mercyChoiceKind === 'mercy') {
+      lines.push('💛 고요의 침묵 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!');
+    }
+    lines.push('☆ 가장 깊은 곳의 문이 열렸다 ☆\n…고요를 지나, 코어로 들어선다.');
+    startDialog(lines, mon.name, () => Sound.playSong(MAPS.coreroom.song));
+  }
+
   function winBattle() {
     const b = game.battle;
     const mon = b.mon;
@@ -3942,6 +4036,9 @@
     if (b.persuadeId === 'hwangak_boss') { winChapter3Boss(); return; }
     if (b.persuadeId === 'yuhok_boss') { winChapter4Boss(); return; }
     if (b.persuadeId === 'hollim_boss') { winChapter5Boss(); return; }
+    if (b.persuadeId === 'goyo_boss') { winGoyoBoss(); return; }
+    // 영이(yeongi_boss) — 별도 조기 반환 없음. monId가 'yeongi'이므로 아래 일반 경로를 거쳐
+    // 기존 v1 yeongi 분기(진엔딩 계산)로 자연스럽게 이어진다.
     game.flags.defeated[b.monId] = true;
     recordDexSeen(b.monId, b.mercyChoiceKind);
     if (!game.flags.mercyChoice) game.flags.mercyChoice = {};
@@ -4015,6 +4112,61 @@
 
   function ownedCards() {
     return (game.flags.evCards || []).filter((id) => EVIDENCE_CARDS[id]);
+  }
+
+  // ---------- 코어 제단의 봉헌 퍼즐 ----------
+  // 어둠이 남긴 마지막 속삭임 8개(SHRINE_WHISPERS)에, 소지한 증거 카드 중 맞는 것을
+  // startChoice로 골라 꽂는다. 오답도 허용하고 기록만 한다(shrineWrong). 8개를 모두
+  // 지나면 finishShrine()이 영이를 등장시킨다(show: flags.shrineDone).
+  function interactAltar() {
+    if (game.flags.shrineDone) {
+      startDialog(['제단이 고요하다.\n…봉헌은 이미 끝났다.'], '제단');
+      return;
+    }
+    if ((game.flags.shrineIdx || 0) === 0) {
+      startDialog([
+        '제단 위, 어둠이 남긴 마지막 속삭임들이\n희미하게 새겨져 있다.',
+        '가진 증거 카드로, 하나씩\n맞는 자리에 꽂아 보자.',
+      ], '제단', () => openShrineWhisper());
+      return;
+    }
+    openShrineWhisper();
+  }
+  function openShrineWhisper() {
+    const idx = game.flags.shrineIdx || 0;
+    if (idx >= SHRINE_WHISPERS.length) { finishShrine(); return; }
+    const w = SHRINE_WHISPERS[idx];
+    const owned = ownedCards();
+    const labels = owned.map((id) => EVIDENCE_CARDS[id].title);
+    labels.push('그만두기');
+    startChoice(`속삭임 ${idx + 1}/${SHRINE_WHISPERS.length}\n${w.text}`, labels, (i) => {
+      if (i < 0 || i >= owned.length) return; // 그만두기/취소 — 진행하지 않는다
+      const picked = owned[i];
+      game.flags.shrineIdx = idx + 1;
+      if (picked === w.answer) {
+        Sound.correct();
+        startDialog([`「${EVIDENCE_CARDS[picked].title}」…\n속삭임이 스르르 옅어진다.`], '제단', () => {
+          save();
+          if (game.flags.shrineIdx >= SHRINE_WHISPERS.length) finishShrine();
+        });
+      } else {
+        game.flags.shrineWrong = (game.flags.shrineWrong || 0) + 1;
+        Sound.wrong();
+        startDialog(['…그 카드는, 이 속삭임에는\n맞지 않는 듯하다.'], '제단', () => {
+          save();
+          if (game.flags.shrineIdx >= SHRINE_WHISPERS.length) finishShrine();
+        });
+      }
+    });
+  }
+  function finishShrine() {
+    if (game.flags.shrineDone) return;
+    game.flags.shrineDone = true;
+    save();
+    startDialog([
+      '마지막 속삭임이 사라지자,\n제단 저편에서 옅은 빛이 인다.',
+      '…영이가, 그 빛 속에 서 있다.',
+    ], '???');
   }
 
   // 교사 진단용 로그 — 마음 조각 배틀 개편판
@@ -4116,7 +4268,8 @@
       mon,
       p,
       gauge: memo ? memo.gauge : 0,
-      gaugeMax: p.gaugeMax || 100,
+      // gaugeMax는 고정값 또는 flags를 받는 함수(고요의 침묵 루트 강화용) — 배틀 시작 시 1회만 계산해 굳힌다
+      gaugeMax: (typeof p.gaugeMax === 'function') ? p.gaugeMax(game.flags) : (p.gaugeMax || 100),
       pState: memo ? memo.state : 'closed',
       claimIdx: 0,
       playerHp: maxHearts,
@@ -4203,8 +4356,10 @@
     b.phase = 'wave';
     applyShrinkBox(b); // 루미(보스) — 파도 시작 시 현재 축소 단계를 상자에 반영
     const box = b.arena.box;
-    // 스테이지 1(1장) 고정 난이도 + 프로필별 탄속 완화 + 오답 역효과 강화
-    let sf = dodgeSpeedFactor() * (b.p.waveBulletMul || 1);
+    // 스테이지 1(1장) 고정 난이도 + 프로필별 탄속 완화/강화 + 오답 역효과 강화
+    // waveBulletMul은 고정값 또는 flags를 받는 함수(고요의 침묵 루트 강화용)일 수 있다
+    const bulletMul = (typeof b.p.waveBulletMul === 'function') ? b.p.waveBulletMul(game.flags) : b.p.waveBulletMul;
+    let sf = dodgeSpeedFactor() * (bulletMul || 1);
     let rateMul = 1;
     if (b.pIntense) { sf *= 1.3; rateMul *= 0.75; b.pIntense = false; }
     b.arena.sf = sf; b.arena.rateMul = rateMul; b.arena.bullets = []; b.arena.spiralA = 0; b.arena.inv = 0;
@@ -4227,6 +4382,13 @@
       // 버티면 소멸+보상. 버틴 횟수(resisted)는 파도가 바뀌어도 이어진다(최대 3).
       tempt: { obj: null, resisted: b.temptResisted || 0, spawnTimer: 60 },
     };
+    // 고요(보스) open 페이즈 고유 기믹 — 어둠 속, 하트 주변만 보인다. 배틀 전체에서 딱 한 번,
+    // 첫 open 파도에서 탄막이 나오기 전 스폰 위치를 잠깐 깜빡여 예고한다(darkWarnT).
+    if (b.p.openMechanic === 'dark' && b.pState === 'open' && !b.darkWarned) {
+      b.darkWarned = true;
+      b.wave.darkWarnT = 30;
+      b.wave.spawnTimer += 30; // 예고가 끝난 뒤에야 첫 탄막이 나온다
+    }
     if (game.tts) Speech.speak(claim.text);
   }
 
@@ -4273,6 +4435,8 @@
     if (b.flash > 0) b.flash -= 1;
     w.t += 1;
     updateFloats(b);
+    // 고요(보스) — 첫 open 파도의 탄막 예고 깜빡임 카운트다운
+    if (w.darkWarnT > 0) w.darkWarnT -= 1;
 
     moveSoul(arena, box, arena.carrying ? 0.6 : 1);
 
@@ -6364,7 +6528,9 @@
   const ARCADE_SEL = -3;
   // 5장 「포근한 집」 수업 특별 항목 (sel = -4)
   const COZY_SEL = -4;
-  const MIN_SEL = COZY_SEL; // 선택기 하한
+  // 파이널 「고요의 뜰 → 코어」 수업 특별 항목 (sel = -5)
+  const FINAL_SEL = -5;
+  const MIN_SEL = FINAL_SEL; // 선택기 하한
   // 1장 시작 상태로 맞추고, 전부 공짜 거리 입구에 서서 시작한다.
   function applyTraceRoomClass() {
     const flags = setupStageFlags(1);
@@ -6425,6 +6591,21 @@
     p.moving = false; p.dir = 'down';
     save();
   }
+  // 파이널 시작 상태(5장 클리어 직후)로 맞추고, 포근한 집 안쪽 문 앞에 서서 시작한다.
+  function applyFinalClass() {
+    const flags = setupStageFlags(1);
+    flags.chapter1Clear = true;
+    flags.chapter2Clear = true;
+    flags.chapter3Clear = true;
+    flags.chapter4Clear = true;
+    flags.chapter5Clear = true; // 파이널은 5장 클리어 후 상태
+    game.flags = flags;
+    game.map = 'cozyhome';
+    const p = game.player;
+    p.x = 11; p.y = 13; p.px = 11 * TS; p.py = 13 * TS;
+    p.moving = false; p.dir = 'down';
+    save();
+  }
   function openClassMode(ret) {
     const cm = game.classmode;
     cm.ret = ret;
@@ -6444,7 +6625,8 @@
     if (cm.toast > 0) return; // 적용 안내 표시 중엔 입력 잠금
     if (cm.confirm) {
       if (justPressed('action')) {
-        if (cm.sel === COZY_SEL) applyCozyhomeClass();
+        if (cm.sel === FINAL_SEL) applyFinalClass();
+        else if (cm.sel === COZY_SEL) applyCozyhomeClass();
         else if (cm.sel === ARCADE_SEL) applyArcadeClass();
         else if (cm.sel === RUMOR_SEL) applyRumorStreetClass();
         else if (cm.sel === TILT_SEL) applyTiltStreetClass();
@@ -6491,7 +6673,9 @@
     const isRumor = cm.sel === RUMOR_SEL;
     const isArcade = cm.sel === ARCADE_SEL;
     const isCozy = cm.sel === COZY_SEL;
-    const selLabel = isCozy ? '5장 시작 상태 · 포근한 집 입구'
+    const isFinal = cm.sel === FINAL_SEL;
+    const selLabel = isFinal ? '파이널 시작 상태 · 포근한 집 안쪽 문 앞'
+      : isCozy ? '5장 시작 상태 · 포근한 집 입구'
       : isArcade ? '4장 시작 상태 · 반짝 아케이드 입구'
       : isRumor ? '3장 시작 상태 · 대문짝 신문사 입구'
       : isTilt ? '2장 시작 상태 · 기울어진 거리 입구'
@@ -6500,7 +6684,10 @@
     // 스테이지 선택기
     ctx.textAlign = 'center';
     ctx.fillStyle = themeAccent();
-    if (isCozy) {
+    if (isFinal) {
+      ctx.font = 'bold 30px monospace';
+      ctx.fillText('파이널 — 고요의 뜰 → 코어', LW / 2, 176);
+    } else if (isCozy) {
       ctx.font = 'bold 30px monospace';
       ctx.fillText('5장 — 포근한 집', LW / 2, 176);
     } else if (isArcade) {
@@ -6524,7 +6711,8 @@
     }
     ctx.fillStyle = '#fff';
     ctx.font = '15px monospace';
-    ctx.fillText(isCozy ? 'AI와의 관계 · 경계 설정 · 확인하는 용기 (구역 3개 → 루미 보스)'
+    ctx.fillText(isFinal ? '고요의 뜰(걷기) → 고요 보스 → 코어(여덟 의자·봉헌 퍼즐) → 영이'
+      : isCozy ? 'AI와의 관계 · 경계 설정 · 확인하는 용기 (구역 3개 → 루미 보스)'
       : isArcade ? '다크패턴 · 광고 · 2단계 인증 (구역 3개 → 반짝 보스)'
       : isRumor ? '가짜 뉴스 분별 · 출처 확인 · 정정 보도 (구역 3개 → 그럴싸 보스)'
       : isTilt ? '경청 · 필터버블 · 스스로 고르기 (구역 3개 → 기울 보스)'
@@ -6999,10 +7187,14 @@
       Math.round(p.px - cx), Math.round(p.py - cy - 6), SCALE, null, p.dir === 'right');
 
     if (game.puzzleRun) drawStalkers(cx, cy);
+    // 코어 — 여덟 개의 의자(안아 준 조각 수만큼 채워짐)
+    if (game.map === 'coreroom') drawCoreChairs(cx, cy);
 
     // 2장 구역 연출 — 어둠(꺼진 거리)·비네트(메아리 골목). HUD 아래에 깔린다.
     if (game.puzzleRun && game.puzzleRun.puzzle.type === 'lamps') drawDarkness(cx, cy);
     if (game.puzzleRun && game.puzzleRun.puzzle.type === 'voices') drawEchoVignette();
+    // 파이널 「고요의 뜰」 — 구역을 지날 때마다 화면이 한 단계씩 어두워진다(비네트 재사용)
+    drawQuietVignette();
 
     drawHud();
     if (!game.puzzleRun) drawObjectiveArrow();
@@ -7635,6 +7827,27 @@
     ctx.fillRect(d.box.x, d.box.y + d.box.h + 12, d.box.w * frac, 6);
   }
 
+  // 고요(보스) open 페이즈 고유 기믹 — 어둠 속, 하트 주변만 보인다(꺼진 거리의 비네트와
+  // 같은 방식으로 재사용). reduceFx면 균일한 옅은 딤으로 대체(광과민성 배려).
+  function drawDarkArenaVignette(b) {
+    const soul = b.arena.soul;
+    if (game.reduceFx) {
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(0, 0, LW, LH);
+      return;
+    }
+    const grad = ctx.createRadialGradient(soul.x, soul.y, 18, soul.x, soul.y, 90);
+    if (grad && grad.addColorStop) {
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(0.7, 'rgba(0,0,0,0.55)');
+      grad.addColorStop(1, 'rgba(0,0,0,0.88)');
+      ctx.fillStyle = grad;
+    } else {
+      ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    }
+    ctx.fillRect(0, 0, LW, LH);
+  }
+
   // 마음 조각 배틀 — 파도(탄막+조각)와 문(응답)을 한 상자 안에서 그린다.
   function drawPersuadeArena(b) {
     const arena = b.arena, box = arena.box;
@@ -7665,7 +7878,18 @@
       }
     }
 
+    // 고요(보스) — 어둠 속에서 하트 주변만 보인다(탄막은 어둠 밖에서 날아든다)
+    if (b.p.openMechanic === 'dark' && b.pState === 'open' && b.phase === 'wave') drawDarkArenaVignette(b);
+
     if (b.phase === 'wave') {
+      // 고요(보스) — 탄막이 나오기 전, 스폰을 한 번 깜빡여 예고한다
+      if (b.p.openMechanic === 'dark' && (b.wave.darkWarnT || 0) > 0) {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = Math.floor(game.time / 4) % 2 === 0 ? '#fff' : '#e07a5f';
+        ctx.font = 'bold 15px monospace';
+        ctx.fillText('…!', box.x + box.w / 2, box.y - 12);
+        ctx.textAlign = 'left';
+      }
       // 속마음 조각 ✦ (사라지기 직전 깜빡)
       ctx.textAlign = 'center';
       for (const f of b.wave.fragments) {
@@ -8079,6 +8303,9 @@
             '누군가 기억하는 한, 다시 만날 수 있었다.',
             '',
             '— 모두의 마음을 안아 준 진정한 수호자에게 —',
+            '',
+            '태블릿 화면 밖, 아침 해.',
+            '…옆에 박사님이 서 있다.',
           ],
           yeongi: true,
         },
@@ -8459,6 +8686,8 @@
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록
     persuadeAvail: () => (game.battle ? availableClaims(game.battle).map((c) => c.text) : []),
+    // 파이널 「고요의 뜰」 — 맵별 어둠 단계 확인용
+    QUIET_DIM_LEVEL,
   };
   frame();
 })();
