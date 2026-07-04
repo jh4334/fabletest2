@@ -1906,4 +1906,220 @@ check('3장 수업: 대문짝 신문사 입구에서 시작', g.map === 'rumorst
 check('3장 수업: chapter1Clear/chapter2Clear=true 세팅',
   g.flags.chapter1Clear === true && g.flags.chapter2Clear === true);
 
+// ==================== S4 「반짝 아케이드」 ====================
+const { EVIDENCE_CARDS } = vm.runInContext('({ EVIDENCE_CARDS })', sandbox);
+g.flags.visited.rumorstreet = true;
+g.flags.visited.arcade = true;
+g.flags.visited.roulettesquare = true;
+g.flags.visited.signupalley = true;
+g.flags.visited.backstage = true;
+g.flags.visited.yuhokstage = true;
+
+console.log('[84] 4장 「반짝 아케이드」 — 진입 게이트(chapter3Clear)');
+g.dialog = null; g.mode = 'world'; g.map = 'rumorstreet';
+g.flags.chapter3Clear = false;
+setPos(26, 10, 'right');
+hold('ArrowRight', 12);
+check('4장 입구 — chapter3Clear 전 잠김(거리에 남음)', g.map === 'rumorstreet' && g.mode === 'dialog');
+advanceDialog();
+g.flags.chapter3Clear = true;
+g.dialog = null; g.mode = 'world'; setPos(26, 10, 'right'); hold('ArrowRight', 12);
+check('chapter3Clear 후 아케이드 진입', g.map === 'arcade' && g.player.x === 11 && g.player.y === 14);
+
+console.log('[85] 아케이드 정문 — 열쇠 0/2일 때 잠김');
+g.dialog = null; g.mode = 'world'; setPos(11, 2, 'up'); hold('ArrowUp', 12);
+check('정문 잠김(0/2, 아케이드에 남음)', g.map === 'arcade' && g.mode === 'dialog' &&
+  g.dialog.lines.some((l) => /0\/2/.test(l)));
+advanceDialog();
+
+console.log('[86] 4장 구역③ 「백스테이지」 (0/2 열쇠) — 마스터키 함정 + 2단계 인증 + 복선 4호');
+g.dialog = null; g.mode = 'world'; setPos(11, 4, 'up'); hold('ArrowUp', 12);
+check('백스테이지 진입', g.map === 'backstage' && g.player.x === 9 && g.player.y === 1);
+check('진입 전 seenButtons 없음', !g.flags.seenButtons);
+setPos(2, 12, 'up'); tap('z');
+check('복선 4호 — 버튼 더미 한 줄', g.mode === 'dialog' && g.dialog.lines.some((l) => /접속 요청/.test(l)));
+advanceDialog();
+check('복선 seenButtons 기록', g.flags.seenButtons === true);
+// 수업 모드 점프로 evCards가 비어 있을 수 있으므로, 마스터키 함정(카드 도난) 검증을 위해
+// 카드 한 장을 보장해 둔다(실제 플레이에서는 이전 장 보상으로 항상 채워져 있다).
+if (!g.flags.evCards) g.flags.evCards = [];
+if (g.flags.evCards.length === 0) g.flags.evCards.push('ev_minimal');
+const s4CardsBefore = g.flags.evCards.length;
+const s4FirstCard = g.flags.evCards[0];
+setPos(5, 5, 'up'); tap('z');
+check('마스터키 함정 발동(카드 도난)', g.mode === 'dialog' && g.dialog.lines.some((l) => /사라졌다/.test(l)));
+advanceDialog();
+check('카드 한 장 도난(개수 -1)', g.flags.evCards.length === s4CardsBefore - 1);
+check('도난 카드 기록', g.flags.s4StolenCard === s4FirstCard);
+setPos(13, 5, 'up'); tap('z');
+check('2단계 인증 창구 — 본인 확인 선택지', g.mode === 'choice' && g.choice.options.length === 2);
+pickChoice(0); // "네, 접니다"
+check('인증 완료 — 카드 회수', g.mode === 'dialog' && g.dialog.lines.some((l) => /되찾았다/.test(l)));
+advanceDialog();
+check('도난 카드 원복', g.flags.evCards.length === s4CardsBefore && g.flags.s4StolenCard === null);
+setPos(9, 10, 'up'); tap('z');
+check('안쪽 문 — 0/2 열쇠라 잠김', g.mode === 'dialog' && g.dialog.lines.some((l) => /확보/.test(l)));
+advanceDialog();
+setPos(9, 10, 'down'); hold('ArrowDown', 30);
+check('아케이드로 복귀', g.map === 'arcade');
+
+console.log('[87] 4장 구역① 「룰렛 광장」 — 룰렛(미끼)+해지 단말(다크패턴)+비밀조각 열쇠');
+g.dialog = null; g.mode = 'world'; setPos(5, 4, 'up'); hold('ArrowUp', 12);
+check('룰렛 광장 진입', g.map === 'roulettesquare' && g.player.x === 9 && g.player.y === 1);
+check('진입 전 adStickers 0', g.flags.adStickers === 0);
+setPos(5, 4, 'up'); tap('z');
+check('룰렛① 스핀 — 당첨! 대사', g.mode === 'dialog' && g.dialog.lines.some((l) => /당첨/.test(l)));
+advanceDialog();
+check('광고 딱지 +1', g.flags.adStickers === 1);
+setPos(9, 4, 'up'); tap('z'); advanceDialog();
+setPos(13, 4, 'up'); tap('z'); advanceDialog();
+check('광고 딱지 누적 3', g.flags.adStickers === 3);
+setPos(5, 4, 'up'); tap('z'); advanceDialog(); // 재스핀(제한 없음)
+check('광고 딱지 4', g.flags.adStickers === 4);
+setPos(5, 4, 'up'); tap('z'); advanceDialog(); // 5번째 — 상한 확인
+check('광고 딱지 상한 4(더 안 늘어남)', g.flags.adStickers === 4);
+setPos(9, 7, 'up'); tap('z');
+check('해지 단말 — 다크패턴 선택지(큰 유지 vs 작은 해지)', g.mode === 'choice' && g.choice.options.length === 2);
+pickChoice(0); // 큼직한 「혜택 계속 받기」(기본 선택)
+check('혜택 유지 선택', g.mode === 'dialog');
+advanceDialog();
+check('딱지 그대로(다크패턴 — 유지해도 안 줄어듦)', g.flags.adStickers === 4);
+setPos(9, 7, 'up'); tap('z');
+pickChoice(1); // (구석의 작은 글씨) 해지
+check('해지 — 딱지 전부 제거', g.mode === 'dialog' && g.flags.adStickers === 0);
+advanceDialog();
+setPos(9, 10, 'up'); tap('z');
+check('창고 상자 클리어 → 아케이드 복귀 + ev_free + 비밀조각 열쇠', g.map === 'arcade' && !g.puzzleRun &&
+  g.flags.evCards.includes('ev_free') && g.flags.s4KeySecret === true);
+advanceDialog();
+setPos(11, 2, 'up'); hold('ArrowUp', 12);
+check('정문 여전히 잠김(1/2)', g.map === 'arcade' && g.mode === 'dialog' &&
+  g.dialog.lines.some((l) => /1\/2/.test(l)));
+advanceDialog();
+
+console.log('[88] 4장 구역② 「회원가입 골목」 — 갈림길 판별(오답=함정 되돌림+wrongTries)+본인표 열쇠');
+g.dialog = null; g.mode = 'world'; setPos(16, 4, 'up'); hold('ArrowUp', 12);
+check('회원가입 골목 진입', g.map === 'signupalley' && g.player.x === 9 && g.player.y === 1);
+setPos(9, 10, 'up'); tap('z');
+check('통과 전 본인 확인함 잠김', g.mode === 'dialog' && g.dialog.lines.some((l) => /먼저 갈림길/.test(l)));
+advanceDialog();
+setPos(9, 6, 'up'); tap('z');
+check('갈림길 표지판 오픈', g.mode === 'choice' && g.choice.options.length === 2);
+pickChoice(1); // www.arca-cle.com(오답) → 함정
+check('오답 — 함정 되돌림 대사', g.mode === 'dialog' && g.dialog.lines.some((l) => /함정에 걸렸다/.test(l)));
+advanceDialog();
+check('함정 되돌림 — 갈림길 입구로', g.player.x === 9 && g.player.y === 1);
+const plog4 = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
+check('오답이 wrongTries에 기록', plog4.signup.wrongTries >= 1);
+setPos(9, 6, 'up'); tap('z');
+pickChoice(0); // www.arca-de.com(정답)
+check('정답 — 통과', g.mode === 'dialog');
+advanceDialog();
+setPos(9, 10, 'up'); tap('z');
+check('본인 확인함 클리어 → 아케이드 복귀 + ev_twokeys + 본인표 열쇠', g.map === 'arcade' && !g.puzzleRun &&
+  g.flags.evCards.includes('ev_twokeys') && g.flags.s4KeyId === true);
+advanceDialog();
+
+console.log('[89] 4장 구역③ 재방문(2/2 열쇠) — 마스터키 무효화 + 안쪽 문 개방(ev_offstage)');
+g.dialog = null; g.mode = 'world'; setPos(11, 4, 'up'); hold('ArrowUp', 12);
+check('백스테이지 재진입', g.map === 'backstage');
+setPos(5, 5, 'up'); tap('z');
+check('마스터키 — 이제 필요 없음(2/2 열쇠)', g.mode === 'dialog' && g.dialog.lines.some((l) => /필요 없다/.test(l)));
+advanceDialog();
+setPos(9, 10, 'up'); tap('z');
+check('안쪽 문 개방 → ev_offstage + 아케이드 복귀', g.map === 'arcade' && !g.puzzleRun &&
+  g.flags.evCards.includes('ev_offstage'));
+advanceDialog();
+
+console.log('[90] 정문 개방(2/2 열쇠) + 반짝 마음 조각 배틀 — 콜백(chapter3Mercy)+tempt 기믹+승리');
+check('콜백 인트로 — 자비 경로에 콜백 한 줄', /이상한 애 출현/.test(PERSUADE.yuhok_boss.intro({ chapter3Mercy: true })));
+check('콜백 인트로 — 비자비 경로엔 콜백 없음', !/이상한 애 출현/.test(PERSUADE.yuhok_boss.intro({ chapter3Mercy: false })));
+g.flags.chapter3Mercy = true; // 콜백 조우 확인용
+g.dialog = null; g.mode = 'world'; g.map = 'arcade';
+setPos(11, 2, 'up'); hold('ArrowUp', 12);
+check('정문 개방(2/2 열쇠) → 반짝의 무대 진입', g.map === 'yuhokstage');
+setPos(7, 3, 'up'); tap('z');
+check('보스 조우 대화 시작', g.mode === 'dialog');
+check('콜백 인트로(자비)가 조우에 반영', g.dialog.lines.some((l) => /이상한 애 출현/.test(l)));
+advanceDialog();
+check('반짝 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'wave');
+check('스프라이트/도감 id는 yuhokmon', g.battle.monId === 'yuhokmon');
+check('설득 프로필 id는 yuhok_boss', g.battle.persuadeId === 'yuhok_boss');
+check('표시 이름은 반짝(persuadeId 계층)', g.battle.mon.name === '반짝');
+check('게이지 최대 120', g.battle.gaugeMax === 120);
+check('닫힘·게이지0·파도에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'wave');
+// 반짝 주장 4종 — 텍스트/패턴/카드/best 확인
+check('주장① 텍스트/카드(ev_free)', g.battle.p.claims[0].text.includes('공짜가 세상에서 제일 좋은 거야') &&
+  g.battle.p.claims[0].counters.includes('ev_free'));
+check('주장① 패턴 burst/280', g.battle.p.claims[0].attack.pattern === 'burst' && g.battle.p.claims[0].attack.dur === 280);
+check('주장② 텍스트/카드(ev_offstage)', g.battle.p.claims[1].text.includes('반짝이면 다들 남아 줘') &&
+  g.battle.p.claims[1].counters.includes('ev_offstage'));
+check('주장② 패턴 spiral/300', g.battle.p.claims[1].attack.pattern === 'spiral' && g.battle.p.claims[1].attack.dur === 300);
+check('주장③ 텍스트/카드(ev_twokeys)', g.battle.p.claims[2].text.includes('문은 하나면 충분하잖아') &&
+  g.battle.p.claims[2].counters.includes('ev_twokeys'));
+check('주장③ 패턴 zigzag/300', g.battle.p.claims[2].attack.pattern === 'zigzag' && g.battle.p.claims[2].attack.dur === 300);
+check('주장④ best=empathy·unlockAt 70·패턴 aimed/320', g.battle.p.claims[3].best === 'empathy' &&
+  g.battle.p.claims[3].unlockAt === 70 &&
+  g.battle.p.claims[3].attack.pattern === 'aimed' && g.battle.p.claims[3].attack.dur === 320);
+check('증거 카드 제목이 실제 EVIDENCE_CARDS와 일치', EVIDENCE_CARDS.ev_free.title === '공짜의 값' &&
+  EVIDENCE_CARDS.ev_twokeys.title === '두 개의 자물쇠' && EVIDENCE_CARDS.ev_offstage.title === '불 꺼진 무대');
+
+// openMechanic 'tempt' — open 페이즈 중 반짝이는 보상 아이템: 접촉=피해+광고 얼룩(역효과),
+// 240프레임 버티면 소멸+게이지+10+조명 하나 꺼짐(b.temptResisted, 파도-간 영속)
+g.battle.pState = 'open';
+step(61); // tempt.spawnTimer(60) 경과 → 아이템 스폰
+check('반짝 아이템 스폰(openMechanic tempt)', !!g.battle.wave.tempt.obj);
+const temptHpBefore = g.battle.playerHp;
+const temptStickersBefore = g.flags.adStickers;
+g.battle.arena.bullets.length = 0; g.battle.arena.inv = 0;
+g.battle.arena.soul.x = g.battle.wave.tempt.obj.x; g.battle.arena.soul.y = g.battle.wave.tempt.obj.y;
+step(1);
+check('접촉 시 피해(역효과)', g.battle.playerHp === temptHpBefore - 1);
+check('접촉 시 광고 딱지 +1(역효과)', g.flags.adStickers === temptStickersBefore + 1);
+check('접촉한 아이템 소멸', g.battle.wave.tempt.obj === null);
+step(61); // 재스폰
+check('새 반짝 아이템 재스폰', !!g.battle.wave.tempt.obj);
+g.battle.wave.tempt.obj.age = 239; // 240프레임 임박
+const temptGaugeBefore = g.battle.gauge;
+g.battle.arena.bullets.length = 0; g.battle.arena.inv = 999;
+g.battle.arena.soul.x = g.battle.arena.box.x + 8; g.battle.arena.soul.y = g.battle.arena.box.y + 8; // 접촉 방지
+step(1);
+check('240프레임 버팀 → 소멸+게이지+10+조명 하나 꺼짐(temptResisted 1/3)',
+  g.battle.wave.tempt.obj === null && g.battle.gauge === temptGaugeBefore + 10 && g.battle.temptResisted === 1);
+
+// 게이트 통과 → 마음의 선택 → 승리 → chapter4Clear
+// (tempt 버팀 보상 +10이 이미 게이지에 반영돼 있으므로, 그 위에 정답 문 통과分 +26이 더해진다)
+const gaugeBeforeGate = g.battle.gauge;
+g.battle.pState = 'shaken'; g.battle.claimIdx = 0;
+forceGates();
+enterDoor(true);
+check('정답 문 통과 (+26)', g.battle.gauge === gaugeBeforeGate + 26 && g.battle.phase === 'wave');
+g.battle.gauge = g.battle.gaugeMax; step(1);
+check('게이지 만충 → 마음의 선택', g.battle.phase === 'mercy');
+while (g.battle.cursor !== 0) tap('ArrowDown');
+tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
+tap('z');
+check('승리 대화 시작', g.mode === 'dialog');
+advanceDialog();
+check('4장 클리어 플래그', g.flags.chapter4Clear === true);
+check('4장 자비 플래그(다음 장 콜백용)', g.flags.chapter4Mercy === true);
+check('보스 승리 후 아케이드 정문 앞 복귀', g.map === 'arcade' && g.player.x === 11 && g.player.y === 2);
+check('v1 정원 유혹몬 처치 플래그 오염 없음', g.flags.defeated.yuhokmon === false);
+check('보스는 도감 순서에 없음', !DEX_ORDER.includes('yuhok_boss'));
+
+console.log('[91] 수업 모드 — 「4장 — 반짝 아케이드」 특별 항목');
+g.dialog = null; g.mode = 'world';
+g.classmode.ret = 'world'; g.classmode.sel = 1; g.classmode.confirm = false; g.classmode.toast = 0;
+g.mode = 'classmode';
+tap('ArrowUp'); // 1 → 0 (TRACE_SEL)
+tap('ArrowUp'); // 0 → -1 (TILT_SEL)
+tap('ArrowUp'); // -1 → -2 (RUMOR_SEL)
+tap('ArrowUp'); // -2 → -3 (ARCADE_SEL)
+check('수업 목록에 4장 특별 항목(ARCADE_SEL=-3) 진입', g.classmode.sel === -3);
+tap('z'); check('확인 단계', g.classmode.confirm === true);
+tap('z'); // 적용 → 4장 시작 + 반짝 아케이드 입구
+check('4장 수업: 반짝 아케이드 입구에서 시작', g.map === 'arcade' && g.player.x === 11 && g.player.y === 14);
+check('4장 수업: chapter1~3Clear=true 세팅',
+  g.flags.chapter1Clear === true && g.flags.chapter2Clear === true && g.flags.chapter3Clear === true);
+
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

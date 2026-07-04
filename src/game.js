@@ -142,11 +142,18 @@
       chapter2Mercy: false, // 2장 보스를 자비로 되돌렸는가 (3장 콜백 인트로용)
       chapter3Clear: false, // 3장 보스(그럴싸) 설득 완료
       chapter3Mercy: false, // 3장 보스를 자비로 되돌렸는가
+      chapter4Clear: false, // 4장 보스(반짝) 설득 완료
+      chapter4Mercy: false, // 4장 보스를 자비로 되돌렸는가 (다음 장 콜백용)
       seenPhoto1: false,   // 스토리 복선 — 주인의 방 서랍의 낡은 사진을 봤다
       seenPhoto2: false,   // 스토리 복선 2호 — 표본 창고 모서리 선반의 ×표 사진
       seenArticle: false,  // 스토리 복선 3호 — 편집실 미송출 기사함
+      seenButtons: false,  // 스토리 복선 4호 — 백스테이지 구석의 버튼 더미
       rumorFixed: false,   // 3장 허브 해제 — 송출탑 정정 보도 완료(소문 거리 개방)
       profConfession: false, // 박사 고백 이벤트 1회 트리거 (chapter3Clear 후 마을 진입)
+      s4KeySecret: false,  // 4장 열쇠① 비밀조각(구역① 룰렛 광장 클리어)
+      s4KeyId: false,      // 4장 열쇠② 본인표(구역② 회원가입 골목 클리어)
+      s4StolenCard: null,  // 백스테이지 마스터키 함정 — 일시 도난된 증거 카드 id
+      adStickers: 0,       // 광고 딱지 누적(0~4) — HUD 가장자리 오염, 해지 단말로 제거
     };
   }
 
@@ -1539,6 +1546,15 @@
   function s3ClearCount() {
     return S3_ZONE_PUZZLES.filter((id) => isPuzzleCleared(id)).length;
   }
+  // 4장 정문 게이트 — 열쇠 두 개(비밀조각·본인표)를 모두 모아야 열린다 (needS4Keys)
+  function s4KeyCount() {
+    return (game.flags.s4KeySecret ? 1 : 0) + (game.flags.s4KeyId ? 1 : 0);
+  }
+  // 광고 딱지 HUD 오염 — 룰렛 스핀·반짝 보스 tempt 접촉마다 하나씩 붙는다(최대 4개).
+  // 해지 단말(구역① 룰렛 광장)로만 전부 제거된다.
+  function addAdSticker() {
+    game.flags.adStickers = Math.min(4, (game.flags.adStickers || 0) + 1);
+  }
 
   // 방 입장/퇴장에 맞춰 런타임 상태를 맞춘다 (checkWarp에서 호출)
   function syncPuzzleRun() {
@@ -1592,6 +1608,18 @@
     } else if (puzzle.type === 'broadcast') {
       // 3장 3층: 정정 보도 3단계 — stage 0(정정문)→1(출처)→2(레버)
       run.stage = 0;
+    } else if (puzzle.type === 'roulette') {
+      // 4장 구역①: 룰렛(미끼) + 창고 열쇠
+      run.spins = 0;    // 룰렛을 돌린 횟수(광고 딱지 누적 — 순전히 미끼)
+      run.gotKey = false;
+    } else if (puzzle.type === 'signup') {
+      // 4장 구역②: 갈림길 표지판 통과 여부 + 오답 횟수
+      run.passed = false;
+      run.wrong = 0;
+    } else if (puzzle.type === 'backstage') {
+      // 4장 구역③: 마스터키 함정 사용 여부 + 안쪽 문 개방 여부
+      run.trapUsed = false;
+      run.opened = false;
     } else {
       // 구역①(traces): 정보 토큰 방
       run.held = { nickname: true, school: true, address: true, phone: true, face: true };
@@ -1619,6 +1647,9 @@
     if (run.puzzle.type === 'tips') return 'tips';
     if (run.puzzle.type === 'compare') return 'compare';
     if (run.puzzle.type === 'broadcast') return ['correct', 'source', 'lever'][run.stage] || 'lever';
+    if (run.puzzle.type === 'roulette') return 'roulette';
+    if (run.puzzle.type === 'signup') return 'signup';
+    if (run.puzzle.type === 'backstage') return 'backstage';
     const spent = givenTokens(run);
     if (spent.length === 0) return 'tokens';
     if (spent.filter((k) => k !== 'nickname').length >= 3) return 'eraser';
@@ -1652,6 +1683,8 @@
     if (run.puzzle.type === 'voices' || run.puzzle.type === 'retrain' || run.puzzle.type === 'lamps') return;
     // 3장 구역들도 조사·선택으로만 진행 (매 프레임 갱신할 물체 없음)
     if (run.puzzle.type === 'tips' || run.puzzle.type === 'compare' || run.puzzle.type === 'broadcast') return;
+    // 4장 구역들도 조사·선택으로만 진행 (매 프레임 갱신할 물체 없음)
+    if (run.puzzle.type === 'roulette' || run.puzzle.type === 'signup' || run.puzzle.type === 'backstage') return;
     // ── traces: 스토커 추격(반 속도, walkable 체크) + 접촉 처리 ──
     if (boardCount(run) > run.maxBoard) run.maxBoard = boardCount(run); // 최고치 추적
     const p = game.player;
@@ -1751,6 +1784,26 @@
       if (puz.lever.x === x && puz.lever.y === y) return { kind: 'blever' };
       return null;
     }
+    if (puz.type === 'roulette') {
+      for (let i = 0; i < puz.roulettes.length; i++) {
+        const r = puz.roulettes[i];
+        if (r.x === x && r.y === y) return { kind: 'roulette', idx: i };
+      }
+      if (puz.unsub.x === x && puz.unsub.y === y) return { kind: 'unsub' };
+      if (puz.chest.x === x && puz.chest.y === y) return { kind: 'chest' };
+      return null;
+    }
+    if (puz.type === 'signup') {
+      if (puz.fork.x === x && puz.fork.y === y) return { kind: 'fork' };
+      if (puz.idchest.x === x && puz.idchest.y === y) return { kind: 'idchest' };
+      return null;
+    }
+    if (puz.type === 'backstage') {
+      if (puz.masterkey.x === x && puz.masterkey.y === y) return { kind: 'masterkey' };
+      if (puz.authterm.x === x && puz.authterm.y === y) return { kind: 'authterm' };
+      if (puz.door.x === x && puz.door.y === y) return { kind: 'offstagedoor' };
+      return null;
+    }
     for (const t of puz.terminals) if (t.x === x && t.y === y) return { kind: 'terminal', ref: t };
     if (puz.eraser.x === x && puz.eraser.y === y) return { kind: 'eraser' };
     if (puz.exits.vip.x === x && puz.exits.vip.y === y) return { kind: 'vip' };
@@ -1779,6 +1832,14 @@
     else if (obj.kind === 'bterm1') openBroadcastTerm1();
     else if (obj.kind === 'bterm2') openBroadcastTerm2();
     else if (obj.kind === 'blever') openBroadcastLever();
+    else if (obj.kind === 'roulette') openRoulette(obj.idx);
+    else if (obj.kind === 'unsub') openUnsub();
+    else if (obj.kind === 'chest') openChest();
+    else if (obj.kind === 'fork') openFork();
+    else if (obj.kind === 'idchest') openIdChest();
+    else if (obj.kind === 'masterkey') openMasterKey();
+    else if (obj.kind === 'authterm') openAuthTerm();
+    else if (obj.kind === 'offstagedoor') openOffstageDoor();
     return true;
   }
   // 2장 구역②: 반례 사진 선반 조사 → 수집 (라벨 개그 포함)
@@ -1945,6 +2006,149 @@
       else if (i > 0) startDialog(['(레버에서 손을 뗐다)'], puz.lever.name);
     });
   }
+  // ── 4장 구역① 「룰렛 광장」 ───────────────────────────────────────
+  // 룰렛 단말 — 돌리면 "당첨!"과 함께 광고 딱지가 붙는다. 얻는 것은 없다(순전히 미끼).
+  function openRoulette(idx) {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    const r = puz.roulettes[idx];
+    run.spins = (run.spins || 0) + 1;
+    addAdSticker();
+    Sound.select();
+    startDialog([
+      `${r.name}: 드르륵드르륵… "당첨!"`,
+      '반짝이는 광고 딱지가\n화면 가장자리에 하나 더 붙었다.',
+    ], r.name);
+  }
+  // 해지 단말 — 큰 「혜택 유지」 vs 작은 「해지」(다크패턴 체험). 해지해야 딱지가 사라진다.
+  function openUnsub() {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    startChoice(puz.unsub.ask, ['큼직한 「혜택 계속 받기」', '(구석의 작은 글씨) 해지'], (i) => {
+      if (i === 0) startDialog([puz.unsub.keepReply], puz.unsub.name);
+      else if (i === 1) {
+        game.flags.adStickers = 0;
+        save();
+        startDialog([puz.unsub.cancelReply], puz.unsub.name);
+      } else startDialog(['(창을 닫았다)'], puz.unsub.name);
+    });
+  }
+  // 룰렛 뒤 창고 상자 — 비밀조각 열쇠(진짜 목표)
+  function openChest() {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    if (run.gotKey) { startDialog(['창고 안, 텅 빈 상자뿐이다.'], puz.chest.name); return; }
+    run.gotKey = true;
+    Sound.correct();
+    clearPuzzle(run);
+  }
+
+  // ── 4장 구역② 「회원가입 골목」 ──────────────────────────────────
+  // 갈림길 표지판 — 진짜 도메인을 고른다. 오답이면 함정에 걸려 입구로 되돌아간다.
+  function openFork() {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    startChoice(puz.fork.ask, puz.fork.options.map((o) => o.label), (i) => {
+      if (i < 0) { startDialog(['(팻말 앞에서 잠시 멈췄다)'], puz.fork.name); return; }
+      const opt = puz.fork.options[i];
+      if (opt.ok) {
+        run.passed = true;
+        Sound.correct();
+        startDialog([puz.fork.okReply], puz.fork.name);
+      } else {
+        run.wrong = (run.wrong || 0) + 1;
+        recordPuzzleWrong(run.id);
+        run.flashT = 12;
+        Sound.wrong();
+        setPos4(9, 1); // 함정 되돌림 — 갈림길 입구로
+        startDialog([puz.fork.trapReply], puz.fork.name);
+      }
+    });
+  }
+  // 플레이어 위치를 즉시 재배치(함정 되돌림) — 방탈출 좌표 전용 헬퍼
+  function setPos4(x, y) {
+    const p = game.player;
+    p.x = x; p.y = y; p.px = x * TS; p.py = y * TS; p.moving = false;
+  }
+  // 골목 끝 본인 확인함 — 갈림길을 통과해야 본인표 열쇠를 내준다
+  function openIdChest() {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    if (!run.passed) { startDialog([puz.idchest.lockedReply], puz.idchest.name); return; }
+    Sound.correct();
+    clearPuzzle(run);
+  }
+
+  // ── 4장 구역③ 「백스테이지」 ─────────────────────────────────────
+  // 빛나는 마스터키 — 지름길처럼 보이지만 함정이다. 카드 한 장을 일시적으로 훔쳐 간다.
+  function openMasterKey() {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    if (game.flags.s4KeySecret && game.flags.s4KeyId) {
+      startDialog(['…이제 이건 필요 없다.\n진짜 열쇠가 이미 두 개 다 있으니까.'], puz.masterkey.name);
+      return;
+    }
+    if (run.trapUsed) {
+      startDialog(['마스터키는 이미 한 번 써 봤다.\n…다신 안 속는다.'], puz.masterkey.name);
+      return;
+    }
+    run.trapUsed = true;
+    const owned = (game.flags.evCards || []).slice();
+    if (owned.length > 0 && !game.flags.s4StolenCard) {
+      const stolen = owned[0];
+      game.flags.evCards = game.flags.evCards.filter((id) => id !== stolen);
+      game.flags.s4StolenCard = stolen;
+      save();
+      Sound.wrong();
+      startDialog([
+        '빛나는 마스터키를 집어 들자, 문이\n스르륵… 열리려는 듯하더니,',
+        `어느새 증거 카드 「${EVIDENCE_CARDS[stolen].title}」가 사라졌다!`,
+        '…이거, 공짜가 아니었구나.\n(2단계 인증 창구에서 되찾을 수 있을지도)',
+      ], puz.masterkey.name);
+    } else {
+      startDialog([
+        '빛나는 마스터키를 집어 들자, 문이\n스르륵… 열리려는 듯하더니,',
+        '…아무 일도 일어나지 않았다.\n(가진 카드가 없어서 다행이다)',
+      ], puz.masterkey.name);
+    }
+  }
+  // 2단계 인증 창구 — 마스터키에 도난당한 카드를 되찾는다
+  function openAuthTerm() {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    if (!game.flags.s4StolenCard) {
+      startDialog(['2단계 인증 창구: "확인할\n도난 내역이 없어요."'], puz.authterm.name);
+      return;
+    }
+    startChoice('2단계 인증 창구: "본인 확인\n질문에 답해 주세요 — 진짜 나 맞나요?"',
+      ['네, 접니다', '아니요'], (i) => {
+        if (i === 0) {
+          const card = game.flags.s4StolenCard;
+          if (!game.flags.evCards) game.flags.evCards = [];
+          if (!game.flags.evCards.includes(card)) game.flags.evCards.push(card);
+          game.flags.s4StolenCard = null;
+          save();
+          Sound.correct();
+          startDialog([`인증 완료.\n증거 카드 「${EVIDENCE_CARDS[card].title}」를 되찾았다!`], puz.authterm.name);
+        } else {
+          startDialog(['"…그럼 곤란한데요." (인증 보류)'], puz.authterm.name);
+        }
+      });
+  }
+  // 안쪽 잠긴 문 — 정석은 열쇠 두 개(비밀조각·본인표). 열리면 반짝의 무대 뒤(ev_offstage) 클리어.
+  function openOffstageDoor() {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    if (!(game.flags.s4KeySecret && game.flags.s4KeyId)) {
+      startDialog([puz.door.name + ' 앞이다. 잠겨 있다.',
+        `열쇠 ${s4KeyCount()}/2 확보. 정석대로,\n두 열쇠를 모두 챙겨 오자.`], puz.door.name);
+      return;
+    }
+    run.opened = true;
+    Sound.correct();
+    clearPuzzle(run);
+  }
+
   // 2장 구역①: 다른 목소리 NPC 대화 → 수집 (interact의 NPC 분기에서 호출)
   function collectVoice(npcId) {
     const run = game.puzzleRun;
@@ -2076,6 +2280,7 @@
     const isS1 = S1_ZONE_PUZZLES.includes(run.id);
     const isS2 = S2_ZONE_PUZZLES.includes(run.id);
     const isS3 = S3_ZONE_PUZZLES.includes(run.id);
+    const isS4 = S4_ZONE_PUZZLES.includes(run.id);
     const locksBefore = isS2 ? s2ClearCount() : isS1 ? s1LockCount() : 0;
     recordPuzzleClear(run.id, run.timeFrames);
     // 접수처에서 내보낸 정보 최고치를 기록 (보스 콜백 인트로 분기용) — 이전 최고치와 비교해 유지
@@ -2084,6 +2289,9 @@
     }
     // 3장 3층(송출탑) 클리어 = 정정 보도 완료 — 허브(소문 거리)가 해제되는 순간
     if (run.id === 'broadcast') game.flags.rumorFixed = true;
+    // 4장 구역①·② 클리어 = 열쇠 획득 (비밀조각·본인표) — 정문(needS4Keys) 개방 조건
+    if (run.id === 'roulette') game.flags.s4KeySecret = true;
+    if (run.id === 'signup') game.flags.s4KeyId = true;
     game.puzzleRun = null;
     // 복귀 지점 (데이터화된 exitTo). 기본은 거리 입구 앞.
     const exit = puz.exitTo || { map: 'freestreet', x: 14, y: 17 };
@@ -2114,6 +2322,11 @@
       lines.push(n >= 3
         ? '거리 쪽에서 함성이 들린다!\n상점 문들이 하나둘 열리기 시작한다.'
         : `신문사 ${n}/3층을 정리했다.`);
+    } else if (isS4 && (run.id === 'roulette' || run.id === 'signup')) {
+      const n = s4KeyCount();
+      lines.push(n >= 2
+        ? '…열쇠가 모두 모였다!\n아케이드 정문 안쪽에서\n반응하는 소리가 들린다.'
+        : `열쇠를 하나 손에 넣었다. (${n}/2)`);
     }
     save();
     startDialog(lines, puz.title);
@@ -2198,7 +2411,8 @@
   }
   const HINT_STEP_LABEL = { tokens: '정보 토큰', board: '게시판', eraser: '지우개', exit: '출구',
     copies: '떠도는 조각', levers: '차단 레버',
-    voices: '다른 목소리', retrain: '반례 사진', lamps: '램프' };
+    voices: '다른 목소리', retrain: '반례 사진', lamps: '램프',
+    roulette: '룰렛 광장', signup: '회원가입 골목', backstage: '백스테이지' };
   function drawHint() {
     drawWorld();
     ctx.fillStyle = 'rgba(0,0,0,0.72)';
@@ -2356,6 +2570,51 @@
       label(lvn, lvy, lv.name, run.stage >= 2 ? '#ffd644' : '#888');
       return;
     }
+    if (puz.type === 'roulette') {
+      // 4장 구역①: 룰렛 단말 3개 + 해지 단말 + 창고 상자
+      for (const r of puz.roulettes) {
+        const nx = Math.round(r.x * TS - cx), ny = Math.round(r.y * TS - cy - 6);
+        box(nx, ny + bob, '#8a2a6a', '◎', '#ffb0e6');
+        label(nx, ny, r.name, '#ffb0e6');
+      }
+      const u = puz.unsub;
+      box(Math.round(u.x * TS - cx), Math.round(u.y * TS - cy - 6), '#2a4a6a', '⛔', '#a8d8ff');
+      label(Math.round(u.x * TS - cx), Math.round(u.y * TS - cy - 6), u.name, '#a8d8ff');
+      const c = puz.chest;
+      box(Math.round(c.x * TS - cx), Math.round(c.y * TS - cy - 6), run.gotKey ? '#3a3a3a' : '#6a4a2a',
+        run.gotKey ? '·' : '🔑', run.gotKey ? '#666' : '#ffd644');
+      label(Math.round(c.x * TS - cx), Math.round(c.y * TS - cy - 6), run.gotKey ? '(빈 상자)' : c.name,
+        run.gotKey ? '#888' : '#ffd644');
+      return;
+    }
+    if (puz.type === 'signup') {
+      // 4장 구역②: 갈림길 표지판 + 본인 확인함
+      const f = puz.fork;
+      box(Math.round(f.x * TS - cx), Math.round(f.y * TS - cy - 6), run.passed ? '#3a3a3a' : '#6a5a2a',
+        run.passed ? '✓' : '⑂', run.passed ? '#8de08d' : '#ffe6a0');
+      label(Math.round(f.x * TS - cx), Math.round(f.y * TS - cy - 6), f.name, run.passed ? '#8de08d' : '#ffe6a0');
+      const ic = puz.idchest;
+      box(Math.round(ic.x * TS - cx), Math.round(ic.y * TS - cy - 6), run.passed ? '#6a4a2a' : '#3a3a3a',
+        run.passed ? '🔑' : '🔒', run.passed ? '#ffd644' : '#888');
+      label(Math.round(ic.x * TS - cx), Math.round(ic.y * TS - cy - 6), ic.name, run.passed ? '#ffd644' : '#888');
+      return;
+    }
+    if (puz.type === 'backstage') {
+      // 4장 구역③: 마스터키(함정) + 2단계 인증 창구 + 안쪽 문
+      const mk = puz.masterkey;
+      box(Math.round(mk.x * TS - cx), Math.round(mk.y * TS - cy - 6) + bob, run.trapUsed ? '#3a3a3a' : '#8a6a20',
+        '🔑', run.trapUsed ? '#888' : '#ffd644');
+      label(Math.round(mk.x * TS - cx), Math.round(mk.y * TS - cy - 6), mk.name, run.trapUsed ? '#888' : '#ffd644');
+      const at = puz.authterm;
+      box(Math.round(at.x * TS - cx), Math.round(at.y * TS - cy - 6), '#2a4a6a', '②', '#a8d8ff');
+      label(Math.round(at.x * TS - cx), Math.round(at.y * TS - cy - 6), at.name, '#a8d8ff');
+      const twoKeys = game.flags.s4KeySecret && game.flags.s4KeyId;
+      const dr = puz.door;
+      box(Math.round(dr.x * TS - cx), Math.round(dr.y * TS - cy - 6), twoKeys ? '#2a5a3a' : '#3a3a3a',
+        twoKeys ? '🚪' : '🔒', twoKeys ? '#8de08d' : '#889');
+      label(Math.round(dr.x * TS - cx), Math.round(dr.y * TS - cy - 6), dr.name, twoKeys ? '#8de08d' : '#889');
+      return;
+    }
     for (const t of puz.terminals) {
       const nx = Math.round(t.x * TS - cx), ny = Math.round(t.y * TS - cy - 6);
       const given = run.given.includes(t.require) || (t.share && run.boardFace);
@@ -2503,6 +2762,16 @@
     } else if (run.puzzle.type === 'broadcast') {
       title = `단계 ${Math.min(run.stage + 1, 3)}/3`;
       detail = ['정정문을 고르자', '출처를 붙이자', '레버를 당기자'][run.stage] || '레버를 당기자';
+    } else if (run.puzzle.type === 'roulette') {
+      title = `광고 딱지 ${game.flags.adStickers || 0}/4`;
+      detail = run.gotKey ? '비밀조각 열쇠를 찾았다!' : '룰렛 뒤 창고에서 열쇠를 찾자';
+      danger = (game.flags.adStickers || 0) >= 3;
+    } else if (run.puzzle.type === 'signup') {
+      title = run.passed ? '갈림길 통과' : '갈림길 판별 전';
+      detail = run.passed ? '본인 확인함에서 열쇠를 받자' : '진짜 도메인을 가려내자';
+    } else if (run.puzzle.type === 'backstage') {
+      title = `열쇠 ${s4KeyCount()}/2`;
+      detail = run.opened ? '무대 뒤로 들어섰다' : '진짜 열쇠 두 개로 안쪽 문을 열자';
     } else {
       const given = givenTokens(run);
       const nonNick = given.filter((k) => k !== 'nickname');
@@ -2584,6 +2853,15 @@
           '그럴싸: "요즘은 모르면 모른다고 써.\n…생각보다, 독자들이 더 믿어주더라."',
           '그럴싸: "[정정] 어제의 나를 정정합니다.\n…이 문장, 마음에 들어."',
         ], '그럴싸');
+        return;
+      }
+      // 4장 보스(반짝) — 아직 설득하지 않았으면 마음 조각 배틀로, 이후엔 되돌린 친구로
+      if (npc.id === 'yuhok_boss') {
+        if (!game.flags.chapter4Clear) { startBattleIntro('yuhokmon', 'yuhok_boss'); return; }
+        startDialog([
+          '반짝: "요즘은 딱지도 안 붙어.\n…진짜만 켜니까, 오히려 편해."',
+          '반짝: "불 꺼진 나도 봐 줬잖아.\n…그게, 제일 반짝였어."',
+        ], '반짝');
         return;
       }
       // 3장 1층 헛소 — 제보함 진행 상태에 따라 대사가 달라진다
@@ -2819,6 +3097,13 @@
       pushBack();
       Sound.bump();
       startDialog([w.lockText || '문이 잠겨 있다.', `저울 기울기 ${3 - s2ClearCount()}/3 — 골목을 더 살펴보자.`]);
+      return;
+    }
+    // 4장 정문 게이트 — 열쇠 두 개(비밀조각·본인표)를 모두 모아야 열린다
+    if (w.needS4Keys && s4KeyCount() < w.needS4Keys) {
+      pushBack();
+      Sound.bump();
+      startDialog([w.lockText || '문이 잠겨 있다.', `열쇠 ${s4KeyCount()}/${w.needS4Keys} 확보.`]);
       return;
     }
     game.map = w.to;
@@ -3400,6 +3685,35 @@
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.rumorstreet.song));
   }
 
+  // 4장 보스 승리 — chapter4Clear 플래그 + 4장 마무리 대사 후 아케이드 정문 앞(허브)으로 복귀.
+  // v1 정원 유혹몬(퀴즈)과 별개이므로 defeated.yuhokmon/도감은 건드리지 않는다.
+  function winChapter4Boss() {
+    const b = game.battle;
+    const mon = b.mon;
+    game.flags.chapter4Clear = true;
+    game.flags.chapter4Mercy = (b.mercyChoiceKind === 'mercy'); // 다음 장 콜백 인트로용
+    if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
+    save();
+    checkCosmeticUnlocks(game.currentSlot);
+    game.battle = null;
+    game.mode = 'world';
+    // 아케이드 정문 앞(허브)으로 복귀
+    game.map = 'arcade';
+    const p = game.player;
+    p.x = 11; p.y = 2; p.px = 11 * TS; p.py = 2 * TS; p.moving = false; p.dir = 'down';
+    held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
+    stickDir = null; stickRepeatFrames = 0;
+    Sound.badge();
+    Sound.playSong(MAPS.arcade.song);
+    const lines = [mon.win];
+    if (b.mercyChoiceKind === 'mercy') {
+      lines.push('💛 반짝의 반짝임 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!');
+    }
+    lines.push('☆ 4장 클리어! ☆\n무대의 네온사인이\n하나둘 차분한 빛으로 바뀌었다.');
+    lines.push('반짝이 남은 광고 딱지들을\n하나씩 떼어 내기 시작했다.');
+    startDialog(lines, mon.name, () => Sound.playSong(MAPS.arcade.song));
+  }
+
   function winBattle() {
     const b = game.battle;
     const mon = b.mon;
@@ -3407,6 +3721,7 @@
     if (b.persuadeId === 'sujipmon_boss') { winChapter1Boss(); return; }
     if (b.persuadeId === 'pyeonhyang_boss') { winChapter2Boss(); return; }
     if (b.persuadeId === 'hwangak_boss') { winChapter3Boss(); return; }
+    if (b.persuadeId === 'yuhok_boss') { winChapter4Boss(); return; }
     game.flags.defeated[b.monId] = true;
     recordDexSeen(b.monId, b.mercyChoiceKind);
     if (!game.flags.mercyChoice) game.flags.mercyChoice = {};
@@ -3668,6 +3983,9 @@
       tilt: { orb: null, deliveries: b.tiltDeliveries || 0, spawnTimer: 90,
         drift: [0.9, 0.6, 0.3, 0][Math.min(b.tiltDeliveries || 0, 3)],
         plate: { x: box.x + box.w - 18, y: box.y + box.h / 2 } },
+      // 반짝(보스) open 페이즈 고유 기믹 — 반짝이는 보상 아이템: 건드리면 역효과, 240프레임
+      // 버티면 소멸+보상. 버틴 횟수(resisted)는 파도가 바뀌어도 이어진다(최대 3).
+      tempt: { obj: null, resisted: b.temptResisted || 0, spawnTimer: 60 },
     };
     if (game.tts) Speech.speak(claim.text);
   }
@@ -3758,6 +4076,11 @@
     if (b.p.openMechanic === 'parcel' && b.pState === 'open') updateParcel(b);
     // 기울(보스) open 페이즈 — 기울어지는 상자: 「반례 구슬」 운반 기믹
     if (tiltActive) updateTilt(b);
+    // 반짝(보스) open 페이즈 — 반짝이는 보상 아이템: 접촉=역효과, 버티면 보상(피해로 탈진 가능)
+    if (b.p.openMechanic === 'tempt' && b.pState === 'open') {
+      updateTempt(b);
+      if (!game.battle) return; // 접촉 피해로 탈진했으면 여기서 중단
+    }
 
     if (b.gauge >= b.gaugeMax) { persuadeTriumph(); return; }
 
@@ -3825,6 +4148,49 @@
         Sound.correct();
         persuadeGaugeSync(b);
       }
+    }
+  }
+  // 반짝(보스) open 페이즈 고유 기믹 — 반짝이는 보상 아이템: 240프레임 동안 건드리지
+  // 않고 버티면 소멸+게이지 +10+조명 하나 꺼짐(최대 3회). 접촉하면 피해+광고 얼룩(역효과).
+  const TEMPT_SURVIVE_FRAMES = 240;
+  function updateTempt(b) {
+    const w = b.wave, tp = w.tempt, arena = b.arena, box = arena.box;
+    if (!tp.obj) {
+      tp.spawnTimer -= 1;
+      if (tp.spawnTimer <= 0) {
+        tp.obj = {
+          x: box.x + 30 + Math.random() * (box.w - 60),
+          y: box.y + 30 + Math.random() * (box.h - 60),
+          age: 0,
+        };
+      }
+      return;
+    }
+    tp.obj.age += 1;
+    const dx = tp.obj.x - arena.soul.x, dy = tp.obj.y - arena.soul.y;
+    if (dx * dx + dy * dy < (SOUL_R + 10) * (SOUL_R + 10)) {
+      // 접촉 — 역효과: 피해 + 광고 얼룩
+      tp.obj = null;
+      tp.spawnTimer = 60;
+      b.playerHp = Math.max(0, b.playerHp - 1);
+      arena.inv = 42; b.flash = 12;
+      addAdSticker();
+      pushFloat('반짝: "거봐, 반짝이는 게 좋잖아!"\n(광고 얼룩이 하나 더 붙었다!)');
+      Sound.bump();
+      if (b.playerHp <= 0) { persuadeExhaust(); return; }
+      return;
+    }
+    if (tp.obj.age >= TEMPT_SURVIVE_FRAMES) {
+      // 버텨 냄 — 소멸 + 보상(게이지 +10, 조명 하나 꺼짐, 최대 3회)
+      tp.obj = null;
+      tp.spawnTimer = 60;
+      tp.resisted = Math.min(3, tp.resisted + 1);
+      b.temptResisted = tp.resisted;
+      b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax);
+      pushFloat((b.p.temptReply || '…버텼다.') + `\n(조명이 하나 꺼졌다! ${tp.resisted}/3)`);
+      if (tp.resisted >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3회 → 만충 직전
+      Sound.correct();
+      persuadeGaugeSync(b);
     }
   }
 
@@ -5746,7 +6112,9 @@
   const TILT_SEL = -1;
   // 3장 「대문짝 신문사」 수업 특별 항목 (sel = -2)
   const RUMOR_SEL = -2;
-  const MIN_SEL = RUMOR_SEL; // 선택기 하한
+  // 4장 「반짝 아케이드」 수업 특별 항목 (sel = -3)
+  const ARCADE_SEL = -3;
+  const MIN_SEL = ARCADE_SEL; // 선택기 하한
   // 1장 시작 상태로 맞추고, 전부 공짜 거리 입구에 서서 시작한다.
   function applyTraceRoomClass() {
     const flags = setupStageFlags(1);
@@ -5780,6 +6148,19 @@
     p.moving = false; p.dir = 'up';
     save();
   }
+  // 4장 시작 상태(3장 클리어 직후)로 맞추고, 반짝 아케이드 입구에 서서 시작한다.
+  function applyArcadeClass() {
+    const flags = setupStageFlags(1);
+    flags.chapter1Clear = true;
+    flags.chapter2Clear = true;
+    flags.chapter3Clear = true; // 4장은 3장 클리어 후 상태
+    game.flags = flags;
+    game.map = 'arcade';
+    const p = game.player;
+    p.x = 11; p.y = 14; p.px = 11 * TS; p.py = 14 * TS;
+    p.moving = false; p.dir = 'up';
+    save();
+  }
   function openClassMode(ret) {
     const cm = game.classmode;
     cm.ret = ret;
@@ -5799,7 +6180,8 @@
     if (cm.toast > 0) return; // 적용 안내 표시 중엔 입력 잠금
     if (cm.confirm) {
       if (justPressed('action')) {
-        if (cm.sel === RUMOR_SEL) applyRumorStreetClass();
+        if (cm.sel === ARCADE_SEL) applyArcadeClass();
+        else if (cm.sel === RUMOR_SEL) applyRumorStreetClass();
         else if (cm.sel === TILT_SEL) applyTiltStreetClass();
         else if (cm.sel === TRACE_SEL) applyTraceRoomClass();
         else applyStageJump(cm.sel);
@@ -5837,18 +6219,24 @@
     ctx.font = '13px monospace';
     ctx.fillText('오늘 수업할 스테이지를 골라 바로 시작해요. (지금 학생 슬롯에 적용)', 24, 64);
 
-    // 특별 항목: 「1장 — 전부 공짜 거리」·「2장 — 기울어진 거리」·「3장 — 대문짝 신문사」 (방탈출 수업)
+    // 특별 항목: 「1장 — 전부 공짜 거리」·「2장 — 기울어진 거리」·「3장 — 대문짝 신문사」·
+    // 「4장 — 반짝 아케이드」 (방탈출 수업)
     const isTrace = cm.sel === TRACE_SEL;
     const isTilt = cm.sel === TILT_SEL;
     const isRumor = cm.sel === RUMOR_SEL;
-    const selLabel = isRumor ? '3장 시작 상태 · 대문짝 신문사 입구'
+    const isArcade = cm.sel === ARCADE_SEL;
+    const selLabel = isArcade ? '4장 시작 상태 · 반짝 아케이드 입구'
+      : isRumor ? '3장 시작 상태 · 대문짝 신문사 입구'
       : isTilt ? '2장 시작 상태 · 기울어진 거리 입구'
       : isTrace ? '1장 시작 상태 · 전부 공짜 거리 입구' : `${cm.sel}스테이지`;
 
     // 스테이지 선택기
     ctx.textAlign = 'center';
     ctx.fillStyle = themeAccent();
-    if (isRumor) {
+    if (isArcade) {
+      ctx.font = 'bold 30px monospace';
+      ctx.fillText('4장 — 반짝 아케이드', LW / 2, 176);
+    } else if (isRumor) {
       ctx.font = 'bold 30px monospace';
       ctx.fillText('3장 — 대문짝 신문사', LW / 2, 176);
     } else if (isTilt) {
@@ -5866,7 +6254,8 @@
     }
     ctx.fillStyle = '#fff';
     ctx.font = '15px monospace';
-    ctx.fillText(isRumor ? '가짜 뉴스 분별 · 출처 확인 · 정정 보도 (구역 3개 → 그럴싸 보스)'
+    ctx.fillText(isArcade ? '다크패턴 · 광고 · 2단계 인증 (구역 3개 → 반짝 보스)'
+      : isRumor ? '가짜 뉴스 분별 · 출처 확인 · 정정 보도 (구역 3개 → 그럴싸 보스)'
       : isTilt ? '경청 · 필터버블 · 스스로 고르기 (구역 3개 → 기울 보스)'
       : isTrace ? '개인정보 · 디지털 발자국 · 동의 (구역 3개 → 담아 보스)'
       : (STAGE_BLURB[cm.sel] || ''), LW / 2, 250);
@@ -6355,6 +6744,45 @@
         ctx.fillStyle = 'rgba(224,69,58,0.32)';
         ctx.fillRect(0, 0, LW, LH);
       }
+    }
+    drawAdStickers();
+  }
+
+  // 4장 「반짝 아케이드」 — 광고 딱지 HUD 오염. 화면 가장자리에 반투명 스티커가
+  // 누적(0~4개)되어 시야를 방해한다. 해지 단말(구역① 룰렛 광장)로만 전부 사라진다.
+  // reduceFx면 깜빡임(펄스) 없이 고정 표시한다(광과민성·모션 민감 배려).
+  const AD_STICKERS = [
+    { text: '무료!', color: '#ff4d6d' },
+    { text: '당첨!', color: '#ffd644' },
+    { text: '오늘만!', color: '#4dd0e1' },
+    { text: '핫딜!', color: '#a86ae0' },
+  ];
+  function drawAdStickers() {
+    const n = game.flags.adStickers || 0;
+    if (n <= 0) return;
+    const W = 58, H = 24;
+    const spots = [
+      { x: 8, y: 8 },               // 좌상단
+      { x: LW - W - 8, y: 8 },      // 우상단
+      { x: 8, y: LH - H - 8 },      // 좌하단
+      { x: LW - W - 8, y: LH - H - 8 }, // 우하단
+    ];
+    for (let i = 0; i < n; i++) {
+      const s = spots[i], deco = AD_STICKERS[i];
+      const pulse = game.reduceFx ? 1 : 0.75 + 0.25 * Math.sin(game.time / 14 + i * 2);
+      ctx.save();
+      ctx.globalAlpha = 0.85 * pulse;
+      ctx.fillStyle = deco.color;
+      ctx.fillRect(s.x, s.y, W, H);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(s.x + 0.5, s.y + 0.5, W, H);
+      ctx.fillStyle = '#000';
+      ctx.font = 'bold 12px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(deco.text, s.x + W / 2, s.y + H / 2 + 4);
+      ctx.textAlign = 'left';
+      ctx.restore();
     }
   }
 
@@ -6988,6 +7416,18 @@
         }
         if (arena.carrying) { ctx.fillStyle = '#8ecbff'; ctx.font = '13px monospace'; ctx.fillText('◍', arena.soul.x + 10, arena.soul.y - 8); }
       }
+      // 반짝(보스) 반짝이는 보상 아이템 — 240프레임 가까워지면 깜빡인다(버티면 곧 소멸+보상)
+      if (b.p.openMechanic === 'tempt' && b.pState === 'open') {
+        const tp = b.wave.tempt;
+        if (tp.obj) {
+          const near = tp.obj.age > 180 && Math.floor(game.time / 6) % 2 === 0;
+          ctx.fillStyle = near ? '#fff2a8' : '#ffd644';
+          ctx.font = '18px monospace';
+          ctx.fillText('✧', tp.obj.x, tp.obj.y + 6);
+          ctx.font = '10px monospace';
+          ctx.fillText('반짝', tp.obj.x, tp.obj.y - 12);
+        }
+      }
       ctx.textAlign = 'left';
       // 남은 파도 시간 바
       const frac = Math.max(0, 1 - b.wave.t / b.wave.dur);
@@ -6998,6 +7438,15 @@
         const tiltFrac = b.wave.tilt.drift / 0.9;
         ctx.fillStyle = '#333'; ctx.fillRect(box.x, box.y + box.h + 22, box.w, 4);
         ctx.fillStyle = '#e0a53a'; ctx.fillRect(box.x, box.y + box.h + 22, box.w * 0.5 * tiltFrac, 4);
+      }
+      // 반짝(보스) 조명 표시 — 버틴 횟수(resisted)만큼 조명이 하나씩 꺼진다
+      if (b.p.openMechanic === 'tempt' && b.pState === 'open') {
+        const resisted = b.wave.tempt.resisted || 0;
+        ctx.font = '14px monospace';
+        for (let i = 0; i < 3; i++) {
+          ctx.fillStyle = i < resisted ? '#333' : '#ffd644';
+          ctx.fillText('●', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
+        }
       }
     } else if (b.phase === 'gates') {
       // 문 3개

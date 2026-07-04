@@ -500,7 +500,7 @@ const MAPS = {
       'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
       'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
       'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPP6',
       'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
       'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
       'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
@@ -516,6 +516,9 @@ const MAPS = {
       { x: 14, y: 4, to: 'tipsroom', tx: 9, ty: 1 },
       // 기울어진 거리로 복귀
       { x: 14, y: 18, to: 'tiltstreet', tx: 26, ty: 10 },
+      // 4장 「반짝 아케이드」 — 그럴싸를 되돌린 뒤에야(chapter3Clear) 열리는 동쪽 가장자리 문
+      { x: 27, y: 10, to: 'arcade', tx: 11, ty: 14, needFlag: 'chapter3Clear',
+        lockText: '동쪽 벽 너머, 네온 불빛이 새어 나온다.\n"무료! 당첨! 오늘만!"…\n지금은 굳게 잠겨 있다.' },
     ],
     npcs: [
       // 겁먹은 주민 — 송출 완료(rumorFixed) 전엔 같은 헛소문을 반복한다
@@ -664,6 +667,188 @@ const MAPS = {
     ],
     npcs: [
       { id: 'hwangak_boss', x: 7, y: 2, monSprite: 'hwangakmon', name: '그럴싸' },
+    ],
+    signs: [],
+    monsters: [],
+  },
+
+  // ==== 4장 「반짝 아케이드」 — 아케이드(허브) ====
+  // 네온 과잉 간판과 폭죽 오브젝트로 가득한 허브. 정문(→반짝의 무대)은 2단계 인증 —
+  // 열쇠 두 개(비밀조각·본인표)를 맵 양끝 구역(①룰렛 광장·②회원가입 골목)에서 모아야 열린다.
+  // 구역③ 백스테이지는 별도 보상(ev_offstage)과 복선 4호를 품은 곁가지 구역이다.
+  arcade: {
+    name: '반짝 아케이드',
+    song: 'glitch',
+    intro: [
+      '문을 열자 요란한 네온 간판이 쏟아진다.\n"무료!" "당첨!" "오늘만!"',
+      '천장에선 색종이 폭죽 오브젝트가\n계속 터지고, 또 터진다.',
+      '안쪽 정문은 굳게 잠겨 있다.\n"…열쇠가 두 개는 있어야 열린대."',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIYIIIIIIIIIIIIIIYIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HHHHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      // 소문 거리로 복귀
+      { x: 11, y: 13, to: 'rumorstreet', tx: 26, ty: 10 },
+      // 구역① 룰렛 광장
+      { x: 5, y: 3, to: 'roulettesquare', tx: 9, ty: 1 },
+      // 구역② 회원가입 골목
+      { x: 16, y: 3, to: 'signupalley', tx: 9, ty: 1 },
+      // 구역③ 백스테이지
+      { x: 11, y: 3, to: 'backstage', tx: 9, ty: 1 },
+      // 정문 — 열쇠 두 개(비밀조각·본인표)를 모두 모아야 열린다
+      { x: 11, y: 1, to: 'yuhokstage', tx: 7, ty: 8, needS4Keys: 2,
+        lockText: '정문에 자물쇠가 두 개 걸려 있다.\n"비밀조각"과 "본인표" — 둘 다 있어야\n열리는 문이라고 적혀 있다.' },
+    ],
+    npcs: [],
+    signs: [
+      { x: 3, y: 7, text: '≪반짝 아케이드≫\n"무료!" "당첨!" "오늘만!"\n…간판마다 느낌표뿐이다.' },
+      { x: 18, y: 7, text: '천장의 폭죽 오브젝트가\n쉬지 않고 색종이를 뿌린다.\n…치울 사람은 아무도 없어 보인다.' },
+    ],
+    monsters: [],
+  },
+
+  // 구역① 「룰렛 광장」 — 룰렛 단말 3개(돌리면 "당첨!"+광고 딱지)와 해지 단말(다크패턴
+  // 체험 — 큰 「혜택 유지」 vs 작은 「해지」). 진짜 목표는 룰렛 뒤 창고의 비밀조각 열쇠.
+  roulettesquare: {
+    name: '룰렛 광장',
+    song: 'glitch',
+    intro: [
+      '룰렛 세 대가 요란하게 돌아간다.\n"당첨! 당첨! 또 당첨!"',
+      '…근데 다들 뭔가에 홀린 듯\n룰렛만 쳐다보고 있다.',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      { x: 9, y: 12, to: 'arcade', tx: 5, ty: 4 },
+    ],
+    npcs: [],
+    signs: [],
+    monsters: [],
+  },
+
+  // 구역② 「회원가입 골목」 — 갈림길 표지판에서 진짜 도메인을 가려낸다(오답=함정 되돌림
+  // +wrongTries). 끝에 본인표 열쇠.
+  signupalley: {
+    name: '회원가입 골목',
+    song: 'glitch',
+    intro: [
+      '갈림길 팻말 두 개가 나란히 서 있다.\nwww.arca-de.com · www.arca-cle.com',
+      '"둘 중 하나만 진짜래.\n…뭐가 다른지, 잘 봐야 해."',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      { x: 9, y: 12, to: 'arcade', tx: 16, ty: 4 },
+    ],
+    npcs: [],
+    signs: [],
+    monsters: [],
+  },
+
+  // 구역③ 「백스테이지」 — 잠긴 문 앞의 빛나는 마스터키(함정: 카드 일시 도난 → 2단계
+  // 인증 창구에서 회수). 정석은 진짜 열쇠 두 개로 여는 문. 반짝의 무대 뒤: 꺼진 조명,
+  // 홀로 남은 소품들. 복선 4호: 구석의 버튼 더미(flags.seenButtons).
+  backstage: {
+    name: '백스테이지',
+    song: 'glitch',
+    intro: [
+      '무대 뒤편, 조명이 반쯤 꺼져 있다.\n소품들이 주인 없이 놓여 있다.',
+      '안쪽 문 앞에, 빛나는 마스터키\n하나가 놓여 있다. …수상하다.',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      { x: 9, y: 12, to: 'arcade', tx: 11, ty: 4 },
+    ],
+    npcs: [],
+    signs: [],
+    monsters: [],
+  },
+
+  // 4장 보스 「반짝의 무대」 — 정문(열쇠 2개)이 열려야 들어올 수 있다. 반짝(보스)은 NPC로
+  // 두어 v1 유혹몬(퀴즈 배틀)의 도감/처치 플래그를 오염시키지 않는다. 조우 → PERSUADE.yuhok_boss.
+  yuhokstage: {
+    name: '반짝의 무대',
+    song: 'battle',
+    intro: [
+      '무대로 이어지는 문을 열자,\n눈부신 조명이 쏟아진다.',
+      '조명 한가운데, 반짝이\n버튼을 만지작거리며 서 있다.',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIH',
+      'HHHHHHHIHHHHHH',
+    ],
+    warps: [
+      { x: 7, y: 9, to: 'arcade', tx: 11, ty: 2 },
+    ],
+    npcs: [
+      { id: 'yuhok_boss', x: 7, y: 2, monSprite: 'yuhokmon', name: '반짝' },
     ],
     signs: [],
     monsters: [],
@@ -3739,6 +3924,19 @@ const EVIDENCE_CARDS = {
     title: '바로잡는 손', topic: 'rumor',
     desc: '거짓은 한 번의 클릭으로 퍼지지만, 바로잡는 데는 몇 단계가 필요해요. 그래도 꼭 정정해야 해요.',
   },
+  // 4장 「반짝 아케이드」 구역 클리어 보상 (①룰렛 광장 → ②회원가입 골목 → ③백스테이지)
+  ev_free: {
+    title: '공짜의 값', topic: 'persuasion',
+    desc: '"무료"라고 적힌 것도 대가가 있어요. 시간, 관심, 때로는 광고 동의까지 — 공짜는 없어요.',
+  },
+  ev_twokeys: {
+    title: '두 개의 자물쇠', topic: 'security',
+    desc: '문 하나보다 문 둘이 더 안전해요. 확인이 번거로워도, 그 번거로움이 나를 지켜요.',
+  },
+  ev_offstage: {
+    title: '불 꺼진 무대', topic: 'persuasion',
+    desc: '반짝이는 무대 뒤엔 꺼진 조명과 홀로 남은 소품이 있어요. 반짝이지 않아도 남아 주는 게 진짜예요.',
+  },
 };
 
 const PERSUADE = {
@@ -4074,6 +4272,99 @@ const PERSUADE = {
           reply: '…응. "모른다"도\n기사가 될 수 있다는 거… 알겠어.' },
         { label: '헤드라인 판을 뒤집어 버린다', kind: 'harsh',
           reply: '아…\n(그럴싸가 텅 빈 1면을\n물끄러미 바라본다.)' },
+      ],
+    },
+  },
+
+  // ── 4장 보스 「반짝」 (반짝의 무대) ────────────────────────────────
+  // 별도 PERSUADE 키(yuhok_boss)로 정의해 v1 정원 유혹몬(퀴즈 배틀)과 완전히 분리한다.
+  // 스프라이트는 유혹몬을 재사용하되, 표시 이름은 '반짝'(displayName), 배틀은 이 프로필로만 진행.
+  // openMechanic 'tempt' — open 페이즈 중 반짝이는 보상 아이템이 스폰된다. 건드리면
+  // 역효과(피해+광고 얼룩), 240프레임 동안 건드리지 않고 버티면 소멸하며 게이지+10
+  // 및 조명 하나가 꺼진다(최대 3회, b.temptResisted — tilt/parcel과 같은 파도-간 영속 패턴).
+  yuhok_boss: {
+    gaugeMax: 120,
+    displayName: '반짝', // 보스 조우 표시 이름 (persuadeId 쪽에만 적용 — v1 유혹몬은 '유혹몬' 유지)
+    closedThreshold: 3,
+    fragmentsPerWave: 3,
+    waveBulletMul: 1.0,
+    waveDur: 340,
+    openMechanic: 'tempt', // open 페이즈 고유 기믹 — 반짝이는 보상 아이템: 버티면 보상, 건드리면 역효과
+    temptReply: '…어라? 안 반짝여도… 괜찮아?',
+    decoys: ['공짜잖아', '당첨됐잖아', '문은 하나면 돼', '다들 좋아하잖아', '한 번만 더'],
+    // 콜백 인트로: 3장에서 그럴싸를 자비로 되돌렸으면(chapter3Mercy) 한 줄이 붙는다
+    intro(flags) {
+      let s = '[축하] 방문자 100000000번째 당첨!\n…이라고, 아까부터 계속 뜬다.';
+      if (flags && flags.chapter3Mercy) {
+        s += '\n\n그럴싸가 1면에 썼더라.\n[단독] 이상한 애 출현!';
+      }
+      return s;
+    },
+    win: '…반짝이지 않아도\n남아 주는 게 있었구나.\n이제부터는, 진짜만 켤게.',
+    claims: [
+      {
+        text: '[축하] 공짜가 세상에서 제일 좋은 거야!',
+        hint: '"…사실은 무서운 거야.\n반짝이지 않으면 아무도 안 볼까 봐."\n(「공짜의 값」을 보여 주자!)',
+        fragments: ['…사실은, 나도 무서워.', '반짝이지 않으면… 아무도 안 볼까 봐.'],
+        gateLabel: '공짜의 값', // ev_free
+        counters: ['ev_free'],
+        okLine: '…공짜인 줄 알았는데,\n실은 내가 자꾸 뭘 켜 두고 있었네.',
+        onWrong: '…거봐! 공짜가 최고라니까!\n(반짝이 버튼을 더 세게 눌렀다)',
+        attack: { pattern: 'burst', dur: 280, color: '#ff6ad5', taunt: '[축하] 공짜가 최고야! 놓치지 마!' },
+      },
+      {
+        text: '반짝이면 다들 남아 줘! 안 반짝이면… 아무도.',
+        hint: '"…무대에 혼자 남는 게,\n제일 무서웠던 거야."\n(「불 꺼진 무대」를 보여 주자!)',
+        fragments: ['…무대에 혼자 남는 게,', '제일 무서운 거였어…'],
+        gateLabel: '불 꺼진 무대', // ev_offstage
+        counters: ['ev_offstage'],
+        okLine: '…반짝이지 않아도\n남아 주는 사람이… 있을까?',
+        onWrong: '…그러니까 계속 반짝여야 돼!\n(반짝이 조명을 붙잡았다)',
+        attack: { pattern: 'spiral', dur: 300, color: '#8d6cd6', taunt: '반짝여야 다들 와! 꺼지면 끝이야!' },
+      },
+      {
+        text: '문은 하나면 충분하잖아? 편하게 편하게!',
+        hint: '"…확인하는 게 사실 귀찮았던 거야.\n문 하나가… 편했을 뿐이야."\n(「두 개의 자물쇠」를 보여 주자!)',
+        fragments: ['…확인하는 게, 사실 귀찮아서 그런 거야.', '문 하나면… 편하잖아.'],
+        gateLabel: '두 개의 자물쇠', // ev_twokeys
+        counters: ['ev_twokeys'],
+        okLine: '…두 번 확인하는 게\n귀찮은 게 아니라, 지켜 주는 거였어.',
+        onWrong: '…복잡한 건 다 필요 없어!\n(반짝이 문을 걸어 잠갔다)',
+        attack: { pattern: 'zigzag', dur: 300, color: '#e0a53a', taunt: '문은 하나! 복잡한 거 싫어!' },
+      },
+      {
+        text: '…불 꺼진 나도, 볼래?',
+        best: 'empathy', // 정답은 카드가 아니라 공감 — 반짝임 뒤의 외로움을 안아 준다
+        unlockAt: 70,    // 마음이 열린 뒤에야 꺼내는 속마음
+        hint: '"…불 꺼진 나를 보여 주는 게,\n사실 제일 무서운 거야."\n(증거 말고 「공감하기」로 안아 주자!)',
+        fragments: ['…불 꺼지면, 아무도 안 와.', '…그래도, 봐 줄래?'],
+        gateLabel: '볼래', // best=empathy — 반짝이지 않는 모습도 봐 주겠다는 말
+        revealNote: '이건 증거로 풀 게 아니야 — 「공감하기」로 마음을 안아 주자!',
+        counters: [],
+        okLine: '…불 꺼진 나도 봐 줬어.\n…고마워.',
+        onWrong: '…역시 아무도 안 보잖아.\n(반짝이 조명 뒤로 숨었다)',
+        attack: { pattern: 'aimed', dur: 320, color: '#e07a5f', taunt: '…보지 마… 꺼진 나는 보지 마…' },
+      },
+    ],
+    react: {
+      empathy: '…뭐야, 반짝이지도 않는데\n그런 눈으로 봐? (반짝이 멈칫했다)',
+      empathyAgain: '…응. …들어 줘서, 고마워.\n(하지만 위로만으론 부족한 것 같다)',
+      questionClosed: '…몰라. 반짝이는 것만 보여 줄래.\n(마음이 닫혀 있어 대답하지 않는다)',
+      evidenceClosed: '…(반짝은 카드를 쳐다보지도 않는다)\n먼저 마음을 열어야 할 것 같다.',
+      evidenceRight: '…어, 그거… 진짜였어?\n(카드의 말이 조명 사이로 스며든다)',
+      rebutBackfire: '시끄러워!! 반짝이면 다 되는 거야!\n(마음이 더 굳게 닫혔다… 다음 공격이 거세진다)',
+      rebutOk: '…그, 그런가…',
+      open: '(반짝이 쥐고 있던 버튼을\n스르르 내려놓는다. 마음이 열리고 있다…!)',
+    },
+    mercy: {
+      prompt: '반짝이 꺼져 가는 네온사인 아래서\n너를 빤히 바라본다.',
+      options: [
+        { label: '"반짝이지 않아도 괜찮아" (손을 내민다)', kind: 'mercy',
+          reply: '…안 반짝여도?\n…그럼, 그냥 있어도 되는 거야?\n…처음 듣는 말이야.' },
+        { label: '"진짜만 켜 두자"', kind: 'neutral',
+          reply: '…응. 가짜 반짝임은\n이제 그만 끌게.' },
+        { label: '네온사인을 전부 뽑아 버린다', kind: 'harsh',
+          reply: '아…\n(반짝이 캄캄해진 무대를\n물끄러미 바라본다.)' },
       ],
     },
   },
@@ -4470,6 +4761,111 @@ const PUZZLES = {
     terminal2: { x: 14, y: 4, name: '출처 단말' },
     lever: { x: 9, y: 9, name: '송출 레버' },
   },
+
+  // ── 4장 구역① 「룰렛 광장」 (type: roulette) ──────────────────────
+  // 룰렛 3대(돌리면 "당첨!"+광고 딱지, 얻는 것 없음)와 해지 단말(다크패턴 체험).
+  // 진짜 목표는 룰렛 뒤 창고의 비밀조각 열쇠.
+  roulette: {
+    map: 'roulettesquare',
+    type: 'roulette',
+    title: '룰렛 광장',
+    objective: '룰렛 뒤 창고에서 비밀조각 열쇠를 찾자',
+    objectiveCleared: '아케이드로 돌아가자',
+    exitTo: { map: 'arcade', x: 5, y: 3 },
+    steps: ['roulette'],
+    hints: {
+      roulette: [
+        '"룰렛이 계속 「당첨!」을 외치는데…\n정작 손에 남는 건 없어."',
+        '"돌릴수록 화면 가장자리에\n광고 딱지만 붙어. 안 돌려도 돼."',
+        '"진짜는 룰렛 뒤 창고에 있어.\n창고 상자를 살펴보자."',
+      ],
+    },
+    rewards: ['ev_free'],
+    clearLines: [
+      '창고 상자 안에서 열쇠를 찾았다.\n비밀조각 열쇠!',
+      '…룰렛은, 처음부터 미끼였다.',
+    ],
+    // 룰렛 단말 3개 — 돌릴 때마다 광고 딱지가 붙는다(얻는 것 없음)
+    roulettes: [
+      { x: 5, y: 3, name: '룰렛 단말①' },
+      { x: 9, y: 3, name: '룰렛 단말②' },
+      { x: 13, y: 3, name: '룰렛 단말③' },
+    ],
+    // 해지 단말 — 큰 「혜택 유지」 vs 작은 「해지」(다크패턴 체험). 해지해야 딱지가 사라진다.
+    unsub: { x: 9, y: 6, name: '해지 단말',
+      ask: '해지 단말 화면이다.\n큼직한 「혜택 계속 받기」 버튼과,\n구석에 조그맣게 「해지」가 적혀 있다.',
+      keepReply: '"좋은 선택이에요!" (광고 딱지는 그대로다)',
+      cancelReply: '"…정말요? 아쉽네요."\n(광고 딱지가 전부 떨어져 나갔다!)' },
+    // 룰렛 뒤 창고 — 비밀조각 열쇠
+    chest: { x: 9, y: 9, name: '창고 상자' },
+  },
+
+  // ── 4장 구역② 「회원가입 골목」 (type: signup) ────────────────────
+  // 갈림길 표지판에서 진짜 도메인을 가려낸다. 오답이면 함정에 걸려 처음으로 되돌아간다.
+  signup: {
+    map: 'signupalley',
+    type: 'signup',
+    title: '회원가입 골목',
+    objective: '진짜 도메인을 가려 끝까지 가자',
+    objectiveCleared: '아케이드로 돌아가자',
+    exitTo: { map: 'arcade', x: 16, y: 3 },
+    steps: ['signup'],
+    hints: {
+      signup: [
+        '"팻말 두 개, www.arca-de.com이랑\nwww.arca-cle.com…"',
+        '"진짜 이름을 살짝 바꿔치기한\n가짜 주소가 있다던데."',
+        '"자세히 비교해 봐 — 「arca-de」가\n원래 이름(아케이드)에 더 가까워."',
+      ],
+    },
+    rewards: ['ev_twokeys'],
+    clearLines: [
+      '골목 끝에서 열쇠를 찾았다.\n본인표 열쇠!',
+      '…가짜 주소는, 한 글자 차이였다.',
+    ],
+    // 갈림길 표지판 — 진짜 도메인을 고른다 (오답=함정 되돌림+wrongTries)
+    fork: { x: 9, y: 5, name: '갈림길 표지판',
+      ask: '갈림길 팻말 두 개가 나란히 서 있다.\n어느 쪽이 진짜 아케이드로 가는 길일까?',
+      options: [
+        { label: 'www.arca-de.com 방향', ok: true },
+        { label: 'www.arca-cle.com 방향', ok: false },
+      ],
+      trapReply: '…어라? 다시 처음이잖아.\n수상한 사이트였나 보다. (함정에 걸렸다!)',
+      okReply: '이 도메인이 진짜 같다.\n…계속 걸어가 보자.' },
+    // 골목 끝 — 본인표 열쇠 (표지판을 통과해야 열린다)
+    idchest: { x: 9, y: 9, name: '본인 확인함',
+      lockedReply: '…아직 이르다.\n먼저 갈림길에서 진짜 길을 확인하자.' },
+  },
+
+  // ── 4장 구역③ 「백스테이지」 (type: backstage) ────────────────────
+  // 잠긴 문 앞의 빛나는 마스터키(함정: 카드 일시 도난 → 2단계 인증 창구에서 회수).
+  // 정석은 진짜 열쇠 두 개로 여는 문. 복선 4호: 구석의 버튼 더미(MAP_PROPS.backstage).
+  backstage: {
+    map: 'backstage',
+    type: 'backstage',
+    title: '백스테이지',
+    objective: '진짜 열쇠 두 개로 안쪽 문을 열자',
+    objectiveCleared: '아케이드로 돌아가자',
+    exitTo: { map: 'arcade', x: 11, y: 3 },
+    steps: ['backstage'],
+    hints: {
+      backstage: [
+        '"문 앞에 마스터키가 반짝이는데…\n왠지 손대면 안 될 것 같아."',
+        '"지름길은 늘 값을 치르게 하지.\n정석대로, 열쇠 두 개를 챙겨 와."',
+        '"비밀조각과 본인표, 둘 다 있으면\n이 문이 저절로 열릴 거야."',
+      ],
+    },
+    rewards: ['ev_offstage'],
+    clearLines: [
+      '문이 열리고, 무대 뒤로 들어섰다.\n꺼진 조명, 홀로 남은 소품들뿐이다.',
+      '…화려했던 무대 뒤는,\n이렇게 조용하고 쓸쓸했다.',
+    ],
+    // 잠긴 문 앞의 함정 — 빛나는 마스터키(쓰면 카드 일시 도난)
+    masterkey: { x: 5, y: 4, name: '빛나는 마스터키' },
+    // 2단계 인증 창구 — 도난당한 카드를 되찾는다
+    authterm: { x: 13, y: 4, name: '2단계 인증 창구' },
+    // 안쪽 문 — 정석은 열쇠 두 개(비밀조각·본인표)
+    door: { x: 9, y: 9, name: '잠긴 문' },
+  },
 };
 
 // 1장 금고 잠금 — 이 구역들을 하나 클리어할 때마다 잠금이 하나 풀린다
@@ -4479,6 +4875,9 @@ const S2_ZONE_PUZZLES = ['voices', 'retrain', 'lamps'];
 // 3장 신문사 — 층을 하나 클리어할 때마다 진행도가 하나 늘어난다 (허브 HUD 표시용.
 // 층 개방 자체는 needPuzzleClear로 개별 강제되므로 집계는 표시 전용이다)
 const S3_ZONE_PUZZLES = ['tips', 'compare', 'broadcast'];
+// 4장 아케이드 — 구역①·②를 클리어할 때마다 열쇠(비밀조각·본인표)가 하나씩 모인다.
+// 구역③(백스테이지)은 열쇠를 만들어 주지 않는 곁가지 구역이다 (game.js s4KeyCount 참고).
+const S4_ZONE_PUZZLES = ['roulette', 'signup', 'backstage'];
 
 function getPuzzleForMap(mapId) {
   for (const k in PUZZLES) {
@@ -4567,6 +4966,12 @@ const MAP_PROPS = {
   editroom: [
     { x: 17, y: 11, flag: 'seenArticle',
       text: '미송출 기사함이다.\n"[단독] 프로젝트 0호, 오늘 폐기…\n…기사는 끝내 나가지 못했다."' },
+  ],
+  // 4장 백스테이지 — 복선 4호(구석의 버튼 더미) + 꺼진 조명 소품 묘사
+  backstage: [
+    { x: 2, y: 11, flag: 'seenButtons',
+      text: '구석에 버튼 더미가 산처럼 쌓여 있다.\n"접속 요청" 버튼들 — 아무도\n눌러 주지 않은 채였다.' },
+    { x: 17, y: 2, text: '꺼진 조명 옆에, 반짝이\n한때 쓰던 소품들이 홀로 놓여 있다.\n먼지가 소복하다.' },
   ],
   library: [
     { x: 7, y: 2, text: '한 권만 거꾸로 꽂힌 책.\n표지에 작게 ≪0≫.\n…펴 보려 하자 스르륵 닫힌다.' },
