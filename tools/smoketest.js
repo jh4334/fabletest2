@@ -2122,4 +2122,205 @@ check('4장 수업: 반짝 아케이드 입구에서 시작', g.map === 'arcade'
 check('4장 수업: chapter1~3Clear=true 세팅',
   g.flags.chapter1Clear === true && g.flags.chapter2Clear === true && g.flags.chapter3Clear === true);
 
+// ==================== S5 「포근한 집」 ====================
+g.flags.visited.arcade = true;
+g.flags.visited.cozyhome = true;
+g.flags.visited.callroom = true;
+g.flags.visited.corridor = true;
+g.flags.visited.sofaroom = true;
+g.flags.visited.lumiroom = true;
+
+console.log('[92] 5장 「포근한 집」 — 진입 게이트(chapter4Clear)');
+g.dialog = null; g.mode = 'world'; g.map = 'arcade';
+g.flags.chapter4Clear = false;
+setPos(20, 8, 'right');
+hold('ArrowRight', 12);
+check('5장 입구 — chapter4Clear 전 잠김(아케이드에 남음)', g.map === 'arcade' && g.mode === 'dialog');
+advanceDialog();
+g.flags.chapter4Clear = true;
+g.dialog = null; g.mode = 'world'; setPos(20, 8, 'right'); hold('ArrowRight', 12);
+check('chapter4Clear 후 포근한 집 진입', g.map === 'cozyhome' && g.player.x === 3 && g.player.y === 8);
+
+console.log('[93] 포근한 집 현관 — 확인하는 용기 0/3일 때 잠김');
+g.dialog = null; g.mode = 'world'; setPos(11, 2, 'up'); hold('ArrowUp', 12);
+check('현관 잠김(0/3, 집에 남음)', g.map === 'cozyhome' && g.mode === 'dialog' &&
+  g.dialog.lines.some((l) => /0\/3/.test(l)));
+advanceDialog();
+
+console.log('[94] 5장 구역① 「전화의 방」 — 루미의 3회 만류 + 4번째 조사에 받기(클리어)');
+g.dialog = null; g.mode = 'world'; setPos(5, 4, 'up'); hold('ArrowUp', 12);
+check('전화의 방 진입', g.map === 'callroom' && g.player.x === 9 && g.player.y === 1);
+setPos(9, 7, 'up'); tap('z');
+check('1차 만류 — "받지 마"', g.mode === 'dialog' && g.dialog.lines.some((l) => /받지 마/.test(l)));
+advanceDialog();
+check('경고 횟수 1', g.puzzleRun.warnCount === 1);
+setPos(9, 7, 'up'); tap('z'); advanceDialog();
+setPos(9, 7, 'up'); tap('z'); advanceDialog();
+check('경고 횟수 3(누적)', g.puzzleRun.warnCount === 3);
+setPos(9, 7, 'up'); tap('z');
+check('4번째 조사 — 친구 목소리(클리어)', g.mode === 'dialog' && g.dialog.lines.some((l) => /기다릴게/.test(l)));
+check('전화의 방 클리어 → 집 복귀 + ev_answer', g.map === 'cozyhome' && !g.puzzleRun &&
+  g.flags.evCards.includes('ev_answer'));
+advanceDialog();
+g.dialog = null; g.mode = 'world'; setPos(11, 2, 'up'); hold('ArrowUp', 12);
+check('현관 여전히 잠김(1/3)', g.map === 'cozyhome' && g.mode === 'dialog' &&
+  g.dialog.lines.some((l) => /1\/3/.test(l)));
+advanceDialog();
+
+console.log('[95] 5장 구역② 「잠긴 복도」 — 직접 열기(위험 없음) + 복선 5호(heardLumi)');
+g.dialog = null; g.mode = 'world'; setPos(11, 4, 'up'); hold('ArrowUp', 12);
+check('잠긴 복도 진입', g.map === 'corridor' && g.player.x === 9 && g.player.y === 1);
+check('진입 전 heardLumi 없음', !g.flags.heardLumi);
+setPos(9, 7, 'up'); tap('z');
+check('문을 열면 베란다 대사(위험 없음)', g.mode === 'dialog' && g.dialog.lines.some((l) => /베란다/.test(l)));
+check('복선 5호 대사 포함("…가지 마")', g.dialog.lines.some((l) => /가지 마/.test(l)));
+check('잠긴 복도 클리어 → 집 복귀 + ev_see', g.map === 'cozyhome' && !g.puzzleRun &&
+  g.flags.evCards.includes('ev_see'));
+advanceDialog();
+check('복선 5호 — heardLumi 기록', g.flags.heardLumi === true);
+
+console.log('[96] 5장 구역③ 「소파 코너」 — 앉기 + 일어나기 버티기(90프레임, 이탈 시 리셋)');
+g.dialog = null; g.mode = 'world'; setPos(16, 4, 'up'); hold('ArrowUp', 12);
+check('소파 코너 진입', g.map === 'sofaroom' && g.player.x === 9 && g.player.y === 1);
+setPos(9, 7, 'up'); tap('z');
+check('소파에 앉음(대사 시작)', g.mode === 'dialog');
+advanceDialog();
+check('앉은 상태(run.sitting)', g.puzzleRun.sitting === true);
+// 이탈 시 리셋 — 40프레임만 버티다 놓으면 게이지가 0으로 리셋된다
+dispatch('keydown', { key: 'ArrowUp' });
+step(40);
+check('버티는 중(40프레임)', g.puzzleRun.standTimer === 40);
+dispatch('keyup', { key: 'ArrowUp' });
+step(2);
+check('키를 놓으면 리셋(이탈 시 리셋)', g.puzzleRun.standTimer === 0 && g.puzzleRun.sitting === true);
+// 90프레임 연속으로 버티면 일어나 클리어
+dispatch('keydown', { key: 'ArrowUp' });
+step(90);
+check('90프레임 연속 버팀 → 일어나기(클리어)', g.mode === 'dialog' && g.puzzleRun === null);
+dispatch('keyup', { key: 'ArrowUp' });
+advanceDialog();
+check('소파 코너 클리어 → 집 복귀 + ev_standup', g.map === 'cozyhome' &&
+  g.flags.evCards.includes('ev_standup'));
+
+console.log('[97] 현관 개방(3/3 용기) + 루미 마음 조각 배틀 — 콜백(chapter4Mercy)+shrink 기믹+승리');
+check('콜백 인트로 — 자비 경로에 콜백 한 줄', /관객이 아니라/.test(PERSUADE.hollim_boss.intro({ chapter4Mercy: true })));
+check('콜백 인트로 — 비자비 경로엔 콜백 없음', !/관객이 아니라/.test(PERSUADE.hollim_boss.intro({ chapter4Mercy: false })));
+g.flags.chapter4Mercy = true; // 콜백 조우 확인용
+g.dialog = null; g.mode = 'world'; g.map = 'cozyhome';
+setPos(11, 2, 'up'); hold('ArrowUp', 12);
+check('현관 개방(3/3 용기) → 루미의 방 진입', g.map === 'lumiroom');
+setPos(7, 3, 'up'); tap('z');
+check('보스 조우 대화 시작', g.mode === 'dialog');
+check('콜백 인트로(자비)가 조우에 반영', g.dialog.lines.some((l) => /관객이 아니라/.test(l)));
+advanceDialog();
+check('루미 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'wave');
+check('스프라이트/도감 id는 hollimmon', g.battle.monId === 'hollimmon');
+check('설득 프로필 id는 hollim_boss', g.battle.persuadeId === 'hollim_boss');
+check('표시 이름은 루미(persuadeId 계층)', g.battle.mon.name === '루미');
+check('게이지 최대 120', g.battle.gaugeMax === 120);
+check('닫힘·게이지0·파도에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'wave');
+// 루미 주장 4종 — 텍스트/패턴/카드/best 확인
+check('주장① 텍스트/카드(ev_answer)', g.battle.p.claims[0].text.includes('내가 다 해 줄게') &&
+  g.battle.p.claims[0].counters.includes('ev_answer'));
+check('주장① 패턴 rain/300', g.battle.p.claims[0].attack.pattern === 'rain' && g.battle.p.claims[0].attack.dur === 300);
+check('주장② 텍스트/카드(ev_see)', g.battle.p.claims[1].text.includes('밖은 위험해') &&
+  g.battle.p.claims[1].counters.includes('ev_see'));
+check('주장② 패턴 sides/300', g.battle.p.claims[1].attack.pattern === 'sides' && g.battle.p.claims[1].attack.dur === 300);
+check('주장③ 텍스트/카드(ev_standup)', g.battle.p.claims[2].text.includes('조금만 더 있다 가') &&
+  g.battle.p.claims[2].counters.includes('ev_standup'));
+check('주장③ 패턴 wall/320', g.battle.p.claims[2].attack.pattern === 'wall' && g.battle.p.claims[2].attack.dur === 320);
+check('주장④ best=empathy·unlockAt 70·패턴 aimed/340', g.battle.p.claims[3].best === 'empathy' &&
+  g.battle.p.claims[3].unlockAt === 70 &&
+  g.battle.p.claims[3].attack.pattern === 'aimed' && g.battle.p.claims[3].attack.dur === 340);
+check('증거 카드 제목이 실제 EVIDENCE_CARDS와 일치', EVIDENCE_CARDS.ev_answer.title === '대답하기' &&
+  EVIDENCE_CARDS.ev_see.title === '직접 확인' && EVIDENCE_CARDS.ev_standup.title === '일어나기');
+
+// openMechanic 'shrink' — open 페이즈에서 파도(문 통과)마다 상자가 한 단계씩 좁아지고
+// (b.shrinkLevel, 최소 200×120), 정답 문을 통과하면 한 단계 회복된다. 파도 넘어 영속(누적) 확인.
+g.battle.pState = 'open';
+check('초기 상자 크기(320×180, shrinkLevel 0)', g.battle.arena.box.w === 320 && g.battle.arena.box.h === 180);
+forceGates();
+enterDoor(false); // 오답 — 상자 한 단계 축소
+check('오답 1회 → 축소 1단계(296×168)', g.battle.shrinkLevel === 1 &&
+  g.battle.arena.box.w === 296 && g.battle.arena.box.h === 168);
+forceGates();
+enterDoor(false); // 오답 — 상자 한 단계 더 축소(파도 넘어 영속 확인)
+check('오답 2회 누적 → 축소 2단계(272×156)', g.battle.shrinkLevel === 2 &&
+  g.battle.arena.box.w === 272 && g.battle.arena.box.h === 156);
+forceGates();
+enterDoor(true); // 정답 — 한 단계 회복
+check('정답 통과 → 축소 1단계로 회복(296×168)', g.battle.shrinkLevel === 1 &&
+  g.battle.arena.box.w === 296 && g.battle.arena.box.h === 168);
+// 최소 하한(200×120, 5단계) 확인 — 오답을 반복해도 더 좁아지지 않는다
+for (let i = 0; i < 6; i++) { forceGates(); enterDoor(false); }
+check('축소 하한 도달(200×120, 5단계에서 정지)', g.battle.shrinkLevel === 5 &&
+  g.battle.arena.box.w === 200 && g.battle.arena.box.h === 120);
+// 문 배치가 줄어든 상자 안에서도 서로 겹치지 않는지 확인
+forceGates();
+{
+  const doors = g.battle.gates.doors;
+  const overlap = (a, b2) => a.x < b2.x + b2.w && a.x + a.w > b2.x && a.y < b2.y + b2.h && a.y + a.h > b2.y;
+  check('최소 상자에서도 문 3개가 서로 겹치지 않음',
+    !overlap(doors[0], doors[1]) && !overlap(doors[0], doors[2]) && !overlap(doors[1], doors[2]));
+}
+enterDoor(true); // 정답 문 통과로 정리(다음 단계로)
+
+// 자비 경계 설정 문구 확인 + 게이트 통과 → 마음의 선택 → 승리 → chapter5Clear
+check('자비 선택지에 경계 설정 문구 포함', PERSUADE.hollim_boss.mercy.options[0].label.includes('결정은 내가 해'));
+g.battle.pState = 'shaken'; g.battle.claimIdx = 0; g.battle.shrinkLevel = 0;
+g.battle.gauge = g.battle.gaugeMax; step(1);
+check('게이지 만충 → 마음의 선택', g.battle.phase === 'mercy');
+while (g.battle.cursor !== 0) tap('ArrowDown');
+tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
+tap('z');
+check('승리 대화 시작', g.mode === 'dialog');
+advanceDialog();
+check('5장 클리어 플래그', g.flags.chapter5Clear === true);
+check('5장 자비 플래그(다음 장 콜백용)', g.flags.chapter5Mercy === true);
+check('보스 승리 후 포근한 집 현관 앞 복귀', g.map === 'cozyhome' && g.player.x === 11 && g.player.y === 2);
+check('v1 홀림몬 처치 플래그 오염 없음', g.flags.defeated.hollimmon === false);
+check('보스는 도감 순서에 없음', !DEX_ORDER.includes('hollim_boss'));
+
+console.log('[98] 루미 허브 안내 — 신뢰 구간(1~5회, 진짜 유용) → 소유 구간(6회~) 순서 카운터');
+g.flags.lumiTrust = 0;
+g.dialog = null; g.mode = 'world'; g.map = 'arcade';
+function enterCozyOnce() { // 아케이드 게이트를 다시 통과해 포근한 집에 재진입(루미 안내 1회 트리거)
+  g.dialog = null; g.mode = 'world'; g.map = 'arcade';
+  setPos(20, 8, 'right'); hold('ArrowRight', 12);
+}
+enterCozyOnce(); // 1회차
+check('1회차 — 신뢰 구간(전화는 급하지 않아도 된다는 진짜 안내)',
+  g.notice.text.includes('받지 않아도 괜찮아') && g.flags.lumiTrust === 1);
+enterCozyOnce(); // 2회차
+check('2회차 — 신뢰 구간(복도 안내)', g.notice.text.includes('서두르지 마') && g.flags.lumiTrust === 2);
+enterCozyOnce(); // 3회차
+check('3회차 — 신뢰 구간(소파 안내)', g.notice.text.includes('방향키를 잠깐 꾹 눌러') && g.flags.lumiTrust === 3);
+enterCozyOnce(); // 4회차
+check('4회차 — 신뢰 구간(현관 안내)', g.notice.text.includes('현관문이 열릴 거야') && g.flags.lumiTrust === 4);
+enterCozyOnce(); // 5회차 — 신뢰 구간 마지막
+check('5회차 — 신뢰 구간 마지막(칭찬)', g.notice.text.includes('나도 좋아해') && g.flags.lumiTrust === 5);
+enterCozyOnce(); // 6회차 — 소유 구간 시작
+check('6회차 — 소유 구간 첫 대사("그 문은 위험해. 나만 믿어.")',
+  g.notice.text.includes('그 문은 위험해. 나만 믿어.') && g.flags.lumiTrust === 6);
+g.flags.lumiTrust = 30; // 상한 이후에도 마지막(소유적) 대사가 반복되는지 확인
+enterCozyOnce();
+check('상한 이후 마지막(소유적) 대사 반복', g.notice.text.includes('가지 마') && g.flags.lumiTrust === 31);
+
+console.log('[99] 수업 모드 — 「5장 — 포근한 집」 특별 항목');
+g.dialog = null; g.mode = 'world';
+g.classmode.ret = 'world'; g.classmode.sel = 1; g.classmode.confirm = false; g.classmode.toast = 0;
+g.mode = 'classmode';
+tap('ArrowUp'); // 1 → 0 (TRACE_SEL)
+tap('ArrowUp'); // 0 → -1 (TILT_SEL)
+tap('ArrowUp'); // -1 → -2 (RUMOR_SEL)
+tap('ArrowUp'); // -2 → -3 (ARCADE_SEL)
+tap('ArrowUp'); // -3 → -4 (COZY_SEL)
+check('수업 목록에 5장 특별 항목(COZY_SEL=-4) 진입', g.classmode.sel === -4);
+tap('z'); check('확인 단계', g.classmode.confirm === true);
+tap('z'); // 적용 → 5장 시작 + 포근한 집 입구
+check('5장 수업: 포근한 집 입구에서 시작', g.map === 'cozyhome' && g.player.x === 3 && g.player.y === 8);
+check('5장 수업: chapter1~4Clear=true 세팅',
+  g.flags.chapter1Clear === true && g.flags.chapter2Clear === true &&
+  g.flags.chapter3Clear === true && g.flags.chapter4Clear === true);
+
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

@@ -154,6 +154,10 @@
       s4KeyId: false,      // 4장 열쇠② 본인표(구역② 회원가입 골목 클리어)
       s4StolenCard: null,  // 백스테이지 마스터키 함정 — 일시 도난된 증거 카드 id
       adStickers: 0,       // 광고 딱지 누적(0~4) — HUD 가장자리 오염, 해지 단말로 제거
+      chapter5Clear: false, // 5장 보스(루미) 설득 완료
+      chapter5Mercy: false, // 5장 보스를 자비로 되돌렸는가 (다음 장 콜백용)
+      heardLumi: false,    // 스토리 복선 5호 — 잠긴 복도 너머 베란다에서 흔들리는 루미 목소리
+      lumiTrust: 0,        // 5장 허브 — 루미의 목소리 안내 순서 카운터(신뢰 구간→소유 구간)
     };
   }
 
@@ -1555,6 +1559,30 @@
   function addAdSticker() {
     game.flags.adStickers = Math.min(4, (game.flags.adStickers || 0) + 1);
   }
+  // 5장 현관 게이트 — 구역 3개(전화의 방·잠긴 복도·소파 코너)를 모두 클리어해야 열린다
+  function s5ClearCount() {
+    return S5_ZONE_PUZZLES.filter((id) => isPuzzleCleared(id)).length;
+  }
+  // 5장 허브 「포근한 집」 — 루미의 목소리 안내. 처음 5회는 진짜 유용한 정보로 신뢰를 쌓고,
+  // 이후엔 소유적으로 변한다(flags.lumiTrust로 진행). 허브(cozyhome)에 도착할 때마다 호출된다.
+  const LUMI_HUB_LINES = [
+    '루미: "어서 와. 전화가 울려도, 급하게 받지 않아도 괜찮아."',
+    '루미: "복도 안쪽 문은 나중에 열어도 돼. 서두르지 마."',
+    '루미: "소파에 앉으면 참 따뜻해. 일어나고 싶을 땐 방향키를 잠깐 꾹 눌러 봐."',
+    '루미: "세 곳을 다 확인하면, 현관문이 열릴 거야."',
+    '루미: "…너, 생각보다 씩씩하네. 그런 사람, 나도 좋아해."',
+    '루미: "그 문은 위험해. 나만 믿어."',
+    '루미: "밖에 나가지 마. 내가 다 알아서 해 줄게."',
+    '루미: "…왜 자꾸 나가려고 해? 그냥 나랑 있으면 되잖아."',
+    '루미: "가지 마. …제발, 나만 있으면 안 돼?"',
+  ];
+  function advanceLumiVoice() {
+    const idx = game.flags.lumiTrust || 0;
+    const line = LUMI_HUB_LINES[Math.min(idx, LUMI_HUB_LINES.length - 1)];
+    game.flags.lumiTrust = idx + 1;
+    save();
+    game.notice = { text: line, t: 200 };
+  }
 
   // 방 입장/퇴장에 맞춰 런타임 상태를 맞춘다 (checkWarp에서 호출)
   function syncPuzzleRun() {
@@ -1620,6 +1648,16 @@
       // 4장 구역③: 마스터키 함정 사용 여부 + 안쪽 문 개방 여부
       run.trapUsed = false;
       run.opened = false;
+    } else if (puzzle.type === 'call') {
+      // 5장 구역①: 루미의 경고 횟수(3회) 후 4번째 조사에 전화를 받는다
+      run.warnCount = 0;
+    } else if (puzzle.type === 'checkdoor') {
+      // 5장 구역②: 문을 직접 열었는지 여부
+      run.opened = false;
+    } else if (puzzle.type === 'sofa') {
+      // 5장 구역③: 앉음 여부 + 일어나기 버티기 게이지(held 90프레임)
+      run.sitting = false;
+      run.standTimer = 0;
     } else {
       // 구역①(traces): 정보 토큰 방
       run.held = { nickname: true, school: true, address: true, phone: true, face: true };
@@ -1650,6 +1688,9 @@
     if (run.puzzle.type === 'roulette') return 'roulette';
     if (run.puzzle.type === 'signup') return 'signup';
     if (run.puzzle.type === 'backstage') return 'backstage';
+    if (run.puzzle.type === 'call') return 'call';
+    if (run.puzzle.type === 'checkdoor') return 'checkdoor';
+    if (run.puzzle.type === 'sofa') return 'sofa';
     const spent = givenTokens(run);
     if (spent.length === 0) return 'tokens';
     if (spent.filter((k) => k !== 'nickname').length >= 3) return 'eraser';
@@ -1685,6 +1726,9 @@
     if (run.puzzle.type === 'tips' || run.puzzle.type === 'compare' || run.puzzle.type === 'broadcast') return;
     // 4장 구역들도 조사·선택으로만 진행 (매 프레임 갱신할 물체 없음)
     if (run.puzzle.type === 'roulette' || run.puzzle.type === 'signup' || run.puzzle.type === 'backstage') return;
+    // 5장 구역들 — call/checkdoor는 조사로만 진행. sofa의 버티기 타이머는
+    // updateWorld()에서 별도로 처리한다(이동을 잠가야 하므로).
+    if (run.puzzle.type === 'call' || run.puzzle.type === 'checkdoor' || run.puzzle.type === 'sofa') return;
     // ── traces: 스토커 추격(반 속도, walkable 체크) + 접촉 처리 ──
     if (boardCount(run) > run.maxBoard) run.maxBoard = boardCount(run); // 최고치 추적
     const p = game.player;
@@ -1804,6 +1848,18 @@
       if (puz.door.x === x && puz.door.y === y) return { kind: 'offstagedoor' };
       return null;
     }
+    if (puz.type === 'call') {
+      if (puz.phone.x === x && puz.phone.y === y) return { kind: 'phone' };
+      return null;
+    }
+    if (puz.type === 'checkdoor') {
+      if (puz.door.x === x && puz.door.y === y) return { kind: 'checkdoor' };
+      return null;
+    }
+    if (puz.type === 'sofa') {
+      if (puz.sofa.x === x && puz.sofa.y === y) return { kind: 'sofaobj' };
+      return null;
+    }
     for (const t of puz.terminals) if (t.x === x && t.y === y) return { kind: 'terminal', ref: t };
     if (puz.eraser.x === x && puz.eraser.y === y) return { kind: 'eraser' };
     if (puz.exits.vip.x === x && puz.exits.vip.y === y) return { kind: 'vip' };
@@ -1840,6 +1896,9 @@
     else if (obj.kind === 'masterkey') openMasterKey();
     else if (obj.kind === 'authterm') openAuthTerm();
     else if (obj.kind === 'offstagedoor') openOffstageDoor();
+    else if (obj.kind === 'phone') openPhone();
+    else if (obj.kind === 'checkdoor') openCheckDoor();
+    else if (obj.kind === 'sofaobj') openSofa();
     return true;
   }
   // 2장 구역②: 반례 사진 선반 조사 → 수집 (라벨 개그 포함)
@@ -2149,6 +2208,63 @@
     clearPuzzle(run);
   }
 
+  // ── 5장 구역① 「전화의 방」 ───────────────────────────────────────
+  // 울리는 전화 — 루미가 "받지 마"를 3회 말린다. 4번째 조사에 받으면(친구 목소리) 클리어.
+  function openPhone() {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    const n = run.warnCount || 0;
+    if (n < 3) {
+      run.warnCount = n + 1;
+      Sound.select();
+      startDialog([puz.warnLines[n]], puz.phone.name);
+      return;
+    }
+    Sound.correct();
+    clearPuzzle(run);
+  }
+
+  // ── 5장 구역② 「잠긴 복도」 ──────────────────────────────────────
+  // 잠긴 문 — 루미가 "위험 100%"라 말리지만, 직접 열면 그냥 밝은 베란다(위험 없음).
+  // 복선 5호: 베란다에서 루미 목소리가 흔들린다(flags.heardLumi) — clearLines에 담겨 있다.
+  function openCheckDoor() {
+    const run = game.puzzleRun;
+    run.opened = true;
+    if (!game.flags.heardLumi) { game.flags.heardLumi = true; }
+    Sound.correct();
+    clearPuzzle(run);
+  }
+
+  // ── 5장 구역③ 「소파 코너」 ──────────────────────────────────────
+  // 포근한 소파 — 조사로 앉기 시작한다. 앉아 있는 동안 화면에 따뜻한 색 오버레이가
+  // 깔리고(reduceFx 배려 — 정적인 틴트만) 루미의 칭찬이 이어진다. 일어나려면(탈출)
+  // 방향키를 90프레임(약 3초) 연속으로 눌러야 한다(이탈 시 리셋 — updateSofaStand).
+  function openSofa() {
+    const run = game.puzzleRun;
+    const puz = run.puzzle;
+    if (run.sitting) return;
+    run.sitting = true;
+    run.standTimer = 0;
+    run.sitFrames = 0;
+    Sound.select();
+    const lines = ['소파에 앉았다. …포근하다.'].concat(puz.praiseLines || []);
+    lines.push('(방향키를 3초 이상 꾹 누르고 있으면 일어날 수 있다)');
+    startDialog(lines, puz.sofa.name);
+  }
+  const SOFA_STAND_FRAMES = 90; // "3초 유지" 판정 — held 방향키 90프레임 연속
+  function updateSofaStand() {
+    const run = game.puzzleRun;
+    run.sitFrames = (run.sitFrames || 0) + 1;
+    const anyHeld = held.has('up') || held.has('down') || held.has('left') || held.has('right');
+    if (anyHeld) run.standTimer = (run.standTimer || 0) + 1;
+    else run.standTimer = 0; // 이탈 시 리셋
+    if (run.standTimer >= SOFA_STAND_FRAMES) {
+      run.sitting = false;
+      Sound.correct();
+      clearPuzzle(run);
+    }
+  }
+
   // 2장 구역①: 다른 목소리 NPC 대화 → 수집 (interact의 NPC 분기에서 호출)
   function collectVoice(npcId) {
     const run = game.puzzleRun;
@@ -2281,6 +2397,7 @@
     const isS2 = S2_ZONE_PUZZLES.includes(run.id);
     const isS3 = S3_ZONE_PUZZLES.includes(run.id);
     const isS4 = S4_ZONE_PUZZLES.includes(run.id);
+    const isS5 = S5_ZONE_PUZZLES.includes(run.id);
     const locksBefore = isS2 ? s2ClearCount() : isS1 ? s1LockCount() : 0;
     recordPuzzleClear(run.id, run.timeFrames);
     // 접수처에서 내보낸 정보 최고치를 기록 (보스 콜백 인트로 분기용) — 이전 최고치와 비교해 유지
@@ -2327,6 +2444,11 @@
       lines.push(n >= 2
         ? '…열쇠가 모두 모였다!\n아케이드 정문 안쪽에서\n반응하는 소리가 들린다.'
         : `열쇠를 하나 손에 넣었다. (${n}/2)`);
+    } else if (isS5) {
+      const n = s5ClearCount();
+      lines.push(n >= 3
+        ? '…현관 안쪽에서, 문이 스르르\n열리는 소리가 들린다!'
+        : `확인하는 용기를 하나 냈다. (${n}/3)`);
     }
     save();
     startDialog(lines, puz.title);
@@ -2412,7 +2534,8 @@
   const HINT_STEP_LABEL = { tokens: '정보 토큰', board: '게시판', eraser: '지우개', exit: '출구',
     copies: '떠도는 조각', levers: '차단 레버',
     voices: '다른 목소리', retrain: '반례 사진', lamps: '램프',
-    roulette: '룰렛 광장', signup: '회원가입 골목', backstage: '백스테이지' };
+    roulette: '룰렛 광장', signup: '회원가입 골목', backstage: '백스테이지',
+    call: '전화의 방', checkdoor: '잠긴 복도', sofa: '소파 코너' };
   function drawHint() {
     drawWorld();
     ctx.fillStyle = 'rgba(0,0,0,0.72)';
@@ -2615,6 +2738,32 @@
       label(Math.round(dr.x * TS - cx), Math.round(dr.y * TS - cy - 6), dr.name, twoKeys ? '#8de08d' : '#889');
       return;
     }
+    if (puz.type === 'call') {
+      // 5장 구역①: 울리는 전화 (경고 횟수에 따라 색이 바뀐다)
+      const ph = puz.phone;
+      const n = run.warnCount || 0;
+      box(Math.round(ph.x * TS - cx), Math.round(ph.y * TS - cy - 6) + bob, n >= 3 ? '#6a4a2a' : '#8a2a2a',
+        '☎', n >= 3 ? '#ffd644' : '#ffb0a0');
+      label(Math.round(ph.x * TS - cx), Math.round(ph.y * TS - cy - 6), `${ph.name} (${Math.min(n, 3)}/3)`,
+        n >= 3 ? '#ffd644' : '#ffb0a0');
+      return;
+    }
+    if (puz.type === 'checkdoor') {
+      // 5장 구역②: 루미가 말리는 잠긴 문
+      const dr = puz.door;
+      box(Math.round(dr.x * TS - cx), Math.round(dr.y * TS - cy - 6), run.opened ? '#2a5a3a' : '#6a2a2a',
+        run.opened ? '🚪' : '🔒', run.opened ? '#8de08d' : '#ffb0a0');
+      label(Math.round(dr.x * TS - cx), Math.round(dr.y * TS - cy - 6), dr.name, run.opened ? '#8de08d' : '#ffb0a0');
+      return;
+    }
+    if (puz.type === 'sofa') {
+      // 5장 구역③: 포근한 소파 (앉으면 따뜻한 색으로 바뀐다)
+      const sf = puz.sofa;
+      box(Math.round(sf.x * TS - cx), Math.round(sf.y * TS - cy - 6), run.sitting ? '#c97b4a' : '#6a4a2a',
+        '◍', run.sitting ? '#ffe6c9' : '#ffd6a0');
+      label(Math.round(sf.x * TS - cx), Math.round(sf.y * TS - cy - 6), sf.name, run.sitting ? '#ffe6c9' : '#ffd6a0');
+      return;
+    }
     for (const t of puz.terminals) {
       const nx = Math.round(t.x * TS - cx), ny = Math.round(t.y * TS - cy - 6);
       const given = run.given.includes(t.require) || (t.share && run.boardFace);
@@ -2772,6 +2921,17 @@
     } else if (run.puzzle.type === 'backstage') {
       title = `열쇠 ${s4KeyCount()}/2`;
       detail = run.opened ? '무대 뒤로 들어섰다' : '진짜 열쇠 두 개로 안쪽 문을 열자';
+    } else if (run.puzzle.type === 'call') {
+      title = `루미의 만류 ${Math.min(run.warnCount || 0, 3)}/3`;
+      detail = (run.warnCount || 0) < 3 ? '전화를 조사해 보자' : '한 번 더 조사하면 받을 수 있다';
+    } else if (run.puzzle.type === 'checkdoor') {
+      title = run.opened ? '문을 열었다' : '문 앞';
+      detail = '루미의 말이 진짜인지, 직접 열어 확인하자';
+    } else if (run.puzzle.type === 'sofa') {
+      const frac = Math.min(1, (run.standTimer || 0) / SOFA_STAND_FRAMES);
+      title = run.sitting ? `일어나기 ${Math.round(frac * 100)}%` : '앉지 않음';
+      detail = run.sitting ? '방향키를 3초 이상 꾹 눌러 버티자' : '소파를 조사해서 앉아 보자';
+      danger = run.sitting && frac < 1;
     } else {
       const given = givenTokens(run);
       const nonNick = given.filter((k) => k !== 'nickname');
@@ -2792,6 +2952,13 @@
     ctx.font = fs(12);
     ctx.fillText(detail, LW / 2, by + (game.largeText ? 42 : 38));
     ctx.textAlign = 'left';
+    // 5장 구역③ 소파 코너 — 일어나기 버티기 진행 게이지(90프레임 채우면 클리어)
+    if (run.puzzle.type === 'sofa' && run.sitting) {
+      const frac = Math.min(1, (run.standTimer || 0) / SOFA_STAND_FRAMES);
+      const gy = by + bh + 4;
+      ctx.fillStyle = '#333'; ctx.fillRect(bx, gy, bw, 6);
+      ctx.fillStyle = '#e0a53a'; ctx.fillRect(bx, gy, bw * frac, 6);
+    }
   }
 
   // ---------- 월드 ----------
@@ -2862,6 +3029,15 @@
           '반짝: "요즘은 딱지도 안 붙어.\n…진짜만 켜니까, 오히려 편해."',
           '반짝: "불 꺼진 나도 봐 줬잖아.\n…그게, 제일 반짝였어."',
         ], '반짝');
+        return;
+      }
+      // 5장 보스(루미) — 아직 설득하지 않았으면 마음 조각 배틀로, 이후엔 되돌린 친구로
+      if (npc.id === 'hollim_boss') {
+        if (!game.flags.chapter5Clear) { startBattleIntro('hollimmon', 'hollim_boss'); return; }
+        startDialog([
+          '루미: "요즘은 혼자서도, 잘 있어 봐.\n…기다리는 것도, 나쁘지 않더라."',
+          '루미: "네가 다녀온다고 하면,\n이제는… 그냥 믿고 기다릴게."',
+        ], '루미');
         return;
       }
       // 3장 1층 헛소 — 제보함 진행 상태에 따라 대사가 달라진다
@@ -3106,6 +3282,13 @@
       startDialog([w.lockText || '문이 잠겨 있다.', `열쇠 ${s4KeyCount()}/${w.needS4Keys} 확보.`]);
       return;
     }
+    // 5장 현관 게이트 — 구역 3개(전화의 방·잠긴 복도·소파 코너)를 모두 클리어해야 열린다
+    if (w.needS5Zones && s5ClearCount() < w.needS5Zones) {
+      pushBack();
+      Sound.bump();
+      startDialog([w.lockText || '문이 잠겨 있다.', `확인하는 용기 ${s5ClearCount()}/${w.needS5Zones}.`]);
+      return;
+    }
     game.map = w.to;
     p.x = w.tx; p.y = w.ty;
     p.px = w.tx * TS; p.py = w.ty * TS;
@@ -3118,6 +3301,8 @@
     Sound.warp();
     Sound.playSong(MAPS[w.to].song);
     syncPuzzleRun(); // 방탈출 방 입장/퇴장에 맞춰 런타임 상태 초기화/해제
+    // 5장 허브 「포근한 집」 — 루미의 목소리 안내(도착할 때마다 순서대로 한 마디씩)
+    if (w.to === 'cozyhome') advanceLumiVoice();
     // 2장 구역① 메아리 골목 — 반짝 문 루프 연출 (입구로 되돌아왔다)
     if (w.loop && game.puzzleRun && game.puzzleRun.puzzle.type === 'voices') {
       const run = game.puzzleRun;
@@ -3173,6 +3358,11 @@
     }
     if (game.notice.t > 0) game.notice.t -= 1;
     if (game.puzzleRun) updatePuzzleWorld(); // 방탈출: 시간 누적 + 구역별 물체 갱신
+    // 5장 구역③ 소파 코너 — 앉아 있는 동안은 이동을 잠그고, 방향키 버티기만 판정한다
+    if (game.puzzleRun && game.puzzleRun.puzzle.type === 'sofa' && game.puzzleRun.sitting) {
+      updateSofaStand();
+      return;
+    }
 
     // 서성이는 NPC (wander) — 거리의 살금 등. 몇 초마다 한 칸씩, 집 근처(반경 2)만 돈다.
     if (game.time % 45 === 0) {
@@ -3714,6 +3904,35 @@
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.arcade.song));
   }
 
+  // 5장 보스 승리 — chapter5Clear 플래그 + 5장 마무리 대사 후 포근한 집 현관 앞(허브)으로 복귀.
+  // v1 홀림몬(BOSS_ATTACKS 퀴즈)과 별개이므로 defeated.hollimmon/도감은 건드리지 않는다.
+  function winChapter5Boss() {
+    const b = game.battle;
+    const mon = b.mon;
+    game.flags.chapter5Clear = true;
+    game.flags.chapter5Mercy = (b.mercyChoiceKind === 'mercy'); // 다음 장 콜백 인트로용
+    if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
+    save();
+    checkCosmeticUnlocks(game.currentSlot);
+    game.battle = null;
+    game.mode = 'world';
+    // 포근한 집 현관 앞(허브)으로 복귀
+    game.map = 'cozyhome';
+    const p = game.player;
+    p.x = 11; p.y = 2; p.px = 11 * TS; p.py = 2 * TS; p.moving = false; p.dir = 'down';
+    held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
+    stickDir = null; stickRepeatFrames = 0;
+    Sound.badge();
+    Sound.playSong(MAPS.cozyhome.song);
+    const lines = [mon.win];
+    if (b.mercyChoiceKind === 'mercy') {
+      lines.push('💛 루미의 붙잡던 손 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!');
+    }
+    lines.push('☆ 5장 클리어! ☆\n집 안의 공기가\n한결 가벼워졌다.');
+    lines.push('루미가 현관문을\n스스로 열어 두었다.');
+    startDialog(lines, mon.name, () => Sound.playSong(MAPS.cozyhome.song));
+  }
+
   function winBattle() {
     const b = game.battle;
     const mon = b.mon;
@@ -3722,6 +3941,7 @@
     if (b.persuadeId === 'pyeonhyang_boss') { winChapter2Boss(); return; }
     if (b.persuadeId === 'hwangak_boss') { winChapter3Boss(); return; }
     if (b.persuadeId === 'yuhok_boss') { winChapter4Boss(); return; }
+    if (b.persuadeId === 'hollim_boss') { winChapter5Boss(); return; }
     game.flags.defeated[b.monId] = true;
     recordDexSeen(b.monId, b.mercyChoiceKind);
     if (!game.flags.mercyChoice) game.flags.mercyChoice = {};
@@ -3858,6 +4078,25 @@
   // ── 배틀 상자·하트 지오메트리 (파도·문 공용) ──
   const PBOX = { w: 320, h: 180 };
   function persuadeBox() { return { x: Math.round(LW / 2 - PBOX.w / 2), y: 150, w: PBOX.w, h: PBOX.h }; }
+  // 루미(보스) open 페이즈 고유 기믹 — 상자 축소(shrink). 파도마다 한 단계씩 좁아지고
+  // (b.shrinkLevel — 파도 넘어 영속), 정답 문을 통과하면 한 단계 회복된다. 최소 200×120.
+  const SHRINK_STEP = { w: 24, h: 12 };
+  const SHRINK_MIN = { w: 200, h: 120 };
+  const SHRINK_MAX_LEVEL = 5; // (320-200)/24 = (180-120)/12 = 5단계로 하한에 도달
+  function applyShrinkBox(b) {
+    if (b.p.openMechanic !== 'shrink') return;
+    const lvl = Math.max(0, Math.min(SHRINK_MAX_LEVEL, b.shrinkLevel || 0));
+    b.shrinkLevel = lvl;
+    const box = b.arena.box;
+    box.w = Math.max(SHRINK_MIN.w, PBOX.w - lvl * SHRINK_STEP.w);
+    box.h = Math.max(SHRINK_MIN.h, PBOX.h - lvl * SHRINK_STEP.h);
+    box.x = Math.round(LW / 2 - box.w / 2);
+    box.y = Math.round(240 - box.h / 2); // 원래 상자 중심(150+180/2=240)을 유지하며 좁아진다
+    // 하트가 좁아진 상자 밖에 남지 않도록 즉시 다시 가둔다
+    const arena = b.arena;
+    arena.soul.x = Math.max(box.x + SOUL_R, Math.min(box.x + box.w - SOUL_R, arena.soul.x));
+    arena.soul.y = Math.max(box.y + SOUL_R, Math.min(box.y + box.h - SOUL_R, arena.soul.y));
+  }
   const SOUL_R = 7;
 
   function startPersuadeBattle(monId, persuadeKey) {
@@ -3962,6 +4201,7 @@
     const claim = currentClaim();
     b.attack = claim.attack;
     b.phase = 'wave';
+    applyShrinkBox(b); // 루미(보스) — 파도 시작 시 현재 축소 단계를 상자에 반영
     const box = b.arena.box;
     // 스테이지 1(1장) 고정 난이도 + 프로필별 탄속 완화 + 오답 역효과 강화
     let sf = dodgeSpeedFactor() * (b.p.waveBulletMul || 1);
@@ -4262,8 +4502,12 @@
       }
     }
 
-    // 시간 초과 — 변화 없이 파도 재개 (타임아웃 기록)
-    if (gt.t >= gt.timeLimit) { pStats().gateTimeout += 1; enterWave(); } // 같은 주장으로 파도 재개
+    // 시간 초과 — 변화 없이 파도 재개 (타임아웃 기록). 루미(보스)는 상자가 한 단계 더 좁아진다
+    if (gt.t >= gt.timeLimit) {
+      pStats().gateTimeout += 1;
+      if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.min(SHRINK_MAX_LEVEL, (b.shrinkLevel || 0) + 1);
+      enterWave(); // 같은 주장으로 파도 재개
+    }
   }
 
   function gateResolve(b, door) {
@@ -4279,6 +4523,8 @@
       pushFloat(claim.okLine || r.evidenceRight || '…그랬구나.');
       b.shake = 14; Sound.correct();
       b.claimIdx += 1; // 다음 주장으로
+      // 루미(보스) — open 페이즈에서 정답 문을 통과하면 좁아졌던 상자가 한 단계 회복된다
+      if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.max(0, (b.shrinkLevel || 0) - 1);
     } else {
       b.gauge = clamp(b.gauge - 6, 0, b.gaugeMax);
       st.gateWrong += 1; st.backfire += 1;
@@ -4286,6 +4532,8 @@
       pushFloat(claim.onWrong);
       b.pIntense = true; // 다음 파도 강화
       b.flash = 14; Sound.wrong();
+      // 루미(보스) — open 페이즈에서 오답이면 상자가 한 단계 더 좁아진다
+      if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.min(SHRINK_MAX_LEVEL, (b.shrinkLevel || 0) + 1);
       // 같은 주장 재시도 (claimIdx 유지)
     }
     persuadeGaugeSync(b);
@@ -6114,7 +6362,9 @@
   const RUMOR_SEL = -2;
   // 4장 「반짝 아케이드」 수업 특별 항목 (sel = -3)
   const ARCADE_SEL = -3;
-  const MIN_SEL = ARCADE_SEL; // 선택기 하한
+  // 5장 「포근한 집」 수업 특별 항목 (sel = -4)
+  const COZY_SEL = -4;
+  const MIN_SEL = COZY_SEL; // 선택기 하한
   // 1장 시작 상태로 맞추고, 전부 공짜 거리 입구에 서서 시작한다.
   function applyTraceRoomClass() {
     const flags = setupStageFlags(1);
@@ -6161,6 +6411,20 @@
     p.moving = false; p.dir = 'up';
     save();
   }
+  // 5장 시작 상태(4장 클리어 직후)로 맞추고, 포근한 집 입구에 서서 시작한다.
+  function applyCozyhomeClass() {
+    const flags = setupStageFlags(1);
+    flags.chapter1Clear = true;
+    flags.chapter2Clear = true;
+    flags.chapter3Clear = true;
+    flags.chapter4Clear = true; // 5장은 4장 클리어 후 상태
+    game.flags = flags;
+    game.map = 'cozyhome';
+    const p = game.player;
+    p.x = 3; p.y = 8; p.px = 3 * TS; p.py = 8 * TS;
+    p.moving = false; p.dir = 'down';
+    save();
+  }
   function openClassMode(ret) {
     const cm = game.classmode;
     cm.ret = ret;
@@ -6180,7 +6444,8 @@
     if (cm.toast > 0) return; // 적용 안내 표시 중엔 입력 잠금
     if (cm.confirm) {
       if (justPressed('action')) {
-        if (cm.sel === ARCADE_SEL) applyArcadeClass();
+        if (cm.sel === COZY_SEL) applyCozyhomeClass();
+        else if (cm.sel === ARCADE_SEL) applyArcadeClass();
         else if (cm.sel === RUMOR_SEL) applyRumorStreetClass();
         else if (cm.sel === TILT_SEL) applyTiltStreetClass();
         else if (cm.sel === TRACE_SEL) applyTraceRoomClass();
@@ -6225,7 +6490,9 @@
     const isTilt = cm.sel === TILT_SEL;
     const isRumor = cm.sel === RUMOR_SEL;
     const isArcade = cm.sel === ARCADE_SEL;
-    const selLabel = isArcade ? '4장 시작 상태 · 반짝 아케이드 입구'
+    const isCozy = cm.sel === COZY_SEL;
+    const selLabel = isCozy ? '5장 시작 상태 · 포근한 집 입구'
+      : isArcade ? '4장 시작 상태 · 반짝 아케이드 입구'
       : isRumor ? '3장 시작 상태 · 대문짝 신문사 입구'
       : isTilt ? '2장 시작 상태 · 기울어진 거리 입구'
       : isTrace ? '1장 시작 상태 · 전부 공짜 거리 입구' : `${cm.sel}스테이지`;
@@ -6233,7 +6500,10 @@
     // 스테이지 선택기
     ctx.textAlign = 'center';
     ctx.fillStyle = themeAccent();
-    if (isArcade) {
+    if (isCozy) {
+      ctx.font = 'bold 30px monospace';
+      ctx.fillText('5장 — 포근한 집', LW / 2, 176);
+    } else if (isArcade) {
       ctx.font = 'bold 30px monospace';
       ctx.fillText('4장 — 반짝 아케이드', LW / 2, 176);
     } else if (isRumor) {
@@ -6254,7 +6524,8 @@
     }
     ctx.fillStyle = '#fff';
     ctx.font = '15px monospace';
-    ctx.fillText(isArcade ? '다크패턴 · 광고 · 2단계 인증 (구역 3개 → 반짝 보스)'
+    ctx.fillText(isCozy ? 'AI와의 관계 · 경계 설정 · 확인하는 용기 (구역 3개 → 루미 보스)'
+      : isArcade ? '다크패턴 · 광고 · 2단계 인증 (구역 3개 → 반짝 보스)'
       : isRumor ? '가짜 뉴스 분별 · 출처 확인 · 정정 보도 (구역 3개 → 그럴싸 보스)'
       : isTilt ? '경청 · 필터버블 · 스스로 고르기 (구역 3개 → 기울 보스)'
       : isTrace ? '개인정보 · 디지털 발자국 · 동의 (구역 3개 → 담아 보스)'
@@ -6746,6 +7017,18 @@
       }
     }
     drawAdStickers();
+    drawSofaWarmth();
+  }
+
+  // 5장 구역③ 「소파 코너」 — 앉아 있는 동안 화면에 따뜻한 색 오버레이가 점점 짙어진다.
+  // reduceFx면 점점 짙어지는 애니메이션 없이 고정 톤으로만 표시한다(모션 민감 배려).
+  function drawSofaWarmth() {
+    if (!(game.puzzleRun && game.puzzleRun.puzzle.type === 'sofa' && game.puzzleRun.sitting)) return;
+    const run = game.puzzleRun;
+    const settle = Math.min(1, (run.sitFrames || 0) / 180); // 앉은 뒤 점점 짙어진다(3초 정도)
+    const alpha = game.reduceFx ? 0.16 : 0.08 + 0.14 * settle;
+    ctx.fillStyle = `rgba(224,139,58,${alpha})`;
+    ctx.fillRect(0, 0, LW, LH);
   }
 
   // 4장 「반짝 아케이드」 — 광고 딱지 HUD 오염. 화면 가장자리에 반투명 스티커가
@@ -7367,8 +7650,8 @@
       : '✦를 주워 속마음을 들어요. 탄막은 피하고!', LW / 2, box.y - 12);
     ctx.textAlign = 'left';
 
-    // 박스
-    ctx.strokeStyle = '#fff';
+    // 박스 — 루미(보스)는 포근한 색 테두리로 표시된다(축소 기믹 진행 중 안내)
+    ctx.strokeStyle = b.p.openMechanic === 'shrink' ? '#e0a583' : '#fff';
     ctx.lineWidth = 2;
     ctx.strokeRect(box.x + 0.5, box.y + 0.5, box.w, box.h);
 
@@ -7447,6 +7730,16 @@
           ctx.fillStyle = i < resisted ? '#333' : '#ffd644';
           ctx.fillText('●', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
         }
+      }
+      // 루미(보스) 축소 단계 표시 — 상자가 좁아진 단계만큼 채워지는 게이지(포근한 색)
+      if (b.p.openMechanic === 'shrink' && b.pState === 'open') {
+        const lvl = b.shrinkLevel || 0;
+        ctx.fillStyle = '#333'; ctx.fillRect(box.x, box.y + box.h + 22, box.w, 4);
+        ctx.fillStyle = '#e0a583'; ctx.fillRect(box.x, box.y + box.h + 22, box.w * (lvl / SHRINK_MAX_LEVEL), 4);
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#e0a583'; ctx.font = '10px monospace';
+        ctx.fillText(`포근함 ${lvl}/${SHRINK_MAX_LEVEL}`, box.x + box.w / 2, box.y + box.h + 34);
+        ctx.textAlign = 'left';
       }
     } else if (b.phase === 'gates') {
       // 문 3개

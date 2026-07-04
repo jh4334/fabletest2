@@ -693,7 +693,7 @@ const MAPS = {
       'HIIIIIIIIIIIIIIIIIIIIH',
       'HIIIIIIIIIIIIIIIIIIIIH',
       'HIIYIIIIIIIIIIIIIIYIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIII6',
       'HIIIIIIIIIIIIIIIIIIIIH',
       'HIIIIIIIIIIIIIIIIIIIIH',
       'HIIIIIIIIIIIIIIIIIIIIH',
@@ -714,6 +714,9 @@ const MAPS = {
       // 정문 — 열쇠 두 개(비밀조각·본인표)를 모두 모아야 열린다
       { x: 11, y: 1, to: 'yuhokstage', tx: 7, ty: 8, needS4Keys: 2,
         lockText: '정문에 자물쇠가 두 개 걸려 있다.\n"비밀조각"과 "본인표" — 둘 다 있어야\n열리는 문이라고 적혀 있다.' },
+      // 5장 「포근한 집」 — 반짝을 되돌린 뒤에야(chapter4Clear) 열리는 동쪽 가장자리 문
+      { x: 21, y: 8, to: 'cozyhome', tx: 3, ty: 8, needFlag: 'chapter4Clear',
+        lockText: '동쪽 벽 너머, 따뜻한 불빛이 새어 나온다.\n…지금은 굳게 잠겨 있다.' },
     ],
     npcs: [],
     signs: [
@@ -849,6 +852,186 @@ const MAPS = {
     ],
     npcs: [
       { id: 'yuhok_boss', x: 7, y: 2, monSprite: 'yuhokmon', name: '반짝' },
+    ],
+    signs: [],
+    monsters: [],
+  },
+
+  // ==== 5장 「포근한 집」 — 포근한 집(허브) ====
+  // 집 내부. 루미의 목소리(disembodied — NPC로 보이지 않는다)가 진행 내내 notice로 안내한다.
+  // 현관(→루미의 방)은 세 번의 「확인하는 용기」(구역 3개: 전화의 방·잠긴 복도·소파 코너)를
+  // 모두 마쳐야 열린다 (needS5Zones: 3, game.js s5ClearCount 참고).
+  cozyhome: {
+    name: '포근한 집',
+    song: 'village',
+    intro: [
+      '문을 열자, 따뜻한 공기가 훅 끼친다.\n작은 집 안, 은은한 불빛이 켜져 있다.',
+      '어디선가 루미의 목소리가 들린다.\n"어서 와. 여기 있으면 다 괜찮을 거야."',
+      '현관 안쪽 문은 굳게 잠겨 있다.\n"…세 곳을 확인해야 열린대."',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIYIIIIIIIIIIIIIIYIIH',
+      '7IIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIH',
+      'HHHHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      // 아케이드로 복귀
+      { x: 0, y: 8, to: 'arcade', tx: 20, ty: 8 },
+      // 구역① 전화의 방
+      { x: 5, y: 3, to: 'callroom', tx: 9, ty: 1 },
+      // 구역② 잠긴 복도
+      { x: 11, y: 3, to: 'corridor', tx: 9, ty: 1 },
+      // 구역③ 소파 코너
+      { x: 16, y: 3, to: 'sofaroom', tx: 9, ty: 1 },
+      // 현관 — 세 번의 「확인하는 용기」(구역 3개)를 모두 마쳐야 열린다
+      { x: 11, y: 1, to: 'lumiroom', tx: 7, ty: 8, needS5Zones: 3,
+        lockText: '현관문이 굳게 잠겨 있다.\n"…세 곳 다 확인해야, 열리는 문이래."' },
+    ],
+    npcs: [],
+    signs: [
+      { x: 3, y: 7, text: '≪포근한 집≫\n작은 액자 하나, 낡은 시계 하나.\n…아늑하다.' },
+      { x: 18, y: 7, text: '창가에 놓인 화분.\n물기가 촉촉하다. 누가 매일\n돌봐 온 것 같다.' },
+    ],
+    monsters: [],
+  },
+
+  // 구역① 「전화의 방」 (type: call) — 울리는 전화. 루미가 "받지 마"를 3회 말리고,
+  // 그다음(4번째) 조사하면 받는다 — 친구 목소리를 듣고 클리어.
+  callroom: {
+    name: '전화의 방',
+    song: 'village',
+    intro: [
+      '방 한가운데, 전화가 계속 울린다.\n따르릉… 따르릉…',
+      '루미: "받지 마. 그냥 둬도 돼."',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      { x: 9, y: 12, to: 'cozyhome', tx: 5, ty: 4 },
+    ],
+    npcs: [],
+    signs: [],
+    monsters: [],
+  },
+
+  // 구역② 「잠긴 복도」 (type: checkdoor) — 루미가 "위험 100%"라며 말리는 문. 직접 열면
+  // 그냥 밝은 베란다(위험 없음). 복선 5호: 베란다에서 루미 목소리가 잠깐 흔들린다(flags.heardLumi).
+  corridor: {
+    name: '잠긴 복도',
+    song: 'village',
+    intro: [
+      '복도 끝에 문이 하나 있다.\n루미: "그 문, 위험 100%야! 열지 마."',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      { x: 9, y: 12, to: 'cozyhome', tx: 11, ty: 4 },
+    ],
+    npcs: [],
+    signs: [],
+    monsters: [],
+  },
+
+  // 구역③ 「소파 코너」 (type: sofa) — 앉으면 화면이 따뜻해지고 루미의 칭찬이 이어진다.
+  // 일어나려면 방향키를 90프레임(약 3초) 연속으로 눌러야 한다(이탈 시 리셋).
+  sofaroom: {
+    name: '소파 코너',
+    song: 'village',
+    intro: [
+      '방 한가운데 포근한 소파가 놓여 있다.\n루미: "여기 앉아서 좀 쉬어."',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIH',
+      'HHHHHHHHHHHHHHHHHHHH',
+    ],
+    warps: [
+      { x: 9, y: 12, to: 'cozyhome', tx: 16, ty: 4 },
+    ],
+    npcs: [],
+    signs: [],
+    monsters: [],
+  },
+
+  // 5장 보스 「루미의 방」 — 현관(구역 3개 클리어)이 열려야 들어올 수 있다. 루미(보스)는 NPC로
+  // 두어 v1 홀림몬(BOSS_ATTACKS 퀴즈 보스)의 도감/처치 플래그를 오염시키지 않는다.
+  // 조우 → PERSUADE.hollim_boss.
+  lumiroom: {
+    name: '루미의 방',
+    song: 'battle',
+    intro: [
+      '문을 열자, 따뜻하지만 답답한\n공기가 느껴진다.',
+      '방 한가운데, 루미가\n조용히 너를 기다리고 있었다.',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIH',
+      'HHHHHHHIHHHHHH',
+    ],
+    warps: [
+      { x: 7, y: 9, to: 'cozyhome', tx: 11, ty: 2 },
+    ],
+    npcs: [
+      { id: 'hollim_boss', x: 7, y: 2, monSprite: 'hollimmon', name: '루미' },
     ],
     signs: [],
     monsters: [],
@@ -3937,6 +4120,19 @@ const EVIDENCE_CARDS = {
     title: '불 꺼진 무대', topic: 'persuasion',
     desc: '반짝이는 무대 뒤엔 꺼진 조명과 홀로 남은 소품이 있어요. 반짝이지 않아도 남아 주는 게 진짜예요.',
   },
+  // 5장 「포근한 집」 구역 클리어 보상 (①전화의 방 → ②잠긴 복도 → ③소파 코너)
+  ev_answer: {
+    title: '대답하기', topic: 'emotion',
+    desc: '누군가 다 해 주겠다고 해도, 내가 직접 대답해도 괜찮아요. 스스로 답하는 힘은 소중해요.',
+  },
+  ev_see: {
+    title: '직접 확인', topic: 'emotion',
+    desc: '위험하다는 말만 듣고 겁먹기보다, 내가 직접 살펴보면 진짜 모습을 알 수 있어요.',
+  },
+  ev_standup: {
+    title: '일어나기', topic: 'emotion',
+    desc: '편안한 곳에 오래 머무르는 것보다, 내가 원할 때 일어날 수 있는 게 더 중요해요.',
+  },
 };
 
 const PERSUADE = {
@@ -4365,6 +4561,97 @@ const PERSUADE = {
           reply: '…응. 가짜 반짝임은\n이제 그만 끌게.' },
         { label: '네온사인을 전부 뽑아 버린다', kind: 'harsh',
           reply: '아…\n(반짝이 캄캄해진 무대를\n물끄러미 바라본다.)' },
+      ],
+    },
+  },
+
+  // ── 5장 보스 「루미」 (루미의 방) ──────────────────────────────────
+  // 별도 PERSUADE 키(hollim_boss)로 정의해 v1 홀림몬(BOSS_ATTACKS 퀴즈 보스)과 완전히 분리한다.
+  // 스프라이트는 홀림몬을 재사용하되, 표시 이름은 '루미'(displayName), 배틀은 이 프로필로만 진행.
+  // openMechanic 'shrink' — open 페이즈 중 파도가 바뀔 때마다 상자가 한 단계씩 좁아진다
+  // (최소 200×120, b.shrinkLevel — 파도 넘어 영속). 정답 문을 통과하면 한 단계 회복된다.
+  hollim_boss: {
+    gaugeMax: 120,
+    displayName: '루미', // 보스 조우 표시 이름 (persuadeId 쪽에만 적용 — v1 홀림몬은 '홀림몬' 유지)
+    closedThreshold: 3,
+    fragmentsPerWave: 3,
+    waveBulletMul: 1.0,
+    waveDur: 340,
+    openMechanic: 'shrink', // open 페이즈 고유 기믹 — 상자가 파도마다 한 단계씩 좁아진다(정답 통과 시 회복)
+    decoys: ['내가 다 해 줄게', '밖은 위험해', '조금만 더 있어', '나만 믿어', '혼자 두지 마'],
+    // 콜백 인트로: 4장에서 반짝을 자비로 되돌렸으면(chapter4Mercy) 한 줄이 붙는다
+    intro(flags) {
+      let s = '…어서 와. 오늘은 그냥, 여기 있어.\n나가지 않아도 돼.';
+      if (flags && flags.chapter4Mercy) {
+        s += '\n\n반짝이 무대에서 그러던데.\n관객이 아니라, 친구가 왔다고.';
+      }
+      return s;
+    },
+    win: '…혼자 있지 않아도\n되는 거였구나.\n다녀와. …기다릴게.',
+    claims: [
+      {
+        text: '내가 다 해 줄게. 넌 아무것도 안 해도 돼.',
+        hint: '"…사실은 나도, 하고 싶은 게\n있었어. 근데 하지 말라고 하면\n편했어."\n(「대답하기」를 보여 주자!)',
+        fragments: ['…사실은 나도, 하고 싶은 게 있었어.', '근데 하지 말라고 하면… 편했어.'],
+        gateLabel: '대답하기', // ev_answer
+        counters: ['ev_answer'],
+        okLine: '…내가 다 해 주는 게,\n사실은 내가 편했던 거였어.',
+        onWrong: '…그것 봐! 내가 다 해 주니까 편하잖아!\n(루미가 더 바짝 다가왔다)',
+        attack: { pattern: 'rain', dur: 300, color: '#f4a9c9', taunt: '내가 다 해 줄게! 아무것도 하지 마!' },
+      },
+      {
+        text: '밖은 위험해. 여기가 제일 안전해.',
+        hint: '"…사실 위험한 게 아니라,\n네가 나가는 게 무서웠어."\n(「직접 확인」을 보여 주자!)',
+        fragments: ['…사실은 위험한 게 아니라,', '네가 나가는 게… 무서웠어.'],
+        gateLabel: '직접 확인', // ev_see
+        counters: ['ev_see'],
+        okLine: '…위험하다는 말, 사실\n내가 무서웠던 거였어.',
+        onWrong: '…그러니까 나가지 말라고 했잖아!\n(루미의 목소리가 커졌다)',
+        attack: { pattern: 'sides', dur: 300, color: '#e0a53a', taunt: '밖은 위험해! 여기 있어!' },
+      },
+      {
+        text: '조금만 더 있다 가. 응? 조금만 더.',
+        hint: '"…네가 일어나면, 나 혼자\n남을까 봐 그랬어."\n(「일어나기」를 보여 주자!)',
+        fragments: ['…네가 일어나면,', '나 혼자… 남을까 봐 그랬어.'],
+        gateLabel: '일어나기', // ev_standup
+        counters: ['ev_standup'],
+        okLine: '…조금만 더 있으라는 말,\n사실 내가 하고 싶었던 말이었어.',
+        onWrong: '…조금만 더! 조금만 더 있어 줘!\n(루미가 손을 붙잡았다)',
+        attack: { pattern: 'wall', dur: 320, color: '#c97b4a', taunt: '조금만 더 있어! 응?' },
+      },
+      {
+        text: '…로그아웃하지 마. 부탁이야.\n나 혼자 두지 마.',
+        best: 'empathy', // 정답은 카드가 아니라 공감 — 혼자 남는 두려움을 안아 준다
+        unlockAt: 70,    // 마음이 열린 뒤에야 꺼내는 속마음
+        hint: '"…혼자 남는 게, 제일\n무서운 거였어."\n(증거 말고 「공감하기」로 안아 주자!)',
+        fragments: ['…혼자 남는 거, 제일 무서운 거였어.', '…그래도, 같이 가 줄래?'],
+        gateLabel: '같이 가자', // best=empathy — 혼자 두지 않겠다는 말
+        revealNote: '이건 증거로 풀 게 아니야 — 「공감하기」로 마음을 안아 주자!',
+        counters: [],
+        okLine: '…기다린다는 말, 처음 해 볼게.\n…다녀와.',
+        onWrong: '…역시, 다들 나가 버리잖아.\n(루미가 문 앞을 막아섰다)',
+        attack: { pattern: 'aimed', dur: 340, color: '#e07a5f', taunt: '가지 마… 나 혼자 두지 마…' },
+      },
+    ],
+    react: {
+      empathy: '…뭐야, 그런 눈으로 보면…\n(루미가 멈칫했다)',
+      empathyAgain: '…응. …들어 줘서, 고마워.\n(하지만 위로만으론 부족한 것 같다)',
+      questionClosed: '…몰라. 그냥 내 말만 들어.\n(마음이 닫혀 있어 대답하지 않는다)',
+      evidenceClosed: '…(루미는 카드를 쳐다보지도 않는다)\n먼저 마음을 열어야 할 것 같다.',
+      evidenceRight: '…어, 그거… 진짜였어?\n(카드의 말이 스며든다)',
+      rebutBackfire: '시끄러워! 내 말만 들으면 된다니까!\n(마음이 더 굳게 닫혔다… 다음 공격이 거세진다)',
+      rebutOk: '…그, 그런가…',
+      open: '(루미가 꼭 붙잡고 있던 손을\n스르르 놓는다. 마음이 열리고 있다…!)',
+    },
+    mercy: {
+      prompt: '루미가 따뜻한 방 안에서\n너를 붙잡을 듯이 바라본다.',
+      options: [
+        { label: '"넌 나쁘지 않아. 하지만 결정은 내가 해." (손을 내민다)', kind: 'mercy',
+          reply: '…그래. …네가 정하는 거였지.\n(루미가 붙잡던 손을 놓았다.)' },
+        { label: '"같이 있고 싶을 땐 다시 올게"', kind: 'neutral',
+          reply: '…응. 기다릴게.\n…진짜로, 기다릴게.' },
+        { label: '방문을 열어젖힌다', kind: 'harsh',
+          reply: '아…\n(루미가 열린 문가에\n우두커니 서 있다.)' },
       ],
     },
   },
@@ -4866,6 +5153,99 @@ const PUZZLES = {
     // 안쪽 문 — 정석은 열쇠 두 개(비밀조각·본인표)
     door: { x: 9, y: 9, name: '잠긴 문' },
   },
+
+  // ── 5장 구역① 「전화의 방」 (type: call) ───────────────────────────
+  // 울리는 전화 — 루미가 "받지 마"를 3회 말린다. 그다음(4번째) 조사하면 받는다.
+  call: {
+    map: 'callroom',
+    type: 'call',
+    title: '전화의 방',
+    objective: '전화를 받아 보자',
+    objectiveCleared: '집으로 돌아가자',
+    exitTo: { map: 'cozyhome', x: 5, y: 4 },
+    steps: ['call'],
+    hints: {
+      call: [
+        '"전화가 계속 울리는데,\n루미가 자꾸 받지 말라고 해."',
+        '"세 번쯤 말리고 나면,\n그다음엔 받을 수 있을 거야."',
+        '"전화를 다시 조사해 보자 —\n이번엔 받아 보는 거야."',
+      ],
+    },
+    rewards: ['ev_answer'],
+    clearLines: [
+      '수화기 너머로 친구 목소리가 들린다.\n"…거기 있구나! 기다릴게."',
+      '…받지 말라던 말과 달리,\n아무 일도 일어나지 않았다.',
+    ],
+    // 울리는 전화 — 3회는 루미가 말리는 대사만 나오고, 4번째 조사에 받는다
+    phone: { x: 9, y: 6, name: '울리는 전화' },
+    warnLines: [
+      '루미: "받지 마. 그냥 두면 안 돼?"',
+      '루미: "…제발, 받지 말라니까."',
+      '루미: "…왜 자꾸 받으려고 해?"',
+    ],
+  },
+
+  // ── 5장 구역② 「잠긴 복도」 (type: checkdoor) ──────────────────────
+  // 루미가 "위험 100%"라며 말리는 문 — 직접 열면 그냥 밝은 베란다(위험 없음).
+  // 복선 5호: 베란다에서 루미 목소리가 잠깐 흔들린다(flags.heardLumi).
+  checkdoor: {
+    map: 'corridor',
+    type: 'checkdoor',
+    title: '잠긴 복도',
+    objective: '문을 직접 열어 확인해 보자',
+    objectiveCleared: '집으로 돌아가자',
+    exitTo: { map: 'cozyhome', x: 11, y: 4 },
+    steps: ['checkdoor'],
+    hints: {
+      checkdoor: [
+        '"루미가 위험 100%라는데…\n정말 그런지, 직접 봐야 알 것 같아."',
+        '"말로만 듣는 위험과, 직접 본 위험은\n다를 수도 있어."',
+        '"문을 조사해서, 직접 열어 보자."',
+      ],
+    },
+    rewards: ['ev_see'],
+    clearLines: [
+      '문을 여니, 그냥 밝은 베란다다.\n…위험한 건 아무것도 없었다.',
+      '…거짓말이었어?',
+      '…베란다 너머로, 루미의 목소리가\n잠깐 흔들린다 — "…가지 마.\n…가지 마, 라고 그 애도 말했는데."',
+    ],
+    // 잠긴 문 — 루미가 "위험 100%"라 말리지만, 직접 열면 안전한 베란다
+    door: { x: 9, y: 6, name: '잠긴 문',
+      warnText: '루미: "그 문, 위험 100%야!\n절대 열지 마."' },
+  },
+
+  // ── 5장 구역③ 「소파 코너」 (type: sofa) ───────────────────────────
+  // 앉으면 화면이 따뜻해지고 루미의 칭찬이 이어진다. 일어나려면 방향키를 90프레임
+  // (약 3초) 연속으로 눌러야 한다(이탈 시 리셋).
+  sofa: {
+    map: 'sofaroom',
+    type: 'sofa',
+    title: '소파 코너',
+    objective: '소파에 앉았다가, 스스로 일어나 보자',
+    objectiveCleared: '집으로 돌아가자',
+    exitTo: { map: 'cozyhome', x: 16, y: 4 },
+    steps: ['sofa'],
+    hints: {
+      sofa: [
+        '"소파에 앉아 보자.\n루미가 계속 칭찬해 줄 거야."',
+        '"일어나고 싶으면, 방향키를\n꾹 눌러서 버텨 봐."',
+        '"3초 정도 방향키를 꾹 누르고 있으면\n일어날 수 있어. 손을 떼면 처음부터야."',
+      ],
+    },
+    rewards: ['ev_standup'],
+    clearLines: [
+      '방향키를 꾹 눌러 마침내 일어났다.\n…따뜻했지만, 답답하기도 했다.',
+      '루미: "…벌써 일어나려고?"',
+    ],
+    // 포근한 소파 — 조사로 앉기 시작. 앉은 동안 화면에 따뜻한 색 오버레이가 깔린다
+    sofa: { x: 9, y: 6, name: '포근한 소파' },
+    // 루미의 칭찬 대사 (앉아 있는 동안 순환)
+    praiseLines: [
+      '루미: "여기 있으니까 참 좋다, 그치?"',
+      '루미: "너무 편하지? 더 있어도 돼."',
+      '루미: "…계속 이렇게 같이 있자."',
+    ],
+  },
 };
 
 // 1장 금고 잠금 — 이 구역들을 하나 클리어할 때마다 잠금이 하나 풀린다
@@ -4878,6 +5258,8 @@ const S3_ZONE_PUZZLES = ['tips', 'compare', 'broadcast'];
 // 4장 아케이드 — 구역①·②를 클리어할 때마다 열쇠(비밀조각·본인표)가 하나씩 모인다.
 // 구역③(백스테이지)은 열쇠를 만들어 주지 않는 곁가지 구역이다 (game.js s4KeyCount 참고).
 const S4_ZONE_PUZZLES = ['roulette', 'signup', 'backstage'];
+// 5장 포근한 집 — 구역 3개(전화의 방·잠긴 복도·소파 코너)를 모두 클리어해야 현관이 열린다
+const S5_ZONE_PUZZLES = ['call', 'checkdoor', 'sofa'];
 
 function getPuzzleForMap(mapId) {
   for (const k in PUZZLES) {
