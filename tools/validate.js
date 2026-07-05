@@ -19,8 +19,8 @@ for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js']) {
 }
 
 const { MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL,
-  MONSTER_DEX, DEX_ORDER, MAP_PROPS, BOSS_ATTACKS, TOPIC_LABEL, getObjectiveTarget } =
-  vm.runInContext('({ MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL, MONSTER_DEX, DEX_ORDER, MAP_PROPS, BOSS_ATTACKS, TOPIC_LABEL, getObjectiveTarget })', ctx);
+  MONSTER_PAL, MONSTER_DEX, DEX_ORDER, MAP_PROPS, BOSS_ATTACKS, TOPIC_LABEL, getObjectiveTarget } =
+  vm.runInContext('({ MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL, MONSTER_PAL, MONSTER_DEX, DEX_ORDER, MAP_PROPS, BOSS_ATTACKS, TOPIC_LABEL, getObjectiveTarget })', ctx);
 
 let errors = 0;
 const err = (msg) => { console.error('ERROR: ' + msg); errors++; };
@@ -108,16 +108,19 @@ for (const [id, m] of Object.entries(MAPS)) {
 }
 
 // 5. 스프라이트 크기/팔레트
-const checkSprite = (name, rows) => {
+const checkSprite = (name, rows, pal = BASE_PAL) => {
   if (rows.length !== 16) err(`스프라이트 ${name}: 행 수 ${rows.length} != 16`);
   rows.forEach((row, y) => {
     if (row.length !== 16) err(`스프라이트 ${name} y=${y}: 길이 ${row.length} != 16`);
     for (const ch of row) {
-      if (ch !== '.' && !BASE_PAL[ch]) err(`스프라이트 ${name} y=${y}: 팔레트에 없는 문자 '${ch}'`);
+      if (ch !== '.' && !pal[ch]) err(`스프라이트 ${name} y=${y}: 팔레트에 없는 문자 '${ch}'`);
     }
   });
 };
-for (const [id, rows] of Object.entries(MONSTER_SPRITES)) checkSprite(id, rows);
+for (const [id, rows] of Object.entries(MONSTER_SPRITES)) {
+  const pal = Object.assign({}, BASE_PAL, (MONSTER_PAL && MONSTER_PAL[id]) || {});
+  checkSprite(id, rows, pal);
+}
 for (const [dir, frames] of Object.entries(PLAYER_SPRITES)) {
   frames.forEach((f, i) => checkSprite(`player.${dir}[${i}]`, f));
 }

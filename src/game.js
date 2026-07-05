@@ -2801,7 +2801,7 @@
     for (const t of puz.terminals) {
       const nx = Math.round(t.x * TS - cx), ny = Math.round(t.y * TS - cy - 6);
       const given = run.given.includes(t.require) || (t.share && run.boardFace);
-      drawSprite(ctx, MONSTER_SPRITES[t.theme], nx, ny + bob, SCALE);
+      drawMon(ctx, t.theme, nx, ny + bob, SCALE);
       label(nx, ny, t.name + (given ? ' ✓' : ''), given ? '#8de08d' : '#fff');
     }
     const er = puz.eraser, ex = puz.exits;
@@ -4898,7 +4898,7 @@
     if (isSeen) {
       const ss = 6;
       const bob = Math.sin(game.time / 22) * 4;
-      drawSprite(ctx, MONSTER_SPRITES[id], Math.round(cx - 16 * ss / 2), Math.round(110 + bob), ss);
+      drawMon(ctx, id, Math.round(cx - 16 * ss / 2), Math.round(110 + bob), ss);
     } else {
       // 실루엣
       ctx.strokeStyle = '#444';
@@ -7336,7 +7336,7 @@
       const ny = Math.round(npc.y * TS - cy - 6);
       if (npc.monSprite) {
         const bob = Math.round(Math.sin(game.time / 22) * 2);
-        drawSprite(ctx, MONSTER_SPRITES[npc.monSprite], nx, ny + bob, SCALE);
+        drawMon(ctx, npc.monSprite, nx, ny + bob, SCALE);
       } else {
         drawSprite(ctx, NPC_SPRITES.down[frame], nx, ny, SCALE, NPC_PALETTES[npc.pal]);
       }
@@ -7352,7 +7352,7 @@
       if (dead && !friend) continue;
       const bob = Math.round(Math.sin(game.time / 18) * 4);
       const dx0 = Math.round(mo.x * TS - cx), dy0 = Math.round(mo.y * TS - cy - 6 + bob);
-      drawSprite(ctx, MONSTER_SPRITES[mo.id], dx0, dy0, SCALE);
+      drawMon(ctx, mo.id, dx0, dy0, SCALE);
       if (friend) {
         // 친구가 된 몬스터: 머리 위 ♥ (말을 걸 수 있어요)
         ctx.fillStyle = '#e0453a';
@@ -7885,7 +7885,7 @@
     ctx.beginPath();
     ctx.ellipse(mcx, 222, 56 - bob, 12, 0, 0, Math.PI * 2);
     ctx.fill();
-    drawSprite(ctx, MONSTER_SPRITES[b.monId], mx, my, monScale);
+    drawMon(ctx, b.monId, mx, my, monScale);
     // 반응 이모트 — 정답이면 번쩍 깨달음(!), 오답이면 아직 갸웃(?)
     if (b.phase === 'feedback' && b.feedback) {
       const ch = b.feedback.correct ? '!' : '?';
@@ -8341,7 +8341,7 @@
     const parade = ['mollaemon', 'geojitmon', 'pyeonhyangmon', 'hollimmon', 'mirrormon', 'soksagimon', 'yeongi'];
     for (let i = 0; i < parade.length; i++) {
       const bx = LW / 2 - parade.length * 24 + i * 48;
-      drawSprite(ctx, MONSTER_SPRITES[parade[i]], bx, 134 + Math.sin(game.time / 20 + i * 1.1) * 5, 3);
+      drawMon(ctx, parade[i], bx, 134 + Math.sin(game.time / 20 + i * 1.1) * 5, 3);
     }
 
     // 세이브 슬롯 3개
@@ -8673,7 +8673,7 @@
       ctx.fillText(`맞힌 문제 ${game.flags.correctCount}개 · 안아 준 마음 ♥${game.flags.mercy}`, LW / 2, ty + 10);
       if (e.yeongi) {
         const bob = Math.sin(game.time / 18) * 4;
-        drawSprite(ctx, MONSTER_SPRITES.yeongi, LW / 2 - 32, 420 + bob, 4);
+        drawMon(ctx, 'yeongi', LW / 2 - 32, 420 + bob, 4);
       }
       if (game.endingT > 150) {
         ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
@@ -8721,7 +8721,7 @@
       const perRow = row === 0 ? 14 : ids.length - 14;
       const bx = LW / 2 - perRow * 20 + col * 40;
       const by = 428 + row * 38 + Math.sin(game.time / 15 + i) * 4;
-      drawSprite(ctx, MONSTER_SPRITES[ids[i]], bx, by, 2);
+      drawMon(ctx, ids[i], bx, by, 2);
     }
 
     if (game.endingT > 120) {
