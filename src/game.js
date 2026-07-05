@@ -6498,7 +6498,8 @@
   // 세 학생(슬롯)의 학습 현황을 스프레드시트로 열 수 있는 CSV로 만든다.
   function buildClassCsv() {
     const header = ['슬롯', '이름', '칭호', '진행', '완주', '푼 문제', '정답 수',
-      '정답률(%)', '복습 노트', '도전과제', '안아준 마음', '연속 출석(일)'];
+      '정답률(%)', '복습 노트', '도전과제', '안아준 마음', '연속 출석(일)',
+      '개념별 성취(정답/시도)', '자비 선택(프롤로그·1~5장)', '엔딩'];
     const lines = [header.map(csvCell).join(',')];
     for (let i = 0; i < SLOT_COUNT; i++) {
       const sum = slotSummary(i);
@@ -6506,6 +6507,27 @@
       const s = buildLearningSummary(i);
       const meta = getMeta(i);
       const title = selectedTitle(i);
+      const saved = loadSlot(i);
+      const flags = (saved && saved.flags) || {};
+      const conceptStats = (s.rows || [])
+        .map((r) => `${r.label} ${r.correct}/${r.total}`)
+        .join('; ');
+      const mercyParts = [
+        flags.defeated?.bekkyeomon
+          ? (flags.mercyChoice?.bekkyeomon === 'mercy' ? '따라:안아줌' : '따라:무찌름')
+          : '따라:-',
+      ];
+      for (let n = 1; n <= 5; n++) {
+        mercyParts.push(
+          flags['chapter' + n + 'Clear']
+            ? (flags['chapter' + n + 'Mercy'] ? n + '장:안아줌' : n + '장:무찌름')
+            : n + '장:-'
+        );
+      }
+      const mercyStr = mercyParts.join(' / ');
+      const endingStr = flags.trueEnding
+        ? '집으로(따뜻)'
+        : (flags.defeated?.yeongi ? '완주' : '진행 중');
       lines.push([
         i + 1,
         sum.name,
@@ -6519,6 +6541,9 @@
         countAchievements(i) + '/' + ACHIEVEMENTS.length,
         sum.mercy,
         meta.streak || 0,
+        conceptStats,
+        mercyStr,
+        endingStr,
       ].map(csvCell).join(','));
     }
     return lines.join('\r\n');

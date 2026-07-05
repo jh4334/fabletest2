@@ -807,10 +807,12 @@ const csv = T.buildClassCsv();
 const csvLines = csv.split('\r\n');
 check('CSV가 CRLF 줄바꿈 사용', csv.includes('\r\n'));
 check('CSV 헤더 행 존재', csvLines[0].startsWith('슬롯,이름,'));
-check('CSV 헤더 12개 열', csvLines[0].split(',').length === 12);
+check('CSV 헤더 15개 열', csvLines[0].split(',').length === 15);
+check('CSV 헤더에 연구용 지표 3열 포함', csvLines[0].includes('개념별 성취') &&
+  csvLines[0].includes('자비 선택') && csvLines[0].includes('엔딩'));
 check('CSV 행 = 헤더 + 슬롯 3개', csvLines.length === 4);
 check('CSV 슬롯1 행이 슬롯 번호로 시작', csvLines[1].startsWith('1,'));
-check('CSV 슬롯1(데이터 있음) 12개 열', csvLines[1].split(',').length === 12);
+check('CSV 슬롯1(데이터 있음) 15개 열', csvLines[1].split(',').length === 15);
 
 console.log('[37] 적응형(맞춤) 학습 — 약점 집중 출제');
 const adaptive = T.buildAdaptivePool(0, 8);
