@@ -1925,7 +1925,10 @@ check('정답 문 통과 (+26)', g.battle.gauge === 26 && g.flags.pStats.gateRig
 g.battle.pState = 'open';
 step(61); // truth.spawnTimer(60) 경과 → 첫 조각 스폰([진]부터 시작)
 check('첫 헤드라인 조각은 [진]', !!g.battle.wave.truth.obj && g.battle.wave.truth.obj.kind === 'real');
-g.battle.arena.bullets.length = 0; g.battle.arena.inv = 999;
+// 속마음 조각(fragments)은 파도마다 무작위 좌표에 스폰된다 — 우연히 헤드라인 조각과
+// 겹치면 같은 프레임에 함께 수집되어 게이지 델타가 오염된다(RNG 시드는 이 파일 전역
+// 호출 순서에 따라 달라지므로 위쪽 시나리오 변경에도 흔들리지 않도록 매번 비워 격리한다).
+g.battle.arena.bullets.length = 0; g.battle.arena.inv = 999; g.battle.wave.fragments.length = 0;
 const truthGaugeBefore1 = g.battle.gauge;
 g.battle.arena.soul.x = g.battle.wave.truth.obj.x; g.battle.arena.soul.y = g.battle.wave.truth.obj.y;
 step(1);
@@ -1934,6 +1937,7 @@ check('[진] 접촉 → truthCaught 1', g.battle.truthCaught === 1);
 check('접촉한 조각 소멸', g.battle.wave.truth.obj === null);
 step(61); // 두 번째 조각([낚]) 스폰
 check('두 번째 헤드라인 조각은 [낚]', !!g.battle.wave.truth.obj && g.battle.wave.truth.obj.kind === 'bait');
+g.battle.wave.fragments.length = 0;
 const truthGaugeBefore2 = g.battle.gauge;
 g.battle.arena.soul.x = g.battle.wave.truth.obj.x; g.battle.arena.soul.y = g.battle.wave.truth.obj.y;
 step(1);
