@@ -2801,7 +2801,7 @@
     for (const t of puz.terminals) {
       const nx = Math.round(t.x * TS - cx), ny = Math.round(t.y * TS - cy - 6);
       const given = run.given.includes(t.require) || (t.share && run.boardFace);
-      drawSprite(ctx, MONSTER_SPRITES[t.theme], nx, ny + bob, SCALE);
+      drawMon(ctx, t.theme, nx, ny + bob, SCALE);
       label(nx, ny, t.name + (given ? ' ✓' : ''), given ? '#8de08d' : '#fff');
     }
     const er = puz.eraser, ex = puz.exits;
@@ -4768,6 +4768,8 @@
     if (door.correct) {
       const delta = b.pState === 'open' ? 32 : 26;
       b.gauge = clamp(b.gauge + delta, 0, b.gaugeMax);
+      // 정답(=설득 성공)은 HP 1 회복 — 회피가 아니라 '잘 설득한' 실력에 보상(서툰 회피 구제)
+      b.playerHp = Math.min(b.maxHearts, b.playerHp + 1);
       st.gateRight += 1;
       const topic = door.card ? EVIDENCE_CARDS[door.card].topic : monTopic(b);
       recordTopicResult(game.currentSlot, topic, true);
@@ -4896,7 +4898,7 @@
     if (isSeen) {
       const ss = 6;
       const bob = Math.sin(game.time / 22) * 4;
-      drawSprite(ctx, MONSTER_SPRITES[id], Math.round(cx - 16 * ss / 2), Math.round(110 + bob), ss);
+      drawMon(ctx, id, Math.round(cx - 16 * ss / 2), Math.round(110 + bob), ss);
     } else {
       // 실루엣
       ctx.strokeStyle = '#444';
@@ -6496,7 +6498,8 @@
   // 세 학생(슬롯)의 학습 현황을 스프레드시트로 열 수 있는 CSV로 만든다.
   function buildClassCsv() {
     const header = ['슬롯', '이름', '칭호', '진행', '완주', '푼 문제', '정답 수',
-      '정답률(%)', '복습 노트', '도전과제', '안아준 마음', '연속 출석(일)'];
+      '정답률(%)', '복습 노트', '도전과제', '안아준 마음', '연속 출석(일)',
+      '개념별 성취(정답/시도)', '자비 선택(프롤로그·1~5장)', '엔딩'];
     const lines = [header.map(csvCell).join(',')];
     for (let i = 0; i < SLOT_COUNT; i++) {
       const sum = slotSummary(i);
@@ -6504,6 +6507,27 @@
       const s = buildLearningSummary(i);
       const meta = getMeta(i);
       const title = selectedTitle(i);
+      const saved = loadSlot(i);
+      const flags = (saved && saved.flags) || {};
+      const conceptStats = (s.rows || [])
+        .map((r) => `${r.label} ${r.correct}/${r.total}`)
+        .join('; ');
+      const mercyParts = [
+        flags.defeated?.bekkyeomon
+          ? (flags.mercyChoice?.bekkyeomon === 'mercy' ? '따라:안아줌' : '따라:무찌름')
+          : '따라:-',
+      ];
+      for (let n = 1; n <= 5; n++) {
+        mercyParts.push(
+          flags['chapter' + n + 'Clear']
+            ? (flags['chapter' + n + 'Mercy'] ? n + '장:안아줌' : n + '장:무찌름')
+            : n + '장:-'
+        );
+      }
+      const mercyStr = mercyParts.join(' / ');
+      const endingStr = flags.trueEnding
+        ? '집으로(따뜻)'
+        : (flags.defeated?.yeongi ? '완주' : '진행 중');
       lines.push([
         i + 1,
         sum.name,
@@ -6517,6 +6541,9 @@
         countAchievements(i) + '/' + ACHIEVEMENTS.length,
         sum.mercy,
         meta.streak || 0,
+        conceptStats,
+        mercyStr,
+        endingStr,
       ].map(csvCell).join(','));
     }
     return lines.join('\r\n');
@@ -7334,7 +7361,7 @@
       const ny = Math.round(npc.y * TS - cy - 6);
       if (npc.monSprite) {
         const bob = Math.round(Math.sin(game.time / 22) * 2);
-        drawSprite(ctx, MONSTER_SPRITES[npc.monSprite], nx, ny + bob, SCALE);
+        drawMon(ctx, npc.monSprite, nx, ny + bob, SCALE);
       } else {
         drawSprite(ctx, NPC_SPRITES.down[frame], nx, ny, SCALE, NPC_PALETTES[npc.pal]);
       }
@@ -7350,7 +7377,7 @@
       if (dead && !friend) continue;
       const bob = Math.round(Math.sin(game.time / 18) * 4);
       const dx0 = Math.round(mo.x * TS - cx), dy0 = Math.round(mo.y * TS - cy - 6 + bob);
-      drawSprite(ctx, MONSTER_SPRITES[mo.id], dx0, dy0, SCALE);
+      drawMon(ctx, mo.id, dx0, dy0, SCALE);
       if (friend) {
         // 친구가 된 몬스터: 머리 위 ♥ (말을 걸 수 있어요)
         ctx.fillStyle = '#e0453a';
@@ -7883,7 +7910,7 @@
     ctx.beginPath();
     ctx.ellipse(mcx, 222, 56 - bob, 12, 0, 0, Math.PI * 2);
     ctx.fill();
-    drawSprite(ctx, MONSTER_SPRITES[b.monId], mx, my, monScale);
+    drawMon(ctx, b.monId, mx, my, monScale);
     // 반응 이모트 — 정답이면 번쩍 깨달음(!), 오답이면 아직 갸웃(?)
     if (b.phase === 'feedback' && b.feedback) {
       const ch = b.feedback.correct ? '!' : '?';
@@ -8339,7 +8366,7 @@
     const parade = ['mollaemon', 'geojitmon', 'pyeonhyangmon', 'hollimmon', 'mirrormon', 'soksagimon', 'yeongi'];
     for (let i = 0; i < parade.length; i++) {
       const bx = LW / 2 - parade.length * 24 + i * 48;
-      drawSprite(ctx, MONSTER_SPRITES[parade[i]], bx, 134 + Math.sin(game.time / 20 + i * 1.1) * 5, 3);
+      drawMon(ctx, parade[i], bx, 134 + Math.sin(game.time / 20 + i * 1.1) * 5, 3);
     }
 
     // 세이브 슬롯 3개
@@ -8671,7 +8698,7 @@
       ctx.fillText(`맞힌 문제 ${game.flags.correctCount}개 · 안아 준 마음 ♥${game.flags.mercy}`, LW / 2, ty + 10);
       if (e.yeongi) {
         const bob = Math.sin(game.time / 18) * 4;
-        drawSprite(ctx, MONSTER_SPRITES.yeongi, LW / 2 - 32, 420 + bob, 4);
+        drawMon(ctx, 'yeongi', LW / 2 - 32, 420 + bob, 4);
       }
       if (game.endingT > 150) {
         ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
@@ -8719,7 +8746,7 @@
       const perRow = row === 0 ? 14 : ids.length - 14;
       const bx = LW / 2 - perRow * 20 + col * 40;
       const by = 428 + row * 38 + Math.sin(game.time / 15 + i) * 4;
-      drawSprite(ctx, MONSTER_SPRITES[ids[i]], bx, by, 2);
+      drawMon(ctx, ids[i], bx, by, 2);
     }
 
     if (game.endingT > 120) {
@@ -8991,7 +9018,7 @@
     collectedCards, cardUnlocked, buildCertText, LEARN_CARDS, HOF_CATS,
     sanitizeName, probeStorage, getStorageOk: () => storageOk,
     buildClassCsv, setupStageFlags, getStage, stageSpawn, applyStageJump, classSelForFlags,
-    getPuzzleLog, writePuzzleLog,
+    getPuzzleLog, writePuzzleLog, nextWaypoint, // 나침반 경로 — E2E가 '화살표 따라가기'를 재현할 때 사용
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록

@@ -243,8 +243,11 @@ check('재도전 — 지난 이야기를 기억함', g.mode === 'battle' && g.ba
 // 정답 문 (동요: +26) — claim0의 정답 카드 ev_maker 소지
 forceGates();
 check('동요에선 문이 열려 있음', g.battle.gates.doors.some((d) => !d.locked));
+g.battle.playerHp = g.battle.maxHearts - 2; // HP 회복 검증용으로 최대치보다 낮춰둔다
 enterDoor(true);
 check('정답 문 통과 (+26)', g.battle.gauge === 28 && g.flags.pStats.gateRight === 1 && g.battle.phase === 'wave');
+check('정답 문 통과 시 HP +1 회복(최대치 이하일 때)', g.battle.playerHp === g.battle.maxHearts - 1);
+g.battle.playerHp = g.battle.maxHearts; // 이후 흐름에 영향 없도록 원복
 // 오답 문 (-6, 다음 파도 강화)
 forceGates();
 enterDoor(false);
@@ -804,10 +807,12 @@ const csv = T.buildClassCsv();
 const csvLines = csv.split('\r\n');
 check('CSV가 CRLF 줄바꿈 사용', csv.includes('\r\n'));
 check('CSV 헤더 행 존재', csvLines[0].startsWith('슬롯,이름,'));
-check('CSV 헤더 12개 열', csvLines[0].split(',').length === 12);
+check('CSV 헤더 15개 열', csvLines[0].split(',').length === 15);
+check('CSV 헤더에 연구용 지표 3열 포함', csvLines[0].includes('개념별 성취') &&
+  csvLines[0].includes('자비 선택') && csvLines[0].includes('엔딩'));
 check('CSV 행 = 헤더 + 슬롯 3개', csvLines.length === 4);
 check('CSV 슬롯1 행이 슬롯 번호로 시작', csvLines[1].startsWith('1,'));
-check('CSV 슬롯1(데이터 있음) 12개 열', csvLines[1].split(',').length === 12);
+check('CSV 슬롯1(데이터 있음) 15개 열', csvLines[1].split(',').length === 15);
 
 console.log('[37] 적응형(맞춤) 학습 — 약점 집중 출제');
 const adaptive = T.buildAdaptivePool(0, 8);
@@ -1919,13 +1924,17 @@ g.battle.pState = 'shaken'; g.battle.claimIdx = 0;
 forceGates();
 enterDoor(true);
 check('정답 문 통과 (+26)', g.battle.gauge === 26 && g.flags.pStats.gateRight >= 1 && g.battle.phase === 'wave');
+check('이미 최대 HP면 정답 문 통과해도 초과 회복 없음', g.battle.playerHp === g.battle.maxHearts);
 
 // openMechanic 'truth' — open 페이즈 중 [진]/[낚] 헤드라인 조각이 60프레임 간격으로 번갈아
 // 스폰(tempt의 최소 변형). [진] 접촉=게이지+6(누적 3회째 gaugeMax-2 보너스), [낚] 접촉=게이지-4+화면 얼룩.
 g.battle.pState = 'open';
 step(61); // truth.spawnTimer(60) 경과 → 첫 조각 스폰([진]부터 시작)
 check('첫 헤드라인 조각은 [진]', !!g.battle.wave.truth.obj && g.battle.wave.truth.obj.kind === 'real');
-g.battle.arena.bullets.length = 0; g.battle.arena.inv = 999;
+// 속마음 조각(fragments)은 파도마다 무작위 좌표에 스폰된다 — 우연히 헤드라인 조각과
+// 겹치면 같은 프레임에 함께 수집되어 게이지 델타가 오염된다(RNG 시드는 이 파일 전역
+// 호출 순서에 따라 달라지므로 위쪽 시나리오 변경에도 흔들리지 않도록 매번 비워 격리한다).
+g.battle.arena.bullets.length = 0; g.battle.arena.inv = 999; g.battle.wave.fragments.length = 0;
 const truthGaugeBefore1 = g.battle.gauge;
 g.battle.arena.soul.x = g.battle.wave.truth.obj.x; g.battle.arena.soul.y = g.battle.wave.truth.obj.y;
 step(1);
@@ -1934,6 +1943,7 @@ check('[진] 접촉 → truthCaught 1', g.battle.truthCaught === 1);
 check('접촉한 조각 소멸', g.battle.wave.truth.obj === null);
 step(61); // 두 번째 조각([낚]) 스폰
 check('두 번째 헤드라인 조각은 [낚]', !!g.battle.wave.truth.obj && g.battle.wave.truth.obj.kind === 'bait');
+g.battle.wave.fragments.length = 0;
 const truthGaugeBefore2 = g.battle.gauge;
 g.battle.arena.soul.x = g.battle.wave.truth.obj.x; g.battle.arena.soul.y = g.battle.wave.truth.obj.y;
 step(1);
