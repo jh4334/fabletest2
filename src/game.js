@@ -4768,6 +4768,8 @@
     if (door.correct) {
       const delta = b.pState === 'open' ? 32 : 26;
       b.gauge = clamp(b.gauge + delta, 0, b.gaugeMax);
+      // 정답(=설득 성공)은 HP 1 회복 — 회피가 아니라 '잘 설득한' 실력에 보상(서툰 회피 구제)
+      b.playerHp = Math.min(b.maxHearts, b.playerHp + 1);
       st.gateRight += 1;
       const topic = door.card ? EVIDENCE_CARDS[door.card].topic : monTopic(b);
       recordTopicResult(game.currentSlot, topic, true);

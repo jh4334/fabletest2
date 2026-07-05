@@ -243,8 +243,11 @@ check('재도전 — 지난 이야기를 기억함', g.mode === 'battle' && g.ba
 // 정답 문 (동요: +26) — claim0의 정답 카드 ev_maker 소지
 forceGates();
 check('동요에선 문이 열려 있음', g.battle.gates.doors.some((d) => !d.locked));
+g.battle.playerHp = g.battle.maxHearts - 2; // HP 회복 검증용으로 최대치보다 낮춰둔다
 enterDoor(true);
 check('정답 문 통과 (+26)', g.battle.gauge === 28 && g.flags.pStats.gateRight === 1 && g.battle.phase === 'wave');
+check('정답 문 통과 시 HP +1 회복(최대치 이하일 때)', g.battle.playerHp === g.battle.maxHearts - 1);
+g.battle.playerHp = g.battle.maxHearts; // 이후 흐름에 영향 없도록 원복
 // 오답 문 (-6, 다음 파도 강화)
 forceGates();
 enterDoor(false);
@@ -1919,6 +1922,7 @@ g.battle.pState = 'shaken'; g.battle.claimIdx = 0;
 forceGates();
 enterDoor(true);
 check('정답 문 통과 (+26)', g.battle.gauge === 26 && g.flags.pStats.gateRight >= 1 && g.battle.phase === 'wave');
+check('이미 최대 HP면 정답 문 통과해도 초과 회복 없음', g.battle.playerHp === g.battle.maxHearts);
 
 // openMechanic 'truth' — open 페이즈 중 [진]/[낚] 헤드라인 조각이 60프레임 간격으로 번갈아
 // 스폰(tempt의 최소 변형). [진] 접촉=게이지+6(누적 3회째 gaugeMax-2 보너스), [낚] 접촉=게이지-4+화면 얼룩.
