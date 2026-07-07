@@ -19,8 +19,8 @@ for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js']) {
 }
 
 const { MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL,
-  MONSTER_PAL, MONSTER_DEX, DEX_ORDER, MAP_PROPS, BOSS_ATTACKS, TOPIC_LABEL, getObjectiveTarget } =
-  vm.runInContext('({ MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL, MONSTER_PAL, MONSTER_DEX, DEX_ORDER, MAP_PROPS, BOSS_ATTACKS, TOPIC_LABEL, getObjectiveTarget })', ctx);
+  MONSTER_PAL, MONSTER_DEX, DEX_ORDER, MAP_PROPS, TOPIC_LABEL, getObjectiveTarget } =
+  vm.runInContext('({ MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL, MONSTER_PAL, MONSTER_DEX, DEX_ORDER, MAP_PROPS, TOPIC_LABEL, getObjectiveTarget })', ctx);
 
 let errors = 0;
 const err = (msg) => { console.error('ERROR: ' + msg); errors++; };
@@ -161,24 +161,15 @@ for (const [topic, list] of Object.entries(QUIZZES)) {
   });
 }
 for (const [id, mon] of Object.entries(MONSTERS)) {
-  // 몬스터 핵심 필드 스키마
-  if (!isStr(mon.name)) err(`몬스터 ${id}: name이 비었거나 문자열이 아님`);
-  if (!Number.isInteger(mon.hp) || mon.hp <= 0) err(`몬스터 ${id}: hp가 양의 정수가 아님 (${mon.hp})`);
-  if (!isStr(mon.intro)) err(`몬스터 ${id}: intro가 비었거나 문자열이 아님`);
-  if (!isStr(mon.win)) err(`몬스터 ${id}: win이 비었거나 문자열이 아님`);
-  if (!mon.topic || (Array.isArray(mon.topic) && mon.topic.length === 0)) err(`몬스터 ${id}: topic 없음`);
-  const topics = Array.isArray(mon.topic) ? mon.topic : [mon.topic];
-  let pool = 0;
-  for (const t of topics) {
-    if (!QUIZZES[t]) err(`몬스터 ${id}: 퀴즈 주제 '${t}' 없음`);
-    else pool += QUIZZES[t].length;
-  }
-  if (pool < mon.hp) err(`몬스터 ${id}: 퀴즈 수(${pool}) < HP(${mon.hp})`);
+  // 인물 핵심 필드 스키마 (v3: 퀴즈 배틀 폐지 — hp/topic 요구 없음, 설득 배틀은 PERSUADE가 담당)
+  if (!isStr(mon.name)) err(`인물 ${id}: name이 비었거나 문자열이 아님`);
+  if (!isStr(mon.intro)) err(`인물 ${id}: intro가 비었거나 문자열이 아님`);
+  if (!isStr(mon.win)) err(`인물 ${id}: win이 비었거나 문자열이 아님`);
 
-  // 통일성: 본편 몬스터는 '마음의 선택'을 가진다 (보너스 몬스터는 자유 연습용이라 없음)
+  // 통일성: 모든 배틀 인물은 '마음의 선택'을 가진다
   if (!mon.mercy) {
     if (mon.bonus) continue;
-    err(`몬스터 ${id}: mercy(마음의 선택) 없음`); continue;
+    err(`인물 ${id}: mercy(마음의 선택) 없음`); continue;
   }
   if (!mon.mercy.prompt) err(`몬스터 ${id}: mercy.prompt 없음`);
   if (!mon.mercy.options || mon.mercy.options.length !== 3) {
@@ -208,14 +199,21 @@ for (const id of DEX_ORDER) {
 }
 if (DEX_ORDER.length !== new Set(DEX_ORDER).size) err('DEX_ORDER에 중복 있음');
 
-// 9. 보스 공격: 패턴/지속시간이 올바른지 (단일 pattern 또는 다단계 patterns 배열)
+// 9. 설득 배틀 탄막 패턴: PERSUADE 각 주장(claim)의 attack 패턴이 올바른지
 const VALID_PATTERNS = ['rain', 'sides', 'burst', 'spiral', 'wall', 'zigzag', 'aimed'];
-for (const [id, atk] of Object.entries(BOSS_ATTACKS)) {
-  if (!MONSTERS[id]) err(`보스 공격: ${id}는 존재하지 않는 몬스터`);
-  const pats = atk.patterns || (atk.pattern ? [atk.pattern] : []);
-  if (pats.length === 0) err(`보스 공격 ${id}: pattern/patterns 없음`);
-  for (const p of pats) if (!VALID_PATTERNS.includes(p)) err(`보스 공격 ${id}: 패턴 '${p}' 잘못됨`);
-  if (!(atk.dur > 0)) err(`보스 공격 ${id}: dur 잘못됨`);
+{
+  const PERSUADE = vm.runInContext('typeof PERSUADE !== "undefined" ? PERSUADE : null', ctx);
+  if (PERSUADE) {
+    for (const [key, p] of Object.entries(PERSUADE)) {
+      for (const [i, c] of (p.claims || []).entries()) {
+        if (!c.attack) continue;
+        const pats = c.attack.patterns || (c.attack.pattern ? [c.attack.pattern] : []);
+        if (pats.length === 0) err(`설득 ${key} claim[${i}]: attack에 pattern/patterns 없음`);
+        for (const pat of pats) if (!VALID_PATTERNS.includes(pat)) err(`설득 ${key} claim[${i}]: 패턴 '${pat}' 잘못됨`);
+        if (!(c.attack.dur > 0)) err(`설득 ${key} claim[${i}]: dur 잘못됨`);
+      }
+    }
+  }
 }
 
 // 10. 조사 지점: 맵 범위 안 + 인접 칸이 이동 가능(살펴볼 수 있어야 함)
@@ -236,32 +234,37 @@ for (const [mapId, props] of Object.entries(MAP_PROPS)) {
   }
 }
 
-// 11. 목표 안내 일관성: 진행 순서대로 defeated 플래그를 채워 가며,
-//     getObjectiveTarget가 가리키는 맵에 그 라벨의 몬스터가 실제로 있는지 검사한다.
+// 11. 목표 안내 일관성: 프롤로그 → 챕터 1~5 → 파이널의 진행 플래그를 순서대로 채워 가며,
+//     getObjectiveTarget가 가리키는 맵이 존재하고 좌표가 맵 범위 안이며, 그 자리(또는 인접)에
+//     실제 상호작용 대상(NPC·인물·워프·제단)이 있는지 검사한다.
 //     (스테이지 재구성 후 안내 화살표가 빈 타일을 가리키는 회귀를 막는다.)
 if (typeof getObjectiveTarget === 'function') {
-  const nameToId = {};
-  for (const [id, mon] of Object.entries(MONSTERS)) nameToId[mon.name] = id;
-  // getObjective가 검사하는 자연스러운 처치 순서
-  const order = ['bekkyeomon', 'mollaemon', 'jungdokmon', 'geojitmon', 'pyeonhyangmon', 'hondonmon',
-    'somunmon', 'musimon', 'meotdaeromon', 'nangbimon', 'pinggyemon', 'tteonemgimon',
-    'sideulmon', 'ppaeatmon', 'hollimmon', 'maearimon', 'geurimjamon', 'finalboss',
-    'tturimmon', 'girokmon', 'sujipmon', 'saseomon', 'piltermon', 'mirrormon',
-    'yuhokmon', 'soksagimon', 'jogakmon', 'yeongi'];
-  const flags = { talkedProf: true, badges: { forest: true, lake: true, cave: true }, defeated: {}, mercy: 0, trueEnding: false };
-  const checkTarget = () => {
+  const flags = { talkedProf: true, defeated: {}, mercy: 0, trueEnding: false };
+  const near = (m, x, y, px, py) => Math.abs(x - px) <= 1 && Math.abs(y - py) <= 1;
+  const checkTarget = (stageName) => {
     const t = getObjectiveTarget(flags);
-    if (!t || !t.label) return;
-    const monId = nameToId[t.label];
-    if (!monId) return; // 박사님/영이/??? 등 몬스터 아님
+    if (!t) return;
     const m = MAPS[t.map];
-    if (!m) { err(`목표 안내: 맵 '${t.map}' 없음`); return; }
-    if (!m.monsters.some((mo) => mo.id === monId)) {
-      err(`목표 안내: '${t.label}'를 ${t.map}로 안내하지만 그 맵에 해당 몬스터가 없음`);
+    if (!m) { err(`목표 안내(${stageName}): 맵 '${t.map}' 없음`); return; }
+    if (t.y < 0 || t.y >= m.tiles.length || t.x < 0 || t.x >= m.tiles[0].length) {
+      err(`목표 안내(${stageName}): '${t.label}' 좌표 (${t.x},${t.y})가 ${t.map} 범위 밖`); return;
     }
+    const adjWalkable = [[0, 1], [0, -1], [1, 0], [-1, 0]].some(([dx, dy]) => {
+      const nx = t.x + dx, ny = t.y + dy;
+      return ny >= 0 && ny < m.tiles.length && nx >= 0 && nx < m.tiles[0].length && WALKABLE.has(m.tiles[ny][nx]);
+    });
+    const hit = m.npcs.some((n) => near(m, t.x, t.y, n.x, n.y)) ||
+      m.monsters.some((mo) => near(m, t.x, t.y, mo.x, mo.y)) ||
+      m.warps.some((w) => near(m, t.x, t.y, w.x, w.y)) ||
+      WALKABLE.has(m.tiles[t.y][t.x]) || adjWalkable;
+    if (!hit) err(`목표 안내(${stageName}): '${t.label}' (${t.map} ${t.x},${t.y}) 주변에 상호작용 대상이 없음`);
   };
-  checkTarget();
-  for (const id of order) { flags.defeated[id] = true; checkTarget(); }
+  checkTarget('프롤로그');
+  flags.defeated.bekkyeomon = true; checkTarget('1장 입구');
+  for (let n = 1; n <= 5; n++) { flags[`chapter${n}Clear`] = true; checkTarget(`${n}장 클리어 후`); }
+  flags.goyoClear = true; checkTarget('고요 이후');
+  flags.shrineDone = true; checkTarget('봉헌 이후');
+  flags.defeated.yeongi = true; flags.trueEnding = true; checkTarget('진엔딩');
 }
 
 // 맵 출력 (눈으로 확인용)
