@@ -114,6 +114,7 @@ check('월드 진입', g.mode === 'world' && g.map === 'village');
 check('시작 위치 (13,16)', g.player.x === 13 && g.player.y === 16);
 check('슬롯 0에 저장됨', !!storage.get('ai-ethics-adventure-slot-0'));
 check('기본 이름 수호자', g.playerName === '수호자');
+check('동행자 반디 합류 (오프닝 직후)', g.flags.bandiJoined === true);
 
 console.log('[2] 박사님과 대화 (메인 퀘스트 시작)');
 setPos(5, 12, 'left'); // 박사님 (4,12) 옆
@@ -135,6 +136,8 @@ setPos(13, 1, 'up');
 hold('ArrowUp', 14);
 // 워프 후에도 키를 누르고 있으면 계속 걸어갈 수 있으므로 맵과 x만 확인
 check('숲으로 워프', g.map === 'forest' && g.player.x === 13 && g.player.y >= 16);
+check('반디의 한 줄 조언 (비차단 말풍선)', g.mode === 'world' && !!g.notice && /반디/.test(g.notice.text));
+check('조언은 맵당 1회 기록', g.flags.bandiSaid.forest === true);
 
 // ---------- v2 「마음 조각 배틀」(행동 설득) 도우미 ----------
 // 테스트에선 하트(soul) 좌표를 직접 설정해 조각/문 접촉을 재현한다.
@@ -2116,6 +2119,7 @@ for (let i = 1; i < SHRINE_WHISPERS.length; i++) {
   pickChoice(idx);
   advanceDialog();
 }
+check('반디 정체 공개(bandiRevealed) — 동행 종료', g.flags.bandiRevealed === true);
 check('봉헌 퍼즐 완료(shrineDone=true, shrineIdx=8) — 영이 등장', g.flags.shrineDone === true &&
   g.flags.shrineIdx === SHRINE_WHISPERS.length);
 
