@@ -271,64 +271,6 @@ const MONSTER_SPRITES = {
     '................',
   ],
   // 중독몬: 스마트폰만 보는 분홍 몬스터 (소용돌이 눈, 폰 화면)
-  jungdokmon: [
-    '................',
-    '.....nnnnnn.....',
-    '....wnnnnnnn....',
-    '...nnnnnnnnnn...',
-    '..nnkwknnkwknn..',
-    '..nkwkwnkwkwnn..',
-    '..nnkwknnnkwkn..',
-    '..nnnnnnnnnnnn..',
-    '..nnnkkkkkknnn..',
-    '..nnnkvyvvknnn..',
-    '..nnnkvvyvknnn..',
-    '..nnnkkkkkknnn..',
-    '..dnnnnnnnnnndd.',
-    '...nn.nnn.nn....',
-    '...nn..nn..nn...',
-    '................',
-  ],
-  // 혼돈몬: 모든 윤리 문제가 뒤섞인 최종 보스 (뿔, 어둡고 위엄, 이빨 왕관)
-  hondonmon: [
-    '.qq..........qq.',
-    '.qqq........qqq.',
-    '..qdq......qdq..',
-    '..dddddddddddd..',
-    '.wdddddddddddd..',
-    '.ddqqddddddqqdd.',
-    '.ddqwddddddqwdd.',
-    '.ddqqddddddqqdd.',
-    '.dddddddddddddd.',
-    '.ddwkwkwkwkwkdd.',
-    '.dddkdkdkdkdddd.',
-    '.dddddddddddddd.',
-    '..dddddddddddd..',
-    '..ddd.dddd.ddd..',
-    '.dddd..dd..dddd.',
-    '................',
-  ],
-  // ---- 스테이지 2 ----
-  // 악플몬: 못된 말을 내뱉는 빨간 몬스터 (성난 눈썹, 뾰족 이빨)
-  akpeulmon: [
-    '................',
-    '.....qqqqqq.....',
-    '....qqqqqqqqq...',
-    '...qqqqqqqqqq...',
-    '..kqqqqqqqqqkq..',
-    '..qkqqqqqqkqqq..',
-    '..qqwkqqqqwkqq..',
-    '..qqqqqqqqqqqq..',
-    '..qqwkwkwkwkqq..',
-    '..qqqkwkwkwqqq..',
-    '..qqqqqqqqqqqq..',
-    '...qqqqqqqqqqq..',
-    '....qqqqqqqq....',
-    '....qq.qq.qq....',
-    '....qq.qq.qq....',
-    '................',
-  ],
-  // 뱅뱅몬: 필터버블 속에서 어지러워하는 청록색 몬스터 (조연)
   gatimmon: [
     '................',
     '....jjjjjj......',
@@ -348,122 +290,6 @@ const MONSTER_SPRITES = {
     '................',
   ],
   // 멋대로몬: 사람 확인 없이 멋대로 행동하는 주황 로봇 (안테나, 화면 얼굴, 팔)
-  meotdaeromon: [
-    '.......kk.......',
-    '......kyyk......',
-    '.....kyyyyk.....',
-    '....oooooooo....',
-    '...oooooooooo...',
-    '..xokkoooookko..',
-    '..xokwoooookwo..',
-    '..xoooooooooo...',
-    '...ooxxxxxxoo...',
-    '...ooxkkkxooo...',
-    '...ooxxxxxxoo...',
-    '..xoooooooooox..',
-    '.....oooooo.....',
-    '.....oo..oo.....',
-    '.....kk..kk.....',
-    '................',
-  ],
-  // ---- 스테이지 3 ----
-  // 펑펑몬: 전기와 물을 펑펑 쓰는 노란 몬스터 (번개무늬, 스파크)
-  pungpungmon: [
-    '..w..........w..',
-    '.....yyyyyy.....',
-    '....yyyyyyyy....',
-    '...wyyyyyyyy.w..',
-    '..yykyyyyyyyyyy.',
-    '..yykwyyyyykwyy.',
-    '..yyyyyyyyyyyy..',
-    '..yywwyyyyyyyy..',
-    '..yyywwyyyyyy...',
-    '..yyywwyywwyy...',
-    '..yyyyyyywwyy...',
-    '...yyyyyyyyyy...',
-    '....yy.yy.yy....',
-    '....yy.yy.yy....',
-    '................',
-    '................',
-  ],
-  // 깜깜몬: 아무것도 설명해 주지 않는 깜깜한 몬스터 (물음표 떠다님)
-  kkamkkammon: [
-    '......ww........',
-    '..w..dwwd..w....',
-    '....dddddddd....',
-    '...dddddddddd...',
-    '..ddwdddddddwd..',
-    '..dddddwwwdddd..',
-    '..ddddwddwwddd..',
-    '..dddddddwwddd..',
-    '..ddddddwwdddd..',
-    '..ddddddwddddd..',
-    '..dddddddddddw..',
-    '..ddddddwddddd..',
-    '...dddddddddd...',
-    '....dd.dd.dd....',
-    '....dd.dd.dd....',
-    '................',
-  ],
-  // 떠넘기몬: 책임을 남에게 떠넘기는 초록 몬스터 (옆을 가리키는 팔, 외면하는 얼굴)
-  tteonemgimon: [
-    '................',
-    '.....gggggg.....',
-    '....ggggggggg...',
-    '...gwggggggggg..',
-    '..gggkggggwkgg..',
-    '..ggggggggggggg.',
-    '..gggkkggkggggg.',
-    '..gggggggggggggg',
-    '..ggggggggggggg.',
-    '..ggggggggggggff',
-    '..ggggggggggg.ff',
-    '...ggggggggg....',
-    '....gggggggg....',
-    '....gg.gg.gg....',
-    '...gg..gg..gg...',
-    '................',
-  ],
-  // ---- 스테이지 4 ----
-  // 시들몬: 자신감을 잃고 시들어 버린 꽃 몬스터 (축 처진 꽃잎, 슬픈 줄기)
-  sideulmon: [
-    '................',
-    '.....nnn........',
-    '....nnnnn.......',
-    '...nnyyynnnn....',
-    '...nyyyyynnn....',
-    '...nykyykynn....',
-    '....nyyyynn.....',
-    '.....nyyyn......',
-    '......ngn.......',
-    '.......gg.......',
-    '......ggg.......',
-    '.....gg.gg......',
-    '....g....g......',
-    '.......gg.......',
-    '......gggg......',
-    '................',
-  ],
-  // 빼앗몬: 사람의 일을 다 빼앗으려는 갈색 몬스터 (공구/렌치)
-  ppaeatmon: [
-    '...........xxx..',
-    '.....cccccc.xx..',
-    '....cccccccccx..',
-    '...cwccccccccx..',
-    '..cckwcccckwcc..',
-    '..ccccccccccccc.',
-    '..ccckkkkkcccc..',
-    '..cccccccccccc..',
-    '..cxcxcxcxcccc..',
-    '..cccccccccccc..',
-    '..cccccccccccc..',
-    '...cccccccccc...',
-    '....cc.cc.cc....',
-    '....cc.cc.cc....',
-    '................',
-    '................',
-  ],
-  // 루미: 홀림·나른함
   hollimmon: [
     '................',
     '....zzzzzz......',
@@ -484,44 +310,6 @@ const MONSTER_SPRITES = {
   ],
   // ---- 스테이지 5 ----
   // 메아리몬: 배운 것을 되묻는 하늘색 유령 (반투명 하단)
-  maearimon: [
-    '................',
-    '.....vvvvvv.....',
-    '....vvvvvvvv....',
-    '...wvvvvvvvvv...',
-    '..vvkvvvvvvkvv..',
-    '..vvvvvvvvvvvv..',
-    '..vvvvkkkkvvvv..',
-    '..vvvvvvvvvvvv..',
-    '..vvvvvvvvvvvv..',
-    '...vvvvvvvvvv...',
-    '...vv.vvvv.vv...',
-    '....v..vv..v....',
-    '.......vv.......',
-    '......v..v......',
-    '................',
-    '................',
-  ],
-  // 그림자몬: 지혜를 시험하는 새까만 그림자 (빛나는 흰 눈만 보임)
-  geurimjamon: [
-    '................',
-    '.....kkkkkk.....',
-    '....kkkkkkkk....',
-    '...kkkkkkkkkk...',
-    '..kkwwkkkkkkkk..',
-    '..kkwwkkkkwwkk..',
-    '..kkkkkkkkwwkk..',
-    '..kkkkkkkkkkkk..',
-    '..kkkkkkkkkkkk..',
-    '..kkkkkkkkkkkk..',
-    '..kkkkkkkkkkkk..',
-    '...kkkkkkkkkk...',
-    '...kk.kkkk.kk...',
-    '..kk..kkkk..kk..',
-    '................',
-    '................',
-  ],
-  // 고요: 침묵·먹빛 (최종 보스)
   finalboss: [
     '................',
     '.....zzzzz......',
@@ -542,25 +330,6 @@ const MONSTER_SPRITES = {
   ],
   // ---- 스테이지 6: 잊혀진 서버실 ----
   // 뚫림몬: 잠긴 것은 모두 뚫어 버리는 회색 몬스터 (드릴 팔)
-  tturimmon: [
-    '................',
-    '.....xxxxxx.....',
-    '....xxxxxxxx....',
-    '...wxxxxxxxxx...',
-    '..xxkwxxxxwkxx..',
-    '..xxxxxxxxxxxx..',
-    '..xxxxkkkkxxxx..',
-    '..xxxxxxxxxxcc..',
-    '..xxxxxxxxxcccc.',
-    '..xxxxxxxxcccc..',
-    '..xxxxxxcccc....',
-    '...xxxxxccc.....',
-    '....xx.xxcc.....',
-    '....xx.xx.......',
-    '................',
-    '................',
-  ],
-  // 새김몬: 기록과 도장을 남기는 몬스터 (조연)
   girokmon: [
     '................',
     '....jjjjjj......',
@@ -600,46 +369,6 @@ const MONSTER_SPRITES = {
     '................',
   ],
   // 사서몬: 모두의 기억을 혼자 끌어안은 책 몬스터 (스테이지 7 보스)
-  saseomon: [
-    '................',
-    '..qq........qq..',
-    '..qwwq....qwwq..',
-    '..qwwwq..qwwwq..',
-    '..qwwwwqqwwwwq..',
-    '..qwkwwqqwwkwq..',
-    '..qwwwwqqwwwwq..',
-    '..qwwwwqqwwwwq..',
-    '..qwkkwqqwkkwq..',
-    '..qwwwwqqwwwwq..',
-    '..qwwwqqqqwwwq..',
-    '..qwwqqqqqqwwq..',
-    '..qqqqqqqqqqqq..',
-    '....qq....qq....',
-    '....qq....qq....',
-    '................',
-  ],
-  // ---- 스테이지 8: 거울 회랑 ----
-  // 필터몬: 반짝이는 가짜 얼굴 뒤에 숨은 몬스터 (반쪽 마스크)
-  piltermon: [
-    '................',
-    '.....nnnnnn.....',
-    '....nnnnnnnn....',
-    '...nnnnnwwwww...',
-    '..nnnnnnwwwwww..',
-    '..nknnnywwkwww..',
-    '..nnnnnnwwwwww..',
-    '..nnnnnnwwwwww..',
-    '..nkknnywwkkww..',
-    '..nnnnnnwwwwww..',
-    '..dnnnnwwwwww...',
-    '...dnnnnnwwww...',
-    '....nn.nn.ww....',
-    '....nn.nn.ww....',
-    '................',
-    '................',
-  ],
-  // ---- 스테이지 9: 속삭임 정원 ----
-  // 반짝: 유혹·다크패턴(최면 눈)
   yuhokmon: [
     '..a.......a....a',
     '....tttttt......',
@@ -659,45 +388,6 @@ const MONSTER_SPRITES = {
     '................',
   ],
   // 속삭임몬: 외로움이 모여 태어난 안개 몬스터 (스테이지 9 보스, 촉수 하단)
-  soksagimon: [
-    '................',
-    '......dddd......',
-    '....dddddddd....',
-    '...wddddddddd...',
-    '..ddwddddddwdd..',
-    '..dddddddddddd..',
-    '..dddwwwwwdddd..',
-    '..dddwddddwddd..',
-    '..dddddddddddd..',
-    '...dddddddddd...',
-    '...ddd.dd.ddd...',
-    '....dd.dd.dd....',
-    '.....d..d..d....',
-    '......d..d......',
-    '.......d..d.....',
-    '................',
-  ],
-  // ---- 스테이지 10: 코어 ----
-  // 조각몬: 흩어진 데이터 조각이 모인 글리치 몬스터 (깨진 픽셀)
-  jogakmon: [
-    '..v..........w..',
-    '.....vv..ww.....',
-    '...vvvvwwvvw....',
-    '..vwvvvvvvvvw...',
-    '..vvkwvvvvwkvv..',
-    '...vvvvvvvvvv...',
-    '..wvvvkkkkvvvw..',
-    '...vvvvvvvvvv...',
-    '..vvwvvvvvvwvv..',
-    '...v..vvvv..w...',
-    '..w...vvv....v..',
-    '.....v..w.......',
-    '..v.......v.....',
-    '................',
-    '................',
-    '................',
-  ],
-  // 영이: 박사님이 처음 만들고, 처음 지운 0번째 AI (작고 귀여운 빛)
   yeongi: [
     '................',
     '....vvvvvv......',
@@ -736,11 +426,6 @@ const MONSTER_SPRITES = {
     '................',
   ],
 };
-
-// 미러몬: 플레이어를 그대로 비추는 그림자 (스테이지 8 보스)
-MONSTER_SPRITES.mirrormon = PLAYER_DOWN_0.map((row) =>
-  row.replace(/[hrbiu]/g, 'd').replace(/f/g, 'x').replace(/e/g, 'w')
-);
 
 // ---- 보너스 지역: AI 미래연구소 ----
 // 그럴싸: 환각·그럴듯한 가짜
@@ -782,45 +467,9 @@ MONSTER_SPRITES.hapseongmon = [
   '................',
 ];
 // 미래몬: 두 오류가 합쳐진 보너스 미니보스 (회로 + 빨간 눈)
-MONSTER_SPRITES.miraemon = [
-  '..y..y....y..y..',
-  '...yy......yy...',
-  '...vvvvvvvvvv...',
-  '..vvvvvvvvvvvv..',
-  '.vvyvvvvvvvvyvv.',
-  '.vvqvvvvvvvvqvv.',
-  '.vvvvvvvvvvvvvv.',
-  '.vvyyvkkkkvyyvv.',
-  '.vvvvvvvvvvvvvv.',
-  '.vvvyvvvvvvyvvv.',
-  '.vvvvvvvvvvvvvv.',
-  '..vvyvvvvvvyvv..',
-  '...vvvvvvvvvv...',
-  '...vv.vv.vv.v...',
-  '...vv.vv.vv.v...',
-  '................',
-];
 
 // ---- 스테이지 2~3 서브맵 신규 몬스터 ----
 // 소문몬: 소문을 퍼뜨리는 확성기 입 몬스터 (주황)
-MONSTER_SPRITES.somunmon = [
-  '................',
-  '....ooooooo.....',
-  '...ooooooooo....',
-  '..oowoooooooo...',
-  '..oooooooooooo..',
-  '..ookwooookwoo..',
-  '..oooeooooeooo..',
-  '..oooooooooooo..',
-  '..ookkkkkkkkoo..',
-  '..okwwwwwwwwko..',
-  '..ookkkkkkkkoo..',
-  '..oooooooooooo..',
-  '...oooooooood...',
-  '....oo.oo.oo....',
-  '....oo.oo.dd....',
-  '................',
-];
 // 또또몬: 무시하며 귀를 막는 연두색 몬스터 (조연)
 MONSTER_SPRITES.musimon = [
   '................',
@@ -841,43 +490,7 @@ MONSTER_SPRITES.musimon = [
   '................',
 ];
 // 낭비몬: 전기를 펑펑 쓰는 노랑 몬스터 (번개·꺼지는 불빛)
-MONSTER_SPRITES.nangbimon = [
-  '..w.........w...',
-  '....yyyyyy......',
-  '...yyyyyyyy.....',
-  '..yyyyyyyyyy....',
-  '..yykyyyykyy.w..',
-  '..yywyyyywyyy...',
-  '..yyyyyyyyyyy...',
-  '..yyyqyyqyyyy...',
-  '..yyyyqqyyyyy...',
-  '..yyyqqyqqyyy...',
-  '..yyyyyyyqyyy...',
-  '..oyyyyyyyoyo...',
-  '...oyyyyyyoo....',
-  '....yy.yy.yy....',
-  'w...yy.yy.yy..w.',
-  '................',
-];
 // 핑계몬: 남을 가리키는 긴 팔의 초록 몬스터
-MONSTER_SPRITES.pinggyemon = [
-  '................',
-  '.....gggggg.....',
-  '....gggggggg....',
-  '...gggggggggg...',
-  '..ggwgggggwggg..',
-  '..ggegggggeggg..',
-  '..gggggggggggg..',
-  '..ggggkkkgggggg.',
-  '..ggggggggggffff',
-  '..gggggggggggggg',
-  '..ggggggggggffff',
-  '..gggggggggggg..',
-  '...gggggggggg...',
-  '....gg.gg.gg....',
-  '...gg..gg..gg...',
-  '................',
-];
 
 // 스프라이트별 팔레트 — v2 캐릭터마다 색 문자(z,m,v 등)를 다르게 재사용하므로 개별 지정.
 const MONSTER_PAL = {
