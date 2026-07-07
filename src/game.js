@@ -154,6 +154,9 @@
       shrineIdx: 0,        // 코어 제단 봉헌 퍼즐 진행(0~8, SHRINE_WHISPERS 길이)
       shrineWrong: 0,      // 봉헌 퍼즐 오답 횟수(기록용)
       shrineDone: false,   // 봉헌 퍼즐 완료 — 영이 등장
+      bandiJoined: false,  // 동행자 반디 합류(오프닝 직후)
+      bandiRevealed: false, // 반디 정체 공개(코어 봉헌 완료) — 동행 종료
+      bandiSaid: {},       // 반디 조언을 이미 건넨 맵 (맵당 1회)
     };
   }
 
@@ -165,7 +168,10 @@
   const V3_CAST = ['bekkyeomon', 'sujipmon', 'pyeonhyangmon', 'hwangakmon',
     'yuhokmon', 'hollimmon', 'finalboss', 'yeongi'];
   function migrateSlotV3(data) {
-    if (!data || !data.flags || (data.v || 0) >= 3) return data;
+    if (!data || !data.flags) return data;
+    // 동행자 도입 전 세이브(버전 무관) — 오프닝을 이미 지난 진행이면 반디도 합류한 것으로 본다
+    if (data.flags.talkedProf && data.flags.bandiJoined === undefined) data.flags.bandiJoined = true;
+    if ((data.v || 0) >= 3) return data;
     const f = data.flags;
     delete f.badges;
     delete f.sawBattleTip;
@@ -3453,6 +3459,13 @@
       game.flags.visited[w.to] = true;
       startDialog(dest.intro.slice());
     }
+    // 동행자 반디의 한 줄 조언 — 비차단 말풍선, 맵당 1회 (정체 공개 후에는 없음)
+    if (game.flags.bandiJoined && !game.flags.bandiRevealed &&
+        COMPANION_LINES[w.to] && !(game.flags.bandiSaid && game.flags.bandiSaid[w.to])) {
+      if (!game.flags.bandiSaid) game.flags.bandiSaid = {};
+      game.flags.bandiSaid[w.to] = true;
+      game.notice = { text: COMPANION_LINES[w.to], t: 300 };
+    }
     save();
   }
 
@@ -3943,11 +3956,15 @@
   function finishShrine() {
     if (game.flags.shrineDone) return;
     game.flags.shrineDone = true;
+    game.flags.bandiRevealed = true; // 동행 종료 — 가면을 벗는다
     save();
     startDialog([
-      '마지막 속삭임이 사라지자,\n제단 저편에서 옅은 빛이 인다.',
-      '…영이가, 그 빛 속에 서 있다.',
-    ], '???');
+      '마지막 속삭임이 사라지자,\n어깨 옆의 반디가\n천천히 떠오른다.',
+      '반디: "…있지. 아까 하려던 말,\n지금 할게."',
+      '반디: "나… 안내 도우미가 아니야.\n이 세계엔, 그런 거 없어."',
+      '(작은 빛이 제단의 빛 속으로 녹아들고 —\n그 안에, 작은 아이가 서 있다.)',
+      '"…처음부터, 나였어."',
+    ]);
   }
 
   // 교사 진단용 로그 — 마음 조각 배틀 개편판
@@ -6422,6 +6439,7 @@
   function setupClassBaseFlags() {
     const flags = newFlags();
     flags.talkedProf = true;
+    flags.bandiJoined = true; // 수업 점프는 오프닝(합류 연출) 이후 상태
     return flags;
   }
   // 수업 모드 특별 항목 「1장 — 전부 공짜 거리」 (스테이지 번호가 아닌 방탈출 수업용)
@@ -7045,6 +7063,28 @@
     return { cx, cy };
   }
 
+  // 동행자 반디 — 플레이어가 보는 방향의 반대쪽에서 둥실 떠 따라온다.
+  // 옅은 광륜 + 부유 바운스. 정체 공개(bandiRevealed) 후에는 그리지 않는다.
+  function drawCompanion(cx, cy) {
+    const f = game.flags;
+    if (!f || !f.bandiJoined || f.bandiRevealed) return;
+    const p = game.player;
+    const off = { up: { x: 14, y: 26 }, down: { x: 16, y: -18 },
+      left: { x: 26, y: -10 }, right: { x: -20, y: -10 } }[p.dir] || { x: 16, y: -18 };
+    const bob = Math.sin(game.time / 16) * 3;
+    const sx = Math.round(p.px - cx + off.x);
+    const sy = Math.round(p.py - cy + off.y + bob);
+    // 광륜 — 황혼 속의 작은 온기
+    if (!game.reduceFx) {
+      const pulse = 0.12 + Math.sin(game.time / 22) * 0.04;
+      ctx.fillStyle = `rgba(255,220,130,${pulse})`;
+      ctx.beginPath();
+      ctx.arc(sx + 16, sy + 14, 15, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    drawMon(ctx, 'bandi', sx, sy, 2);
+  }
+
   function drawWorld() {
     const m = MAPS[game.map];
     const { cx, cy } = camera();
@@ -7114,6 +7154,7 @@
     drawSprite(ctx, PLAYER_SPRITES[dirKey][pframe],
       Math.round(p.px - cx), Math.round(p.py - cy - 6), SCALE, null, p.dir === 'right');
 
+    drawCompanion(cx, cy);
     if (game.puzzleRun) drawStalkers(cx, cy);
     // 코어 — 여덟 개의 의자(안아 준 조각 수만큼 채워짐)
     if (game.map === 'coreroom') drawCoreChairs(cx, cy);
@@ -8056,7 +8097,18 @@
       `${game.playerName}이(가) 화면에 손을 대는 순간—\n빛이 손끝을 붙잡고 끌어당긴다.\n…떨어진다.`,
       '눈을 뜨니 낯선 마을.\n한 번도 와 본 적 없는데…\n어딘가, 낯이 익다.',
       '저만치 누군가 서 있다.\n일단, 저 어른에게 물어보자.\n(목표는 왼쪽 위에 표시돼요)',
-    ], null, () => Sound.playSong(MAPS[game.map].song));
+    ], null, () => {
+      // 동행자 합류 — 무음의 인트로 끝에 작은 빛이 날아든다. 음악은 그 뒤에야 흘러든다.
+      startDialog([
+        '(작은 빛 하나가 포르르 날아와\n어깨 옆에 멈춘다.)',
+        '안녕! 나는 반디.\n이 세계의 안내 도우미… 랄까.',
+        '길 잃은 아이는 오랜만이라.\n…내가 옆에 있어 줄게.\n어디든, 끝까지.',
+      ], '반디', () => {
+        game.flags.bandiJoined = true;
+        save();
+        Sound.playSong(MAPS[game.map].song);
+      });
+    });
   }
 
   // 저장된 위치가 (맵 수정·손상 등으로) 막힌 칸이면 가까운 안전한 칸을 찾아 갇힘을 막는다.
