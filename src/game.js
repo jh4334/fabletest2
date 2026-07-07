@@ -8591,6 +8591,8 @@
     collectedCards, cardUnlocked, buildCertText, LEARN_CARDS, HOF_CATS,
     sanitizeName, probeStorage, getStorageOk: () => storageOk,
     buildClassCsv, setupClassBaseFlags, classSelForFlags,
+    applyTraceRoomClass, applyTiltStreetClass, applyRumorStreetClass,
+    applyArcadeClass, applyCozyhomeClass, applyFinalClass,
     getPuzzleLog, writePuzzleLog, nextWaypoint, // 나침반 경로 — E2E가 '화살표 따라가기'를 재현할 때 사용
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,

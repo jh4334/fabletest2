@@ -139,7 +139,7 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
     await page.goto(base, { waitUntil: 'load' });
     await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
     const entered = await page.evaluate(() => {
-      window.__test.applyStageJump(2);   // 2장(서버실 포함) 상태로 진입
+      window.__test.applyTiltStreetClass();   // 2장 「기울어진 거리」 시작 상태로 진입
       window.__game.mode = 'world';
       return window.__game.mode === 'world';
     });
