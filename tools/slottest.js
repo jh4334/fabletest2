@@ -85,7 +85,7 @@ check('타이틀에서 슬롯 0이 채워져 보임', g.mode === 'title' && g.ti
 console.log('[2] 슬롯 0 이어하기');
 tap('z'); // 슬롯 0(채워짐) → 이어하기
 check('이어하기로 월드 진입', g.mode === 'world');
-check('저장된 위치로 복귀', g.map === 'serverroom');
+check('사라진 v1 맵(serverroom) 세이브는 마을로 안전 이동(v3 마이그레이션)', g.map === 'village');
 check('현재 슬롯 0', g.currentSlot === 0);
 check('이어하기 시 진행도 유지', g.flags.defeated.finalboss === true && g.flags.mercy === 11);
 

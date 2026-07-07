@@ -371,8 +371,7 @@
   function fs(px, bold) { return (bold ? 'bold ' : '') + Math.round(px * TF()) + 'px monospace'; }
   function lh(px) { return Math.round(px * TF()); }
   // 의미 색상 — 색약 모드에서는 빨강/초록 대신 구분이 쉬운 파랑/주황(Okabe-Ito 계열)
-  // 표시 이름: 마음 조각 배틀 등에서 MONSTERS[id].displayName이 있으면 우선 사용 (없으면 name)
-  function monName(id) { const m = MONSTERS[id]; return (m && (m.displayName || m.name)) || id; }
+  function monName(id) { const m = MONSTERS[id]; return (m && m.name) || id; }
   function okColor() { return game.colorBlind ? '#3b8ed0' : '#5cb85c'; }   // 정답·높음
   function warnColor() { return game.colorBlind ? '#e69f00' : '#ffd644'; } // 보통
   function badColor() { return game.colorBlind ? '#d55e00' : '#e0453a'; }  // 오답·낮음
@@ -3666,7 +3665,7 @@
   }
 
   // 2장 보스 승리 — chapter2Clear 플래그 + 2장 마무리 대사 후 저울 앞(광장)으로 복귀.
-  // v1 편향몬(퀴즈)과 별개이므로 defeated.pyeonhyangmon/도감은 건드리지 않는다.
+  // (승리 처리는 챕터 플래그로 기록한다)
   function winChapter2Boss() {
     const b = game.battle;
     const mon = b.mon;
@@ -3695,7 +3694,7 @@
   }
 
   // 3장 보스 승리 — chapter3Clear 플래그 + 3장 마무리 대사 후 신문사 입구(거리)로 복귀.
-  // v1 미래연구소 환각몬(퀴즈)과 별개이므로 defeated.hwangakmon/도감은 건드리지 않는다.
+  // (승리 처리는 챕터 플래그로 기록한다)
   function winChapter3Boss() {
     const b = game.battle;
     const mon = b.mon;
@@ -3724,7 +3723,7 @@
   }
 
   // 4장 보스 승리 — chapter4Clear 플래그 + 4장 마무리 대사 후 아케이드 정문 앞(허브)으로 복귀.
-  // v1 정원 유혹몬(퀴즈)과 별개이므로 defeated.yuhokmon/도감은 건드리지 않는다.
+  // (승리 처리는 챕터 플래그로 기록한다)
   function winChapter4Boss() {
     const b = game.battle;
     const mon = b.mon;
@@ -3782,8 +3781,7 @@
   }
 
   // 파이널 보스(고요) 승리 — goyoClear 플래그 + 코어 개방 연출 후 코어로 입장.
-  // v1 어둠대왕몬(그림자성 BOSS_ATTACKS 퀴즈)과 별개이므로 defeated.finalboss/도감은
-  // 건드리지 않는다(v1 그림자성 보스전 무손상).
+  // (승리 처리는 goyoClear 플래그로 기록한다)
   function winGoyoBoss() {
     const b = game.battle;
     const mon = b.mon;
@@ -3813,7 +3811,7 @@
   function winBattle() {
     const b = game.battle;
     const mon = b.mon;
-    // 1장 보스(수집몬) — 별도 진행 플래그로 처리해 도감/처치 플래그(라이브러리 수집몬)를 오염시키지 않는다
+    // 챕터 보스 — 별도 진행 플래그(chapterNClear)로 처리한다
     if (b.persuadeId === 'sujipmon_boss') { winChapter1Boss(); return; }
     if (b.persuadeId === 'pyeonhyang_boss') { winChapter2Boss(); return; }
     if (b.persuadeId === 'hwangak_boss') { winChapter3Boss(); return; }
@@ -3940,14 +3938,8 @@
   function resolvePersuadeMon(spriteId, persuadeKey) {
     const base = MONSTERS[spriteId];
     const p = getPersuade(persuadeKey);
-    // 표시 이름 계층: 설득 프로필의 displayName이 최우선(배치별),
-    // 없으면 MONSTERS의 displayName(캐릭터별), 그다음 실제 name.
-    const name = (p && p.displayName) || base.displayName || base.name;
-    if (persuadeKey === spriteId || !p) {
-      return base.displayName ? Object.assign({}, base, { name }) : base;
-    }
+    if (persuadeKey === spriteId || !p) return base;
     return Object.assign({}, base, {
-      name,
       mercy: p.mercy || base.mercy,
       win: p.win || base.win,
     });
@@ -5119,7 +5111,7 @@
     if (s.weak.length) lines.push('더 살펴볼 주제: ' + s.weak.join(', '));
     const endSeen = getEndingsSeen();
     const endN = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
-    lines.push(`발견 엔딩: ${endN}/4 · 도감 수집: ${dexSeenCount()}/${DEX_ORDER.length}`);
+    lines.push(`발견 엔딩: ${endN}/4 · 친구 수첩: ${dexSeenCount()}/${DEX_ORDER.length}`);
     lines.push(`복습 노트 남은 문제: ${mistakeCount(slot)}개`);
     const rm = getMeta(slot);
     if (rm.streak || rm.bestStreak) lines.push(`연속 출석: ${rm.streak || 0}일 (최고 ${rm.bestStreak || 0}일)`);
@@ -5174,7 +5166,7 @@
     const jm = getMeta(slot);
     ctx.fillStyle = '#888';
     ctx.font = '13px monospace';
-    ctx.fillText(`발견 엔딩 ${endN}/4  ·  도감 ${dexSeenCount()}/${DEX_ORDER.length}  ·  복습 노트 ${mistakeCount(slot)}개`, 24, 88);
+    ctx.fillText(`발견 엔딩 ${endN}/4  ·  친구 수첩 ${dexSeenCount()}/${DEX_ORDER.length}  ·  복습 노트 ${mistakeCount(slot)}개`, 24, 88);
     if (jm.streak || jm.bestStreak) {
       ctx.fillStyle = themeAccent();
       ctx.fillText(`🔥 연속 출석 ${jm.streak || 0}일 (최고 ${jm.bestStreak || 0}일)`, 24, 106);
@@ -5593,7 +5585,7 @@
     ['head', '◆ 기본 조작'],
     ['', isTouchDevice ? '이동: 화면 왼쪽 스틱       말 걸기·조사·확인: Ⓐ 버튼'
                        : '이동: 화살표 / W A S D       말 걸기·조사·확인: Z / 스페이스'],
-    ['', isTouchDevice ? '도감(친구 수첩) 바로 보기: [도감] 버튼       그 외 전부: [메뉴] 버튼'
+    ['', isTouchDevice ? '친구 수첩 바로 보기: [수첩] 버튼       그 외 전부: [메뉴] 버튼'
                        : '메뉴 열기: X / Esc       친구 수첩 바로 보기: C'],
     ['', ''],
     ['head', '◆ 마음 조각 배틀'],
@@ -5988,7 +5980,7 @@
       val: (i) => slotSummary(i) ? collectedCards(i) : -1, fmt: (i) => slotSummary(i) ? `${collectedCards(i)}/${LEARN_CARDS.length}` : '—' },
     { key: 'awards', label: '도전과제', icon: '☆',
       val: (i) => slotSummary(i) ? countAchievements(i) : -1, fmt: (i) => slotSummary(i) ? `${countAchievements(i)}/${ACHIEVEMENTS.length}` : '—' },
-    { key: 'dex', label: '도감 수집', icon: '◆',
+    { key: 'dex', label: '친구 수첩', icon: '◆',
       val: () => dexSeenCount(), fmt: () => `${dexSeenCount()}/${DEX_ORDER.length}`, shared: true },
   ];
   function openHof(ret) {
@@ -6050,7 +6042,7 @@
       ctx.fillText(cat.fmt(0), panelX + panelW / 2, panelY + 130);
       ctx.fillStyle = '#888';
       ctx.font = '13px monospace';
-      ctx.fillText('(도감은 모두가 함께 채우는 공동 기록이에요)', panelX + panelW / 2, panelY + 170);
+      ctx.fillText('(친구 수첩은 모두가 함께 채우는 공동 기록이에요)', panelX + panelW / 2, panelY + 170);
       ctx.textAlign = 'left';
     } else {
       // 슬롯들을 점수로 정렬
@@ -6185,7 +6177,7 @@
     ctx.fillText('⇄ 데이터 백업 · 복원', 24, 40);
     ctx.fillStyle = '#888';
     ctx.font = '13px monospace';
-    ctx.fillText('모든 슬롯·학습 기록·도감·설정을 한 파일로 저장하고', 24, 66);
+    ctx.fillText('모든 슬롯·학습 기록·친구 수첩·설정을 한 파일로 저장하고', 24, 66);
     ctx.fillText('다른 기기나 브라우저에서 다시 불러올 수 있어요.', 24, 86);
 
     const listY = 130, rowH = 44;
@@ -8218,7 +8210,7 @@
             '꺼진 화면만이 조용히 남아 있었다.',
             '',
             '…어쩌면, 다른 결말도 있었을지 모른다.',
-            '몬스터들의 마음을 더 많이 안아 주었다면.',
+            '아이들의 마음을 더 많이 안아 주었다면.',
           ],
           yeongi: false,
         },
@@ -8229,7 +8221,7 @@
             '너는 모든 문제에 옳은 답을 말했다.',
             '그리고 아무의 마음에도 머물지 않았다.',
             '',
-            '몬스터들은 길을 비켰지만,',
+            '아이들은 길을 비켰지만,',
             '아무도 너의 이름을 부르지 않았다.',
             '영이는 끝까지 네 눈을 보지 않은 채,',
             '조용히 화면을 껐다.',

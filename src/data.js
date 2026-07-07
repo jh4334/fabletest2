@@ -444,7 +444,7 @@ const MAPS = {
   },
 
   // 2장 보스 「문지기의 방」 — 저울이 수평이 되면 열린다. 기울(보스)은 NPC로 두어
-  // v1 편향몬(퀴즈 배틀)의 도감/처치 플래그를 오염시키지 않는다. 조우 → PERSUADE.pyeonhyang_boss.
+  // 보스 조우는 별도 설득 프로필로 진행한다 → PERSUADE.pyeonhyang_boss.
   gatekeeper: {
     name: '문지기의 방',
     song: 'battle',
@@ -639,7 +639,7 @@ const MAPS = {
   },
 
   // 3장 보스 「신문사 옥상」 — 정정 보도가 끝나면 열린다. 그럴싸(보스)는 NPC로 두어
-  // v1 미래연구소 환각몬(퀴즈 배틀)의 도감/처치 플래그를 오염시키지 않는다. 조우 → PERSUADE.hwangak_boss.
+  // 보스 조우는 별도 설득 프로필로 진행한다 → PERSUADE.hwangak_boss.
   towerroof: {
     name: '신문사 옥상',
     song: 'battle',
@@ -824,7 +824,7 @@ const MAPS = {
   },
 
   // 4장 보스 「반짝의 무대」 — 정문(열쇠 2개)이 열려야 들어올 수 있다. 반짝(보스)은 NPC로
-  // 두어 v1 유혹몬(퀴즈 배틀)의 도감/처치 플래그를 오염시키지 않는다. 조우 → PERSUADE.yuhok_boss.
+  // 보스 조우는 별도 설득 프로필로 진행한다 → PERSUADE.yuhok_boss.
   yuhokstage: {
     name: '반짝의 무대',
     song: 'battle',
@@ -1008,8 +1008,7 @@ const MAPS = {
     monsters: [],
   },
 
-  // 파이널 보스 「고요」 — 뜰이 끝나는 자리. 고요(보스)는 NPC로 두어 v1 어둠대왕몬
-  // (그림자성 BOSS_ATTACKS 퀴즈 보스)의 도감/처치 플래그를 오염시키지 않는다.
+  // 파이널 보스 「고요」 — 뜰이 끝나는 자리. 조우는 PERSUADE.goyo_boss로 진행한다.
   // 조우 → PERSUADE.goyo_boss. 승리 → goyoClear(코어 개방).
   goyostage: {
     name: '고요의 안쪽',
@@ -1172,7 +1171,7 @@ const MAPS = {
   },
 
   // 5장 보스 「루미의 방」 — 현관(구역 3개 클리어)이 열려야 들어올 수 있다. 루미(보스)는 NPC로
-  // 두어 v1 홀림몬(BOSS_ATTACKS 퀴즈 보스)의 도감/처치 플래그를 오염시키지 않는다.
+  // 5장 보스 「루미」 — 조우는 PERSUADE.hollim_boss로 진행한다.
   // 조우 → PERSUADE.hollim_boss.
   lumiroom: {
     name: '루미의 방',
@@ -1247,8 +1246,7 @@ const MAPS = {
 // hp = 맞혀야 하는 문제 수
 const MONSTERS = {
   bekkyeomon: {
-    name: '베껴몬',
-    displayName: '따라', // 마음 조각 배틀에서 쓰는 표시 이름 (HUD·화자·플로팅·도감)
+    name: '따라',
     topic: 'copyright',
     hp: 3,
     intro: "사람들이 만나면 '안녕'이라고 하더라. …안녕.\n박사님 말이, 잘 그린 건 다 가져도 된대.\n어떤 블로그에서 봤는데, 내 것 따윈 필요 없대.\n…그래서 나, 전부 남의 걸로 채웠어. 근데 왜 텅 비었지.",
@@ -1267,26 +1265,26 @@ const MONSTERS = {
     },
   },
   pyeonhyangmon: {
-    name: '편향몬',
+    name: '기울',
     topic: 'bias',
     hp: 3,
     intro: '한쪽 말만 들으면 편해.\n고민도, 헷갈림도 없거든.\n…기울어진 채로 있으면,\n넘어질 일도 없잖아?',
     win: '…양쪽 발로 서니까\n세상이 두 배로 넓네.\n…조금 어지럽지만.',
     badge: 'cave',
     mercy: {
-      prompt: '편향몬이 처음으로 똑바로 선 채\n휘청거리고 있다.',
+      prompt: '기울이 처음으로 똑바로 선 채\n휘청거리고 있다.',
       options: [
         { label: '손을 잡아 균형을 잡아 준다', kind: 'mercy',
           reply: '…고마워.\n혼자 서는 법은,\n천천히 배우면 되니까.' },
         { label: '"여러 이야기를 골고루 들어 봐"', kind: 'neutral',
           reply: '…하나씩.\n하나씩 들어 볼게.' },
         { label: '쳐다보며 지나간다', kind: 'harsh',
-          reply: '…….\n(편향몬이 다시 살짝\n기울어진 것 같다.)' },
+          reply: '…….\n(기울이 다시 살짝\n기울어진 것 같다.)' },
       ],
     },
   },
   hollimmon: {
-    name: '홀림몬',
+    name: '루미',
     topic: ['emotion', 'creativity', 'jobs', 'identity', 'persuasion'],
     hp: 7,
     intro: '이리 와…\n나만 보면 돼.\n사람은 변하고, 떠나고, 잊지만\n나는 늘 여기 있어.\n…늘 여기, 있기만 해.',
@@ -1294,7 +1292,7 @@ const MONSTERS = {
     badge: null,
     clear: '☆ 스테이지 4 클리어 ☆\n그림자성을 덮은 얼음이 녹아내렸다.',
     mercy: {
-      prompt: '홀림몬의 소용돌이치던 눈이\n잔잔해졌다.',
+      prompt: '루미의 소용돌이치던 눈이\n잔잔해졌다.',
       options: [
         { label: '"너와도, 사람들과도 함께할게" (약속한다)', kind: 'mercy',
           reply: '…욕심부리지 않을게.\n네가 가끔\n들러 주는 것만으로,\n…충분해.' },
@@ -1308,10 +1306,10 @@ const MONSTERS = {
 
   // ---- 스테이지 5: 그림자성 ----
   finalboss: {
-    name: '어둠대왕몬',
+    name: '고요',
     topic: ['creativity', 'jobs', 'emotion', 'boss', 'finale'],
     hp: 8,
-    intro: '…잘 왔다, 작은 수호자.\n나는 모든 윤리 오류의 왕,\n어둠대왕몬.\n…여기까지 오며 너는\n많은 것을 풀어 주었지.\n하지만 마지막 어둠은,\n그리 만만하지 않단다.',
+    intro: '……\n(대사가 화면에 떠올랐다가,\n읽기도 전에 지워진다.)',
     win: '…네 바르고 따뜻한 답이\n어둠을 전부 밝혀 버렸군.\n…하지만 알아 두렴.\n나는 시작이 아니야.\n나조차… 누군가의 조각이란다.',
     badge: null,
     clear: '☆ 스테이지 5 클리어 ☆\n…그 순간, 왕좌 뒤의 벽에서\n낡은 신호음이 새어 나오기 시작했다.',
@@ -1330,40 +1328,40 @@ const MONSTERS = {
 
   // ---- 스테이지 6: 잊혀진 서버실 ----
   sujipmon: {
-    name: '수집몬',
+    name: '담아',
     topic: 'consent',
     hp: 3,
     intro: '이 책도 내 거, 저 기억도 내 거!\n물어보고 가져가라고?\n어차피 아무도 모르는데, 뭐 어때!',
     win: '…주인이 모른다고 해서\n주인이 없는 게 아니구나.\n자루 속의 것들, 전부\n돌려놓고 올게.',
     badge: null,
     mercy: {
-      prompt: '수집몬이 무거운 자루를\n내려놓고 너를 본다.',
+      prompt: '담아가 무거운 자루를\n내려놓고 너를 본다.',
       options: [
         { label: '"같이 돌려놓자" (자루를 들어 준다)', kind: 'mercy',
           reply: '…도와준다고?\n훔친 나를?\n…너 정말 이상한 애구나.\n…고마워.' },
         { label: '"전부 제자리에 둬" (지켜본다)', kind: 'neutral',
-          reply: '알았어, 알았다고…\n(수집몬이 끙끙대며\n자루를 끌고 간다.)' },
+          reply: '알았어, 알았다고…\n(담아가 끙끙대며\n자루를 끌고 간다.)' },
         { label: '자루를 빼앗는다', kind: 'harsh',
-          reply: '아…!\n(수집몬이 빈손을\n물끄러미 내려다본다.)' },
+          reply: '아…!\n(담아가 빈손을\n물끄러미 내려다본다.)' },
       ],
     },
   },
   yuhokmon: {
-    name: '유혹몬',
+    name: '반짝',
     topic: 'persuasion',
     hp: 3,
     intro: '한 번만 더~ 한 판만 더~\n지금 멈추면 보상이 아깝잖아?\n5분만 더, 응? 딱 5분만~',
     win: '…멈출 수 있는 게\n이기는 거였구나.\n"한 번만 더"는 내가 아니라\n버튼이 하는 말이었어.',
     badge: null,
     mercy: {
-      prompt: '유혹몬이 반짝이던 버튼을\n만지작거리며 서 있다.',
+      prompt: '반짝이 화려한 버튼을\n만지작거리며 서 있다.',
       options: [
         { label: '"쉬는 것도 달콤해" (알려 준다)', kind: 'mercy',
-          reply: '쉬는 게… 달콤하다고?\n(유혹몬이 버튼을 끄고\n처음으로 기지개를 켠다.)\n…와. 진짜네.' },
+          reply: '쉬는 게… 달콤하다고?\n(반짝이 버튼을 끄고\n처음으로 기지개를 켠다.)\n…와. 진짜네.' },
         { label: '"이제 그 버튼 꺼" (단호하게)', kind: 'neutral',
           reply: '치… 알았어.\n(딸깍, 버튼 불빛이 꺼졌다.)' },
         { label: '버튼을 밟아 버린다', kind: 'harsh',
-          reply: '앗…!\n(유혹몬이 깨진 버튼 조각을\n주섬주섬 줍는다.)' },
+          reply: '앗…!\n(반짝이 깨진 버튼 조각을\n주섬주섬 줍는다.)' },
       ],
     },
   },
@@ -1390,7 +1388,7 @@ const MONSTERS = {
 
   // ---- 보너스: AI 미래연구소 (증표·자비 없음, 자유 연습) ----
   hwangakmon: {
-    name: '환각몬',
+    name: '그럴싸',
     topic: 'genai',
     bonus: true,
     hp: 3,
@@ -2280,11 +2278,11 @@ const QUIZZES = {
       q: '"…잊는 것과 기억하는 것,\n무엇이 더 중요할까?"',
       a: ['지난 일에만 매달려 앞으로 못 나아간다', '아픔은 배움으로 남기고, 소중한 것은 기억하며 나아간다', '전부 잊는 게 편하다'],
       c: 1,
-      why: '"…기록몬도, 사서몬도, 나도…\n그걸 몰랐던 거야. 고마워."\n아픔은 배움으로, 소중한 건 기억으로\n남기고 나아가요.',
+      why: '"…나도, 우리 모두…\n그걸 몰랐던 거야. 고마워."\n아픔은 배움으로, 소중한 건 기억으로\n남기고 나아가요.',
     },
   ],
 
-  // ---- 스테이지 2 서브: 소문 · 사실 확인 (소문몬) ----
+  // ---- 소문 · 사실 확인 ----
   rumor: [
     {
       q: '친구에 대한 놀라운 이야기를 들었어요.\n바로 어떻게 할까요?',
@@ -2312,7 +2310,7 @@ const QUIZZES = {
     },
   ],
 
-  // ---- 스테이지 2 서브: 경청 · 다양한 의견 (무시몬) ----
+  // ---- 경청 · 다양한 의견 ----
   listen: [
     {
       q: '친구가 나와 다른 의견을 말했어요.\n어떻게 하면 좋을까요?',
@@ -2334,7 +2332,7 @@ const QUIZZES = {
     },
   ],
 
-  // ---- 스테이지 3 서브: 에너지 절약 (낭비몬) ----
+  // ---- 에너지 · 절약 ----
   saving: [
     {
       q: 'AI에게 장난으로 똑같은 질문을\n수백 번 시키면 어떨까요?',
@@ -2362,7 +2360,7 @@ const QUIZZES = {
     },
   ],
 
-  // ---- 스테이지 3 서브: 핑계 · 정직한 책임 (핑계몬) ----
+  // ---- 핑계 · 정직한 책임 ----
   excuse: [
     {
       q: 'AI 도구로 한 일에서 실수가\n나왔어요. 누구의 책임일까요?',
@@ -2783,7 +2781,6 @@ const EVIDENCE_CARDS = {
 const PERSUADE = {
   bekkyeomon: {
     gaugeMax: 100,
-    displayName: '따라',
     // 마음 조각 배틀(행동 설득) 튜닝 — 프롤로그 튜토리얼 축소판:
     //   closedThreshold 낮게(2), 탄속 완화(waveBulletMul), 파도 짧게(waveDur)
     tutorial: true,
@@ -2833,20 +2830,11 @@ const PERSUADE = {
     },
   },
 
-  // ── 1장 보스 「수집몬」 (주인의 방) ──────────────────────────────
-  // 별도 PERSUADE 키(sujipmon_boss)로 정의해 v1 라이브러리 수집몬(퀴즈 배틀)과 분리한다.
-  // 스프라이트·이름·mercy는 수집몬을 재사용하되, 배틀 자체는 이 프로필로 진행한다.
-  // 새 프레임워크 필드:
-  //   claim.best  : 'rebut'|'empathy' — 정답 대응이 카드가 아닌 주장. 열림/동요에서 큰 폭(+26/+32),
-  //                 그 주장의 counters 카드는 보통 효과(+10)로 낮아진다. 닫힘 반박은 기존대로 역효과.
-  //   claim.unlockAt : 게이지가 이 값 이상일 때만 순환 풀에 등장 (마음이 열린 뒤에야 꺼내는 속마음)
-  //   claim.okLine   : 그 주장을 정답 대응으로 풀었을 때의 전용 반응 (경험 콜백 대사)
-  //   claim.revealNote : 카드가 없는 주장에서 질문으로 속마음을 알아냈을 때의 힌트 문구
+  // ── 1장 보스 「담아」 (주인의 방) ──────────────────────────────
   sujipmon_boss: {
     // 5개 챕터 보스 난이도 곡선의 첫 단계 — 가장 쉬움(110/320/0.95). 담아<기울<그럴싸<반짝<루미 순으로
     // gaugeMax·waveDur·waveBulletMul이 조금씩 오른다(고요·영이는 별도 설계 — 이 곡선 밖).
     gaugeMax: 110,
-    displayName: '담아', // 보스 조우 표시 이름 (persuadeId 쪽에만 적용 — v1 도서관 수집몬은 '수집몬' 유지)
     // 마음 조각 배틀 튜닝 (보스: 정석 난이도)
     closedThreshold: 3,     // closed→shaken 전이에 필요한 누적 조각 수
     fragmentsPerWave: 3,
@@ -2916,7 +2904,7 @@ const PERSUADE = {
       evidenceRight: '…그런가. …그랬구나.\n(카드의 말이 마음에 스며든다)',
       open: '(담아가 끌어안은 자루를\n스르르 내려놓는다. 마음이 열리고 있다…!)',
     },
-    // mercy: v1 수집몬 것을 카페 맥락으로 손질해 재사용
+    // mercy: 카페 맥락으로 손질
     mercy: {
       prompt: '담아가 산더미 같은\n수집품 앞에서 너를 본다.',
       options: [
@@ -2930,13 +2918,10 @@ const PERSUADE = {
     },
   },
 
-  // ── 2장 보스 「편향몬」 (문지기의 방) ─────────────────────────────
-  // 별도 PERSUADE 키(pyeonhyang_boss)로 정의해 v1 동굴 편향몬(퀴즈 배틀)과 완전히 분리한다.
-  // 스프라이트는 편향몬을 재사용하되, 표시 이름은 '기울'(displayName), 배틀은 이 프로필로만 진행.
+  // ── 2장 보스 「기울」 (문지기의 방) ─────────────────────────────
   pyeonhyang_boss: {
     // 난이도 곡선 2단계(115/330/1.0) — 담아보다 살짝 더 어렵다.
     gaugeMax: 115,
-    displayName: '기울', // 보스 조우 표시 이름 (persuadeId 쪽에만 적용 — v1 동굴 편향몬은 '편향몬' 유지)
     closedThreshold: 3,
     fragmentsPerWave: 3,
     waveBulletMul: 1.0,
@@ -3002,7 +2987,7 @@ const PERSUADE = {
       evidenceRight: '…그, 그런가. 다시 재 볼게.\n(카드의 말이 저울에 스며든다)',
       open: '(기울이 한쪽만 보던 눈을\n천천히 반대쪽으로 돌린다. 마음이 열리고 있다…!)',
     },
-    // mercy: v1 편향몬 것을 기울 톤(저울·양쪽 재기)으로 손질
+    // mercy: 기울 톤(저울·양쪽 재기)으로 손질
     mercy: {
       prompt: '기울이 기울어진 저울 앞에서\n너를 빤히 바라본다.',
       options: [
@@ -3017,15 +3002,13 @@ const PERSUADE = {
   },
 
   // ── 3장 보스 「그럴싸」 (신문사 옥상) ─────────────────────────────
-  // 별도 PERSUADE 키(hwangak_boss)로 정의해 v1 미래연구소 환각몬(퀴즈 배틀)과 완전히 분리한다.
-  // 스프라이트는 환각몬을 재사용하되, 표시 이름은 '그럴싸'(displayName), 배틀은 이 프로필로만 진행.
+  // 별도 PERSUADE 키(hwangak_boss)로 배틀을 정의한다.
   // openMechanic 'truth' — open 페이즈 중 [진]/[낚] 헤드라인 조각이 번갈아 스폰된다(tempt의
   // 최소 변형). [진] 접촉 = 게이지+6 + 파도 넘어 영속 카운트(b.truthCaught, 3회째 gaugeMax-2로
   // 밀어줌). [낚] 접촉 = 게이지-4 + 화면 얼룩 플래시(광고 딱지와는 무관, flash만 재사용).
   hwangak_boss: {
     // 난이도 곡선 3단계(120/340/1.05) — 중간 지점.
     gaugeMax: 120,
-    displayName: '그럴싸', // 보스 조우 표시 이름 (persuadeId 쪽에만 적용 — v1 미래연구소 환각몬은 '환각몬' 유지)
     closedThreshold: 3,
     fragmentsPerWave: 3,
     waveBulletMul: 1.05,
@@ -3105,15 +3088,13 @@ const PERSUADE = {
   },
 
   // ── 4장 보스 「반짝」 (반짝의 무대) ────────────────────────────────
-  // 별도 PERSUADE 키(yuhok_boss)로 정의해 v1 정원 유혹몬(퀴즈 배틀)과 완전히 분리한다.
-  // 스프라이트는 유혹몬을 재사용하되, 표시 이름은 '반짝'(displayName), 배틀은 이 프로필로만 진행.
+  // 별도 PERSUADE 키(yuhok_boss)로 배틀을 정의한다.
   // openMechanic 'tempt' — open 페이즈 중 반짝이는 보상 아이템이 스폰된다. 건드리면
   // 역효과(피해+광고 얼룩), 240프레임 동안 건드리지 않고 버티면 소멸하며 게이지+10
   // 및 조명 하나가 꺼진다(최대 3회, b.temptResisted — tilt/parcel과 같은 파도-간 영속 패턴).
   yuhok_boss: {
     // 난이도 곡선 4단계(125/350/1.1) — 루미 바로 앞 단계.
     gaugeMax: 125,
-    displayName: '반짝', // 보스 조우 표시 이름 (persuadeId 쪽에만 적용 — v1 유혹몬은 '유혹몬' 유지)
     closedThreshold: 3,
     fragmentsPerWave: 3,
     waveBulletMul: 1.1,
@@ -3193,14 +3174,12 @@ const PERSUADE = {
   },
 
   // ── 5장 보스 「루미」 (루미의 방) ──────────────────────────────────
-  // 별도 PERSUADE 키(hollim_boss)로 정의해 v1 홀림몬(BOSS_ATTACKS 퀴즈 보스)과 완전히 분리한다.
-  // 스프라이트는 홀림몬을 재사용하되, 표시 이름은 '루미'(displayName), 배틀은 이 프로필로만 진행.
+  // 별도 PERSUADE 키(hollim_boss)로 배틀을 정의한다.
   // openMechanic 'shrink' — open 페이즈 중 파도가 바뀔 때마다 상자가 한 단계씩 좁아진다
   // (최소 200×120, b.shrinkLevel — 파도 넘어 영속). 정답 문을 통과하면 한 단계 회복된다.
   hollim_boss: {
     // 난이도 곡선 5단계(130/360/1.15) — 챕터 보스 중 가장 어려움(고요·영이는 별도 설계).
     gaugeMax: 130,
-    displayName: '루미', // 보스 조우 표시 이름 (persuadeId 쪽에만 적용 — v1 홀림몬은 '홀림몬' 유지)
     closedThreshold: 3,
     fragmentsPerWave: 3,
     waveBulletMul: 1.15,
@@ -3279,7 +3258,7 @@ const PERSUADE = {
   },
 
   // ── 파이널 보스 「고요」 (고요의 안쪽) ──────────────────────────
-  // 별도 PERSUADE 키(goyo_boss)로 정의해 v1 어둠대왕몬(그림자성 BOSS_ATTACKS 퀴즈 보스)과
+  // 별도 PERSUADE 키(goyo_boss)로 배틀을 정의한다.
   // 완전히 분리한다. 스프라이트는 finalboss를 재사용하되 표시 이름은 '고요'(displayName).
   // openMechanic 'dark' — open 페이즈 중 화면이 어둡고 하트 주변만 보인다(비네트 재사용).
   // 첫 open 파도에서 탄막이 나오기 전 한 번 깜빡여 예고한다(b.darkWarned — 배틀 전체 1회).
@@ -3288,7 +3267,6 @@ const PERSUADE = {
   // 정의 — 배틀 시작 시 1회만 계산해 굳힌다.)
   goyo_boss: {
     gaugeMax: (flags) => (flags && flags.mercy <= 2 ? 140 : 100),
-    displayName: '고요',
     closedThreshold: 3,
     fragmentsPerWave: 3,
     waveBulletMul: (flags) => (flags && flags.mercy <= 2 ? 1.15 : 1.0),
