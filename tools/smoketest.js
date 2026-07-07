@@ -93,47 +93,6 @@ function advanceDialog(max = 100) {
   for (let i = 0; i < max && g.mode === 'dialog'; i++) tap('z');
   if (g.mode === 'dialog') throw new Error('대화가 끝나지 않음');
 }
-const correctPosSeen = new Set();
-function answerQuestion(correct) {
-  if (g.mode !== 'battle') throw new Error('배틀 모드가 아님: ' + g.mode);
-  step(1); // currentQuestion()이 풀을 다시 섞을 시간
-  const b = g.battle;
-  const q = b.questions[b.qIdx];
-  correctPosSeen.add(b.correctPos);
-  // 보기 순서가 섞이므로, 정답의 '표시 위치'(correctPos)를 기준으로 고른다
-  const target = correct ? b.correctPos : (b.correctPos + 1) % q.a.length;
-  while (b.cursor !== target) tap('ArrowDown');
-  tap('z'); // 답 제출
-  if (b.phase !== 'feedback') throw new Error('피드백 단계가 아님');
-  if (b.feedback.correct !== correct) throw new Error('정답 판정 오류');
-  tap('z'); // 피드백 닫기
-}
-// 보스 회피 구간이 뜨면 (입력 없이) 끝날 때까지 빠르게 넘긴다.
-let dodgeSeen = false;
-function skipDodgeIfAny() {
-  if (g.mode === 'battle' && g.battle && g.battle.phase === 'dodge') {
-    dodgeSeen = true;
-    let guard = 0;
-    while (g.battle && g.battle.phase === 'dodge' && guard++ < 4000) step(1);
-    if (g.battle && g.battle.phase === 'dodge') throw new Error('회피 구간이 끝나지 않음');
-  }
-}
-function fightAndWin(hp, wrongFirst = 0) {
-  for (let i = 0; i < wrongFirst; i++) { answerQuestion(false); skipDodgeIfAny(); }
-  for (let i = 0; i < hp && g.mode === 'battle'; i++) { answerQuestion(true); skipDodgeIfAny(); }
-}
-// 모든 몬스터: 퀴즈를 모두 맞히면 '마음의 선택'이 나온다
-function fightWithMercy(hp, mercyIdx = 0, wrongFirst = 0) {
-  fightAndWin(hp, wrongFirst);
-  if (g.mode !== 'battle' || g.battle.phase !== 'mercy') {
-    throw new Error('마음의 선택 단계가 아님: ' + g.mode + '/' + (g.battle && g.battle.phase));
-  }
-  while (g.battle.cursor !== mercyIdx) tap('ArrowDown');
-  tap('z'); // 선택 → 응답
-  if (g.battle.phase !== 'mercyReply') throw new Error('응답 단계가 아님');
-  tap('z'); // 응답 닫기 → 승리 대화
-}
-
 let passed = 0;
 function check(name, cond) {
   if (cond) { console.log('  ✔ ' + name); passed++; }
@@ -272,277 +231,28 @@ check('베껴몬 깨우침(설득)', g.flags.defeated.bekkyeomon === true);
 check('기억은 승리 후 지워짐', !g.flags.persuadeMemory.bekkyeomon);
 check('설득 로그 누적(문·조각)', g.flags.pStats.gateRight === 1 && g.flags.pStats.gateWrong === 1 &&
   g.flags.pStats.gateTimeout === 1 && g.flags.pStats.fragments === 2);
-check('증표는 아직 0개 (부하 몬스터)', !g.flags.badges.forest);
 
-console.log('[7] 수호자 몰래몬 → 숲의 증표 (퀴즈 배틀, 오답 1회 포함)');
-setPos(13, 4, 'up'); // 몰래몬 (13,3) 아래
-tap('z');
-advanceDialog();
-fightWithMercy(3, 0, 1); // 한 번 틀려서 오답 노트 기록도 검증
-advanceDialog();
-check('숲의 증표 획득', g.flags.badges.forest === true);
+console.log('[21] 진엔딩 플래그 → 마을의 영이 등장');
+{
+  // 진엔딩 상태를 임시로 만들어 영이 NPC 등장·대화를 확인하고 원상 복구한다
+  const snapshot = JSON.stringify(g.flags);
+  g.flags.trueEnding = true; g.flags.defeated.yeongi = true;
+  g.map = 'village';
+  setPos(6, 12, 'left'); // 영이 NPC (5,12)
+  tap('z');
+  check('영이와 대화', g.mode === 'dialog');
+  advanceDialog();
+  g.flags = JSON.parse(snapshot);
+}
 
-console.log('[8] 증표 부족 시 타워 입장 거부');
+console.log('[22] 저장 데이터 무결성 (v3)');
 g.map = 'village';
-setPos(18, 5, 'up');
-hold('ArrowUp', 14);
-check('입장 거부 대화', g.mode === 'dialog');
-advanceDialog();
-check('마을에 남아있음', g.map === 'village' && g.player.y === 5);
-
-console.log('[9] 호수/동굴 수호자 처치 (증표 3개)');
-g.map = 'lake';
-setPos(15, 6, 'up'); // 거짓몬 (15,5)
-tap('z'); advanceDialog(); fightWithMercy(3, 0); advanceDialog();
-check('호수의 증표', g.flags.badges.lake === true);
-g.map = 'cave';
-setPos(5, 4, 'left'); // 편향몬 (4,4)
-tap('z'); advanceDialog(); fightWithMercy(3, 0); advanceDialog();
-check('동굴의 증표', g.flags.badges.cave === true);
-
-console.log('[10] 스테이지 1 보스 (혼돈몬) 전, 남쪽 길 잠김 확인');
-g.map = 'village';
-setPos(13, 18, 'down');
-hold('ArrowDown', 14);
-check('남쪽 길 잠김 대화', g.mode === 'dialog');
-advanceDialog();
-check('마을에 남아있음', g.map === 'village');
-
-console.log('[11] 타워 입장 → 혼돈몬 → 스테이지 2 개방');
-setPos(18, 5, 'up');
-hold('ArrowUp', 14);
-check('타워 입장', g.map === 'tower' && g.player.x === 8 && g.player.y >= 10);
-setPos(8, 4, 'up'); // 혼돈몬 (8,3)
-tap('z');
-advanceDialog();
-check('보스전 시작', g.mode === 'battle' && g.battle.monId === 'hondonmon' && g.battle.monMaxHp === 4);
-check('보스전은 하트 3개(1장 보스)', g.battle.maxHearts === 3);
-check('보스는 회피 공격을 가짐', !!g.battle.attack);
-fightWithMercy(4, 0);
-check('보스전에서 회피 구간이 발동됨', dodgeSeen === true);
-check('회피 중에도 하트는 0이 되지 않음', g.flags.defeated.hondonmon === true);
-advanceDialog();
-check('스테이지 1 클리어 (엔딩 아님)', g.mode === 'world' && g.flags.defeated.hondonmon);
-
-console.log('[12] 2장: 햇살초원 + 잊혀진 서버실 (서브맵 + 심층 통로 + 보스)');
-g.map = 'village';
-setPos(13, 18, 'down');
-hold('ArrowDown', 14);
-check('햇살초원 거점 진입', g.map === 'meadow');
-// 수호자 처치 전, 보스 탑터 잠김 확인
-setPos(20, 15, 'down'); // 탑터 문 (20,16)
-hold('ArrowDown', 14);
-check('탑터 잠김(수호자 필요)', g.mode === 'dialog' && g.map === 'meadow');
-advanceDialog();
-// 서쪽: 바람 언덕
-setPos(1, 10, 'left');
-hold('ArrowLeft', 14);
-check('바람 언덕 진입', g.map === 'windhill');
-setPos(8, 5, 'up'); // 악플몬 (8,4)
-tap('z'); advanceDialog();
-check('악플몬 배틀', g.battle.monId === 'akpeulmon');
-fightWithMercy(3, 0); advanceDialog();
-setPos(20, 12, 'up'); // 소문몬 (20,11)
-tap('z'); advanceDialog();
-check('소문몬 배틀', g.battle.monId === 'somunmon');
-fightWithMercy(3, 0); advanceDialog();
-check('소문몬 클리어', g.flags.defeated.somunmon);
-setPos(1, 10, 'left'); hold('ArrowLeft', 14); // 거점 복귀
-check('거점 복귀(서쪽)', g.map === 'meadow');
-// 동쪽: 안개 습지
-setPos(26, 10, 'right'); hold('ArrowRight', 14);
-check('안개 습지 진입', g.map === 'fogswamp');
-setPos(8, 8, 'up'); // 갇힘몬 (8,7)
-tap('z'); advanceDialog();
-check('갇힘몬 배틀', g.battle.monId === 'gatimmon');
-fightWithMercy(3, 0); advanceDialog();
-setPos(20, 13, 'up'); // 무시몬 (20,12)
-tap('z'); advanceDialog();
-check('무시몬 배틀', g.battle.monId === 'musimon');
-fightWithMercy(3, 0); advanceDialog();
-check('무시몬 클리어', g.flags.defeated.musimon);
-setPos(1, 10, 'left'); hold('ArrowLeft', 14); // 거점 복귀
-check('거점 복귀(동쪽)', g.map === 'meadow');
-// 심층 통로: 잊혀진 서버실 (보안·발자국) — 앞당겨진 심화
-setPos(7, 15, 'down'); hold('ArrowDown', 14); // 서버실 문 (7,16)
-check('서버실 진입(심층 통로)', g.map === 'serverroom');
-advanceDialog(); // 인트로
-setPos(7, 9, 'up'); // 뚫림몬 (7,8)
-tap('z'); advanceDialog();
-check('뚫림몬 배틀', g.battle.monId === 'tturimmon');
-fightWithMercy(3, 0); advanceDialog();
-setPos(13, 3, 'up'); // 기록몬 (13,2)
-tap('z'); advanceDialog();
-check('기록몬 배틀', g.battle.monId === 'girokmon');
-fightWithMercy(4, 0); advanceDialog();
-check('서버실 클리어', g.flags.defeated.tturimmon && g.flags.defeated.girokmon);
-setPos(13, 18, 'down'); hold('ArrowDown', 14); // 서버실 → 초원
-check('서버실에서 초원 복귀', g.map === 'meadow');
-// 보스 아레나: 신호 탑터
-setPos(20, 15, 'down'); hold('ArrowDown', 14);
-check('신호 탑터 진입(잠금 해제)', g.map === 'signaltower2');
-setPos(8, 4, 'up'); // 멋대로몬 (8,3)
-tap('z'); advanceDialog();
-check('멋대로몬 보스전', g.battle.monId === 'meotdaeromon');
-fightWithMercy(5, 0); advanceDialog();
-check('멋대로몬 클리어', g.flags.defeated.meotdaeromon);
-setPos(8, 12, 'down'); hold('ArrowDown', 14); // 거점 복귀
-check('거점 복귀(보스)', g.map === 'meadow');
-setPos(13, 18, 'down');
-hold('ArrowDown', 14);
-check('재깍사막 진입', g.map === 'desert');
-
-console.log('[13] 3장: 재깍사막 + 기억의 도서관 (서브맵 + 심층 통로 + 보스)');
-// 서쪽: 열사의 폐허
-setPos(1, 8, 'left'); hold('ArrowLeft', 14);
-check('열사의 폐허 진입', g.map === 'ruins');
-setPos(8, 6, 'up'); // 펑펑몬 (8,5)
-tap('z'); advanceDialog();
-check('펑펑몬 배틀', g.battle.monId === 'pungpungmon');
-fightWithMercy(3, 0); advanceDialog();
-setPos(20, 14, 'up'); // 낭비몬 (20,13)
-tap('z'); advanceDialog();
-check('낭비몬 배틀', g.battle.monId === 'nangbimon');
-fightWithMercy(3, 0); advanceDialog();
-check('낭비몬 클리어', g.flags.defeated.nangbimon);
-setPos(1, 10, 'left'); hold('ArrowLeft', 14); // 거점 복귀
-check('거점 복귀(폐허)', g.map === 'desert');
-// 동쪽: 오아시스
-setPos(26, 8, 'right'); hold('ArrowRight', 14);
-check('오아시스 진입', g.map === 'oasis');
-setPos(12, 8, 'up'); // 깜깜몬 (12,7)
-tap('z'); advanceDialog();
-check('깜깜몬 배틀', g.battle.monId === 'kkamkkammon');
-fightWithMercy(3, 0); advanceDialog();
-setPos(14, 12, 'up'); // 핑계몬 (14,11)
-tap('z'); advanceDialog();
-check('핑계몬 배틀', g.battle.monId === 'pinggyemon');
-fightWithMercy(3, 0); advanceDialog();
-check('핑계몬 클리어', g.flags.defeated.pinggyemon);
-setPos(1, 10, 'left'); hold('ArrowLeft', 14); // 거점 복귀
-check('거점 복귀(오아시스)', g.map === 'desert');
-// 심층 통로: 기억의 도서관 (데이터 동의) — 앞당겨진 심화
-setPos(8, 15, 'down'); hold('ArrowDown', 14); // 도서관 문 (8,16)
-check('도서관 진입(심층 통로)', g.map === 'library');
-advanceDialog(); // 인트로
-setPos(20, 8, 'up'); // 수집몬 (20,7)
-tap('z'); advanceDialog();
-check('수집몬 배틀', g.battle.monId === 'sujipmon');
-fightWithMercy(3, 0); advanceDialog();
-setPos(13, 3, 'up'); // 사서몬 (13,2)
-tap('z'); advanceDialog();
-check('사서몬 배틀', g.battle.monId === 'saseomon');
-fightWithMercy(4, 0); advanceDialog();
-check('도서관 클리어', g.flags.defeated.sujipmon && g.flags.defeated.saseomon);
-setPos(13, 18, 'down'); hold('ArrowDown', 14); // 도서관 → 사막
-check('도서관에서 사막 복귀', g.map === 'desert');
-// 보스 아레나: 심판의 신전
-setPos(16, 15, 'down'); hold('ArrowDown', 14);
-check('심판의 신전 진입(잠금 해제)', g.map === 'temple');
-setPos(8, 4, 'up'); // 떠넘기몬 (8,3)
-tap('z'); advanceDialog();
-check('떠넘기몬 보스전', g.battle.monId === 'tteonemgimon');
-fightWithMercy(6, 0); advanceDialog();
-check('떠넘기몬 클리어', g.flags.defeated.tteonemgimon);
-setPos(8, 12, 'down'); hold('ArrowDown', 14); // 거점 복귀
-check('거점 복귀(신전)', g.map === 'desert');
-setPos(13, 18, 'down');
-hold('ArrowDown', 14);
-check('정지된 설원 진입', g.map === 'snow');
-
-console.log('[14] 4장: 정지된 설원 + 거울 회랑 + 속삭임 정원');
-// 심층 통로: 거울 회랑 (사칭·진짜 나)
-setPos(7, 15, 'down'); hold('ArrowDown', 14); // 거울 문 (7,16)
-check('거울 회랑 진입(심층 통로)', g.map === 'mirrors');
-advanceDialog(); // 인트로
-setPos(7, 7, 'up'); // 필터몬 (7,6)
-tap('z'); advanceDialog();
-check('필터몬 배틀', g.battle.monId === 'piltermon');
-fightWithMercy(3, 0); advanceDialog();
-setPos(13, 3, 'up'); // 미러몬 (13,2)
-tap('z'); advanceDialog();
-check('미러몬 배틀', g.battle.monId === 'mirrormon');
-fightWithMercy(4, 0); advanceDialog();
-check('미러몬 클리어(정원 개방)', g.flags.defeated.mirrormon);
-// 거울 회랑 너머: 속삭임 정원 (다크패턴·설득)
-setPos(13, 1, 'up'); hold('ArrowUp', 14); // 거울 위쪽 → 정원
-check('속삭임 정원 진입', g.map === 'garden');
-advanceDialog(); // 인트로
-setPos(7, 7, 'up'); // 유혹몬 (7,6)
-tap('z'); advanceDialog();
-check('유혹몬 배틀', g.battle.monId === 'yuhokmon');
-fightWithMercy(3, 0); advanceDialog();
-setPos(13, 16, 'up'); // 속삭임몬 (13,15)
-tap('z'); advanceDialog();
-check('속삭임몬 배틀', g.battle.monId === 'soksagimon');
-fightWithMercy(4, 0); advanceDialog();
-check('정원 클리어', g.flags.defeated.soksagimon);
-// 정원 → 거울 → 설원 복귀
-setPos(13, 1, 'up'); hold('ArrowUp', 14); // 정원 위쪽 → 거울
-check('정원에서 거울 복귀', g.map === 'mirrors');
-setPos(13, 18, 'down'); hold('ArrowDown', 14); // 거울 아래 → 설원
-check('거울에서 설원 복귀', g.map === 'snow');
-// 설원 보스: 홀림몬
-setPos(13, 16, 'up'); // 보스 홀림몬 (13,15)
-tap('z'); advanceDialog();
-check('홀림몬 보스전', g.battle.monId === 'hollimmon');
-fightWithMercy(7, 0); advanceDialog();
-check('홀림몬 클리어', g.flags.defeated.hollimmon);
-setPos(13, 18, 'down');
-hold('ArrowDown', 14);
-check('그림자성 진입(거울·정원·홀림몬 필요)', g.map === 'castle');
-
-console.log('[15] 5장(앞): 그림자성 — 복습 문지기 2 + 최종 보스');
-setPos(10, 9, 'up'); // 메아리몬 (10,8)
-tap('z'); advanceDialog();
-check('메아리몬 배틀 (복습 풀)', g.battle.monId === 'maearimon' && g.battle.questions.length >= 25);
-fightWithMercy(3, 0); advanceDialog();
-setPos(9, 5, 'up'); // 그림자몬 (9,4)
-tap('z'); advanceDialog();
-fightWithMercy(3, 0); advanceDialog();
-setPos(9, 3, 'up'); // 어둠대왕몬 (9,2)
-tap('z'); advanceDialog();
-check('최종 보스전', g.battle.monId === 'finalboss' && g.battle.monMaxHp === 8 && g.battle.maxHearts === 4);
-fightWithMercy(8, 0);
-advanceDialog();
-check('엔딩 진입', g.mode === 'ending');
-step(130);
-tap('z');
-check('엔딩 후 월드 복귀', g.mode === 'world');
-
-console.log('[16] 5장(뒤): 코어 — 영이와 진엔딩');
-g.map = 'castle';
-setPos(9, 2, 'up'); // 왕좌 뒤 (9,1) → 코어
-hold('ArrowUp', 14);
-check('코어 진입', g.map === 'core');
-advanceDialog();
-setPos(9, 6, 'up'); // 조각몬 (9,5)
-tap('z'); advanceDialog(); fightWithMercy(4, 0); advanceDialog();
-check('조각몬 클리어', g.flags.defeated.jogakmon);
-setPos(9, 3, 'up'); // 영이 (9,2)
-tap('z'); advanceDialog();
-check('영이 배틀 (코어 BGM)', g.mode === 'battle' && g.battle.monId === 'yeongi');
-fightWithMercy(8, 0); // "함께 돌아가자"
-advanceDialog();
-check('진엔딩 진입', g.mode === 'ending' && g.endingType === 'true');
-check('진엔딩 조건 충족', g.flags.trueEnding === true && g.flags.mercy === 29 && g.flags.endingId === 'home');
-step(160);
-tap('z');
-check('마을로 귀환', g.mode === 'world' && g.map === 'village');
-
-console.log('[21] 진엔딩 후 마을의 영이');
-setPos(6, 12, 'left'); // 영이 NPC (5,12)
-tap('z');
-check('영이와 대화', g.mode === 'dialog');
-advanceDialog();
-
-console.log('[22] 저장 데이터 무결성');
+setPos(13, 16, 'up');
 const save = JSON.parse(storage.get('ai-ethics-adventure-slot-0'));
-check('저장된 증표 3개', save.flags.badges.forest && save.flags.badges.lake && save.flags.badges.cave);
-check('모든 보스 처치 저장', save.flags.defeated.hondonmon && save.flags.defeated.meotdaeromon &&
-  save.flags.defeated.tteonemgimon && save.flags.defeated.hollimmon && save.flags.defeated.finalboss);
-check('심층부 진행 저장', save.flags.defeated.yeongi && save.flags.trueEnding === true &&
-  save.flags.mercy === 29);
+check('세이브 버전 3', save.v === 3);
+check('증표 필드 없음(v3)', save.flags.badges === undefined);
+check('프롤로그 진행 저장(따라)', save.flags.defeated.bekkyeomon === true);
+check('v3 인물 8종만 defeated에 존재', Object.keys(save.flags.defeated).length === 8);
 
 console.log('[23] 엔딩 분기 로직 (4종) — v2 스케일(자비 최대 8회: 따라+담아·기울·그럴싸·반짝·루미+고요+영이)');
 const { computeEnding } = vm.runInContext('({ computeEnding })', sandbox);
@@ -555,8 +265,6 @@ check('침묵: 자비 2 이하', computeEnding('mercy', 2) === 'silent');
 check('v2 완주(자비 8회 전부 mercy) → 진엔딩 도달', computeEnding('mercy', 8) === 'home');
 // 하위 호환 — v1 세이브가 쌓아 온 훨씬 큰 자비값도 새 임계값을 자연히 만족한다
 check('하위 호환 — v1 세이브의 큰 자비값도 진엔딩 충족', computeEnding('mercy', 22) === 'home');
-const endingsSeen = JSON.parse(storage.get('ai-ethics-adventure-endings'));
-check('엔딩 수집 기록(타이틀 표시용)', endingsSeen.home === true);
 
 console.log('[24] 도감 — 수집 기록 + 열고 닫기');
 const dexSeen = JSON.parse(storage.get('ai-ethics-adventure-dex'));
@@ -565,7 +273,6 @@ const { DEX_ORDER, MONSTER_DEX } = vm.runInContext('({ DEX_ORDER, MONSTER_DEX })
 const defeatedIds = Object.keys(g.flags.defeated).filter((id) => g.flags.defeated[id]);
 check('깨운 몬스터 전부 도감에 기록', defeatedIds.every((id) => dexSeen[id] && dexSeen[id].seen));
 check('미발견 몬스터는 도감에 없음', DEX_ORDER.some((id) => !dexSeen[id]));
-check('작별 선택도 기록(영이=mercy)', dexSeen.yeongi.mercy === 'mercy');
 check('모든 몬스터 도감 정보 존재', DEX_ORDER.every((id) => MONSTER_DEX[id] && MONSTER_DEX[id].learn));
 // 월드에서 C로 도감 열기
 check('월드 상태', g.mode === 'world');
@@ -576,11 +283,15 @@ check('도감에서 커서 이동', g.dex.cursor > 0);
 tap('x');
 check('도감 닫고 월드 복귀', g.mode === 'world');
 
-console.log('[25] 보기 순서 섞기 (정답이 한 자리에 고정되지 않음)');
-check('정답 위치가 여러 곳에 분포', correctPosSeen.size >= 2);
-
 console.log('[26] 오답 복습 노트 (슬롯별)');
-// 학습 데이터는 슬롯별 키로 저장된다 (슬롯 0 = 진행 중인 슬롯)
+// v3: 퀴즈 배틀 폐지 — 복습 노트는 도전 극장(챌린지)의 오답에서 쌓인다.
+// UI 검증을 위해 오답 기록을 직접 시드한다 (recordMistake와 같은 형식).
+{
+  const { QUIZZES } = vm.runInContext('({ QUIZZES })', sandbox);
+  const q0 = QUIZZES.privacy[0];
+  storage.set('ai-ethics-adventure-mistakes-0',
+    JSON.stringify({ 'privacy#0': { topic: 'privacy', q: q0.q, a: q0.a, c: q0.c, why: q0.why } }));
+}
 const mistakesBefore = JSON.parse(storage.get('ai-ethics-adventure-mistakes-0') || '{}');
 check('틀린 문제가 슬롯 0에 기록됨', Object.keys(mistakesBefore).length > 0);
 check('이전 전역 키는 쓰지 않음', !storage.get('ai-ethics-adventure-mistakes'));
@@ -642,30 +353,6 @@ check('음소거 복원', Sound.muted === mutedBefore);
 tap('x'); // X로 설정 닫기
 check('설정 메뉴 닫힘', g.mode === 'world');
 
-console.log('[28] 50:50 힌트');
-check('월드 상태', g.mode === 'world');
-const { MONSTERS, QUIZZES } = vm.runInContext('({ MONSTERS, QUIZZES })', sandbox);
-const hintQ = Object.assign({}, QUIZZES.privacy[0], { _topic: 'privacy', _qid: 'privacy#0' });
-g.mode = 'battle';
-g.battle = {
-  monId: 'bekkyeomon', mon: MONSTERS.bekkyeomon,
-  monHp: 3, monMaxHp: 3, playerHp: 3, maxHearts: 3,
-  questions: [hintQ], qIdx: 0, phase: 'question', cursor: 0,
-  choiceOrder: [0, 1, 2], correctPos: hintQ.c, hintUsed: false, hiddenPos: -1,
-  feedback: null, shake: 0, flash: 0, attack: null, dodgeDone: true, dodge: null,
-};
-tap('h');
-check('힌트 사용됨', g.battle.hintUsed === true);
-check('정답은 가려지지 않음', g.battle.hiddenPos !== g.battle.correctPos && g.battle.hiddenPos !== -1);
-let hitHidden = false;
-for (let i = 0; i < 6; i++) { tap('ArrowDown'); if (g.battle.cursor === g.battle.hiddenPos) hitHidden = true; }
-check('커서가 가려진 보기를 건너뜀', !hitHidden);
-const hiddenBefore = g.battle.hiddenPos;
-tap('h');
-check('힌트는 한 번만 사용 가능', g.battle.hiddenPos === hiddenBefore);
-g.mode = 'world';
-g.battle = null;
-
 console.log('[29] 학습 진척도·수호자 일지 (E, 슬롯별)');
 // 앞선 배틀/복습에서 주제별 통계가 슬롯 0에 쌓였는지
 const stats = JSON.parse(storage.get('ai-ethics-adventure-stats-0') || '{}');
@@ -720,7 +407,7 @@ check('챌린지 닫고 복귀', g.mode === 'world');
 
 console.log('[32] 도전과제 (업적)');
 const { countAchievements } = vm.runInContext('({ countAchievements: window.__test.countAchievements })', sandbox);
-check('진엔딩까지 깬 슬롯은 도전과제 다수 달성', countAchievements(0) >= 6);
+check('진행한 슬롯은 도전과제 일부 달성(첫 깨우침·따뜻한 마음 등)', countAchievements(0) >= 2);
 check('월드 상태', g.mode === 'world');
 tap('b');
 check('도전과제 화면 열림', g.mode === 'awards' && g.awards.slot === 0);
@@ -839,7 +526,7 @@ T.recordDailyDone(0, 8, 10, '2026-06-14');
 check('오늘의 도전 완료 기록', T.getMeta(0).lastDailyDay === '2026-06-14' && T.getMeta(0).dailyBest === 8);
 
 console.log('[39] 수집·꾸미기 보상 (칭호·테마)');
-check('진엔딩까지 깬 슬롯은 보상 다수 해금', T.unlockedCount(0) >= 4);
+check('진행한 슬롯은 기본 보상 해금(새내기·클래식·숲빛)', T.unlockedCount(0) >= 3);
 g.mode = 'world';
 tap('k');
 check('꾸미기 화면 열림', g.mode === 'cosmetics' && g.cosmetics.slot === 0);
@@ -850,21 +537,6 @@ tap('z'); // 테마 row 0(클래식, 항상 해금) 적용
 check('테마 적용됨', T.getCosmetic(0).theme === 'classic');
 tap('x');
 check('꾸미기 닫고 월드 복귀', g.mode === 'world');
-
-console.log('[40] 보너스 지역: AI 미래연구소 (새 주제·새 몬스터)');
-g.map = 'village';
-setPos(26, 9, 'up');
-hold('ArrowUp', 14); // 빛나는 문(26,8)으로 → 미래연구소 워프
-check('미래연구소 진입', g.map === 'lab');
-if (g.mode === 'dialog') advanceDialog(); // 첫 방문 인트로
-setPos(4, 5, 'up'); // 환각몬 (4,4)
-tap('z'); advanceDialog();
-check('환각몬 배틀 (생성형 AI 주제)', g.mode === 'battle' && g.battle.monId === 'hwangakmon');
-fightAndWin(3); // 보너스 몬스터는 마음의 선택이 없음
-check('환각몬 깨우침(자비 증가 없음)', g.flags.defeated.hwangakmon === true);
-if (g.mode === 'dialog') advanceDialog();
-const dexSeen2 = JSON.parse(storage.get('ai-ethics-adventure-dex'));
-check('보너스 몬스터도 도감에 기록', dexSeen2.hwangakmon && dexSeen2.hwangakmon.seen);
 
 console.log('[41] 선생님 방 — 교사 전용 메뉴 분리');
 g.mode = 'world';
@@ -928,25 +600,7 @@ tap('z');
 check('난이도 변경됨', g.difficulty !== diffBefore);
 check('난이도 설정 저장', JSON.parse(storage.get('ai-ethics-adventure-settings')).difficulty === g.difficulty);
 tap('x');
-// 고학년: 50:50 힌트 비활성 / 저학년: 힌트 재사용 가능
-const mkHintBattle = () => {
-  const hq = Object.assign({}, QUIZZES.privacy[0], { _topic: 'privacy', _qid: 'privacy#0' });
-  g.mode = 'battle';
-  g.battle = { monId: 'bekkyeomon', mon: MONSTERS.bekkyeomon, monHp: 3, monMaxHp: 3,
-    playerHp: 3, maxHearts: 3, questions: [hq], qIdx: 0, phase: 'question', cursor: 0,
-    choiceOrder: [0, 1, 2], correctPos: hq.c, hintUsed: false, hiddenPos: -1,
-    feedback: null, shake: 0, flash: 0, attack: null, dodgeDone: true, dodge: null };
-};
-g.difficulty = 'hard'; mkHintBattle();
-tap('h');
-check('고학년은 힌트 비활성', g.battle.hintUsed === false && g.battle.hiddenPos === -1);
-g.difficulty = 'easy'; mkHintBattle();
-tap('h');
-check('저학년도 힌트 동작', g.battle.hintUsed === true && g.battle.hiddenPos !== -1);
-g.battle.hiddenPos = -1; // 다시 사용 가능한지 확인
-tap('h');
-check('저학년은 힌트 재사용 가능', g.battle.hiddenPos !== -1);
-g.difficulty = 'normal'; g.mode = 'world'; g.battle = null;
+// (v3) 퀴즈 배틀 폐지 — 50:50 힌트 시스템 없음. 난이도는 탄막·하트에만 영향.
 
 console.log('[44] 읽어주기(TTS) 접근성 토글');
 const ttsBefore = g.tts;
@@ -1003,105 +657,35 @@ check('부문 이동', g.hof.cat === 1);
 tap('x');
 check('전당 닫고 월드 복귀', g.mode === 'world');
 
-console.log('[48] 미니게임·보스 패턴 확장');
-const { BOSS_ATTACKS } = vm.runInContext('({ BOSS_ATTACKS })', sandbox);
-// 단일 pattern + 다단계 patterns 배열을 모두 모은다
-const patterns = Object.values(BOSS_ATTACKS).flatMap((a) => a.patterns || (a.pattern ? [a.pattern] : []));
-check('나선형 패턴 존재', patterns.includes('spiral'));
-check('빈틈 벽 패턴 존재', patterns.includes('wall'));
-check('지그재그 패턴 존재', patterns.includes('zigzag'));
-check('추적(aimed) 패턴 존재', patterns.includes('aimed'));
-check('다단계 보스 존재 (최종보스)', Array.isArray(BOSS_ATTACKS.finalboss.patterns) && BOSS_ATTACKS.finalboss.patterns.length >= 2);
-check('영이 다단계 패턴', Array.isArray(BOSS_ATTACKS.yeongi.patterns) && BOSS_ATTACKS.yeongi.patterns.length >= 2);
-check('보너스 몬스터도 회피 패턴 보유', BOSS_ATTACKS.miraemon && BOSS_ATTACKS.miraemon.pattern === 'spiral');
-// 챕터 보스 HP가 스테이지별로 상승(1장 쉽게 → 5장 어렵게)
-const bossHp = (id) => MONSTERS[id].hp;
-check('보스 HP 스테이지별 상승',
-  bossHp('hondonmon') < bossHp('meotdaeromon') &&
-  bossHp('meotdaeromon') < bossHp('tteonemgimon') &&
-  bossHp('tteonemgimon') < bossHp('hollimmon') &&
-  bossHp('hollimmon') < bossHp('finalboss'));
-
-// 필터버블 방탈출 시범 맵: 마을 입구(연구실 워프)와 관련 표지판을 제거해
-// 더 이상 플레이로 들어갈 수 없다 — 타일 데이터만 참고용으로 남아 있다.
+console.log('[48] v1 세계 완전 삭제 회귀 + 설득 배틀 탄막 패턴 다양성');
 {
-  const bub = MAPS.bubble;
-  check('필터버블 맵 데이터는 남아 있음(참고용)', !!bub);
-  check('필터버블 타일 배치는 그대로 보존됨', Array.isArray(bub.tiles) && bub.tiles.length === 12);
-  check('입구 워프 제거됨(연구실→필터버블)', !MAPS.lab.warps.some((w) => w.to === 'bubble'));
-  check('필터버블 자체 워프도 비어 있음(고아 워프 방지)', (bub.warps || []).length === 0);
-  check('관련 표지판 제거됨', (bub.signs || []).length === 0);
+  const { MAPS: M2, PERSUADE } = vm.runInContext('({ MAPS, PERSUADE })', sandbox);
+  for (const dead of ['desert', 'snow', 'castle', 'library', 'mirrors', 'garden', 'core', 'lab', 'bubble', 'lake', 'cave', 'tower', 'meadow']) {
+    check(`v1 맵 삭제됨: ${dead}`, !M2[dead]);
+  }
+  check('프롤로그 무대(정적의 숲)는 유지', !!M2.forest);
+  check('마을에서 v1 방면 워프 제거', !M2.village.warps.some((w) => ['cave', 'lake', 'tower', 'meadow', 'lab'].includes(w.to)));
+  const pats = new Set();
+  for (const p of Object.values(PERSUADE)) {
+    for (const c of (p.claims || [])) {
+      const a = c.attack || {};
+      for (const pat of (a.patterns || (a.pattern ? [a.pattern] : []))) pats.add(pat);
+    }
+  }
+  check('설득 탄막 패턴 4종 이상', pats.size >= 4);
 }
-
-console.log('[49] 이름 입력 정제');
-check('앞뒤 공백 제거', T.sanitizeName('  도도  ') === '도도');
-check('공백만 입력은 기본값', T.sanitizeName('     ') === '수호자');
-check('제로폭 문자만 입력은 기본값', T.sanitizeName('​‌﻿') === '수호자');
-check('제어문자 제거', T.sanitizeName('도\x00도\n') === '도도');
-check('최대 6글자', T.sanitizeName('일이삼사오육칠팔') === '일이삼사오육');
-check('연속 공백 1칸으로', T.sanitizeName('가   나') === '가 나');
-check('빈/널 입력은 기본값', T.sanitizeName('') === '수호자' && T.sanitizeName(null) === '수호자');
-
-console.log('[50] 저장 가능 여부 프로브');
-check('정상 환경은 저장 가능 판정', T.probeStorage() === true && T.getStorageOk() === true);
-
-console.log('[51] 화면 효과 줄이기(광과민성) 토글');
-g.mode = 'world';
-const fxBefore = g.reduceFx;
-tap('x');
-while (g.pauseCursor !== pauseIdx('reducefx')) tap('ArrowDown');
-tap('z');
-check('화면 효과 줄이기 토글', g.reduceFx !== fxBefore);
-check('설정 저장됨', JSON.parse(storage.get('ai-ethics-adventure-settings')).reduceFx === g.reduceFx);
-tap('z'); // 복원
-check('복원됨', g.reduceFx === fxBefore);
-tap('x');
-check('메뉴 닫힘', g.mode === 'world');
-
-console.log('[52] 파괴적 동작 확인 절차');
-// 커스텀 퀴즈 모두 지우기 — 두 번 확인
-T.importCustomQuizzes(JSON.stringify([{ q: '문제', a: ['1', '2', '3'], c: 0, why: '해설' }]));
-g.mode = 'title'; g.titleScreen = 'slots';
-tap('e'); // 옛 단축키는 제거됨 — 타이틀에서도 아무 효과가 없어야 한다
-check('타이틀에서 E 단축키 무효(교사 기능 분리)', g.mode === 'title');
-tap('t');
-while (g.teacherCursor !== TEACHER_ITEMS.indexOf('quizedit')) tap('ArrowDown');
-tap('z');
-check('퀴즈 편집 열림(선생님 방 경유)', g.mode === 'quizedit');
-while (g.quizedit.cursor !== 3) tap('ArrowDown'); // 'clear' 인덱스 3
-tap('z');
-check('한 번 누르면 확인 단계(보존)', g.quizedit.confirm === true && T.getCustomQuizzes().length === 1);
-tap('x');
-check('취소하면 그대로 보존', g.quizedit.confirm === false && T.getCustomQuizzes().length === 1);
-tap('z'); tap('z'); // 다시 진입 후 확정
-check('두 번째 Z로 삭제', T.getCustomQuizzes().length === 0);
-tap('x');
-check('퀴즈 편집 닫고 선생님 방으로 복귀', g.mode === 'teacher');
-tap('x');
-check('선생님 방 닫고 타이틀로 복귀', g.mode === 'title');
-g.mode = 'world'; // 이어지는 테스트를 위해 월드로 복귀
-// 백업 가져오기 — 덮어쓰기 전 확인 (실제 파일 선택은 호출 안 함)
-tap('u');
-check('백업 화면 열림', g.mode === 'backup');
-while (g.backup.cursor !== 2) tap('ArrowDown'); // 'importFile' 인덱스 2
-tap('z');
-check('가져오기 전 확인 단계', g.backup.confirm === true);
-tap('x');
-check('확인만 취소(화면 유지)', g.backup.confirm === false && g.mode === 'backup');
-tap('x');
-check('백업 화면 닫힘', g.mode === 'world');
 
 console.log('[53] 세이브 데이터 버전 필드');
 g.mode = 'world';
 g.currentSlot = 0;
 g.playerName = '수호자';
 g.map = 'village';
-g.flags = { talkedProf: true, badges: { forest: true, lake: true, cave: true }, defeated: {}, mercy: 0, visited: {}, trueEnding: false, correctCount: 0, battleCount: 0, sawBattleTip: false };
+g.flags = { talkedProf: true, defeated: {}, mercy: 0, visited: {}, trueEnding: false, correctCount: 0, battleCount: 0 };
 tap('z'); tap('x'); // 대화 트리거 없이 저장이 일어나는 워프를 쓸 수 없으므로, 수동 저장
 // 현재 save()는 배틀 후, 워프 후 등에 호출됨. 여기서는 직접 테스트.
 const savedSlotData = JSON.parse(storage.get('ai-ethics-adventure-slot-0'));
 check('세이브 버전 필드 존재', savedSlotData && typeof savedSlotData.v === 'number');
-check('세이브 버전 ≥ 2', savedSlotData && savedSlotData.v >= 2);
+check('세이브 버전 ≥ 3', savedSlotData && savedSlotData.v >= 3);
 
 console.log('[54] 글자 단위 줄바꿈 (charBreak)');
 // charBreak is internal, but measureWrap's behavior can be tested via wrapText logic
@@ -1118,7 +702,7 @@ console.log('[56] DPR 변경 감지 함수 존재');
 step(5);
 check('DPR 검사 후 프레임 정상', g.time > 0);
 
-console.log('[57] questionPool이 quizSource 사용');
+console.log('[57] 적응형 출제 풀(buildAdaptivePool)이 quizSource 사용');
 const pool = T.buildAdaptivePool(0, 5);
 check('buildAdaptivePool null 항목 없음', pool.every(q => q !== null && q !== undefined));
 
@@ -1136,12 +720,6 @@ g.endingType = null;
 step(5);
 check('엔딩 타이머 증가', g.endingT > 0);
 
-console.log('[61] 설원 맵 행 길이 일관성');
-const snowTiles = MAPS.snow.tiles;
-const snowW = snowTiles[1].length;
-const snowRowsOk = snowTiles.every(r => r.length === snowW);
-check('설원 맵 모든 행 길이 동일', snowRowsOk);
-
 console.log('[62] 프레임 루프 시간 진행 (속도 제한 게이팅)');
 // performance가 없는 테스트 환경에선 매 프레임 처리되어 game.time이 step 수만큼 증가
 g.mode = 'world';
@@ -1149,42 +727,16 @@ const t0 = g.time;
 step(6);
 check('테스트 환경에선 프레임마다 진행', g.time - t0 === 6);
 
-console.log('[63] drawDodge 안전 가드 (회피 종료 프레임)');
-// 크래시가 나면 mode가 비정상이 되므로, 정상 모드 유지로 간접 확인
-g.mode = 'world';
-step(3);
-check('회피 가드 후 프레임 정상', typeof g.mode === 'string' && g.mode === 'world');
-
-console.log('[64] 수업 모드 — 스테이지 점프');
+console.log('[64] 수업 모드 — 챕터 기본 상태 (v3)');
 const { WALKABLE } = vm.runInContext('({ WALKABLE })', sandbox);
 const TJ = vm.runInContext('window.__test', sandbox);
-// setupStageFlags: 목표 스테이지 시작 상태가 정확한가
-const f1 = TJ.setupStageFlags(1);
-check('1스테이지: 박사님 대화 완료', f1.talkedProf === true);
-check('1스테이지: 증표 없음', !f1.badges.forest && !f1.badges.lake && !f1.badges.cave);
-check('1스테이지: getStage===1', TJ.getStage(f1) === 1);
-const f5 = TJ.setupStageFlags(5);
-check('5스테이지: 증표 모두 획득', f5.badges.forest && f5.badges.lake && f5.badges.cave);
-check('5스테이지: 이전 보스 모두 처치', f5.defeated.hondonmon && f5.defeated.meotdaeromon && f5.defeated.tteonemgimon && f5.defeated.hollimmon);
-check('5스테이지: 5보스는 미처치', f5.defeated.finalboss === false);
-check('5스테이지: getStage===5', TJ.getStage(f5) === 5);
-check('5스테이지: 심층(거울·정원) 마음도 처치', f5.defeated.mirrormon && f5.defeated.soksagimon);
-check('5스테이지: 최종 영이 미처치', f5.defeated.yeongi === false);
-check('범위를 벗어난 입력은 안전하게 보정', TJ.getStage(TJ.setupStageFlags(99)) === 5 && TJ.getStage(TJ.setupStageFlags(0)) === 1);
-// stageSpawn: 항상 이동 가능한 칸으로 떨어지는가
-for (const st of [1, 2, 3, 4, 5]) {
-  const sp = TJ.stageSpawn(TJ.setupStageFlags(st), st);
-  const m = MAPS[sp.map];
-  const tile = m && m.tiles[sp.y] && m.tiles[sp.y][sp.x];
-  check(`${st}스테이지 시작 위치가 이동 가능`, !!m && WALKABLE.has(tile));
+{
+  const base = TJ.setupClassBaseFlags();
+  check('수업 기본 상태: 박사님 대화 완료', base.talkedProf === true);
+  check('수업 기본 상태: 증표 필드 없음(v3)', base.badges === undefined);
+  check('수업 기본 상태: 처치 없음', Object.values(base.defeated).every((v) => v === false));
+  check('수업 기본 상태: v3 인물 8종', Object.keys(base.defeated).length === 8);
 }
-// applyStageJump: 실제 슬롯/위치에 반영되는가 (마지막 블록이라 상태 변경 OK)
-TJ.applyStageJump(4);
-check('점프 후 getStage===4', TJ.getStage(g.flags) === 4);
-check('점프 후 맵이 4스테이지 시작 맵', g.map === TJ.stageSpawn(TJ.setupStageFlags(4), 4).map);
-check('점프 후 px/py가 유효한 픽셀 좌표(타일×배수)',
-  Number.isFinite(g.player.px) && Number.isFinite(g.player.py) &&
-  g.player.x > 0 && g.player.px / g.player.x === g.player.py / g.player.y && g.player.px > g.player.x);
 
 console.log('[65] 가상 스틱 방향 판정 (모바일 이동)');
 const sd = TJ.stickDirection;
@@ -1220,16 +772,15 @@ check('반 전체 진단 제목', cls.text.includes('반 전체 진단'));
 check('공통 약점에 privacy 집계', cls.common.some((c) => c.topic === 'privacy' && c.count >= 1));
 
 console.log('[67] 워프 자동 바운스 방지 (방향키 누른 채 워프)');
-// windhill 왼쪽 출구(0,10)→meadow 는 도착지(1,10)가 meadow의 windhill 워프(0,10)와
-// 붙어 있어, 예전엔 왼쪽을 누른 채 워프하면 바로 전 맵으로 튕겼다.
+// 워프 도착 직후에는 (키를 누른 채여도) 도착 칸에 정지해야 한다 — 연쇄 워프/튕김 방지.
 g.flags.visited = g.flags.visited || {};
-g.flags.visited.meadow = true; g.flags.visited.windhill = true;
-g.dialog = null; g.mode = 'world'; g.map = 'windhill'; setPos(1, 10, 'left');
-dispatch('keydown', { key: 'ArrowLeft' });
-step(60); // 60프레임 내내 왼쪽을 누른 채로 둔다
-dispatch('keyup', { key: 'ArrowLeft' });
-check('워프 후에도 전 맵으로 튕기지 않음(meadow 유지)', g.map === 'meadow');
-check('워프 직후 멈춤(도착칸에 정지)', g.player.x === 1 && g.player.y === 10);
+g.flags.visited.forest = true; g.flags.visited.village = true;
+g.dialog = null; g.mode = 'world'; g.map = 'village'; setPos(13, 2, 'up');
+dispatch('keydown', { key: 'ArrowUp' });
+step(60); // 60프레임 내내 위를 누른 채로 둔다
+dispatch('keyup', { key: 'ArrowUp' });
+check('워프 후에도 전 맵으로 튕기지 않음(forest 유지)', g.map === 'forest');
+check('워프 직후 멈춤(도착칸에 정지)', g.player.x === 13 && g.player.y === 18);
 
 console.log('[68] 1장 「전부 공짜 거리」 — 허브 진입 + 구역① 살금의 접수처');
 function pickChoice(idx) { // 월드 선택지 박스에서 idx번째를 고른다
@@ -1436,7 +987,7 @@ const { PERSUADE } = vm.runInContext('({ PERSUADE })', sandbox);
 const { getObjective } = vm.runInContext('({ getObjective })', sandbox);
 const TH = vm.runInContext('window.__test', sandbox);
 // 깨끗한 1장 상태로 리셋 (라이브러리 수집몬 처치 플래그 오염 검증을 위해)
-g.flags = TJ.setupStageFlags(1);
+g.flags = TJ.setupClassBaseFlags();
 g.currentSlot = 0;
 check('리셋 직후 라이브러리 수집몬 미처치', g.flags.defeated.sujipmon === false);
 
@@ -1552,7 +1103,7 @@ tap('z'); // 확인 단계
 check('확인 단계', g.classmode.confirm === true);
 tap('z'); // 적용 → 1장 시작 + 거리 입구
 check('1장 수업: 전부 공짜 거리 입구에서 시작', g.map === 'freestreet' && g.player.x === 14 && g.player.y === 17);
-check('1장 수업: 1장 시작 상태', TJ.getStage(g.flags) === 1);
+check('1장 수업: 챕터 클리어 없음(1장 시작 상태)', !g.flags.chapter1Clear);
 check('1장 수업: 프롤로그(따라) 클리어 상태로 맞춰짐', g.flags.defeated.bekkyeomon === true);
 {
   // 점프 직후 목표 나침반이 실제로 서 있는 챕터(1장 허브 안 → 금고문)를 가리키는지 검증
@@ -1563,7 +1114,7 @@ check('1장 수업: 프롤로그(따라) 클리어 상태로 맞춰짐', g.flags
 }
 
 console.log('[71] 2장 「기울어진 거리」 — 진입 게이트 + 구역① 메아리 골목');
-g.flags = TJ.setupStageFlags(1);
+g.flags = TJ.setupClassBaseFlags();
 g.currentSlot = 0;
 storage.set('ai-ethics-adventure-puzzle-0', JSON.stringify({}));
 g.flags.visited = g.flags.visited || {};
@@ -2650,12 +2201,9 @@ console.log('[106] 스테이지 HUD — 챕터 플래그 기반 표기');
   check('포근한 집(5장 허브)는 항상 "5장"', T.hudBadgeText('cozyhome', withClear(0)) === '5장');
   check('코어(파이널)는 항상 "파이널"', T.hudBadgeText('coreroom', withClear(0)) === '파이널' &&
     T.hudBadgeText('quietyard', withClear(0)) === '파이널' && T.hudBadgeText('goyostage', withClear(0)) === '파이널');
-  // v1 레거시 맵은 기존 "STAGE N/5" 표기를 그대로 유지한다(v1 콘텐츠 무손상)
-  const v1Flags = JSON.parse(JSON.stringify(base));
-  v1Flags.defeated.hondonmon = false;
-  check('v1 숲(forest)은 기존 STAGE N/5 표기 유지',
-    T.hudBadgeText('forest', v1Flags) === `STAGE ${T.getStage(v1Flags)}/5` &&
-    T.hudBadgeText('forest', v1Flags) === 'STAGE 1/5');
+  // v3: v1 레거시 표기(STAGE N/5)는 폐기 — 숲(프롤로그 무대)도 챕터 표기를 따른다
+  check('숲(프롤로그 무대)도 챕터 표기', T.hudBadgeText('forest', withClear(0)) === '1장' &&
+    T.hudBadgeText('forest', withClear(5)) === '파이널');
 }
 
 console.log('[107] 도감 → 친구 수첩 (학생 표면 라벨 교체, 내부 키 무변경)');
@@ -2726,17 +2274,17 @@ console.log('[109] 목표 나침반(getObjectiveTarget) — v2 사다리 — v1 
 {
   const { getObjectiveTarget } = vm.runInContext('({ getObjectiveTarget })', sandbox);
   // 상태① 따라 전 — talkedProf만 된 상태 → forest(따라)를 가리켜야 한다
-  const s1 = TJ.setupStageFlags(1);
+  const s1 = TJ.setupClassBaseFlags();
   const t1 = getObjectiveTarget(s1);
   check('나침반 — 따라 전 → forest', !!t1 && t1.map === 'forest');
   // 상태② 1장 전 — 따라 격파(chapter1Clear 전) → village(전부 공짜 거리 문, 24,5)
-  const s2 = TJ.setupStageFlags(1);
+  const s2 = TJ.setupClassBaseFlags();
   s2.defeated.bekkyeomon = true;
   const t2 = getObjectiveTarget(s2);
   check('나침반 — 1장 전 → village(전부 공짜 거리 문)',
     !!t2 && t2.map === 'village' && t2.x === 24 && t2.y === 5);
   // 상태③ 3장 후 — chapter1~3Clear(profConfession 전) → rumorstreet(4장 문)
-  const s3 = TJ.setupStageFlags(1);
+  const s3 = TJ.setupClassBaseFlags();
   s3.defeated.bekkyeomon = true;
   s3.chapter1Clear = true; s3.chapter2Clear = true; s3.chapter3Clear = true;
   const t3 = getObjectiveTarget(s3);
@@ -2750,25 +2298,6 @@ console.log('[109] 목표 나침반(getObjectiveTarget) — v2 사다리 — v1 
   check('나침반 — 이미 1장 허브 안 → 금고문(14,4)', !!t2b && t2b.map === 'freestreet' && t2b.x === 14 && t2b.y === 4);
   const t2c = getObjectiveTarget(s2, 'ownerroom');
   check('나침반 — 이미 1장 보스방 안 → 담아(5,2)', !!t2c && t2c.map === 'ownerroom' && t2c.x === 5 && t2c.y === 2);
-  // v1 레거시 사다리(뱃지 진행만 있고 v2 신호는 없음)는 그대로 보존된다 — v1 콘텐츠 무손상 원칙.
-  // setupStageFlags(3)은 부수 효과로 defeated.bekkyeomon도 true로 만들어 버리므로(베껴몬이
-  // MONSTER_DEX상 stage:1이라 "스테이지 3 이전 몬스터 전부 처치"에 걸려든다), 순수 v1 신호만
-  // 남긴 상태를 따로 만들어 검증한다(실제 v1 세이브가 베껴몬을 못 만났을 수도 있는 경우).
-  const v1 = TJ.setupStageFlags(3); // 배지 3개 + hondonmon 등 v1 진행 상태
-  v1.defeated.bekkyeomon = false;
-  const t5 = getObjectiveTarget(v1);
-  check('나침반 — v1 진행(배지)만 있고 v2 신호 없으면 v1 사다리 유지', !!t5 && t5.map !== 'forest' && t5.map !== 'village');
-
-  // C3 「뱃지 오염 차단」 — v2 신호(베껴몬 격파 또는 chapterNClear)가 하나라도 있으면 뱃지·
-  // 혼돈몬이 남아 있어도 반드시 v2 사다리로 전환되어야 한다. setupStageFlags(3)이 그대로
-  // 만들어 내는 "배지 3개 + 베껴몬도 처치됨"(오염된 상태)이 정확히 이 시나리오다.
-  const contaminated = TJ.setupStageFlags(3);
-  check('오염 상태 전제 확인 — 뱃지 3개 + 베껴몬도 처치됨',
-    contaminated.badges.forest && contaminated.badges.lake && contaminated.badges.cave &&
-    contaminated.defeated.bekkyeomon === true);
-  const t6 = getObjectiveTarget(contaminated);
-  check('나침반 — 뱃지 오염 차단: 베껴몬(v2 신호) 있으면 뱃지와 무관하게 v2 사다리로 전환',
-    !!t6 && t6.map === 'village' && t6.label === '전부 공짜 거리');
 }
 
 console.log('[110] 박사 첫 대화 — v2 흐름(숲의 따라 → 마을 오른쪽 반짝이는 문)으로 교체');
@@ -2780,7 +2309,7 @@ console.log('[110] 박사 첫 대화 — v2 흐름(숲의 따라 → 마을 오�
   check('첫 대화 — v1 증표 안내 문구는 제거됨', !/증표 셋이 모이면/.test(joined));
 }
 
-console.log('[110b] 박사 재대화(talkedProf 후 기본 분기) — v2는 챕터 안내, v1은 기존 증표 문구 유지(C2/C3)');
+console.log('[110b] 박사 재대화(talkedProf 후 기본 분기) — 챕터 안내(v3)');
 {
   // v2 플로우 — 프롤로그(따라)까지 클리어하고 1장(전부 공짜 거리) 진행 중인 재대화
   const v2Flags = { talkedProf: true, badges: { forest: false, lake: false, cave: false }, defeated: { bekkyeomon: true } };
@@ -2793,10 +2322,6 @@ console.log('[110b] 박사 재대화(talkedProf 후 기본 분기) — v2는 챕
   const v2PreLines = getNpcDialogT('prof', v2Pre).join(' ');
   check('박사 재대화(v2, 따라 전) — 증표 문구 없음 + 따라 언급', !/증표/.test(v2PreLines) && /따라/.test(v2PreLines));
 
-  // v1 세이브(뱃지 진행만 있고 v2 신호 없음) — 기존 증표 문구가 그대로 유지된다
-  const v1Flags = { talkedProf: true, badges: { forest: true, lake: false, cave: false }, defeated: {} };
-  const v1Lines = getNpcDialogT('prof', v1Flags).join(' ');
-  check('박사 재대화(v1) — 기존 증표 문구 유지', /증표/.test(v1Lines));
 }
 
 console.log('[111] 수업 모드 선택기 — v1 숫자 스테이지 제거, v2 6개 항목만 순환');

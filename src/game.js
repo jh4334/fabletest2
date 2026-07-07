@@ -75,7 +75,7 @@
     tts: false,          // 읽어주기(TTS) 접근성
     reduceFx: false,     // 화면 효과 줄이기(광과민성·모션 민감 배려)
     dashboard: { ret: 'title', cursor: 0, toast: 0 }, // 교사용 대시보드
-    classmode: { ret: 'world', sel: 1, confirm: false, toast: 0 }, // 수업 모드(스테이지 점프)
+    classmode: { ret: 'world', sel: 0, confirm: false, toast: 0 }, // 수업 모드(챕터 바로 시작)
     report: { ret: 'world', slot: 0, toast: 0 }, // 교사용 학생 진단 리포트
     quizedit: { ret: 'title', cursor: 0, toast: 0, confirm: false }, // 커스텀 퀴즈 편집·가져오기
     cards: { ret: 'title', slot: 0, scroll: 0 },     // 학습 카드 컬렉션
@@ -116,27 +116,16 @@
   function newFlags() {
     return {
       talkedProf: false,
-      badges: { forest: false, lake: false, cave: false },
       defeated: {
-        bekkyeomon: false, mollaemon: false, jungdokmon: false,
-        geojitmon: false, pyeonhyangmon: false, hondonmon: false,
-        akpeulmon: false, gatimmon: false, meotdaeromon: false,
-        pungpungmon: false, kkamkkammon: false, tteonemgimon: false,
-        sideulmon: false, ppaeatmon: false, hollimmon: false,
-        maearimon: false, geurimjamon: false, finalboss: false,
-        tturimmon: false, girokmon: false, sujipmon: false,
-        saseomon: false, piltermon: false, mirrormon: false,
-        yuhokmon: false, soksagimon: false, jogakmon: false,
-        yeongi: false,
-        hwangakmon: false, hapseongmon: false, miraemon: false,
-        somunmon: false, musimon: false, nangbimon: false, pinggyemon: false,
+        bekkyeomon: false, sujipmon: false, pyeonhyangmon: false,
+        hwangakmon: false, yuhokmon: false, hollimmon: false,
+        finalboss: false, yeongi: false,
       },
       mercy: 0,        // 마음을 안아준 횟수 (스테이지 6~)
       visited: {},     // 맵 인트로 연출 1회 표시용
       trueEnding: false,
       correctCount: 0,
       battleCount: 0,
-      sawBattleTip: false, // 첫 전투 1회 안내 표시 여부
       traceGiven: 0,       // 접수처에서 내보낸 정보 최대 개수(닉네임 제외) — 보스 콜백 인트로용
       chapter1Clear: false, // 1장 보스(담아) 설득 완료
       chapter1Mercy: false, // 1장 보스를 자비로 되돌렸는가 (2장 콜백 인트로용)
@@ -171,10 +160,34 @@
   // ---------- 세이브 슬롯 (3개) ----------
   function slotKey(i) { return 'ai-ethics-adventure-slot-' + i; }
 
+  // v3 마이그레이션 — 구 세이브(v1 필드·증표·구 세계 진행)에서 챕터 진행만 승계한다.
+  // 사라진 맵에 서 있던 세이브는 마을 입구로 옮긴다. (v1 콘텐츠 무손상 원칙은 v3에서 공식 폐기)
+  const V3_CAST = ['bekkyeomon', 'sujipmon', 'pyeonhyangmon', 'hwangakmon',
+    'yuhokmon', 'hollimmon', 'finalboss', 'yeongi'];
+  function migrateSlotV3(data) {
+    if (!data || !data.flags || (data.v || 0) >= 3) return data;
+    const f = data.flags;
+    delete f.badges;
+    delete f.sawBattleTip;
+    if (f.defeated) {
+      const d = {};
+      for (const k of V3_CAST) d[k] = !!f.defeated[k];
+      f.defeated = d;
+    }
+    if (f.mercyChoice) {
+      const m = {};
+      for (const k of V3_CAST) if (f.mercyChoice[k]) m[k] = f.mercyChoice[k];
+      f.mercyChoice = m;
+    }
+    if (!MAPS[data.map]) { data.map = 'village'; data.x = 13; data.y = 16; }
+    data.v = 3;
+    return data;
+  }
+
   function loadSlot(i) {
     try {
       const raw = localStorage.getItem(slotKey(i));
-      return raw ? JSON.parse(raw) : null;
+      return raw ? migrateSlotV3(JSON.parse(raw)) : null;
     } catch (e) { return null; }
   }
 
@@ -198,7 +211,7 @@
     }
   }
 
-  const SAVE_VERSION = 2;
+  const SAVE_VERSION = 3;
   function save() {
     writeSlot(game.currentSlot, {
       v: SAVE_VERSION,
@@ -210,13 +223,25 @@
     });
   }
 
+  // 챕터 진행 라벨 (타이틀 슬롯 표시용) — 프롤로그 → 1~5장 → 파이널
+  function chapterProgressLabel(flags) {
+    const d = (flags && flags.defeated) || {};
+    if (flags.chapter5Clear) return '파이널';
+    if (flags.chapter4Clear) return '5장';
+    if (flags.chapter3Clear) return '4장';
+    if (flags.chapter2Clear) return '3장';
+    if (flags.chapter1Clear) return '2장';
+    if (d.bekkyeomon) return '1장';
+    return '프롤로그';
+  }
+
   // 슬롯 요약 (타이틀 표시용). 없으면 null.
   function slotSummary(i) {
     const s = loadSlot(i);
     if (!s || !s.flags) return null;
     return {
       name: sanitizeName(s.name),
-      stage: getStage(s.flags),
+      stage: chapterProgressLabel(s.flags),
       mercy: s.flags.mercy || 0,
       done: !!(s.flags.defeated && s.flags.defeated.yeongi),
       endingId: s.flags.endingId || null,
@@ -346,8 +371,7 @@
   function fs(px, bold) { return (bold ? 'bold ' : '') + Math.round(px * TF()) + 'px monospace'; }
   function lh(px) { return Math.round(px * TF()); }
   // 의미 색상 — 색약 모드에서는 빨강/초록 대신 구분이 쉬운 파랑/주황(Okabe-Ito 계열)
-  // 표시 이름: 마음 조각 배틀 등에서 MONSTERS[id].displayName이 있으면 우선 사용 (없으면 name)
-  function monName(id) { const m = MONSTERS[id]; return (m && (m.displayName || m.name)) || id; }
+  function monName(id) { const m = MONSTERS[id]; return (m && m.name) || id; }
   function okColor() { return game.colorBlind ? '#3b8ed0' : '#5cb85c'; }   // 정답·높음
   function warnColor() { return game.colorBlind ? '#e69f00' : '#ffd644'; } // 보통
   function badColor() { return game.colorBlind ? '#d55e00' : '#e0453a'; }  // 오답·낮음
@@ -661,13 +685,13 @@
     { id: 'rookie', name: '새내기 수호자', desc: '모험을 시작한 모두에게', check: () => true },
     { id: 'kind', name: '따뜻한 마음', desc: '마음을 5번 안아 주기', check: (c) => c.mercy >= 5 },
     { id: 'scholar', name: '공부벌레', desc: '문제 50개 이상 풀기', check: (c) => c.attempted >= 50 },
-    { id: 'collector', name: '도감 수집가', desc: '도감 절반 이상 모으기', check: (c) => c.dex > 0 && c.dex * 2 >= c.dexTotal },
+    { id: 'collector', name: '마음 기록가', desc: '친구 수첩 절반 이상 채우기', check: (c) => c.dex > 0 && c.dex * 2 >= c.dexTotal },
     { id: 'champion', name: '챌린지 챔피언', desc: '퀴즈 챌린지 만점', check: (c) => c.challengeBest > 0 && c.challengeBest === c.challengeBestTotal },
     { id: 'master', name: '마음의 수호자', desc: '엔딩 보고 도전과제 8개 달성', check: (c) => c.endings >= 1 && c.achieved >= 8 },
   ];
   const THEMES = [
     { id: 'classic', name: '클래식', color: '#ffd644', desc: '기본 노란빛', check: () => true },
-    { id: 'forest', name: '숲빛', color: '#5cb85c', desc: '증표 1개 모으기', check: (c) => c.badges >= 1 },
+    { id: 'forest', name: '숲빛', color: '#5cb85c', desc: '첫 마음 되돌리기', check: (c) => c.defeatedCount >= 1 },
     { id: 'ocean', name: '바다빛', color: '#4ea8de', desc: '문제 30개 풀기', check: (c) => c.attempted >= 30 },
     { id: 'sunset', name: '노을빛', color: '#f08a24', desc: '마음 8번 안아 주기', check: (c) => c.mercy >= 8 },
     { id: 'galaxy', name: '은하빛', color: '#b48ce0', desc: '엔딩 보기', check: (c) => c.endings >= 1 },
@@ -838,7 +862,6 @@
     if (e.key === 'h' || e.key === 'H') {
       if (game.mode === 'hint') { advanceHint(); return; }
       if (game.mode === 'world' && game.puzzleRun) { openHint(); return; }
-      useHint();
       return;
     }
     if (e.key === 'v' || e.key === 'V') {
@@ -1025,7 +1048,7 @@
     }
     const hintBtn = document.getElementById('t-hint');
     if (hintBtn) {
-      const onHint = (e) => { e.preventDefault(); Sound.resume(); useHint(); };
+      const onHint = (e) => { e.preventDefault(); Sound.resume(); if (game.mode === 'world' && game.puzzleRun) openHint(); };
       hintBtn.addEventListener('touchstart', onHint);
     }
   }
@@ -2916,6 +2939,32 @@
     }
     ctx.fillRect(0, 0, LW, LH);
   }
+  // 황혼 앰비언트 — 경계마을과 정적의 숲은 늘 해 질 녘이다 (다크 톤 기조).
+  // 마을은 마음의 온도가 쌓일수록(이사 온 친구 수만큼) 조금씩 밝아진다 —
+  // "어두운 세계에 온기가 켜진다"를 화면 밝기로 체감시키는 카르마 연출.
+  const DUSK_BASE = { village: 0.24, forest: 0.30 };
+  function duskWarmCount(flags) {
+    let n = 0;
+    if (flags.mercyChoice && flags.mercyChoice.bekkyeomon === 'mercy') n += 1;
+    for (let c = 1; c <= 5; c++) if (flags[`chapter${c}Mercy`]) n += 1;
+    return n;
+  }
+  function drawDuskAmbient() {
+    let a = DUSK_BASE[game.map];
+    if (!a || !game.flags) return;
+    if (game.map === 'village') a = Math.max(0.08, a - 0.025 * duskWarmCount(game.flags));
+    // 깊은 남빛 어스름 — 위(하늘)가 더 어둡다
+    const grad = ctx.createLinearGradient(0, 0, 0, LH);
+    if (grad && grad.addColorStop) {
+      grad.addColorStop(0, `rgba(8,9,28,${Math.min(0.5, a + 0.08)})`);
+      grad.addColorStop(1, `rgba(8,9,28,${a * 0.7})`);
+      ctx.fillStyle = grad;
+    } else {
+      ctx.fillStyle = `rgba(8,9,28,${a})`;
+    }
+    ctx.fillRect(0, 0, LW, LH);
+  }
+
   // 파이널 「고요의 뜰」 — 구역을 지날 때마다(맵 전환) 화면이 한 단계씩 어두워진다.
   // 퍼즐 없음 — 순수하게 맵 id로만 정해지는 단계(같은 비네트 방식 재사용).
   const QUIET_DIM_LEVEL = { quietyard: 0, quietyard2: 1, quietyard3: 2, goyostage: 3 };
@@ -3323,19 +3372,7 @@
     const p = game.player;
     const w = warpAt(game.map, p.x, p.y);
     if (!w) return;
-    if (w.needBadges && countBadges(game.flags) < w.needBadges) {
-      pushBack();
-      Sound.bump();
-      startDialog([`신호탑의 문이 굳게 닫혀 있다.\n마음의 증표 ${w.needBadges}개가 필요하다.\n(지금 ${countBadges(game.flags)}개)`]);
-      return;
-    }
     if (w.needAllDefeated && !w.needAllDefeated.every((id) => game.flags.defeated[id])) {
-      pushBack();
-      Sound.bump();
-      startDialog([w.lockText || '길이 막혀 있다.']);
-      return;
-    }
-    if (w.needBoss && !game.flags.defeated[w.needBoss]) {
       pushBack();
       Sound.bump();
       startDialog([w.lockText || '길이 막혀 있다.']);
@@ -3522,162 +3559,12 @@
   }
 
   function startBattleIntro(monId, persuadeKey) {
-    // persuadeKey는 배치별 설득 프로필(예: 보스방 수집몬='sujipmon_boss'). 없으면 monId로 조회.
-    const pKey = persuadeKey || monId;
-    if (getPersuade(pKey)) { startPersuadeIntro(monId, pKey); return; }
-    const mon = MONSTERS[monId];
-    Sound.encounter();
-    const lines = [mon.intro];
-    // 첫 전투에서 한 번만, 전투 방법을 짧게 안내한다 (슬롯별 1회)
-    if (game.flags && !game.flags.sawBattleTip) {
-      game.flags.sawBattleTip = true;
-      lines.push(
-        isTouchDevice
-          ? '[전투 안내]\n스틱 ↑↓로 답을 고르고 Ⓐ로 결정!\n맞히면 몬스터의 오해가 풀려요.'
-          : '[전투 안내]\n↑↓로 답을 고르고 Z(또는 A)로 결정!\n맞히면 몬스터의 오해가 풀려요.',
-        isTouchDevice
-          ? '틀려도 괜찮아요. 해설을 읽고 배우면 돼요.\n막히면 [힌트] 버튼으로 50:50을 쓸 수 있어요.'
-          : '틀려도 괜찮아요. 해설을 읽고 배우면 돼요.\n막히면 H로 50:50 힌트를 쓸 수 있어요.'
-      );
-    }
-    startDialog(lines, mon.name, () => startBattle(monId));
-  }
-
-  function questionPool(mon) {
-    const src = quizSource();
-    const topics = Array.isArray(mon.topic) ? mon.topic : [mon.topic];
-    return topics.flatMap((t) => (src[t] || []).map((q, i) => Object.assign({}, q, { _topic: t, _qid: t + '#' + i })));
-  }
-
-  function startBattle(monId) {
-    const mon = MONSTERS[monId];
-    game.mode = 'battle';
-    Sound.playSong(mon.song || 'battle');
-    // 학년별 난이도: 저학년은 하트 1개 더 (기본은 그대로 유지)
-    const maxHearts = (mon.hp >= 5 ? 4 : 3) + (game.difficulty === 'easy' ? 1 : 0);
-    game.battle = {
-      monId,
-      mon,
-      monHp: mon.hp,
-      monMaxHp: mon.hp,
-      playerHp: maxHearts,
-      maxHearts,
-      questions: shuffled(questionPool(mon)),
-      qIdx: 0,
-      phase: 'question', // question | feedback | mercy | mercyReply | dodge
-      cursor: 0,
-      choiceOrder: null, // 보기 표시 순서(섞기) — setupQuestion에서 채움
-      correctPos: 0,     // 섞인 보기 중 정답의 위치
-      hintUsed: false,   // 이번 문항에서 50:50 힌트를 썼는지
-      hiddenPos: -1,     // 힌트로 가려진 보기의 표시 위치 (-1이면 없음)
-      feedback: null, // { correct, why }
-      shake: 0,
-      flash: 0,
-      attack: getBossAttack(monId), // 보스 회피 구간 (없으면 null)
-      dodgeDone: false,
-      dodge: null,
-    };
-    setupQuestion();
-    game.flags.battleCount += 1;
-  }
-
-  // 현재 문항의 보기 순서를 매번 새로 섞는다. (정답이 늘 2번에 오는 것을 방지)
-  function setupQuestion() {
-    const b = game.battle;
-    if (b.qIdx >= b.questions.length) {
-      b.questions = shuffled(questionPool(b.mon));
-      b.qIdx = 0;
-    }
-    const q = b.questions[b.qIdx];
-    if (!q || !Array.isArray(q.a) || q.a.length === 0) {
-      // 출제할 문제가 없으면(데이터 이상) 배틀을 안전하게 종료해 크래시를 막는다
-      game.battle = null;
-      game.mode = 'world';
-      return;
-    }
-    b.choiceOrder = shuffled(q.a.map((_, i) => i));
-    b.correctPos = b.choiceOrder.indexOf(q.c);
-    b.hintUsed = false;
-    b.hiddenPos = -1;
-    speakQuiz(q.q, b.choiceOrder.map((ai) => q.a[ai]));
-  }
-
-  // 50:50 힌트 — 정답이 아닌 보기 중 하나를 가린다 (한 문제당 한 번)
-  function useHint() {
-    const b = game.battle;
-    if (!b || b.phase !== 'question') return;
-    if (game.difficulty === 'hard') return;         // 고학년: 힌트 없음
-    if (b.hintUsed && game.difficulty !== 'easy') return; // 기본: 문제당 1회 / 저학년: 여러 번
-    const q = currentQuestion();
-    const order = choiceOrder();
-    const candidates = order.map((_, i) => i).filter((i) => i !== b.correctPos);
-    if (candidates.length === 0) return;
-    b.hiddenPos = candidates[Math.floor(Math.random() * candidates.length)];
-    b.hintUsed = true;
-    if (b.cursor === b.hiddenPos) {
-      b.cursor = (b.cursor + 1) % q.a.length;
-    }
-    Sound.blip();
-  }
-
-  function currentQuestion() {
-    return game.battle.questions[game.battle.qIdx];
-  }
-
-  // 표시 위치 i가 가리키는 실제 보기 인덱스 (외부 생성 배틀이면 그대로)
-  function choiceOrder() {
-    const b = game.battle;
-    const q = currentQuestion();
-    if (!q || !Array.isArray(q.a)) return [];
-    return b.choiceOrder && b.choiceOrder.length === q.a.length
-      ? b.choiceOrder : q.a.map((_, i) => i);
-  }
-
-  function nextQuestion() {
-    const b = game.battle;
-    b.qIdx += 1;
-    b.cursor = 0;
-    b.feedback = null;
-    b.phase = 'question';
-    setupQuestion();
-  }
-
-  // 정답으로 보스 HP가 절반이 되면, 마음이 폭주하는 회피 구간이 한 번 펼쳐진다.
-  function continueAfterFeedback() {
-    const b = game.battle;
-    if (!b.dodgeDone && b.attack && b.monHp > 0 && b.monHp <= Math.floor(b.monMaxHp / 2)) {
-      enterDodge();
-    } else {
-      nextQuestion();
-      Sound.select();
-    }
+    // 모든 조우는 마음 조각 배틀(설득) — persuadeKey는 배치별 프로필(예: 보스방 담아='sujipmon_boss').
+    startPersuadeIntro(monId, persuadeKey || monId);
   }
 
   // 학년별 난이도: 회피 구간 길이·탄막 속도 배율 (기본 1)
   function dodgeSpeedFactor() { return game.difficulty === 'easy' ? 0.8 : game.difficulty === 'hard' ? 1.25 : 1; }
-  function enterDodge() {
-    const b = game.battle;
-    const atk = b.attack;
-    b.dodgeDone = true;
-    b.phase = 'dodge';
-    const boxW = 300, boxH = 170;
-    const boxY = 190; // 상자 위 안내 문구가 하트 HUD(y100~144) 아래로 오도록 내림 (PBOX_CENTER_Y 참고)
-    // 스테이지가 올라갈수록 회피 구간이 길고·빠르고·촘촘해진다 (1장 쉽게 → 5장 어렵게)
-    const stage = (MONSTER_DEX[b.monId] && MONSTER_DEX[b.monId].stage) || 1;
-    const diffMul = game.difficulty === 'easy' ? 0.75 : game.difficulty === 'hard' ? 1.2 : 1;
-    b.dodge = {
-      t: 0, dur: Math.round(atk.dur * diffMul * (1 + (stage - 1) * 0.06)),
-      box: { x: Math.round(LW / 2 - boxW / 2), y: boxY, w: boxW, h: boxH },
-      soul: { x: LW / 2, y: boxY + boxH / 2 },
-      bullets: [],
-      spawnTimer: 30,
-      inv: 0,
-      sf: dodgeSpeedFactor() * (1 + (stage - 1) * 0.08),   // 탄막 속도 스테이지 가중
-      rateMul: Math.max(0.6, 1 - (stage - 1) * 0.08),       // 생성 간격(작을수록 촘촘)
-    };
-    Sound.encounter();
-  }
-
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
   // 다단계 보스: patterns 배열을 진행도에 따라 순서대로 펼친다 (점점 거세짐)
@@ -3738,122 +3625,13 @@
     }
   }
 
-  function updateDodge() {
-    const b = game.battle, d = b.dodge, atk = b.attack;
-    if (b.shake > 0) b.shake -= 1;
-    if (b.flash > 0) b.flash -= 1;
-    if (d.inv > 0) d.inv -= 1;
-    d.t += 1;
-
-    // 하트(소울) 이동
-    const sp = 3.4, r = 7;
-    if (held.has('left')) d.soul.x -= sp;
-    if (held.has('right')) d.soul.x += sp;
-    if (held.has('up')) d.soul.y -= sp;
-    if (held.has('down')) d.soul.y += sp;
-    d.soul.x = clamp(d.soul.x, d.box.x + r, d.box.x + d.box.w - r);
-    d.soul.y = clamp(d.soul.y, d.box.y + r, d.box.y + d.box.h - r);
-
-    // 탄막 생성 (끝나기 직전엔 멈춰서 정리 시간을 준다)
-    d.spawnTimer -= 1;
-    if (d.spawnTimer <= 0 && d.t < d.dur - 50) {
-      const pat = currentPattern(d, atk);
-      spawnBullets(d, pat, d.soul);
-      const baseRate = pat === 'burst' ? 24 : pat === 'spiral' ? 8
-        : pat === 'wall' ? 42 : pat === 'zigzag' ? 18 : pat === 'aimed' ? 16 : 15;
-      d.spawnTimer = Math.max(4, Math.round(baseRate * (d.rateMul || 1)));
-    }
-
-    // 탄막 이동 + 화면 밖 제거 (zigzag 탄막은 진행하며 위아래로 일렁인다)
-    for (const bu of d.bullets) {
-      if (bu.zig) { bu.zigT = (bu.zigT || 0) + 1; bu.vy = Math.sin(bu.zigT / 7) * bu.zig; }
-      bu.x += bu.vx; bu.y += bu.vy;
-    }
-    d.bullets = d.bullets.filter((bu) =>
-      bu.x > d.box.x - 24 && bu.x < d.box.x + d.box.w + 24 &&
-      bu.y > d.box.y - 24 && bu.y < d.box.y + d.box.h + 24);
-
-    // 충돌 — 퀴즈 배틀은 하트가 1 아래로 안 줄어든다(게임오버 없음).
-    // (마음 조각 배틀은 별도 루프 updateWave/updateGates에서 처리한다)
-    if (d.inv <= 0) {
-      for (const bu of d.bullets) {
-        const dx = bu.x - d.soul.x, dy = bu.y - d.soul.y;
-        if (dx * dx + dy * dy < (r + bu.r) * (r + bu.r)) {
-          b.playerHp = Math.max(1, b.playerHp - 1);
-          d.hits = (d.hits || 0) + 1;
-          d.inv = 42; b.flash = 12; Sound.bump();
-          break;
-        }
-      }
-    }
-
-    if (d.t >= d.dur) {
-      b.dodge = null; nextQuestion();
-      Sound.select();
-    }
-  }
-
   function updateBattle() {
     const b = game.battle;
-    if (b.phase === 'dodge') { updateDodge(); return; }
     if (b.shake > 0) b.shake -= 1;
     if (b.flash > 0) b.flash -= 1;
 
     if (b.isPersuade && (b.phase === 'wave' || b.phase === 'gates')) {
       updatePersuadeBattle();
-      return;
-    }
-
-    if (b.phase === 'question') {
-      const q = currentQuestion();
-      const order = choiceOrder();
-      if (justPressed('up')) {
-        for (let g = 0; g < q.a.length; g++) { b.cursor = (b.cursor + q.a.length - 1) % q.a.length; if (b.cursor !== b.hiddenPos) break; }
-        Sound.blip();
-      }
-      if (justPressed('down')) {
-        for (let g = 0; g < q.a.length; g++) { b.cursor = (b.cursor + 1) % q.a.length; if (b.cursor !== b.hiddenPos) break; }
-        Sound.blip();
-      }
-      if (justPressed('action')) {
-        const correct = order[b.cursor] === q.c;
-        b.feedback = { correct, why: q.why };
-        b.phase = 'feedback';
-        speakFeedback(correct, q.why);
-        recordTopicResult(game.currentSlot, q._topic, correct);
-        if (correct) {
-          Sound.correct();
-          b.monHp -= 1;
-          b.shake = 14;
-          game.flags.correctCount += 1;
-          clearMistake(game.currentSlot, q._qid);
-        } else {
-          Sound.wrong();
-          b.playerHp -= 1;
-          b.flash = 14;
-          recordMistake(game.currentSlot, q);
-        }
-      }
-      return;
-    }
-
-    if (b.phase === 'feedback') {
-      if (justPressed('action')) {
-        if (b.monHp <= 0) {
-          // 모든 몬스터는 마지막에 '마음의 선택'(갱생)이 기다린다 —
-          // 쓰러뜨리는 게 아니라 마음을 되돌려 친구로 만드는 것이 이 모험의 핵심.
-          if (b.mon.mercy && !b.mercyDone) {
-            b.phase = 'mercy';
-            b.cursor = 0;
-            Sound.select();
-            return;
-          }
-          winBattle();
-          return;
-        }
-        if (b.playerHp <= 0) { loseBattle(); return; }
-        continueAfterFeedback();
-      }
       return;
     }
 
@@ -3913,7 +3691,7 @@
   }
 
   // 2장 보스 승리 — chapter2Clear 플래그 + 2장 마무리 대사 후 저울 앞(광장)으로 복귀.
-  // v1 편향몬(퀴즈)과 별개이므로 defeated.pyeonhyangmon/도감은 건드리지 않는다.
+  // (승리 처리는 챕터 플래그로 기록한다)
   function winChapter2Boss() {
     const b = game.battle;
     const mon = b.mon;
@@ -3942,7 +3720,7 @@
   }
 
   // 3장 보스 승리 — chapter3Clear 플래그 + 3장 마무리 대사 후 신문사 입구(거리)로 복귀.
-  // v1 미래연구소 환각몬(퀴즈)과 별개이므로 defeated.hwangakmon/도감은 건드리지 않는다.
+  // (승리 처리는 챕터 플래그로 기록한다)
   function winChapter3Boss() {
     const b = game.battle;
     const mon = b.mon;
@@ -3971,7 +3749,7 @@
   }
 
   // 4장 보스 승리 — chapter4Clear 플래그 + 4장 마무리 대사 후 아케이드 정문 앞(허브)으로 복귀.
-  // v1 정원 유혹몬(퀴즈)과 별개이므로 defeated.yuhokmon/도감은 건드리지 않는다.
+  // (승리 처리는 챕터 플래그로 기록한다)
   function winChapter4Boss() {
     const b = game.battle;
     const mon = b.mon;
@@ -4029,8 +3807,7 @@
   }
 
   // 파이널 보스(고요) 승리 — goyoClear 플래그 + 코어 개방 연출 후 코어로 입장.
-  // v1 어둠대왕몬(그림자성 BOSS_ATTACKS 퀴즈)과 별개이므로 defeated.finalboss/도감은
-  // 건드리지 않는다(v1 그림자성 보스전 무손상).
+  // (승리 처리는 goyoClear 플래그로 기록한다)
   function winGoyoBoss() {
     const b = game.battle;
     const mon = b.mon;
@@ -4060,7 +3837,7 @@
   function winBattle() {
     const b = game.battle;
     const mon = b.mon;
-    // 1장 보스(수집몬) — 별도 진행 플래그로 처리해 도감/처치 플래그(라이브러리 수집몬)를 오염시키지 않는다
+    // 챕터 보스 — 별도 진행 플래그(chapterNClear)로 처리한다
     if (b.persuadeId === 'sujipmon_boss') { winChapter1Boss(); return; }
     if (b.persuadeId === 'pyeonhyang_boss') { winChapter2Boss(); return; }
     if (b.persuadeId === 'hwangak_boss') { winChapter3Boss(); return; }
@@ -4073,8 +3850,6 @@
     recordDexSeen(b.monId, b.mercyChoiceKind);
     if (!game.flags.mercyChoice) game.flags.mercyChoice = {};
     game.flags.mercyChoice[b.monId] = b.mercyChoiceKind || null;
-    const gotBadge = mon.badge && !game.flags.badges[mon.badge];
-    if (mon.badge) game.flags.badges[mon.badge] = true;
     save();
     checkCosmeticUnlocks(game.currentSlot);
 
@@ -4087,22 +3862,8 @@
     if (b.mercyChoiceKind === 'mercy' && b.monId !== 'yeongi') {
       lines.push(`💛 ${mon.name}의 굳어 있던 마음이\n환하게 풀렸어요. 또 한 친구를 되돌렸다!`);
     }
-    if (gotBadge) {
-      const badgeNames = { forest: '정적의 숲의 증표', lake: '잔향의 호수의 증표', cave: '회로의 동굴의 증표' };
-      lines.push(`☆ ${badgeNames[mon.badge]}를 얻었다! ☆\n(마음의 증표 ${countBadges(game.flags)}개 / 3개)`);
-      if (countBadges(game.flags) >= 3) {
-        lines.push('마음의 증표를 모두 모았다!\n마을의 신호탑 문이 열렸다…!');
-      }
-    }
     if (mon.clear) lines.push(mon.clear);
-    if (b.monId === 'finalboss') {
-      startDialog(lines, mon.name, () => {
-        game.mode = 'ending';
-        game.endingType = 'first';
-        game.endingT = 0;
-        Sound.playSong('ending');
-      });
-    } else if (b.monId === 'yeongi') {
+    if (b.monId === 'yeongi') {
       // 최종 엔딩 분기: 여정 전체의 자비 + 마지막 선택
       const endingId = computeEnding(b.mercyChoiceKind, game.flags.mercy);
       game.flags.endingId = endingId;
@@ -4120,16 +3881,6 @@
         Sound.playSong(MAPS[game.map].song);
       });
     }
-  }
-
-  function loseBattle() {
-    game.battle = null;
-    game.mode = 'world';
-    Sound.playSong(MAPS[game.map].song);
-    startDialog([
-      '으윽, 머리가 어지럽다…!',
-      '괜찮아, 틀려도 배우면 되는 거야.\n기운을 차리고 다시 도전하자!',
-    ]);
   }
 
   // ---------- v2 「마음 조각 배틀」(행동 설득) ----------
@@ -4213,14 +3964,8 @@
   function resolvePersuadeMon(spriteId, persuadeKey) {
     const base = MONSTERS[spriteId];
     const p = getPersuade(persuadeKey);
-    // 표시 이름 계층: 설득 프로필의 displayName이 최우선(배치별),
-    // 없으면 MONSTERS의 displayName(캐릭터별), 그다음 실제 name.
-    const name = (p && p.displayName) || base.displayName || base.name;
-    if (persuadeKey === spriteId || !p) {
-      return base.displayName ? Object.assign({}, base, { name }) : base;
-    }
+    if (persuadeKey === spriteId || !p) return base;
     return Object.assign({}, base, {
-      name,
       mercy: p.mercy || base.mercy,
       win: p.win || base.win,
     });
@@ -4846,6 +4591,10 @@
     mercy: '마음을 안아 줌 ♥', neutral: '바르게 타이름', harsh: '차갑게 작별',
   };
 
+  // 친구 수첩의 장 표기 — stage: 0=프롤로그, 1~5=N장, 6=파이널
+  function dexChapterShort(stage) { return stage === 0 ? 'P' : stage === 6 ? 'F' : `${stage}장`; }
+  function dexChapterLabel(stage) { return stage === 0 ? '프롤로그' : stage === 6 ? '파이널' : `${stage}장`; }
+
   function drawDex() {
     const seen = getDexSeen();
     ctx.fillStyle = '#000';
@@ -4877,7 +4626,7 @@
       }
       ctx.fillStyle = '#666';
       ctx.font = '12px monospace';
-      ctx.fillText(MONSTER_DEX[id].stage === 0 ? 'B' : `S${MONSTER_DEX[id].stage}`, listX, y);
+      ctx.fillText(dexChapterShort(MONSTER_DEX[id].stage), listX, y);
       ctx.fillStyle = isSeen ? (idx === cur ? '#fff' : '#aaa') : '#444';
       ctx.font = (idx === cur ? 'bold ' : '') + '15px monospace';
       ctx.fillText(isSeen ? monName(id) : '??? (미발견)', listX + 34, y);
@@ -4918,7 +4667,7 @@
     ctx.fillText(isSeen ? monName(id) : '???', cx, 238);
     ctx.fillStyle = '#888';
     ctx.font = '13px monospace';
-    ctx.fillText(info.stage === 0 ? '보너스 · 미래연구소' : `스테이지 ${info.stage}`, cx, 260);
+    ctx.fillText(dexChapterLabel(info.stage), cx, 260);
     ctx.textAlign = 'left';
 
     if (isSeen) {
@@ -5140,7 +4889,7 @@
     halloffame: '🏆 명예의 전당',
     dashboard: '▤ 교사용 대시보드',
     report: '🩺 학생 진단 리포트',
-    classmode: '▶ 수업 모드 (스테이지 시작)',
+    classmode: '▶ 수업 모드 (챕터 시작)',
     awards: '☆ 도전과제',
     cosmetics: '✿ 꾸미기 (칭호·테마)',
     cert: '🎓 수료증',
@@ -5388,7 +5137,7 @@
     if (s.weak.length) lines.push('더 살펴볼 주제: ' + s.weak.join(', '));
     const endSeen = getEndingsSeen();
     const endN = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
-    lines.push(`발견 엔딩: ${endN}/4 · 도감 수집: ${dexSeenCount()}/${DEX_ORDER.length}`);
+    lines.push(`발견 엔딩: ${endN}/4 · 친구 수첩: ${dexSeenCount()}/${DEX_ORDER.length}`);
     lines.push(`복습 노트 남은 문제: ${mistakeCount(slot)}개`);
     const rm = getMeta(slot);
     if (rm.streak || rm.bestStreak) lines.push(`연속 출석: ${rm.streak || 0}일 (최고 ${rm.bestStreak || 0}일)`);
@@ -5443,7 +5192,7 @@
     const jm = getMeta(slot);
     ctx.fillStyle = '#888';
     ctx.font = '13px monospace';
-    ctx.fillText(`발견 엔딩 ${endN}/4  ·  도감 ${dexSeenCount()}/${DEX_ORDER.length}  ·  복습 노트 ${mistakeCount(slot)}개`, 24, 88);
+    ctx.fillText(`발견 엔딩 ${endN}/4  ·  친구 수첩 ${dexSeenCount()}/${DEX_ORDER.length}  ·  복습 노트 ${mistakeCount(slot)}개`, 24, 88);
     if (jm.streak || jm.bestStreak) {
       ctx.fillStyle = themeAccent();
       ctx.fillText(`🔥 연속 출석 ${jm.streak || 0}일 (최고 ${jm.bestStreak || 0}일)`, 24, 106);
@@ -5751,15 +5500,15 @@
   // ---------- 도전과제 (업적) ----------
   // 각 과제는 슬롯별 학습 데이터 + 기기 공용 컬렉션(도감·엔딩)에서 즉석 판정한다.
   const ACHIEVEMENTS = [
-    { id: 'firstwin', cat: 'battle', name: '첫 깨우침', desc: '몬스터를 처음 깨우쳤어요', check: (c) => c.defeatedCount >= 1 },
+    { id: 'firstwin', cat: 'battle', name: '첫 깨우침', desc: '처음으로 마음을 되돌렸어요', check: (c) => c.defeatedCount >= 1 },
     { id: 'mercy1', cat: 'battle', name: '따뜻한 마음', desc: '마음을 한 번 안아 주었어요', check: (c) => c.mercy >= 1 },
     // v2 스케일(자비 최대 8회) — v1의 10 임계값은 사실상 도달 불가능해 7로 낮췄다.
     { id: 'mercy10', cat: 'battle', name: '마음의 수호자', desc: '마음을 일곱 번 안아 주었어요', check: (c) => c.mercy >= 7 },
     { id: 'solved50', cat: 'learn', name: '꾸준한 공부', desc: '문제를 50개 이상 풀었어요', check: (c) => c.attempted >= 50 },
     { id: 'perfectTopic', cat: 'learn', name: '완벽한 한 주제', desc: '한 주제 100% (3문제 이상)', check: (c) => c.perfectTopic },
     { id: 'wellRounded', cat: 'learn', name: '두루 박학', desc: '5개 주제에서 80% 이상', check: (c) => c.strongTopics >= 5 },
-    { id: 'dexHalf', cat: 'collect', name: '도감 수집가', desc: '도감을 절반 이상 모았어요', check: (c) => c.dex > 0 && c.dex * 2 >= c.dexTotal },
-    { id: 'dexAll', cat: 'collect', name: '도감 마스터', desc: '도감을 모두 모았어요', check: (c) => c.dexTotal > 0 && c.dex >= c.dexTotal },
+    { id: 'dexHalf', cat: 'collect', name: '반쯤 채운 수첩', desc: '친구 수첩을 절반 이상 채웠어요', check: (c) => c.dex > 0 && c.dex * 2 >= c.dexTotal },
+    { id: 'dexAll', cat: 'collect', name: '여덟 조각의 친구', desc: '친구 수첩을 모두 채웠어요', check: (c) => c.dexTotal > 0 && c.dex >= c.dexTotal },
     { id: 'ending1', cat: 'collect', name: '이야기꾼', desc: '엔딩을 하나 보았어요', check: (c) => c.endings >= 1 },
     { id: 'endingAll', cat: 'collect', name: '모든 결말', desc: '엔딩 네 가지를 모두 보았어요', check: (c) => c.endings >= 4 },
     { id: 'challengeDone', cat: 'challenge', name: '챌린지 도전', desc: '퀴즈 챌린지를 완주했어요', check: (c) => c.challengeRuns >= 1 },
@@ -5780,7 +5529,7 @@
     const endings = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
     const ctx = {
       attempted: s.attempted, strongTopics: s.strongTopics, perfectTopic: s.perfectTopic,
-      mercy: f.mercy || 0, defeatedCount, badges: f.badges ? countBadges(f) : 0,
+      mercy: f.mercy || 0, defeatedCount,
       dex: dexSeenCount(), dexTotal: DEX_ORDER.length, endings,
       challengeRuns: meta.challengeRuns || 0,
       challengeBest: meta.challengeBest || 0, challengeBestTotal: meta.challengeBestTotal || 0,
@@ -5862,7 +5611,7 @@
     ['head', '◆ 기본 조작'],
     ['', isTouchDevice ? '이동: 화면 왼쪽 스틱       말 걸기·조사·확인: Ⓐ 버튼'
                        : '이동: 화살표 / W A S D       말 걸기·조사·확인: Z / 스페이스'],
-    ['', isTouchDevice ? '도감(친구 수첩) 바로 보기: [도감] 버튼       그 외 전부: [메뉴] 버튼'
+    ['', isTouchDevice ? '친구 수첩 바로 보기: [수첩] 버튼       그 외 전부: [메뉴] 버튼'
                        : '메뉴 열기: X / Esc       친구 수첩 바로 보기: C'],
     ['', ''],
     ['head', '◆ 마음 조각 배틀'],
@@ -6127,7 +5876,7 @@
     const sum = slotSummary(slot);
     const title = selectedTitle(slot);
     const acc = s.attempted ? Math.round(s.overallRate * 100) + '%' : '—';
-    const prog = sum ? (sum.done ? '모험 완료' : `스테이지 ${sum.stage}/5`) : '시작 전';
+    const prog = sum ? (sum.done ? '모험 완료' : sum.stage) : '시작 전';
     return [
       '════════ AI 윤리 어드벤처 수료증 ════════',
       '',
@@ -6213,7 +5962,7 @@
     ctx.fillText('열심히 익혔기에 이 증서를 드립니다.', cx, by + 212);
 
     const acc = s.attempted ? Math.round(s.overallRate * 100) + '%' : '—';
-    const prog = sum ? (sum.done ? '모험 완료' : `스테이지 ${sum.stage}/5`) : '시작 전';
+    const prog = sum ? (sum.done ? '모험 완료' : sum.stage) : '시작 전';
     const rows = [
       ['진행도', prog], ['정답률', `${acc} (${s.attempted}문제)`],
       ['배움 카드', `${collectedCards(slot)}/${LEARN_CARDS.length}`],
@@ -6257,7 +6006,7 @@
       val: (i) => slotSummary(i) ? collectedCards(i) : -1, fmt: (i) => slotSummary(i) ? `${collectedCards(i)}/${LEARN_CARDS.length}` : '—' },
     { key: 'awards', label: '도전과제', icon: '☆',
       val: (i) => slotSummary(i) ? countAchievements(i) : -1, fmt: (i) => slotSummary(i) ? `${countAchievements(i)}/${ACHIEVEMENTS.length}` : '—' },
-    { key: 'dex', label: '도감 수집', icon: '◆',
+    { key: 'dex', label: '친구 수첩', icon: '◆',
       val: () => dexSeenCount(), fmt: () => `${dexSeenCount()}/${DEX_ORDER.length}`, shared: true },
   ];
   function openHof(ret) {
@@ -6319,7 +6068,7 @@
       ctx.fillText(cat.fmt(0), panelX + panelW / 2, panelY + 130);
       ctx.fillStyle = '#888';
       ctx.font = '13px monospace';
-      ctx.fillText('(도감은 모두가 함께 채우는 공동 기록이에요)', panelX + panelW / 2, panelY + 170);
+      ctx.fillText('(친구 수첩은 모두가 함께 채우는 공동 기록이에요)', panelX + panelW / 2, panelY + 170);
       ctx.textAlign = 'left';
     } else {
       // 슬롯들을 점수로 정렬
@@ -6454,7 +6203,7 @@
     ctx.fillText('⇄ 데이터 백업 · 복원', 24, 40);
     ctx.fillStyle = '#888';
     ctx.font = '13px monospace';
-    ctx.fillText('모든 슬롯·학습 기록·도감·설정을 한 파일로 저장하고', 24, 66);
+    ctx.fillText('모든 슬롯·학습 기록·친구 수첩·설정을 한 파일로 저장하고', 24, 66);
     ctx.fillText('다른 기기나 브라우저에서 다시 불러올 수 있어요.', 24, 86);
 
     const listY = 130, rowH = 44;
@@ -6667,48 +6416,13 @@
     ctx.textAlign = 'left';
   }
 
-  // ---------- 수업 모드 (스테이지 점프) ----------
-  // 선생님이 오늘 수업할 스테이지부터 바로 시작하게 해 준다.
-  // 지금 슬롯의 진행을 "N스테이지 시작" 상태로 맞춘다(이전 스테이지는 모두 완료 처리).
-  const STAGE_COUNT = 5;
-  // 목표 스테이지 시작 상태의 flags를 만든다. (1스테이지 = 거의 새 모험)
-  function setupStageFlags(target) {
-    target = Math.max(1, Math.min(STAGE_COUNT, target | 0));
+  // ---------- 수업 모드 (챕터 바로 시작) ----------
+  // 선생님이 오늘 수업할 챕터부터 바로 시작하게 해 준다.
+  // 수업 기본 상태 flags — 새 모험 + 박사 대화 완료 (각 챕터 항목이 chapterNClear를 얹는다)
+  function setupClassBaseFlags() {
     const flags = newFlags();
     flags.talkedProf = true;
-    if (target > 1) {
-      flags.badges.forest = flags.badges.lake = flags.badges.cave = true;
-      // 도감의 스테이지 정보로, 이전 스테이지(1..target-1) 몬스터를 모두 깨우친 것으로 처리
-      for (const id of Object.keys(flags.defeated)) {
-        const dx = MONSTER_DEX[id];
-        if (dx && dx.stage >= 1 && dx.stage < target) flags.defeated[id] = true;
-      }
-    }
     return flags;
-  }
-  // 목표 스테이지의 안전한 시작 위치를 찾는다.
-  function stageSpawn(flags, target) {
-    if (target <= 1) {
-      const safe = findSafeSpawn('village', 13, 16) || { x: 13, y: 16 };
-      return { map: 'village', x: safe.x, y: safe.y };
-    }
-    const t = getObjectiveTarget(flags);
-    if (!t) { const s = findSafeSpawn('village', 13, 16) || { x: 13, y: 16 }; return { map: 'village', x: s.x, y: s.y }; }
-    const safe = findSafeSpawn(t.map, t.x, t.y) || { x: t.x, y: t.y };
-    return { map: t.map, x: safe.x, y: safe.y };
-  }
-  function applyStageJump(target) {
-    const flags = setupStageFlags(target);
-    const sp = stageSpawn(flags, target);
-    game.flags = flags;
-    game.map = sp.map;
-    game.player.x = sp.x;
-    game.player.y = sp.y;
-    game.player.px = sp.x * TS;
-    game.player.py = sp.y * TS;
-    game.player.moving = false;
-    game.player.dir = 'down';
-    save();
   }
   // 수업 모드 특별 항목 「1장 — 전부 공짜 거리」 (스테이지 번호가 아닌 방탈출 수업용)
   const TRACE_SEL = 0;
@@ -6738,7 +6452,7 @@
   // 있는 상태인데 프롤로그 미클리어로 남겨 두면 목표 나침반(getObjectiveTarget)이 숲의
   // 따라를 계속 가리키는 모순이 생긴다(수업 모드 점프는 "이 장부터 바로 수업" 전제).
   function applyTraceRoomClass() {
-    const flags = setupStageFlags(1);
+    const flags = setupClassBaseFlags();
     flags.defeated.bekkyeomon = true;
     game.flags = flags;
     game.map = 'freestreet';
@@ -6749,7 +6463,7 @@
   }
   // 2장 시작 상태(1장 클리어 직후)로 맞추고, 기울어진 거리 입구에 서서 시작한다.
   function applyTiltStreetClass() {
-    const flags = setupStageFlags(1);
+    const flags = setupClassBaseFlags();
     flags.defeated.bekkyeomon = true; // 프롤로그(따라)는 이미 클리어한 상태
     flags.chapter1Clear = true; // 2장은 1장 클리어 후 상태
     game.flags = flags;
@@ -6761,7 +6475,7 @@
   }
   // 3장 시작 상태(2장 클리어 직후)로 맞추고, 소문 거리 입구에 서서 시작한다.
   function applyRumorStreetClass() {
-    const flags = setupStageFlags(1);
+    const flags = setupClassBaseFlags();
     flags.defeated.bekkyeomon = true; // 프롤로그(따라)는 이미 클리어한 상태
     flags.chapter1Clear = true;
     flags.chapter2Clear = true; // 3장은 2장 클리어 후 상태
@@ -6774,7 +6488,7 @@
   }
   // 4장 시작 상태(3장 클리어 직후)로 맞추고, 반짝 아케이드 입구에 서서 시작한다.
   function applyArcadeClass() {
-    const flags = setupStageFlags(1);
+    const flags = setupClassBaseFlags();
     flags.defeated.bekkyeomon = true; // 프롤로그(따라)는 이미 클리어한 상태
     flags.chapter1Clear = true;
     flags.chapter2Clear = true;
@@ -6788,7 +6502,7 @@
   }
   // 5장 시작 상태(4장 클리어 직후)로 맞추고, 포근한 집 입구에 서서 시작한다.
   function applyCozyhomeClass() {
-    const flags = setupStageFlags(1);
+    const flags = setupClassBaseFlags();
     flags.defeated.bekkyeomon = true; // 프롤로그(따라)는 이미 클리어한 상태
     flags.chapter1Clear = true;
     flags.chapter2Clear = true;
@@ -6803,7 +6517,7 @@
   }
   // 파이널 시작 상태(5장 클리어 직후)로 맞추고, 포근한 집 안쪽 문 앞에 서서 시작한다.
   function applyFinalClass() {
-    const flags = setupStageFlags(1);
+    const flags = setupClassBaseFlags();
     flags.defeated.bekkyeomon = true; // 프롤로그(따라)는 이미 클리어한 상태
     flags.chapter1Clear = true;
     flags.chapter2Clear = true;
@@ -6829,7 +6543,6 @@
         game.playerName = s.name || '수호자';
         game.map = (s.map && MAPS[s.map]) ? s.map : 'village';
         game.flags = Object.assign(newFlags(), s.flags);
-        game.flags.badges = Object.assign({ forest: false, lake: false, cave: false }, s.flags.badges);
         game.flags.defeated = Object.assign(newFlags().defeated, s.flags.defeated);
       } else {
         game.playerName = '수호자';
@@ -7408,6 +7121,8 @@
     // 2장 구역 연출 — 어둠(꺼진 거리)·비네트(메아리 골목). HUD 아래에 깔린다.
     if (game.puzzleRun && game.puzzleRun.puzzle.type === 'lamps') drawDarkness(cx, cy);
     if (game.puzzleRun && game.puzzleRun.puzzle.type === 'voices') drawEchoVignette();
+    // 황혼 앰비언트(마을·숲) — 온기가 쌓일수록 옅어진다
+    drawDuskAmbient();
     // 파이널 「고요의 뜰」 — 구역을 지날 때마다 화면이 한 단계씩 어두워진다(비네트 재사용)
     drawQuietVignette();
 
@@ -7686,12 +7401,6 @@
     cozyhome: 5, callroom: 5, corridor: 5, sofaroom: 5, lumiroom: 5,
     quietyard: 'final', goyostage: 'final', coreroom: 'final',
   };
-  // v1 레거시 맵 — 기존 "STAGE N/5" 표기를 그대로 유지한다(v1 콘텐츠 무손상 원칙).
-  const V1_LEGACY_MAPS = new Set([
-    'forest', 'lake', 'cave', 'tower', 'meadow', 'windhill', 'fogswamp',
-    'desert', 'ruins', 'oasis', 'temple', 'snow', 'castle', 'serverroom',
-    'library', 'mirrors', 'garden', 'core', 'lab', 'bubble',
-  ]);
   // 챕터 플래그 기반 HUD 표기: 프롤로그~1장 클리어 전 = "1장", chapterNClear 이후 =
   // "(N+1)장", chapter5Clear 이후 = "파이널". 신규 스테이지 맵은 그 맵 자신의 장을 우선한다.
   function chapterBadgeLabel(mapId, flags) {
@@ -7706,12 +7415,9 @@
     return '1장';
   }
 
-  // HUD 좌상단 뱃지 텍스트("STAGE N/5" 또는 "N장"/"파이널") — v1 맵은 기존 표기,
-  // 그 외(신규 스테이지 맵 포함)는 챕터 플래그 기반 표기를 쓴다.
+  // HUD 좌상단 챕터 텍스트
   function hudBadgeText(mapId, flags) {
-    return V1_LEGACY_MAPS.has(mapId)
-      ? `STAGE ${getStage(flags)}/5`
-      : chapterBadgeLabel(mapId, flags);
+    return chapterBadgeLabel(mapId, flags);
   }
 
   function drawHud() {
@@ -7765,18 +7471,6 @@
     ctx.fillText(title, 18, 28);
     ctx.fillStyle = '#fff';
     ctx.fillText(obj, 18, 50);
-
-    // 마음의 증표 (하트 3개)
-    const shards = ['forest', 'lake', 'cave'];
-    for (let i = 0; i < 3; i++) {
-      const bx = LW - 104 + i * 30;
-      ctx.font = '18px monospace';
-      ctx.fillStyle = game.flags.badges[shards[i]] ? '#e0453a' : '#333';
-      ctx.fillText('♥', bx, 30);
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 1;
-      ctx.strokeText('♥', bx, 30);
-    }
 
     // 안아 준 마음 (자비)
     if (game.flags.mercy > 0) {
@@ -7911,21 +7605,7 @@
     ctx.ellipse(mcx, 222, 56 - bob, 12, 0, 0, Math.PI * 2);
     ctx.fill();
     drawMon(ctx, b.monId, mx, my, monScale);
-    // 반응 이모트 — 정답이면 번쩍 깨달음(!), 오답이면 아직 갸웃(?)
-    if (b.phase === 'feedback' && b.feedback) {
-      const ch = b.feedback.correct ? '!' : '?';
-      const ey = my - 10 + Math.sin(game.time / 8) * 3;
-      ctx.font = 'bold 34px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = b.feedback.correct ? '#ffd644' : '#9aa0b0';
-      ctx.fillText(ch, mcx, ey);
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = 2;
-      ctx.strokeText(ch, mcx, ey);
-      ctx.textAlign = 'left';
-    }
-
-    // 몬스터 이름 + (퀴즈: HP / 설득: 마음 게이지·상태)
+    // 인물 이름 + 마음 게이지·상태
     utBox(24, 24, 240, 64, 6);
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 17px monospace';
@@ -7942,14 +7622,6 @@
       ctx.fillStyle = '#888';
       ctx.font = '11px monospace';
       ctx.fillText('마음', 244 - 24, 50);
-    } else {
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 12px monospace';
-      ctx.fillText('HP', 40, 70);
-      ctx.fillStyle = '#601010';
-      ctx.fillRect(66, 62, 174, 12);
-      ctx.fillStyle = b.monHp / b.monMaxHp > 0.5 ? '#ffd644' : b.monHp / b.monMaxHp > 0.25 ? '#f08a24' : '#e0453a';
-      ctx.fillRect(66, 62, 174 * Math.max(0, b.monHp / b.monMaxHp), 12);
     }
 
     // 플레이어 하트
@@ -7968,72 +7640,15 @@
 
     // 마음 조각 배틀 — 파도/문 (공간 행동)
     if (b.isPersuade && (b.phase === 'wave' || b.phase === 'gates')) { drawPersuadeArena(b); return; }
-    // 회피 미니게임 (퀴즈 보스)
-    if (b.phase === 'dodge') { drawDodge(b); return; }
 
-    // 질문/피드백 박스 — 큰 글씨·긴 문제(커스텀 포함)에서 글자가 넘치지 않게 높이를 맞춘다
     ctx.font = fs(16);
     let boxH = game.largeText ? 280 : 238;
     if (b.isPersuade) boxH = game.largeText ? 312 : 264; // 자비 선택 텍스트가 넉넉히 들어가게
-    if (b.phase === 'question') {
-      const q = currentQuestion();
-      const order = choiceOrder();
-      const qMaxW = LW - 24 - 56;
-      const cMaxW = LW - 24 - 38 - 28 - 16;
-      const gap = game.largeText ? lh(16) : lh(14);
-      let cl = 0;
-      for (let i = 0; i < order.length; i++) cl += measureWrap(`${i + 1}. ${q.a[order[i]]}`, cMaxW);
-      const needed = 30 + measureWrap(q.q, qMaxW) * lh(24) + lh(10) + cl * lh(22) + order.length * gap + 16;
-      boxH = Math.min(Math.max(boxH, needed), LH - 150 - 12); // 하트 HUD(150) 아래까지만
-    }
     const boxY = LH - boxH - 12;
     const hintY = boxY + boxH - 18;
     utBox(12, boxY, LW - 24, boxH, 8);
 
-    if (b.phase === 'question') {
-      const q = currentQuestion();
-      const order = choiceOrder();
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(16);
-      let ty = drawQuestionText(q.q, 34, boxY + 30, LW - 24 - 56, lh(24)) + lh(10);
-      const cMaxW = LW - 24 - 38 - 28 - 16;
-      const gap = game.largeText ? lh(16) : lh(14);
-      for (let i = 0; i < order.length; i++) {
-        const label = `${i + 1}. ${q.a[order[i]]}`;
-        if (i === b.hiddenPos) {
-          ctx.fillStyle = '#444';
-          ctx.font = fs(16);
-          const n = Math.max(1, wrapText(label, 38 + 28, ty, cMaxW, lh(22)));
-          const w = Math.min(cMaxW, ctx.measureText(label).width);
-          ctx.strokeStyle = '#444';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(38 + 28, ty - 5);
-          ctx.lineTo(38 + 28 + w, ty - 5);
-          ctx.stroke();
-          ty += n * lh(22) + gap;
-        } else {
-          ty += drawChoiceWrapped(label, 38, ty, i === b.cursor, cMaxW, lh(22)) + gap;
-        }
-      }
-      if (!b.hintUsed && Math.floor(game.time / 20) % 2 === 0) {
-        ctx.fillStyle = '#888';
-        ctx.font = fs(13);
-        ctx.fillText('H: 50:50 힌트', LW - 134, hintY);
-      }
-    } else if (b.phase === 'feedback') {
-      const f = b.feedback;
-      ctx.font = fs(22, true);
-      ctx.fillStyle = f.correct ? okColor() : badColor();
-      ctx.fillText(f.correct ? '○ 정답! 몬스터가 깨달았다!' : '× 아쉬워요! 다시 생각해 봐요.', 34, boxY + 38);
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(16);
-      drawQuestionText(f.why, 34, boxY + (game.largeText ? 86 : 78), LW - 24 - 44, lh(24));
-      if (Math.floor(game.time / 20) % 2 === 0) {
-        ctx.fillStyle = '#ffd644';
-        ctx.font = fs(16);
-        ctx.fillText('▼ (Z/스페이스)', LW - 150, hintY);
-      }
+    if (false) { // (v3) 퀴즈 배틀 폐지 — question/feedback 단계 없음
     } else if (b.phase === 'mercy') {
       // 마음의 선택
       ctx.fillStyle = '#e0453a';
@@ -8096,47 +7711,6 @@
     ctx.textAlign = 'left';
   }
 
-  function drawDodge(b) {
-    const d = b.dodge;
-    if (!d || !b.attack) return;
-    // 보스의 외침 + 조작 안내
-    drawArenaGuide(d.box, b.attack.taunt,
-      b.isPersuade
-        ? '화살표로 하트를 움직여 피하세요!  (하트가 다 닳으면 물러나요)'
-        : '화살표로 하트를 움직여 피하세요!  (하트는 0이 되지 않아요)');
-
-    // 박스
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(d.box.x + 0.5, d.box.y + 0.5, d.box.w, d.box.h);
-
-    // 탄막
-    ctx.fillStyle = b.attack.color;
-    for (const bu of d.bullets) {
-      ctx.beginPath();
-      ctx.arc(bu.x, bu.y, bu.r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // 하트(소울) — 무적 시간 동안 깜빡임
-    if (!(d.inv > 0 && Math.floor(game.time / 4) % 2 === 0)) {
-      ctx.fillStyle = '#e0453a';
-      ctx.font = '17px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText('♥', d.soul.x, d.soul.y + 6);
-      ctx.textAlign = 'left';
-    }
-
-    // 남은 시간 게이지
-    const frac = Math.max(0, 1 - d.t / d.dur);
-    ctx.fillStyle = '#333';
-    ctx.fillRect(d.box.x, d.box.y + d.box.h + 12, d.box.w, 6);
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(d.box.x, d.box.y + d.box.h + 12, d.box.w * frac, 6);
-  }
-
-  // 고요(보스) open 페이즈 고유 기믹 — 어둠 속, 하트 주변만 보인다(꺼진 거리의 비네트와
-  // 같은 방식으로 재사용). reduceFx면 균일한 옅은 딤으로 대체(광과민성 배려).
   function drawDarkArenaVignette(b) {
     const soul = b.arena.soul;
     if (game.reduceFx) {
@@ -8363,7 +7937,7 @@
     ctx.fillText('화면 속에서, 누군가 기다리고 있다', LW / 2, 114);
 
     // 몬스터들 둥실둥실 (한 줄)
-    const parade = ['mollaemon', 'geojitmon', 'pyeonhyangmon', 'hollimmon', 'mirrormon', 'soksagimon', 'yeongi'];
+    const parade = ['bekkyeomon', 'sujipmon', 'pyeonhyangmon', 'hwangakmon', 'yuhokmon', 'hollimmon', 'finalboss', 'yeongi'];
     for (let i = 0; i < parade.length; i++) {
       const bx = LW / 2 - parade.length * 24 + i * 48;
       drawMon(ctx, parade[i], bx, 134 + Math.sin(game.time / 20 + i * 1.1) * 5, 3);
@@ -8472,16 +8046,17 @@
     save();
     recordPlayDay(slot);
     checkCosmeticUnlocks(slot);
-    Sound.playSong(MAPS[game.map].song);
     // 인트로 암전 — 첫 3줄(컴퓨터실 장면) 동안 화면을 거의 검게 덮는다.
     // 4번째 줄(idx===3, "저 어른에게 물어보자")부터 걷히기 시작한다(drawWorld에서 처리).
+    // 인트로 동안은 아무 음악도 흐르지 않는다 — 침묵으로 시작해, 눈을 뜬 뒤에야
+    // 마을의 곡이 아주 낮게 흘러든다 (다크 톤 오프닝 연출).
     game.introDim = { fadeFrame: -1 };
     startDialog([
       '방과 후, 텅 빈 컴퓨터실.\n낡은 태블릿 하나가\n혼자 켜져 있다.',
       `${game.playerName}이(가) 화면에 손을 대는 순간—\n빛이 손끝을 붙잡고 끌어당긴다.\n…떨어진다.`,
       '눈을 뜨니 낯선 마을.\n한 번도 와 본 적 없는데…\n어딘가, 낯이 익다.',
       '저만치 누군가 서 있다.\n일단, 저 어른에게 물어보자.\n(목표는 왼쪽 위에 표시돼요)',
-    ]);
+    ], null, () => Sound.playSong(MAPS[game.map].song));
   }
 
   // 저장된 위치가 (맵 수정·손상 등으로) 막힌 칸이면 가까운 안전한 칸을 찾아 갇힘을 막는다.
@@ -8521,7 +8096,6 @@
     game.player.px = sx * TS; game.player.py = sy * TS;
     game.player.dir = 'up';
     game.flags = Object.assign(newFlags(), s.flags);
-    game.flags.badges = Object.assign({ forest: false, lake: false, cave: false }, s.flags.badges);
     game.flags.defeated = Object.assign(newFlags().defeated, s.flags.defeated);
     game.mode = 'world';
     syncPuzzleRun(); // 방탈출 방 안에서 저장된 세이브면 퍼즐을 새로 시작
@@ -8665,7 +8239,7 @@
             '꺼진 화면만이 조용히 남아 있었다.',
             '',
             '…어쩌면, 다른 결말도 있었을지 모른다.',
-            '몬스터들의 마음을 더 많이 안아 주었다면.',
+            '아이들의 마음을 더 많이 안아 주었다면.',
           ],
           yeongi: false,
         },
@@ -8676,7 +8250,7 @@
             '너는 모든 문제에 옳은 답을 말했다.',
             '그리고 아무의 마음에도 머물지 않았다.',
             '',
-            '몬스터들은 길을 비켰지만,',
+            '아이들은 길을 비켰지만,',
             '아무도 너의 이름을 부르지 않았다.',
             '영이는 끝까지 네 눈을 보지 않은 채,',
             '조용히 화면을 껐다.',
@@ -8926,8 +8500,7 @@
         break;
     }
 
-      const showHintBtn = game.mode === 'battle' && game.battle &&
-        game.battle.phase === 'question' && !game.battle.hintUsed;
+      const showHintBtn = false; // (v3) 퀴즈 배틀 폐지 — 배틀 중 50:50 힌트 없음
       document.body.classList.toggle('battle-hint', showHintBtn);
       // 터치 기기는 키보드 T가 없어 「선생님 방」에 못 들어간다 — 타이틀(슬롯 화면)일 때만
       // 작은 DOM 버튼을 보여 준다(battle-hint와 같은 body class 토글 패턴).
@@ -9017,7 +8590,7 @@
     getCustomQuizzes, importCustomQuizzes, clearCustomQuizzes, customQuizTemplate, challengeTopics,
     collectedCards, cardUnlocked, buildCertText, LEARN_CARDS, HOF_CATS,
     sanitizeName, probeStorage, getStorageOk: () => storageOk,
-    buildClassCsv, setupStageFlags, getStage, stageSpawn, applyStageJump, classSelForFlags,
+    buildClassCsv, setupClassBaseFlags, classSelForFlags,
     getPuzzleLog, writePuzzleLog, nextWaypoint, // 나침반 경로 — E2E가 '화살표 따라가기'를 재현할 때 사용
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
