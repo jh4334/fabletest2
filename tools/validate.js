@@ -331,5 +331,28 @@ if (process.argv.includes('--print')) {
   }
 })();
 
+// v3 어휘 린트 — 화면 노출 문자열에 포켓몬 어휘("-몬"·도감·증표·몬스터)가 되살아나는 것을 막는다.
+// 주석을 걷어낸 소스에서 한글은 사실상 문자열 리터럴에만 남으므로, 주석 제거 후 금칙어를 찾는다.
+(() => {
+  const BANNED = ['몬스터', '도감', '증표', '뱃지',
+    '베껴몬', '수집몬', '편향몬', '환각몬', '유혹몬', '홀림몬', '어둠대왕몬', '혼돈몬',
+    '몰래몬', '기록몬', '악플몬', '갇힘몬', '멋대로몬', '소문몬', '무시몬', '펑펑몬',
+    '깜깜몬', '떠넘기몬', '낭비몬', '핑계몬', '시들몬', '빼앗몬', '메아리몬', '그림자몬',
+    '뚫림몬', '사서몬', '필터몬', '미러몬', '속삭임몬', '조각몬', '합성몬', '미래몬',
+    '거짓몬', '중독몬'];
+  const files = ['src/data.js', 'src/game.js', 'src/sprites.js', 'src/audio.js', 'index.html'];
+  for (const f of files) {
+    const raw = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    const stripped = raw
+      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))   // 블록 주석
+      .replace(/(^|[^:'"`])\/\/[^\n]*/g, (m, p1) => p1 + ' ');          // 줄 주석 (URL의 //는 보존)
+    stripped.split('\n').forEach((line, i) => {
+      for (const w of BANNED) {
+        if (line.includes(w)) err(`어휘 린트 ${f}:${i + 1} — 화면 노출 문자열에 금칙어 '${w}' (v3: 포켓몬 어휘 금지)`);
+      }
+    });
+  }
+})();
+
 if (errors === 0) console.log('✔ 모든 검사 통과');
 else { console.error(`✘ 오류 ${errors}개`); process.exit(1); }

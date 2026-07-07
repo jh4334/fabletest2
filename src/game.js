@@ -2939,6 +2939,32 @@
     }
     ctx.fillRect(0, 0, LW, LH);
   }
+  // 황혼 앰비언트 — 경계마을과 정적의 숲은 늘 해 질 녘이다 (다크 톤 기조).
+  // 마을은 마음의 온도가 쌓일수록(이사 온 친구 수만큼) 조금씩 밝아진다 —
+  // "어두운 세계에 온기가 켜진다"를 화면 밝기로 체감시키는 카르마 연출.
+  const DUSK_BASE = { village: 0.24, forest: 0.30 };
+  function duskWarmCount(flags) {
+    let n = 0;
+    if (flags.mercyChoice && flags.mercyChoice.bekkyeomon === 'mercy') n += 1;
+    for (let c = 1; c <= 5; c++) if (flags[`chapter${c}Mercy`]) n += 1;
+    return n;
+  }
+  function drawDuskAmbient() {
+    let a = DUSK_BASE[game.map];
+    if (!a || !game.flags) return;
+    if (game.map === 'village') a = Math.max(0.08, a - 0.025 * duskWarmCount(game.flags));
+    // 깊은 남빛 어스름 — 위(하늘)가 더 어둡다
+    const grad = ctx.createLinearGradient(0, 0, 0, LH);
+    if (grad && grad.addColorStop) {
+      grad.addColorStop(0, `rgba(8,9,28,${Math.min(0.5, a + 0.08)})`);
+      grad.addColorStop(1, `rgba(8,9,28,${a * 0.7})`);
+      ctx.fillStyle = grad;
+    } else {
+      ctx.fillStyle = `rgba(8,9,28,${a})`;
+    }
+    ctx.fillRect(0, 0, LW, LH);
+  }
+
   // 파이널 「고요의 뜰」 — 구역을 지날 때마다(맵 전환) 화면이 한 단계씩 어두워진다.
   // 퍼즐 없음 — 순수하게 맵 id로만 정해지는 단계(같은 비네트 방식 재사용).
   const QUIET_DIM_LEVEL = { quietyard: 0, quietyard2: 1, quietyard3: 2, goyostage: 3 };
@@ -7095,6 +7121,8 @@
     // 2장 구역 연출 — 어둠(꺼진 거리)·비네트(메아리 골목). HUD 아래에 깔린다.
     if (game.puzzleRun && game.puzzleRun.puzzle.type === 'lamps') drawDarkness(cx, cy);
     if (game.puzzleRun && game.puzzleRun.puzzle.type === 'voices') drawEchoVignette();
+    // 황혼 앰비언트(마을·숲) — 온기가 쌓일수록 옅어진다
+    drawDuskAmbient();
     // 파이널 「고요의 뜰」 — 구역을 지날 때마다 화면이 한 단계씩 어두워진다(비네트 재사용)
     drawQuietVignette();
 
@@ -8018,16 +8046,17 @@
     save();
     recordPlayDay(slot);
     checkCosmeticUnlocks(slot);
-    Sound.playSong(MAPS[game.map].song);
     // 인트로 암전 — 첫 3줄(컴퓨터실 장면) 동안 화면을 거의 검게 덮는다.
     // 4번째 줄(idx===3, "저 어른에게 물어보자")부터 걷히기 시작한다(drawWorld에서 처리).
+    // 인트로 동안은 아무 음악도 흐르지 않는다 — 침묵으로 시작해, 눈을 뜬 뒤에야
+    // 마을의 곡이 아주 낮게 흘러든다 (다크 톤 오프닝 연출).
     game.introDim = { fadeFrame: -1 };
     startDialog([
       '방과 후, 텅 빈 컴퓨터실.\n낡은 태블릿 하나가\n혼자 켜져 있다.',
       `${game.playerName}이(가) 화면에 손을 대는 순간—\n빛이 손끝을 붙잡고 끌어당긴다.\n…떨어진다.`,
       '눈을 뜨니 낯선 마을.\n한 번도 와 본 적 없는데…\n어딘가, 낯이 익다.',
       '저만치 누군가 서 있다.\n일단, 저 어른에게 물어보자.\n(목표는 왼쪽 위에 표시돼요)',
-    ]);
+    ], null, () => Sound.playSong(MAPS[game.map].song));
   }
 
   // 저장된 위치가 (맵 수정·손상 등으로) 막힌 칸이면 가까운 안전한 칸을 찾아 갇힘을 막는다.
