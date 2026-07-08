@@ -3177,7 +3177,7 @@
         ], '고요');
         return;
       }
-      // 파이널 「코어」의 영이 — 마음 조각 배틀. 승리는 기존 v1 winBattle의 yeongi 분기로
+      // 파이널 「코어」의 영이 — 마음 조각 배틀. 클리어는 기존 v1 winBattle의 yeongi 분기로
       // 그대로 이어져 computeEnding(진엔딩 계산)이 재사용된다.
       if (npc.id === 'yeongi_boss') {
         if (!game.flags.defeated.yeongi) { startBattleIntro('yeongi', 'yeongi_boss'); return; }
@@ -3674,7 +3674,7 @@
     }
   }
 
-  // 1장 보스 승리 — chapter1Clear 플래그 + 1장 마무리 대사 후 금고 앞(거리)으로 복귀.
+  // 1장 보스 클리어 — chapter1Clear 플래그 + 1장 마무리 대사 후 금고 앞(거리)으로 복귀.
   // 라이브러리 퀴즈와 별개이므로 defeated.sujipmon/친구 수첩은 건드리지 않는다.
   function winChapter1Boss() {
     const b = game.battle;
@@ -3703,8 +3703,8 @@
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.freestreet.song));
   }
 
-  // 2장 보스 승리 — chapter2Clear 플래그 + 2장 마무리 대사 후 저울 앞(광장)으로 복귀.
-  // (승리 처리는 챕터 플래그로 기록한다)
+  // 2장 보스 클리어 — chapter2Clear 플래그 + 2장 마무리 대사 후 저울 앞(광장)으로 복귀.
+  // (클리어 처리는 챕터 플래그로 기록한다)
   function winChapter2Boss() {
     const b = game.battle;
     const mon = b.mon;
@@ -3732,8 +3732,8 @@
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.tiltstreet.song));
   }
 
-  // 3장 보스 승리 — chapter3Clear 플래그 + 3장 마무리 대사 후 신문사 입구(거리)로 복귀.
-  // (승리 처리는 챕터 플래그로 기록한다)
+  // 3장 보스 클리어 — chapter3Clear 플래그 + 3장 마무리 대사 후 신문사 입구(거리)로 복귀.
+  // (클리어 처리는 챕터 플래그로 기록한다)
   function winChapter3Boss() {
     const b = game.battle;
     const mon = b.mon;
@@ -3761,8 +3761,8 @@
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.rumorstreet.song));
   }
 
-  // 4장 보스 승리 — chapter4Clear 플래그 + 4장 마무리 대사 후 아케이드 정문 앞(허브)으로 복귀.
-  // (승리 처리는 챕터 플래그로 기록한다)
+  // 4장 보스 클리어 — chapter4Clear 플래그 + 4장 마무리 대사 후 아케이드 정문 앞(허브)으로 복귀.
+  // (클리어 처리는 챕터 플래그로 기록한다)
   function winChapter4Boss() {
     const b = game.battle;
     const mon = b.mon;
@@ -3790,7 +3790,7 @@
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.arcade.song));
   }
 
-  // 5장 보스 승리 — chapter5Clear 플래그 + 5장 마무리 대사 후 포근한 집 현관 앞(허브)으로 복귀.
+  // 5장 보스 클리어 — chapter5Clear 플래그 + 5장 마무리 대사 후 포근한 집 현관 앞(허브)으로 복귀.
   // v1 홀림몬(BOSS_ATTACKS 퀴즈)과 별개이므로 defeated.hollimmon/친구 수첩은 건드리지 않는다.
   function winChapter5Boss() {
     const b = game.battle;
@@ -3819,8 +3819,8 @@
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.cozyhome.song));
   }
 
-  // 파이널 보스(고요) 승리 — goyoClear 플래그 + 코어 개방 연출 후 코어로 입장.
-  // (승리 처리는 goyoClear 플래그로 기록한다)
+  // 파이널 보스(고요) 클리어 — goyoClear 플래그 + 코어 개방 연출 후 코어로 입장.
+  // (클리어 처리는 goyoClear 플래그로 기록한다)
   function winGoyoBoss() {
     const b = game.battle;
     const mon = b.mon;
@@ -4059,7 +4059,7 @@
     game.battle = {
       isPersuade: true,
       monId,              // 스프라이트·데이터 조회용 id
-      persuadeId: persuadeKey, // 설득 프로필 id (승리 처리·기억 키). 보통은 monId와 같다.
+      persuadeId: persuadeKey, // 설득 프로필 id (클리어 처리·기억 키). 보통은 monId와 같다.
       mon,
       p,
       gauge: memo ? memo.gauge : 0,
@@ -8461,7 +8461,7 @@
         break;
       case 'battle':
         updateBattle();
-        // 승리/패배 처리 중 모드가 바뀌었을 수 있음
+        // 클리어/패배 처리 중 모드가 바뀌었을 수 있음
         if (game.mode === 'battle') {
           drawBattle();
         } else {

@@ -1009,7 +1009,7 @@ const MAPS = {
   },
 
   // 파이널 보스 「고요」 — 뜰이 끝나는 자리. 조우는 PERSUADE.goyo_boss로 진행한다.
-  // 조우 → PERSUADE.goyo_boss. 승리 → goyoClear(코어 개방).
+  // 조우 → PERSUADE.goyo_boss. 클리어 → goyoClear(코어 개방).
   goyostage: {
     name: '고요의 안쪽',
     song: 'battle',
@@ -1030,7 +1030,7 @@ const MAPS = {
     ],
     warps: [
       { x: 7, y: 9, to: 'quietyard3', tx: 9, ty: 11 },
-      // 고요가 있던 자리 뒤 — 승리(goyoClear) 후에야 열리는 코어 입구
+      // 고요가 있던 자리 뒤 — 클리어(goyoClear) 후에야 열리는 코어 입구
       { x: 7, y: 1, to: 'coreroom', tx: 7, ty: 8, needFlag: 'goyoClear',
         lockText: '고요가 있던 자리 뒤로,\n옅은 빛이 새어 나온다.\n…아직, 열리지 않는다.' },
     ],
