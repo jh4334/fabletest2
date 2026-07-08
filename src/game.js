@@ -385,7 +385,7 @@
   // ---------- 학생(슬롯)별 학습 데이터 ----------
   // 일지·복습 노트·통계는 "이 슬롯을 쓰는 학생"의 개인 기록이다.
   // 슬롯마다 따로 누적되고, 슬롯을 지우면 함께 지워진다.
-  // (도감·발견 엔딩은 기기 공용 컬렉션으로 그대로 둔다.)
+  // (친구 수첩·발견 엔딩은 기기 공용 컬렉션으로 그대로 둔다.)
   function activeSlot() {
     // 타이틀에서는 커서가 가리키는 슬롯, 플레이 중에는 진행 중인 슬롯
     return game.mode === 'title' ? game.slotCursor : game.currentSlot;
@@ -819,7 +819,7 @@
       return !!ok;
     } catch (e) { return false; }
   }
-  // 도감 — 깨우친 몬스터 기록. 세이브와 별개로 누적 보존된다.
+  // 친구 수첩 — 만난 아이의 기록. 세이브와 별개로 누적 보존된다.
   const DEX_KEY = 'ai-ethics-adventure-dex';
   function getDexSeen() {
     try { return JSON.parse(localStorage.getItem(DEX_KEY)) || {}; }
@@ -1130,7 +1130,7 @@
     ) || null;
   }
 
-  // 자비로 마음을 되돌린 몬스터는 그 자리에 '친구'로 남는다 (선택이 세계에 남는다)
+  // 자비로 마음을 되돌린 인물은 그 자리에 '친구'로 남는다 (선택이 세계에 남는다)
   function isFriend(monId) {
     return !!(game.flags.defeated[monId] && game.flags.mercyChoice && game.flags.mercyChoice[monId] === 'mercy');
   }
@@ -3290,7 +3290,7 @@
       startBattleIntro(mon.id);
       return;
     }
-    // 되돌려 친구가 된 몬스터: 다시 싸우지 않고, 배운 점을 들려준다
+    // 되돌려 친구가 된 인물: 다시 싸우지 않고, 배운 점을 들려준다
     const friend = friendAt(game.map, f.x, f.y);
     if (friend) {
       const fm = MONSTERS[friend.id];
@@ -3675,7 +3675,7 @@
   }
 
   // 1장 보스 승리 — chapter1Clear 플래그 + 1장 마무리 대사 후 금고 앞(거리)으로 복귀.
-  // 라이브러리 수집몬(퀴즈)과 별개이므로 defeated.sujipmon/도감은 건드리지 않는다.
+  // 라이브러리 퀴즈와 별개이므로 defeated.sujipmon/친구 수첩은 건드리지 않는다.
   function winChapter1Boss() {
     const b = game.battle;
     const mon = b.mon;
@@ -3791,7 +3791,7 @@
   }
 
   // 5장 보스 승리 — chapter5Clear 플래그 + 5장 마무리 대사 후 포근한 집 현관 앞(허브)으로 복귀.
-  // v1 홀림몬(BOSS_ATTACKS 퀴즈)과 별개이므로 defeated.hollimmon/도감은 건드리지 않는다.
+  // v1 홀림몬(BOSS_ATTACKS 퀴즈)과 별개이므로 defeated.hollimmon/친구 수첩은 건드리지 않는다.
   function winChapter5Boss() {
     const b = game.battle;
     const mon = b.mon;
@@ -3975,7 +3975,7 @@
     return game.flags.pStats;
   }
 
-  // 설득 프로필(persuadeKey)의 몬스터 데이터를 해석한다.
+  // 설득 프로필(persuadeKey)의 인물 데이터를 해석한다.
   // 보스처럼 별도 프로필을 쓰되 스프라이트/이름은 재사용하는 경우(spriteId≠persuadeKey),
   // MONSTERS[spriteId]를 바탕으로 프로필의 mercy/win을 덮어써 배틀용 mon을 만든다.
   function resolvePersuadeMon(spriteId, persuadeKey) {
@@ -3993,17 +3993,17 @@
     const p = getPersuade(persuadeKey);
     const mon = resolvePersuadeMon(monId, persuadeKey);
     Sound.encounter();
-    // 콜백 인트로: 프로필 intro가 함수면 현재 플래그로 첫 대사를 분기한다 (없으면 몬스터 기본 인트로)
+    // 콜백 인트로: 프로필 intro가 함수면 현재 플래그로 첫 대사를 분기한다 (없으면 기본 인트로)
     const introText = (typeof p.intro === 'function') ? p.intro(game.flags) : (p.intro || mon.intro);
     const lines = [introText];
     // 조우 시 증거 카드 지급은 프롤로그 튜토리얼(베껴몬)만을 위한 것 —
-    // starterCards가 있는 프로필에서만 지급한다. 보스(수집몬)의 카드는 방탈출 보상으로만 얻으므로
+    // starterCards가 있는 프로필에서만 지급한다. 보스 카드는 방탈출 보상으로만 얻으므로
     // starterCards가 없어 여기서 지급되지 않는다.
     if (!game.flags.evCards) game.flags.evCards = [];
     const fresh = (p.starterCards || []).filter((id) => !game.flags.evCards.includes(id));
     if (fresh.length > 0) {
       game.flags.evCards = game.flags.evCards.concat(fresh);
-      lines.push(`◆ 증거 카드 ${fresh.length}장을 얻었다!\n(전투에서 「증거 보여주기」로 사용해요)`);
+      lines.push(`◆ 증거 카드 ${fresh.length}장을 얻었다!\n(설득 배틀에서 「증거 보여주기」로 사용해요)`);
     }
     if (!game.flags.sawPersuadeTip) {
       game.flags.sawPersuadeTip = true;
@@ -4013,7 +4013,7 @@
         (isTouchDevice
           ? '스틱으로 하트만 움직이면 돼요. (버튼 없음)'
           : '화살표로 하트를 움직여요.') +
-        '\n피격당하면 하트가 진짜로 닳아요! 다 닳으면\n잠시 물러났다가 다시 도전하게 돼요.'
+        '\n탄막에 맞으면 하트가 정말로 닳아요! 다 닳으면\n잠시 물러났다가 다시 도전하게 돼요.'
       );
     }
     startDialog(lines, mon.name, () => startPersuadeBattle(monId, persuadeKey));
@@ -4058,7 +4058,7 @@
     const box = persuadeBox();
     game.battle = {
       isPersuade: true,
-      monId,              // 스프라이트·도감·몬스터 데이터 조회용 id
+      monId,              // 스프라이트·데이터 조회용 id
       persuadeId: persuadeKey, // 설득 프로필 id (승리 처리·기억 키). 보통은 monId와 같다.
       mon,
       p,
@@ -4219,7 +4219,7 @@
     arena.soul.y = clamp(arena.soul.y, box.y + SOUL_R, box.y + box.h - SOUL_R);
   }
 
-  // 하트-탄막 충돌: 피격 시 하트 -1, 다 닳으면 탈진. 피격했으면 true.
+  // 하트-탄막 충돌: 닿으면 하트 -1, 다 닳으면 탈진.
   function bulletHits(b, arena) {
     if (arena.inv > 0) { arena.inv -= 1; return false; }
     for (const bu of arena.bullets) {
@@ -4530,7 +4530,7 @@
     if (door.correct) {
       const delta = b.pState === 'open' ? 32 : 26;
       b.gauge = clamp(b.gauge + delta, 0, b.gaugeMax);
-      // 정답(=설득 성공)은 HP 1 회복 — 회피가 아니라 '잘 설득한' 실력에 보상(서툰 회피 구제)
+      // 정답(=설득 성공)은 하트 1 회복 — 회피가 아니라 '잘 설득한' 실력에 보상(서툰 회피 구제)
       b.playerHp = Math.min(b.maxHearts, b.playerHp + 1);
       st.gateRight += 1;
       const topic = door.card ? EVIDENCE_CARDS[door.card].topic : monTopic(b);
@@ -4582,7 +4582,7 @@
     else if (b.phase === 'gates') updateGates();
   }
 
-  // ---------- 도감 ----------
+  // ---------- 친구 수첩 ----------
   function openDex(ret) {
     game.dex.ret = ret;
     game.dex.cursor = 0;
@@ -4646,7 +4646,7 @@
       ctx.fillText(dexChapterShort(MONSTER_DEX[id].stage), listX, y);
       ctx.fillStyle = isSeen ? (idx === cur ? '#fff' : '#aaa') : '#444';
       ctx.font = (idx === cur ? 'bold ' : '') + '15px monospace';
-      ctx.fillText(isSeen ? monName(id) : '??? (미발견)', listX + 34, y);
+      ctx.fillText(isSeen ? monName(id) : '??? (아직 못 만남)', listX + 34, y);
     }
     // 스크롤 표시
     if (start > 0) { ctx.fillStyle = '#888'; ctx.fillText('▲', listX + 130, listY - 24); }
@@ -5515,7 +5515,7 @@
   }
 
   // ---------- 도전과제 (업적) ----------
-  // 각 과제는 슬롯별 학습 데이터 + 기기 공용 컬렉션(도감·엔딩)에서 즉석 판정한다.
+  // 각 과제는 슬롯별 학습 데이터 + 기기 공용 컬렉션(친구 수첩·엔딩)에서 즉석 판정한다.
   const ACHIEVEMENTS = [
     { id: 'firstwin', cat: 'battle', name: '첫 깨우침', desc: '처음으로 마음을 되돌렸어요', check: (c) => c.defeatedCount >= 1 },
     { id: 'mercy1', cat: 'battle', name: '따뜻한 마음', desc: '마음을 한 번 안아 주었어요', check: (c) => c.mercy >= 1 },
@@ -5595,7 +5595,7 @@
       const col = i % 2, row = Math.floor(i / 2);
       const x = 24 + col * colW, y = 86 + row * cellH;
       const cat = ACH_CAT[a.cat];
-      // 아이콘 배지
+      // 아이콘 표시
       ctx.fillStyle = unlocked ? cat.color : '#333';
       ctx.font = 'bold 26px monospace';
       ctx.fillText(unlocked ? cat.icon : '·', x + 4, y + 26);
@@ -7122,8 +7122,8 @@
       drawTalkBubble(nx + TS / 2, ny - 14);
     }
 
-    // 몬스터 (둥실둥실) — 되돌려 친구가 된 몬스터는 ♥와 함께 남고,
-    // 냉정·중립으로 떠나보낸 몬스터는 자리에 없다 (선택이 세계에 남는다)
+    // 인물 (둥실둥실) — 되돌려 친구가 된 인물은 ♥와 함께 남고,
+    // 냉정·중립으로 떠나보낸 인물은 자리에 없다 (선택이 세계에 남는다)
     for (const mo of m.monsters) {
       const dead = game.flags.defeated[mo.id];
       const friend = isFriend(mo.id);
@@ -7132,14 +7132,14 @@
       const dx0 = Math.round(mo.x * TS - cx), dy0 = Math.round(mo.y * TS - cy - 6 + bob);
       drawMon(ctx, mo.id, dx0, dy0, SCALE);
       if (friend) {
-        // 친구가 된 몬스터: 머리 위 ♥ (말을 걸 수 있어요)
+        // 친구가 된 인물: 머리 위 ♥ (말을 걸 수 있어요)
         ctx.fillStyle = '#e0453a';
         ctx.font = 'bold 16px monospace';
         ctx.fillText('♥', Math.round(mo.x * TS - cx) + TS / 2 - 5, Math.round(mo.y * TS - cy) - 10 + bob);
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
         ctx.strokeText('♥', Math.round(mo.x * TS - cx) + TS / 2 - 5, Math.round(mo.y * TS - cy) - 10 + bob);
       } else {
-        // 느낌표 (아직 헷갈리는 몬스터)
+        // 느낌표 (아직 헷갈리는 인물)
         ctx.fillStyle = '#ffd644';
         ctx.font = 'bold 18px monospace';
         ctx.fillText('!', Math.round(mo.x * TS - cx) + TS / 2 - 3, Math.round(mo.y * TS - cy) - 10 + bob);
@@ -7228,7 +7228,7 @@
     const n = game.flags.adStickers || 0;
     if (n <= 0) return;
     const W = 58, H = 24;
-    // 상시 HUD(좌상단 목표 상자 y 8~60, 우상단 증표·자비 하트 표시)와 겹치지 않도록 상단
+    // 상시 HUD(좌상단 목표 상자 y 8~60, 우상단 자비(♥) 표시)와 겹치지 않도록 상단
     // 딱지는 y=96(HUD·퍼즐 HUD 아래)으로 내린다. 화면 모서리를 어지럽히는 연출 의도는 유지.
     const spots = [
       { x: 8, y: 96 },               // 좌상단(HUD 아래)
@@ -7633,14 +7633,14 @@
       ctx.stroke();
     }
 
-    // 몬스터 (오른쪽 위, 크게)
+    // 인물 (오른쪽 위, 크게)
     const shakeX = b.shake > 0 ? Math.sin(b.shake * 2) * (game.reduceFx ? 2 : 6) : 0;
     const bob = Math.sin(game.time / 20) * 5;
     const monScale = 9;
     const mx = Math.round(LW - 16 * monScale - 60 + shakeX);
     const my = Math.round(56 + bob);
     const mcx = mx + 16 * monScale / 2;
-    // 그림자 — 몬스터가 땅에 떠 있는 느낌을 줘 화면이 덜 휑하게
+    // 그림자 — 인물이 땅에 떠 있는 느낌을 줘 화면이 덜 휑하게
     ctx.fillStyle = 'rgba(0,0,0,0.32)';
     ctx.beginPath();
     ctx.ellipse(mcx, 222, 56 - bob, 12, 0, 0, Math.PI * 2);
@@ -7736,7 +7736,7 @@
   }
 
   // 마음 조각 배틀(파도·문)·회피 상자 위 안내 문구 — 상자 폭 이내로 말줄임하고,
-  // 상자가 하트 HUD/몬스터 자리에서 충분히 떨어져 있는 y(box.y-28/-10)에 그린다.
+  // 상자가 하트 HUD/인물 자리에서 충분히 떨어져 있는 y(box.y-28/-10)에 그린다.
   function drawArenaGuide(box, taunt, guide) {
     const maxW = box.w - 16;
     const cx = box.x + box.w / 2;
@@ -7776,7 +7776,7 @@
   // 마음 조각 배틀 — 파도(탄막+조각)와 문(응답)을 한 상자 안에서 그린다.
   function drawPersuadeArena(b) {
     const arena = b.arena, box = arena.box;
-    // 몬스터의 외침 + 조작 안내
+    // 인물의 외침 + 조작 안내
     drawArenaGuide(box, b.attack ? b.attack.taunt : null, b.phase === 'gates'
       ? '마음에 닿는 문으로 하트를 넣어요! (자물쇠 문은 아직 못 열어요)'
       : '✦를 주워 속마음을 들어요. 탄막은 피하고!');
@@ -7977,7 +7977,7 @@
     ctx.font = '15px monospace';
     ctx.fillText('화면 속에서, 누군가 기다리고 있다', LW / 2, 114);
 
-    // 몬스터들 둥실둥실 (한 줄)
+    // 인물들 둥실둥실 (한 줄)
     const parade = ['bekkyeomon', 'sujipmon', 'pyeonhyangmon', 'hwangakmon', 'yuhokmon', 'hollimmon', 'finalboss', 'yeongi'];
     for (let i = 0; i < parade.length; i++) {
       const bx = LW / 2 - parade.length * 24 + i * 48;
@@ -8364,7 +8364,7 @@
     ctx.fillText('…그런데, 왕좌 뒤의 벽에서', LW / 2, ty + 8);
     ctx.fillText('낡은 신호가 아직도 깜빡이고 있다.', LW / 2, ty + 32);
 
-    // 친구가 된 몬스터들 (두 줄 퍼레이드)
+    // 친구가 된 인물들 (두 줄 퍼레이드)
     const ids = Object.keys(MONSTER_SPRITES);
     for (let i = 0; i < ids.length; i++) {
       const row = i < 14 ? 0 : 1;
