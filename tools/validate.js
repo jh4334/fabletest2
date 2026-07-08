@@ -354,5 +354,17 @@ if (process.argv.includes('--print')) {
   }
 })();
 
+// 서비스워커 캐시 버전 = 자산 해시 검증 — 자산을 고치고 캐시를 안 올리면
+// 배포 후에도 클라이언트가 옛 버전을 계속 보는 사고가 난다. (npm run bump로 갱신)
+(() => {
+  const { expectedCache, currentCache } = require('./bump-sw.js');
+  const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+  const cur = currentCache(sw);
+  const want = expectedCache();
+  if (cur !== want) {
+    err(`sw.js 캐시 버전(${cur})이 자산 해시(${want})와 다름 — 'npm run bump'를 실행하세요`);
+  }
+})();
+
 if (errors === 0) console.log('✔ 모든 검사 통과');
 else { console.error(`✘ 오류 ${errors}개`); process.exit(1); }
