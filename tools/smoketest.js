@@ -378,6 +378,22 @@ const districtMarks = streetMarks.filter((m) => m.kind === 'district');
 check('1장 거리 구역 랜드마크 4개 이상 — 접수처·게시판·창고·금고문이 보임', districtMarks.length >= 4 && ['접수처 불빛', '게시판 벽', '배달 상자길', '세 잠금 금고문'].every((label) => districtMarks.some((m) => m.label === label)));
 check('1장 거리 담아 빌드업 표식 3개 유지', streetMarks.filter((m) => m.kind === 'dama_buildup').length >= 3);
 check('1장 거리 NPC 추가 없음', (MAPS.freestreet.npcs || []).length === 2);
+{
+  const ch2Marks = windowObj.__test.chapter2HubVisibleMarks();
+  const ch2DistrictMarks = ch2Marks.filter((m) => m.kind === 'ch2_district');
+  check('2장 거리 구역 랜드마크 5개 이상 — 메아리·표본·꺼진 거리·저울·동쪽 문이 보임',
+    ch2DistrictMarks.length >= 5 && ['메아리 골목 입구', '표본 창고 입구', '꺼진 거리 입구', '기울어진 저울', '동쪽 소란 문'].every((label) => ch2DistrictMarks.some((m) => m.label === label)));
+  check('2장 거리 NPC 추가 없음', (MAPS.tiltstreet.npcs || []).length === 3);
+  const ch2Fx = windowObj.__test.chapter2HubVisualProfile(3, false);
+  const ch2LowFx = windowObj.__test.chapter2HubVisualProfile(3, true);
+  check('2장 기본 허브 FX 부담은 과하지 않음', ch2Fx.recommendSigns <= 5 && ch2Fx.echoMarks <= 3 && ch2Fx.fullScreenSkew === false);
+  check('2장 저사양 허브 효과는 일반보다 가벼움', ch2LowFx.recommendSigns < ch2Fx.recommendSigns && ch2LowFx.echoMarks < ch2Fx.echoMarks && ch2LowFx.labels === false);
+  const ch2Dist = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+  check('2장 표식이 한 화면에 다닥다닥 붙지 않음',
+    ch2Dist(ch2DistrictMarks.find((m) => m.label === '메아리 골목 입구'), ch2DistrictMarks.find((m) => m.label === '표본 창고 입구')) >= 12 &&
+    ch2Dist(ch2DistrictMarks.find((m) => m.label === '메아리 골목 입구'), ch2DistrictMarks.find((m) => m.label === '꺼진 거리 입구')) >= 10 &&
+    ch2Dist(ch2DistrictMarks.find((m) => m.label === '기울어진 저울'), ch2DistrictMarks.find((m) => m.label === '동쪽 소란 문')) >= 12);
+}
 
 console.log('[23] 엔딩 분기 로직 (4종) — v2 스케일(자비 최대 8회: 따라+담아·기울·그럴싸·반짝·루미+고요+영이)');
 const { computeEnding } = vm.runInContext('({ computeEnding })', sandbox);
