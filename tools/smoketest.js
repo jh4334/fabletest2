@@ -168,10 +168,21 @@ tap('z');
 check('숲 첫 흔적 조사 대화 시작', g.mode === 'dialog');
 advanceDialog();
 check('숲 첫 흔적 플래그 설정', g.flags.introForestTrace === true);
-check('흔적 조사 후 목표는 따라 조우', windowObj.__test.currentObjective() === '노란 흔적을 따라 따라를 만나자');
+check('흔적 조사 후 목표는 안쪽 숲 진입', windowObj.__test.currentObjective() === '안쪽 숲으로 들어가 따라를 만나자');
 forestHintTarget = windowObj.__test.nextWaypoint(g.flags, 'forest');
-check('흔적 조사 후 나침반은 따라를 가리킴', forestHintTarget && forestHintTarget.x === 8 && forestHintTarget.y === 6);
-check('첫 흔적과 따라는 한 화면에 다닥다닥 붙지 않음', Math.abs(17 - forestHintTarget.x) + Math.abs(16 - forestHintTarget.y) >= 15);
+check('흔적 조사 후 나침반은 안쪽 공터의 따라를 가리킴', forestHintTarget && forestHintTarget.x === 8 && forestHintTarget.y === 5);
+check('첫 흔적과 안쪽 공터 입구는 한 화면에 다닥다닥 붙지 않음', Math.abs(17 - forestHintTarget.x) + Math.abs(16 - forestHintTarget.y) >= 18);
+setPos(8, 6, 'up');
+hold('ArrowUp', 14);
+check('정적의 숲 2구역으로 자연 진입', g.map === 'forestdeep' && g.player.x === 12 && g.player.y === 16 && g.player.dir === 'up');
+check('안쪽 공터 목표는 따라 조우', windowObj.__test.currentObjective() === '안쪽 공터에서 따라를 만나자');
+forestHintTarget = windowObj.__test.nextWaypoint(g.flags, 'forestdeep');
+check('안쪽 공터 나침반은 멀리 떨어진 따라를 가리킴', forestHintTarget && forestHintTarget.x === 12 && forestHintTarget.y === 5);
+check('안쪽 공터 입구와 따라는 충분히 떨어짐', Math.abs(g.player.x - forestHintTarget.x) + Math.abs(g.player.y - forestHintTarget.y) >= 10);
+setPos(13, 14, 'left'); tap('z');
+check('안쪽 공터 조사물 대화 시작', g.mode === 'dialog');
+advanceDialog();
+check('조사 결과가 시각 표식 플래그로 남음', g.flags.forestClearingRead === true && windowObj.__test.prologueVisibleMarks().some((m) => m.map === 'forestdeep' && m.done));
 
 console.log('[2] 마을 → 박사님과 대화 (메인 퀘스트 시작)');
 g.map = 'village'; // 숲→마을 워프 완료 상태로 진행
@@ -232,7 +243,8 @@ function enterDoor(wantCorrect) { // 원하는(정답/오답) 열린 문으로 �
 }
 
 console.log('[5] 마음 조각 배틀 — 조각 수집·닫힘→동요·탈진(기억) (따라=베껴몬)');
-setPos(8, 5, 'down'); // 따라 (8,6) 위 — 넓어진 숲 안쪽 공터
+g.map = 'forestdeep';
+setPos(12, 4, 'down'); // 따라 (12,5) 위 — 정적의 숲 안쪽 공터
 tap('z');
 check('따라 첫 조우 전용 대화 시작', g.mode === 'dialog' && g.flags.ttaraFirstEncounter === false && !g.battle);
 advanceDialog(); // 첫 조우 연출 + 등장 대사 + 증거 카드 지급 + 조작 안내 → 배틀
@@ -294,6 +306,9 @@ tap('z');
 check('승리 대화', g.mode === 'dialog');
 advanceDialog();
 check('베껴몬 깨우침(설득)', g.flags.defeated.bekkyeomon === true);
+check('프롤로그 마무리 컷신 완료 플래그', g.flags.prologueClosed === true);
+check('프롤로그 마무리 후 1장 거리 입구로 자연 진입', g.map === 'freestreet' && g.player.x === 14 && g.player.y === 17 && g.player.dir === 'up');
+check('1장 목표가 바로 거리 탐험으로 이어짐', windowObj.__test.currentObjective() === '금고문으로 — 구역을 돌자');
 check('기억은 승리 후 지워짐', !g.flags.persuadeMemory.bekkyeomon);
 check('설득 로그 누적(문·조각)', g.flags.pStats.gateRight === 1 && g.flags.pStats.gateWrong === 1 &&
   g.flags.pStats.gateTimeout === 1 && g.flags.pStats.fragments === 2);
@@ -315,7 +330,7 @@ console.log('[22] 저장 데이터 무결성 (v3)');
 g.map = 'village';
 setPos(13, 16, 'up');
 const save = JSON.parse(storage.get('ai-ethics-adventure-slot-0'));
-check('세이브 버전 7', save.v === 7);
+check('세이브 버전 8', save.v === 8);
 {
   const migratedBeforeTtara = windowObj.__test.migrateSlotV6({ v: 5, flags: { talkedProf: true, defeated: { bekkyeomon: false } } });
   const migratedAfterTtara = windowObj.__test.migrateSlotV6({ v: 5, flags: { talkedProf: true, defeated: { bekkyeomon: true } } });
@@ -323,10 +338,27 @@ check('세이브 버전 7', save.v === 7);
   check('v5→v6 이전 — 따라 완료 세이브는 첫 조우 완료로 승계', migratedAfterTtara.flags.ttaraFirstEncounter === true);
   const migratedPrivacy = windowObj.__test.migrateSlotV7({ v: 6, flags: { talkedProf: true } });
   check('v6→v7 이전 — 개인정보 노출도 기본값 추가', migratedPrivacy.v === 7 && migratedPrivacy.flags.privacyLeak === 0 && migratedPrivacy.flags.privacyRecoveryActive === false);
+  const migratedPolish = windowObj.__test.migrateSlotV8({ v: 7, flags: { defeated: { bekkyeomon: true } } });
+  check('v7→v8 이전 — 프롤로그 마무리/조사 표식 기본값 추가', migratedPolish.v === 8 && migratedPolish.flags.prologueClosed === true && migratedPolish.flags.forestClearingRead === false);
 }
 check('증표 필드 없음(v3)', save.flags.badges === undefined);
 check('프롤로그 진행 저장(따라)', save.flags.defeated.bekkyeomon === true);
 check('v3 인물 8종만 defeated에 존재', Object.keys(save.flags.defeated).length === 8);
+
+
+console.log('[22b] 개인정보 노출도 단계·저사양 그래픽 옵션');
+for (let n = 0; n <= 5; n++) {
+  const p = windowObj.__test.privacyPressureProfile(n);
+  check(`노출도 ${n}/5 단계 라벨·압박값`, !!p.label && p.level === n && p.stalkerWanted >= 0);
+}
+check('노출도 단계는 0~5가 서로 체감 다름', new Set([0,1,2,3,4,5].map((n) => windowObj.__test.privacyPressureProfile(n).label)).size === 6);
+g.lowGraphics = false;
+windowObj.__test.toggleLowGraphics();
+check('저사양 그래픽 옵션 토글 ON', g.lowGraphics === true && windowObj.__test.effectiveDprCap() === 1);
+const lowGraphicsSettings = JSON.parse(storage.get('ai-ethics-adventure-settings'));
+check('저사양 그래픽 옵션 저장', lowGraphicsSettings.lowGraphics === true);
+windowObj.__test.toggleLowGraphics();
+check('저사양 그래픽 옵션 토글 OFF', g.lowGraphics === false && windowObj.__test.effectiveDprCap() === 1.5);
 
 console.log('[23] 엔딩 분기 로직 (4종) — v2 스케일(자비 최대 8회: 따라+담아·기울·그럴싸·반짝·루미+고요+영이)');
 const { computeEnding } = vm.runInContext('({ computeEnding })', sandbox);
@@ -2389,10 +2421,10 @@ console.log('[108] 마음의 온도 — 마을의 반응(이사 온 친구들)')
 console.log('[109] 목표 나침반(getObjectiveTarget) — v2 사다리 — v1 잔재 회귀 방지');
 {
   const { getObjectiveTarget } = vm.runInContext('({ getObjectiveTarget })', sandbox);
-  // 상태① 따라 전 — talkedProf만 된 상태 → forest(따라)를 가리켜야 한다
+  // 상태① 따라 전 — talkedProf만 된 상태 → 정적의 숲 2구역의 따라를 가리켜야 한다
   const s1 = TJ.setupClassBaseFlags();
   const t1 = getObjectiveTarget(s1);
-  check('나침반 — 따라 전 → forest', !!t1 && t1.map === 'forest');
+  check('나침반 — 따라 전 → forestdeep', !!t1 && t1.map === 'forestdeep' && t1.x === 12 && t1.y === 5);
   // 상태② 1장 전 — 따라 격파(chapter1Clear 전) → village(전부 공짜 거리 문, 24,5)
   const s2 = TJ.setupClassBaseFlags();
   s2.defeated.bekkyeomon = true;
