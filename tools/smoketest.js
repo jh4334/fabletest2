@@ -394,6 +394,24 @@ check('1장 거리 NPC 추가 없음', (MAPS.freestreet.npcs || []).length === 2
     ch2Dist(ch2DistrictMarks.find((m) => m.label === '메아리 골목 입구'), ch2DistrictMarks.find((m) => m.label === '꺼진 거리 입구')) >= 10 &&
     ch2Dist(ch2DistrictMarks.find((m) => m.label === '기울어진 저울'), ch2DistrictMarks.find((m) => m.label === '동쪽 소란 문')) >= 12);
 }
+{
+  const ch3Marks = windowObj.__test.chapter3HubVisibleMarks();
+  const ch3DistrictMarks = ch3Marks.filter((m) => m.kind === 'ch3_district');
+  check('3장 소문 거리 랜드마크 5개 이상 — 신문사·상점·헤드라인·정정 길·아케이드 문이 보임',
+    ch3DistrictMarks.length >= 5 && ['신문사 입구', '닫힌 상점가', '대문짝 헤드라인', '정정 보도 길', '반짝 아케이드 문'].every((label) => ch3DistrictMarks.some((m) => m.label === label)));
+  check('3장 거리 NPC 추가 없음', (MAPS.rumorstreet.npcs || []).length === 2);
+  const ch3Fx = windowObj.__test.chapter3HubVisualProfile(3, false, false);
+  const ch3LowFx = windowObj.__test.chapter3HubVisualProfile(3, false, true);
+  const ch3FixedFx = windowObj.__test.chapter3HubVisualProfile(3, true, false);
+  check('3장 기본 허브 FX 부담은 과하지 않음', ch3Fx.headlineSigns <= 6 && ch3Fx.echoMarks <= 3 && ch3Fx.fullScreenNoise === false);
+  check('3장 저사양 허브 효과는 일반보다 가벼움', ch3LowFx.headlineSigns < ch3Fx.headlineSigns && ch3LowFx.echoMarks < ch3Fx.echoMarks && ch3LowFx.labels === false);
+  check('3장 정정 후 소문 압박은 완화됨', ch3FixedFx.headlineSigns < ch3Fx.headlineSigns && ch3FixedFx.echoMarks <= ch3Fx.echoMarks && ch3FixedFx.fixed === true);
+  const ch3Dist = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+  check('3장 표식이 한 화면에 다닥다닥 붙지 않음',
+    ch3Dist(ch3DistrictMarks.find((m) => m.label === '신문사 입구'), ch3DistrictMarks.find((m) => m.label === '반짝 아케이드 문')) >= 14 &&
+    ch3Dist(ch3DistrictMarks.find((m) => m.label === '닫힌 상점가'), ch3DistrictMarks.find((m) => m.label === '정정 보도 길')) >= 10 &&
+    ch3Dist(ch3DistrictMarks.find((m) => m.label === '대문짝 헤드라인'), ch3DistrictMarks.find((m) => m.label === '반짝 아케이드 문')) >= 10);
+}
 
 console.log('[23] 엔딩 분기 로직 (4종) — v2 스케일(자비 최대 8회: 따라+담아·기울·그럴싸·반짝·루미+고요+영이)');
 const { computeEnding } = vm.runInContext('({ computeEnding })', sandbox);

@@ -1845,6 +1845,19 @@
       fullScreenSkew: false,
     };
   }
+  function chapter3HubVisualProfile(n, rumorFixed, lowGraphics) {
+    const level = Math.max(0, Math.min(3, n || 0));
+    const fixed = !!rumorFixed;
+    const low = !!lowGraphics;
+    return {
+      level,
+      fixed,
+      headlineSigns: fixed ? (low ? 1 : 2) : (low ? Math.min(2, 1 + Math.floor(level / 2)) : Math.min(6, 3 + level)),
+      echoMarks: fixed ? (low ? 0 : 1) : (low ? 1 : Math.min(3, 1 + level)),
+      labels: !low,
+      fullScreenNoise: false,
+    };
+  }
   function addPrivacyLeak(reason) {
     const before = privacyLeak();
     const after = Math.min(PRIVACY_LEAK_MAX, before + 1);
@@ -7598,6 +7611,69 @@
     ctx.restore();
   }
 
+  function chapter3HubVisibleMarks() {
+    const props = MAP_PROPS.rumorstreet || [];
+    return props.filter((prop) => prop.kind === 'ch3_district')
+      .map((prop) => ({ map: 'rumorstreet', x: prop.x, y: prop.y, kind: prop.kind, label: prop.label || '' }));
+  }
+
+  function drawChapter3HubMarks(cx, cy) {
+    if (game.map !== 'rumorstreet') return;
+    const low = game.lowGraphics || game.reduceFx;
+    const profile = chapter3HubVisualProfile(s3ClearCount(), game.flags.rumorFixed, low);
+    const marks = chapter3HubVisibleMarks();
+    ctx.save();
+    for (const [i, mark] of marks.entries()) {
+      const sx = Math.round(mark.x * TS - cx);
+      const sy = Math.round(mark.y * TS - cy - 2);
+      if (sx < -60 || sx > LW + 60 || sy < -50 || sy > LH + 50) continue;
+      const isPaper = mark.label === '대문짝 헤드라인';
+      const isFix = mark.label === '정정 보도 길';
+      const isExit = mark.label === '반짝 아케이드 문';
+      ctx.globalAlpha = low ? 0.78 : (game.flags.rumorFixed ? 0.82 : 0.93);
+      ctx.fillStyle = isExit ? '#30213a' : isFix ? '#172f2c' : isPaper ? '#3a241c' : '#202532';
+      ctx.fillRect(sx + 5, sy + 8, TS - 10, TS - 12);
+      ctx.strokeStyle = isExit ? '#e9a7ff' : isFix ? '#80f0d0' : isPaper ? '#ffcf66' : '#9bd3ff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx + 5.5, sy + 8.5, TS - 11, TS - 13);
+      ctx.fillStyle = game.flags.rumorFixed && !isExit ? '#80f0d0' : ctx.strokeStyle;
+      ctx.font = fs(14, true);
+      ctx.textAlign = 'center';
+      ctx.fillText(isExit ? '▶' : isFix ? '✓' : isPaper ? '!' : '▣', sx + TS / 2, sy + 24);
+      if (profile.labels) {
+        ctx.font = fs(9, true);
+        ctx.fillText(mark.label, sx + TS / 2, sy + 4);
+      }
+      if (i < profile.echoMarks && !low) {
+        ctx.globalAlpha = game.flags.rumorFixed ? 0.18 : 0.30;
+        ctx.strokeStyle = game.flags.rumorFixed ? '#80f0d0' : '#ffcf66';
+        ctx.strokeRect(sx + 2.5, sy + 5.5, TS - 5, TS - 7);
+        ctx.globalAlpha = 0.92;
+      }
+    }
+    const headlines = game.flags.rumorFixed
+      ? [{ x: 8, y: 7, text: '정정' }, { x: 17, y: 7, text: '확인' }]
+      : [
+        { x: 6, y: 7, text: '속보' }, { x: 12, y: 9, text: '단독' }, { x: 20, y: 7, text: '충격' },
+        { x: 22, y: 13, text: '공유' }, { x: 10, y: 14, text: '불안' }, { x: 17, y: 12, text: '???' },
+      ];
+    ctx.font = 'bold 10px monospace';
+    for (const headline of headlines.slice(0, profile.headlineSigns)) {
+      const sx = Math.round(headline.x * TS - cx + 5);
+      const sy = Math.round(headline.y * TS - cy + 7);
+      if (sx < -70 || sx > LW + 40 || sy < -40 || sy > LH + 40) continue;
+      ctx.globalAlpha = game.flags.rumorFixed ? 0.48 : 0.62;
+      ctx.fillStyle = game.flags.rumorFixed ? '#132d27' : '#351c18';
+      ctx.fillRect(sx, sy, 34, 15);
+      ctx.strokeStyle = game.flags.rumorFixed ? '#80f0d0' : '#ffcf66';
+      ctx.strokeRect(sx + 0.5, sy + 0.5, 33, 14);
+      ctx.fillStyle = game.flags.rumorFixed ? '#c5fff1' : '#ffe08a';
+      ctx.fillText(headline.text, sx + 4, sy + 11);
+    }
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
   function drawWorld() {
     const m = MAPS[game.map];
     const { cx, cy } = camera();
@@ -7627,6 +7703,8 @@
     drawCh1StreetPressureObjects(cx, cy);
     // 2장 허브 — 새 NPC 없이 구역 입구/저울/다음 문을 정적 표식으로 보여 준다.
     drawChapter2HubMarks(cx, cy);
+    // 3장 허브 — 소문 거리의 신문사/상점/헤드라인/다음 문을 정적 표식으로 보여 준다.
+    drawChapter3HubMarks(cx, cy);
     // 2장 허브 — 중앙의 거대한 저울 (구역 클리어마다 기울기가 준다)
     if (game.map === 'tiltstreet') drawTiltScale(cx, cy);
 
@@ -9200,7 +9278,7 @@
     getPuzzleLog, writePuzzleLog, nextWaypoint, currentObjective: () => getObjective(game.flags, game.map), // 나침반/HUD 경로 — E2E가 '화살표 따라가기'를 재현할 때 사용
     privacyLeak, privacyPressureProfile, addPrivacyLeak, notePrivacyRecoveryPiece,
     toggleLowGraphics, effectiveDprCap, prologueVisibleMarks, ch1StreetVisualProfile, ch1HubVisibleMarks,
-    chapter2HubVisualProfile, chapter2HubVisibleMarks,
+    chapter2HubVisualProfile, chapter2HubVisibleMarks, chapter3HubVisualProfile, chapter3HubVisibleMarks,
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록
