@@ -352,6 +352,12 @@ for (let n = 0; n <= 5; n++) {
   check(`노출도 ${n}/5 단계 라벨·압박값`, !!p.label && p.level === n && p.stalkerWanted >= 0);
 }
 check('노출도 단계는 0~5가 서로 체감 다름', new Set([0,1,2,3,4,5].map((n) => windowObj.__test.privacyPressureProfile(n).label)).size === 6);
+{
+  const highFx = windowObj.__test.ch1StreetVisualProfile(5, false);
+  const lowFx = windowObj.__test.ch1StreetVisualProfile(5, true);
+  check('1장 기본 광고 부담은 과하지 않음', highFx.adSigns <= 8 && highFx.sensors <= 3 && highFx.scanLines === false);
+  check('1장 저사양 거리 효과는 일반보다 가벼움', lowFx.adSigns < highFx.adSigns && lowFx.sensors <= highFx.sensors && lowFx.glow === false && lowFx.scanLines === false);
+}
 g.lowGraphics = false;
 windowObj.__test.toggleLowGraphics();
 check('저사양 그래픽 옵션 토글 ON', g.lowGraphics === true && windowObj.__test.effectiveDprCap() === 1);
@@ -359,6 +365,19 @@ const lowGraphicsSettings = JSON.parse(storage.get('ai-ethics-adventure-settings
 check('저사양 그래픽 옵션 저장', lowGraphicsSettings.lowGraphics === true);
 windowObj.__test.toggleLowGraphics();
 check('저사양 그래픽 옵션 토글 OFF', g.lowGraphics === false && windowObj.__test.effectiveDprCap() === 1.5);
+
+g.map = 'forest';
+const forestMarks = windowObj.__test.prologueVisibleMarks();
+check('숲 길 표식 2개 이상 — 모험 경로가 보임', forestMarks.length >= 2 && forestMarks.some((m) => m.label === '노란 발자국'));
+g.map = 'forestdeep';
+const clearingMarks = windowObj.__test.prologueVisibleMarks();
+check('숲 안쪽 공터 표식 3개 이상 — 따라 목적지가 보임', clearingMarks.length >= 3 && clearingMarks.some((m) => m.label === '망설임의 원'));
+g.map = 'freestreet';
+const streetMarks = windowObj.__test.ch1HubVisibleMarks();
+const districtMarks = streetMarks.filter((m) => m.kind === 'district');
+check('1장 거리 구역 랜드마크 4개 이상 — 접수처·게시판·창고·금고문이 보임', districtMarks.length >= 4 && ['접수처 불빛', '게시판 벽', '배달 상자길', '세 잠금 금고문'].every((label) => districtMarks.some((m) => m.label === label)));
+check('1장 거리 담아 빌드업 표식 3개 유지', streetMarks.filter((m) => m.kind === 'dama_buildup').length >= 3);
+check('1장 거리 NPC 추가 없음', (MAPS.freestreet.npcs || []).length === 2);
 
 console.log('[23] 엔딩 분기 로직 (4종) — v2 스케일(자비 최대 8회: 따라+담아·기울·그럴싸·반짝·루미+고요+영이)');
 const { computeEnding } = vm.runInContext('({ computeEnding })', sandbox);

@@ -1827,11 +1827,11 @@
     const low = !!lowGraphics;
     return {
       level,
-      adSigns: low ? Math.min(3, 1 + Math.floor(level / 2)) : 2 + level * 2,
-      sensors: low ? Math.min(2, Math.floor(level / 3)) : Math.floor((level + 1) / 2),
-      labelShadows: low ? Math.min(2, level >= 4 ? 2 : level >= 2 ? 1 : 0) : level,
-      glow: !low && level >= 2,
-      scanLines: !low && level >= 4,
+      adSigns: low ? Math.min(3, 1 + Math.floor(level / 2)) : Math.min(8, 2 + level),
+      sensors: low ? Math.min(2, Math.floor(level / 3)) : Math.min(3, Math.floor((level + 1) / 2)),
+      labelShadows: low ? Math.min(2, level >= 4 ? 2 : level >= 2 ? 1 : 0) : Math.min(4, level),
+      glow: !low && level >= 3,
+      scanLines: false,
     };
   }
   function addPrivacyLeak(reason) {
@@ -7447,6 +7447,40 @@
     drawMon(ctx, 'bandi', sx, sy, 2);
   }
 
+  function ch1HubVisibleMarks() {
+    const props = MAP_PROPS.freestreet || [];
+    return props.filter((prop) => ['district', 'dama_buildup'].includes(prop.kind))
+      .map((prop) => ({ map: 'freestreet', x: prop.x, y: prop.y, kind: prop.kind, label: prop.label || '', done: !!(prop.flag && game.flags[prop.flag]) }));
+  }
+
+  function drawCh1HubMarks(cx, cy) {
+    if (game.map !== 'freestreet') return;
+    const marks = ch1HubVisibleMarks();
+    ctx.save();
+    for (const mark of marks) {
+      const sx = Math.round(mark.x * TS - cx);
+      const sy = Math.round(mark.y * TS - cy - 2);
+      if (sx < -50 || sx > LW + 50 || sy < -50 || sy > LH + 50) continue;
+      const district = mark.kind === 'district';
+      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.86 : 0.94;
+      ctx.fillStyle = district ? '#173447' : (mark.done ? '#3c3f38' : '#4a3316');
+      ctx.fillRect(sx + 5, sy + 8, TS - 10, TS - 12);
+      ctx.strokeStyle = district ? '#9bd3ff' : '#ffd644';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx + 5.5, sy + 8.5, TS - 11, TS - 13);
+      ctx.fillStyle = district ? '#9bd3ff' : (mark.done ? '#9aa07a' : '#ffd644');
+      ctx.font = fs(14, true);
+      ctx.textAlign = 'center';
+      ctx.fillText(district ? '◇' : (mark.done ? '✓' : '※'), sx + TS / 2, sy + 24);
+      if (!(game.lowGraphics || game.reduceFx)) {
+        ctx.font = fs(9, true);
+        ctx.fillText(mark.label, sx + TS / 2, sy + 4);
+      }
+    }
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
   function drawCh1StreetPressureObjects(cx, cy) {
     if (game.map !== 'freestreet') return;
     const profile = ch1StreetVisualProfile(privacyLeak(), game.lowGraphics || game.reduceFx);
@@ -7517,6 +7551,8 @@
     drawIntroLabObjects(cx, cy);
     // 프롤로그 숲 — 출구 직후 따라의 첫 흔적을 실제 조사물로 보여 준다.
     drawForestPrologueObjects(cx, cy);
+    // 1장 허브 — 구역 랜드마크/담아 빌드업 조사물을 정적 표식으로 보여 준다.
+    drawCh1HubMarks(cx, cy);
     // 1장 허브 — 노출도가 오를수록 광고/감시 표식이 늘어나되 저사양 모드에서는 수를 줄인다.
     drawCh1StreetPressureObjects(cx, cy);
     // 2장 허브 — 중앙의 거대한 저울 (구역 클리어마다 기울기가 준다)
@@ -9091,7 +9127,7 @@
     applyArcadeClass, applyCozyhomeClass, applyFinalClass,
     getPuzzleLog, writePuzzleLog, nextWaypoint, currentObjective: () => getObjective(game.flags, game.map), // 나침반/HUD 경로 — E2E가 '화살표 따라가기'를 재현할 때 사용
     privacyLeak, privacyPressureProfile, addPrivacyLeak, notePrivacyRecoveryPiece,
-    toggleLowGraphics, effectiveDprCap, prologueVisibleMarks, ch1StreetVisualProfile,
+    toggleLowGraphics, effectiveDprCap, prologueVisibleMarks, ch1StreetVisualProfile, ch1HubVisibleMarks,
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록
