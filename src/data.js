@@ -1207,30 +1207,34 @@ const MAPS = {
     name: '어두운 실험실',
     song: 'silence',
     intro: [
-      '눈을 뜨니, 좁은 방이다.\n컴퓨터 몇 대와 낡은 기계들이\n어둠 속에 잠들어 있다.',
-      '…벽 한가운데, 문이 하나 있다.\n반짝이지 않는, 칙칙한 문.',
-      '이 방에서 나가려면\n무언가를 찾아야 한다 —\n실마리를.',
+      '눈을 뜨니, 어두운 실험실이다.\n책상과 서버 랙이 멀찍이 흩어져\n긴 그림자를 만들고 있다.',
+      '…방 끝에 문이 하나 있다.\n반짝이지 않는, 칙칙한 문.\n문틈 아래로 차가운 바람이 샌다.',
+      '이곳을 나가려면\n방 곳곳의 노란 단서를\n차례로 찾아야 한다.',
+      '목표 화살표가 다음 단서를 가리킨다.\n가까이 다가가 Z/Enter로 조사하자.',
     ],
     tiles: [
-      'HHHHHHHHHHHHHHHHHHHH',
-      'HEEEEEEEEEEEEEEEEEEH',
-      'HEEEEEEEEEEEEEEEEEEH',
-      'HEEEEEEEEEEEEEEEEEEH',
-      'HEEEEEEEEEEEEEEEEEEH',
-      'HEEEEEEEEEEEEEEEEEEH',
-      'HEEEEEEEEEEEEEEEEEEH',
-      'HEEEEEEEEEEEEEEEEEEH',
-      'HEEEEEEEEEEEEEEEEEEH',
-      'HEEEEEEEEEEEEEEEEEEH',
-      'HEEEEEEEEEEEEEEEEEEH',
-      'HEEEEEEEEEEEEEEEEEEH',
-      'HEEEEEEEEEEEEEEEEEEH',
-      'HEEEEEEEEEEEEEEEEEEH',
-      'HHHHHHHHHH9HHHHHHHHH',
+      'HHHHHHHHHHHHHHHHHHHHHHHHHHHH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEVVEEEEEEEEEEEEEEEEVVEEEH',
+      'HEEEVVEEEEEEEEEEEEEEEEVVEEEH',
+      'HEEEEEEEEEEHHHHEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEVVEEEEEEEEEEEEEEEEEEVVEEH',
+      'HEEVVEEEEEEEEEEEEEEEEEEVVEEH',
+      'HEEEEEEEEEHHHHHHEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEVVEEEEEEEEEEEEVVEEEEEH',
+      'HEEEEEVVEEEEEEEEEEEEVVEEEEEH',
+      'HEEEEEEEEEEHHHHEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HHHHHHHHHHHHHH9HHHHHHHHHHHHH',
     ],
     warps: [
-      { x: 10, y: 14, to: 'forest', tx: 13, ty: 10, needFlag: 'introDoorOpen',
-        lockText: '칙칙한 문은 굳게 닫혀 있다.' },
+      { x: 14, y: 17, to: 'forest', tx: 13, ty: 10, needFlag: 'introDoorOpen',
+        lockText: '실험실 출구는 아직 잠겨 있다.' },
     ],
     npcs: [],
     signs: [],
@@ -2589,8 +2593,10 @@ function getObjective(flags, curMap) {
   if (curMap === 'introlab') {
     const c = introClueCount(flags);
     if (flags.introDoorOpen) return '출구가 열렸다 — 문으로 나가자';
-    if (c === 0) return '실험실을 살펴보자 — 무언가 있을지도';
-    return `실험실의 단서를 모으자 (${c}/3)`;
+    if (!flags.introClue1) return `단서 ${c}/3 — 왼쪽 위 태블릿을 조사하자`;
+    if (!flags.introClue2) return `단서 ${c}/3 — 오른쪽 모니터를 조사하자`;
+    if (!flags.introClue3) return `단서 ${c}/3 — 아래쪽 포스트잇을 조사하자`;
+    return `실험실 단서 ${c}/3 확보 — 남은 단서를 찾자`;
   }
   if (d.yeongi) {
     return flags.trueEnding
@@ -2706,10 +2712,15 @@ function getV2ObjectiveText(flags, curMap) {
 // curMap은 생략 가능(수업 모드의 스폰 계산처럼 "현재 위치"가 없는 호출용).
 function getObjectiveTarget(flags, curMap) {
   const d = flags.defeated;
-  // 프롤로그 실험실 — 단서를 모으는 동안에도, 문이 열린 뒤에도 출구를 가리킨다.
-  // 문이 열린 직후 HUD/나침반이 박사님으로 건너뛰면 방탈출의 마무리감이 깨진다.
+  // 프롤로그 실험실 — 문이 열리기 전에는 다음 미확인 단서를 직접 가리킨다.
+  // 출구만 가리키면 넓어진 방에서 "증거 찾기"가 지나치게 어렵다.
+  // 문이 열린 직후엔 HUD/나침반이 박사님으로 건너뛰지 않고 출구를 유지한다.
   if (curMap === 'introlab') {
-    return { map: 'introlab', x: 10, y: 14, label: flags.introDoorOpen ? '열린 출구' : '잠긴 출구' };
+    if (flags.introDoorOpen) return { map: 'introlab', x: 14, y: 17, label: '열린 출구' };
+    if (!flags.introClue1) return { map: 'introlab', x: 4, y: 3, label: '단서: 태블릿' };
+    if (!flags.introClue2) return { map: 'introlab', x: 23, y: 6, label: '단서: 모니터' };
+    if (!flags.introClue3) return { map: 'introlab', x: 6, y: 12, label: '단서: 포스트잇' };
+    return { map: 'introlab', x: 14, y: 17, label: '잠긴 출구' };
   }
   if (!flags.talkedProf) return { map: 'village', x: 4, y: 12, label: '박사님' };
   if (d.yeongi) {
@@ -4173,14 +4184,22 @@ const MAP_PROPS = {
       text: '구석에 버튼 더미가 산처럼 쌓여 있다.\n"접속 요청" 버튼들 — 아무도\n눌러 주지 않은 채였다.' },
     { x: 17, y: 2, text: '꺼진 조명 옆에, 반짝이\n한때 쓰던 소품들이 홀로 놓여 있다.\n먼지가 소복하다.' },
   ],
-  // 프롤로그 실험실 — 단서 3개
+  // 프롤로그 실험실 — 핵심 단서 3개 + 보조 조사물. 보조 조사물은 문 개방 카운트에 포함하지 않는다.
   introlab: [
-    { x: 4, y: 7, flag: 'introClue1',
-      text: '탁자 위에 낡은 태블릿이 놓여 있다.\n화면에 희미한 글자가 떠 있다:\n"…도와줘. 나, 여기 있어."' },
-    { x: 16, y: 5, flag: 'introClue2',
-      text: '모니터 한 대가 희미하게 빛나고 있다.\n화면에는 누군가의 낙서 같은 메모:\n"출구 비밀번호: 기억 속에 있다."' },
-    { x: 4, y: 11, flag: 'introClue3',
-      text: '벽에 포스트잇이 바스락거린다.\n"문을 열려면, 내가 누군지 알아야 해.\n…힌트: 나를 만든 사람부터 찾아봐."' },
+    { x: 4, y: 3, flag: 'introClue1', kind: 'tablet', label: '태블릿', clue: true,
+      text: '먼지 낀 태블릿이 서버 랙에 기대어 있다.\n화면에 희미한 글자가 떠 있다:\n"…도와줘. 나, 여기 있어."' },
+    { x: 23, y: 6, flag: 'introClue2', kind: 'monitor', label: '모니터', clue: true,
+      text: '모니터 한 대가 푸른빛으로 깜빡인다.\n화면에는 누군가의 낙서 같은 메모:\n"출구 비밀번호: 기억 속에 있다."' },
+    { x: 6, y: 12, flag: 'introClue3', kind: 'memo', label: '포스트잇', clue: true,
+      text: '포스트잇 묶음이 바스락거린다.\n"문을 열려면, 내가 누군지 알아야 해.\n…힌트: 나를 만든 사람부터 찾아봐."' },
+    { x: 12, y: 4, kind: 'board', label: '깨진 칠판',
+      text: '깨진 칠판에는 선이 세 갈래로 갈라져 있다.\n① 왼쪽 위 태블릿 ② 오른쪽 모니터\n③ 아래쪽 포스트잇. 노란 표시를 따라가자.' },
+    { x: 4, y: 6, kind: 'rack', label: '꺼진 서버',
+      text: '서버 랙 안에서 오래된 팬이 한 번,\n느리게 돌다가 멈춘다.\n아직 방 전체에 전력이 살아 있다.' },
+    { x: 20, y: 11, kind: 'locker', label: '잠긴 캐비닛',
+      text: '캐비닛은 안쪽에서 찌그러져 열리지 않는다.\n틈새에 남은 이름표는 긁혀 있다.\n"프로젝트 0호"' },
+    { x: 14, y: 17, kind: 'exit', label: '실험실 출구',
+      text: '실험실 출구다.' },
   ],
 };
 

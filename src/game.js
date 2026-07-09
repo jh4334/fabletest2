@@ -7,15 +7,16 @@
   const TS = TILE * SCALE; // 48px
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
-  // 논리 해상도(좌표계는 항상 720×528). 백킹 스토어는 기기 픽셀 밀도(DPR)만큼 키워
-  // 레티나·고DPI 화면에서도 글자가 또렷하게 보이게 한다.
+  // 논리 해상도(좌표계는 항상 720×528). 백킹 스토어는 기기 픽셀 밀도(DPR)만큼 키우되,
+  // 교실 태블릿·저전력 노트북에서 버벅이지 않도록 2배까지만 사용한다.
   const LW = 720, LH = 528;
-  let currentDPR = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
+  const DPR_CAP = 2;
+  let currentDPR = Math.max(1, Math.min(window.devicePixelRatio || 1, DPR_CAP));
   canvas.width = LW * currentDPR;
   canvas.height = LH * currentDPR;
   ctx.scale(currentDPR, currentDPR);
   function checkDPR() {
-    const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
+    const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, DPR_CAP));
     if (dpr !== currentDPR) {
       currentDPR = dpr;
       canvas.width = LW * dpr;
@@ -2857,6 +2858,69 @@
     box(Math.round(ex.normal.x * TS - cx), Math.round(ex.normal.y * TS - cy - 6), '#2a5a3a', '↩', '#8de08d');
     label(Math.round(ex.normal.x * TS - cx), Math.round(ex.normal.y * TS - cy - 6), '일반 출구', '#8de08d');
   }
+  function drawIntroLabObjects(cx, cy) {
+    if (game.map !== 'introlab') return;
+    const props = MAP_PROPS.introlab || [];
+    const bob = game.reduceFx ? 0 : Math.round(Math.sin(game.time / 18) * 2);
+    const drawLabel = (nx, ny, text, col) => {
+      if (!text) return;
+      ctx.font = fs(10, true);
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 3; ctx.strokeStyle = '#000';
+      ctx.strokeText(text, nx + TS / 2, ny - 5);
+      ctx.fillStyle = col || '#fff';
+      ctx.fillText(text, nx + TS / 2, ny - 5);
+      ctx.textAlign = 'left';
+    };
+    for (const prop of props) {
+      const nx = Math.round(prop.x * TS - cx);
+      const ny = Math.round(prop.y * TS - cy - 4);
+      const done = prop.flag && game.flags[prop.flag];
+      const col = done ? '#5a6178' : (prop.clue ? '#f0c850' : '#8fd3ff');
+      const isCurrentClue = prop.clue && !done && !game.flags.introDoorOpen
+        && ((prop.flag === 'introClue1' && !game.flags.introClue1)
+          || (prop.flag === 'introClue2' && game.flags.introClue1 && !game.flags.introClue2)
+          || (prop.flag === 'introClue3' && game.flags.introClue1 && game.flags.introClue2 && !game.flags.introClue3));
+      if (prop.kind === 'exit') {
+        const open = !!game.flags.introDoorOpen;
+        ctx.fillStyle = open ? '#213a30' : '#2a2636';
+        ctx.fillRect(nx + 8, ny + 6, TS - 16, TS - 6);
+        ctx.strokeStyle = open ? '#8de08d' : '#d0b15a';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(nx + 8, ny + 6, TS - 16, TS - 6);
+        ctx.fillStyle = open ? '#bdf5d0' : '#f0c850';
+        ctx.font = fs(18, true);
+        ctx.textAlign = 'center';
+        ctx.fillText(open ? '↥' : '▣', nx + TS / 2, ny + TS / 2 + 9);
+        ctx.textAlign = 'left';
+        drawLabel(nx, ny, open ? '열린 출구' : `잠긴 출구 ${introClueCount(game.flags)}/3`, open ? '#8de08d' : '#ffd644');
+        continue;
+      }
+      if (isCurrentClue) {
+        ctx.save();
+        ctx.globalAlpha = 0.32 + (game.reduceFx ? 0 : Math.abs(Math.sin(game.time / 10)) * 0.22);
+        ctx.fillStyle = '#ffd644';
+        ctx.beginPath();
+        ctx.ellipse(nx + TS / 2, ny + TS / 2 + 2, 23, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.fillStyle = done ? '#31364a' : '#1d2440';
+      ctx.fillRect(nx + 7, ny + 10 + bob, TS - 14, TS - 14);
+      ctx.strokeStyle = isCurrentClue ? '#fff1a6' : col;
+      ctx.lineWidth = isCurrentClue ? 3 : 2;
+      ctx.strokeRect(nx + 7, ny + 10 + bob, TS - 14, TS - 14);
+      ctx.fillStyle = col;
+      ctx.font = fs(16, true);
+      ctx.textAlign = 'center';
+      const mark = prop.kind === 'tablet' ? '▤' : prop.kind === 'monitor' ? '▣' : prop.kind === 'memo' ? '※' : prop.kind === 'board' ? '⋯' : prop.kind === 'locker' ? '▥' : '·';
+      ctx.fillText(done ? '✓' : mark, nx + TS / 2, ny + TS / 2 + 8 + bob);
+      ctx.textAlign = 'left';
+      const labelText = done ? '확인됨' : (prop.clue ? `단서: ${prop.label}` : prop.label);
+      drawLabel(nx, ny + bob, labelText, isCurrentClue ? '#fff1a6' : col);
+    }
+  }
+
   function drawStalkers(cx, cy) {
     const run = game.puzzleRun;
     for (const s of run.stalkers) {
@@ -3324,7 +3388,19 @@
     // 조사(살펴보기): 특별 지점 → 타일 기본 문구
     const prop = getPropAt(game.map, f.x, f.y);
     if (prop) {
-      const lines = [prop.text];
+      const lines = [];
+      if (game.map === 'introlab' && prop.kind === 'exit') {
+        const c = introClueCount(game.flags);
+        if (game.flags.introDoorOpen) {
+          lines.push('문은 이제 조금 열려 있다.\n차가운 숲의 공기가 발목을 스친다.');
+          lines.push('나가려면 문 앞으로 걸어가자.\n정적의 숲이 이 방 밖에서 기다린다.');
+        } else {
+          lines.push('실험실 출구는 굳게 잠겨 있다.\n문 가장자리에 작은 불빛 세 개가 꺼져 있다.');
+          lines.push(`아직 단서 ${3 - c}개가 더 필요하다. (${c}/3)`);
+        }
+      } else {
+        lines.push(prop.text);
+      }
       // 스토리 복선 등 — 조사 지점에 flag가 있으면 플래그를 남긴다 (예: seenPhoto1)
       if (prop.flag && !game.flags[prop.flag]) {
         game.flags[prop.flag] = true; save();
@@ -3431,9 +3507,10 @@
       // 프롤로그 실험실 — 동적 단서 카운트 표시
       if (game.map === 'introlab') {
         const c = introClueCount(game.flags);
+        const remain = Math.max(0, 3 - c);
         pushBack();
         Sound.bump();
-        startDialog([w.lockText || '문이 잠겨 있다.', `단서 ${c}/3 확보.`]);
+        startDialog([w.lockText || '문이 잠겨 있다.', `문 가장자리의 불빛 ${c}/3개가 켜졌다.\n남은 단서 ${remain}개를 더 찾아야 한다.`]);
         return;
       }
       pushBack();
@@ -7140,6 +7217,8 @@
 
     // 방탈출 물체 (단말·게시판·지우개·출구) — 타일 위, 엔티티 아래
     if (game.puzzleRun) drawPuzzleObjects(cx, cy);
+    // 프롤로그 실험실 — 핵심 단서/보조 조사물/출구를 눈에 보이게 배치한다.
+    drawIntroLabObjects(cx, cy);
     // 2장 허브 — 중앙의 거대한 저울 (구역 클리어마다 기울기가 준다)
     if (game.map === 'tiltstreet') drawTiltScale(cx, cy);
 
@@ -8117,8 +8196,8 @@
     game.currentSlot = slot;
     game.playerName = name || '수호자';
     game.map = 'introlab';
-    game.player.x = 10; game.player.y = 13;
-    game.player.px = 10 * TS; game.player.py = 13 * TS;
+    game.player.x = 14; game.player.y = 16;
+    game.player.px = 14 * TS; game.player.py = 16 * TS;
     game.player.dir = 'up';
     game.flags = newFlags();
     game.mode = 'world';
