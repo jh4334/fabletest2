@@ -1822,6 +1822,18 @@
     return Object.assign({ level }, table[level]);
   }
   function privacyLevelLabel(n) { return privacyPressureProfile(n).label; }
+  function ch1StreetVisualProfile(n, lowGraphics) {
+    const level = Math.max(0, Math.min(PRIVACY_LEAK_MAX, n || 0));
+    const low = !!lowGraphics;
+    return {
+      level,
+      adSigns: low ? Math.min(3, 1 + Math.floor(level / 2)) : 2 + level * 2,
+      sensors: low ? Math.min(2, Math.floor(level / 3)) : Math.floor((level + 1) / 2),
+      labelShadows: low ? Math.min(2, level >= 4 ? 2 : level >= 2 ? 1 : 0) : level,
+      glow: !low && level >= 2,
+      scanLines: !low && level >= 4,
+    };
+  }
   function addPrivacyLeak(reason) {
     const before = privacyLeak();
     const after = Math.min(PRIVACY_LEAK_MAX, before + 1);
@@ -2607,7 +2619,7 @@
     if (run.id === 'signup') game.flags.s4KeyId = true;
     game.puzzleRun = null;
     // 복귀 지점 (데이터화된 exitTo). 기본은 거리 입구 앞.
-    const exit = puz.exitTo || { map: 'freestreet', x: 14, y: 17 };
+    const exit = puz.exitTo || { map: 'freestreet', x: 18, y: 21 };
     game.map = exit.map;
     const p = game.player;
     p.x = exit.x; p.y = exit.y; p.px = exit.x * TS; p.py = exit.y * TS; p.moving = false;
@@ -4024,7 +4036,7 @@
     // 금고 밖(거리)으로 복귀
     game.map = 'freestreet';
     const p = game.player;
-    p.x = 14; p.y = 5; p.px = 14 * TS; p.py = 5 * TS; p.moving = false; p.dir = 'down';
+    p.x = 17; p.y = 5; p.px = 17 * TS; p.py = 5 * TS; p.moving = false; p.dir = 'down';
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.badge();
@@ -4082,7 +4094,7 @@
     // 신문사 입구(거리)로 복귀 — 이미 rumorFixed 상태라 거리는 풀린 모습이다
     game.map = 'rumorstreet';
     const p = game.player;
-    p.x = 14; p.y = 5; p.px = 14 * TS; p.py = 5 * TS; p.moving = false; p.dir = 'down';
+    p.x = 17; p.y = 5; p.px = 17 * TS; p.py = 5 * TS; p.moving = false; p.dir = 'down';
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.badge();
@@ -4214,7 +4226,7 @@
       game.flags.prologueClosed = true;
       game.map = 'freestreet';
       const p = game.player;
-      p.x = 14; p.y = 17; p.px = 14 * TS; p.py = 17 * TS; p.moving = false; p.dir = 'up';
+      p.x = 18; p.y = 21; p.px = 18 * TS; p.py = 21 * TS; p.moving = false; p.dir = 'up';
       held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
       stickDir = null; stickRepeatFrames = 0;
       lines.push('숲 안쪽 공터의 종이들이 조용히 접힌다.\n멀리서 네온 간판 하나가 반짝이며 문처럼 열린다.');
@@ -6825,7 +6837,7 @@
     game.flags = flags;
     game.map = 'freestreet';
     const p = game.player;
-    p.x = 14; p.y = 17; p.px = 14 * TS; p.py = 17 * TS;
+    p.x = 18; p.y = 21; p.px = 18 * TS; p.py = 21 * TS;
     p.moving = false; p.dir = 'up';
     save();
   }
@@ -6837,7 +6849,7 @@
     game.flags = flags;
     game.map = 'tiltstreet';
     const p = game.player;
-    p.x = 14; p.y = 17; p.px = 14 * TS; p.py = 17 * TS;
+    p.x = 18; p.y = 21; p.px = 18 * TS; p.py = 21 * TS;
     p.moving = false; p.dir = 'up';
     save();
   }
@@ -6850,7 +6862,7 @@
     game.flags = flags;
     game.map = 'rumorstreet';
     const p = game.player;
-    p.x = 14; p.y = 17; p.px = 14 * TS; p.py = 17 * TS;
+    p.x = 18; p.y = 21; p.px = 18 * TS; p.py = 21 * TS;
     p.moving = false; p.dir = 'up';
     save();
   }
@@ -7435,6 +7447,53 @@
     drawMon(ctx, 'bandi', sx, sy, 2);
   }
 
+  function drawCh1StreetPressureObjects(cx, cy) {
+    if (game.map !== 'freestreet') return;
+    const profile = ch1StreetVisualProfile(privacyLeak(), game.lowGraphics || game.reduceFx);
+    const ads = [
+      { x: 8, y: 8, text: '무료' }, { x: 15, y: 12, text: '약관' }, { x: 24, y: 9, text: '추천' },
+      { x: 31, y: 13, text: '저장' }, { x: 19, y: 18, text: '이름?' }, { x: 33, y: 18, text: '동의?' },
+      { x: 11, y: 16, text: '발자국' }, { x: 27, y: 20, text: '공짜' }, { x: 4, y: 12, text: '열람' },
+      { x: 35, y: 10, text: '확인' }, { x: 21, y: 7, text: '보관' }, { x: 14, y: 21, text: '추적' },
+    ];
+    const sensors = [{ x: 14, y: 8 }, { x: 30, y: 8 }, { x: 23, y: 17 }];
+    ctx.save();
+    for (const [i, ad] of ads.slice(0, profile.adSigns).entries()) {
+      const sx = Math.round(ad.x * TS - cx + 6);
+      const sy = Math.round(ad.y * TS - cy + 8);
+      if (sx < -80 || sx > LW + 40 || sy < -40 || sy > LH + 40) continue;
+      const pulse = profile.glow ? 0.12 * Math.sin((game.time + i * 11) / 18) : 0;
+      ctx.globalAlpha = Math.max(0.5, 0.72 + pulse);
+      ctx.fillStyle = i % 2 ? '#28172f' : '#33220f';
+      ctx.fillRect(sx, sy, 38, 16);
+      ctx.strokeStyle = profile.glow ? '#ffd644' : '#7a6a44';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx + 0.5, sy + 0.5, 37, 15);
+      ctx.fillStyle = i >= 4 ? '#ff8a8a' : '#ffd644';
+      ctx.font = 'bold 10px monospace';
+      ctx.fillText(ad.text, sx + 4, sy + 11);
+    }
+    ctx.globalAlpha = 1;
+    for (const s of sensors.slice(0, profile.sensors)) {
+      const sx = Math.round(s.x * TS - cx + TS / 2);
+      const sy = Math.round(s.y * TS - cy + TS / 2);
+      if (sx < -20 || sx > LW + 20 || sy < -20 || sy > LH + 20) continue;
+      ctx.strokeStyle = '#9bd3ff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 8, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#e0453a';
+      ctx.fillRect(sx - 2, sy - 2, 4, 4);
+    }
+    if (profile.scanLines) {
+      ctx.globalAlpha = 0.08;
+      ctx.fillStyle = '#ffd644';
+      for (let y = (game.time % 18); y < LH; y += 18) ctx.fillRect(0, y, LW, 1);
+    }
+    ctx.restore();
+  }
+
   function drawWorld() {
     const m = MAPS[game.map];
     const { cx, cy } = camera();
@@ -7458,6 +7517,8 @@
     drawIntroLabObjects(cx, cy);
     // 프롤로그 숲 — 출구 직후 따라의 첫 흔적을 실제 조사물로 보여 준다.
     drawForestPrologueObjects(cx, cy);
+    // 1장 허브 — 노출도가 오를수록 광고/감시 표식이 늘어나되 저사양 모드에서는 수를 줄인다.
+    drawCh1StreetPressureObjects(cx, cy);
     // 2장 허브 — 중앙의 거대한 저울 (구역 클리어마다 기울기가 준다)
     if (game.map === 'tiltstreet') drawTiltScale(cx, cy);
 
@@ -9030,7 +9091,7 @@
     applyArcadeClass, applyCozyhomeClass, applyFinalClass,
     getPuzzleLog, writePuzzleLog, nextWaypoint, currentObjective: () => getObjective(game.flags, game.map), // 나침반/HUD 경로 — E2E가 '화살표 따라가기'를 재현할 때 사용
     privacyLeak, privacyPressureProfile, addPrivacyLeak, notePrivacyRecoveryPiece,
-    toggleLowGraphics, effectiveDprCap, prologueVisibleMarks,
+    toggleLowGraphics, effectiveDprCap, prologueVisibleMarks, ch1StreetVisualProfile,
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록

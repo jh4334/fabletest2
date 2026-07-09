@@ -36,7 +36,7 @@ const MAPS = {
     warps: [
       { x: 13, y: 0, to: 'forest', tx: 20, ty: 22 },
       { x: 14, y: 0, to: 'forest', tx: 21, ty: 22 },
-      { x: 24, y: 5, to: 'freestreet', tx: 14, ty: 17 },
+      { x: 24, y: 5, to: 'freestreet', tx: 18, ty: 21 },
     ],
     npcs: [
       { id: 'prof', x: 4, y: 12, pal: 'prof', name: '박사님' },
@@ -77,52 +77,57 @@ const MAPS = {
       '어디선가 안내방송이 들린다.\n"어서 오세요! 전부! 공짜!\n※약관은 아주 작게…"',
     ],
     tiles: [
-      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
-      'TGOOOOOOOGGOOOOOOGGOOOOOOOGT',
-      'TGOOOOOOOGGOOOOOOGGOOOOOOOGT',
-      'TGOOOOOOOGGOOOOOOGGOOOOOOOGT',
-      'TGGGG6GGGGGGGG7GGGGGGG6GGGGT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPYPPPPPPPPYPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPYPPPPPP9',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPP6PPPPPPPPPPPPPPPPPPPPPPT',
-      'TGOOOOOOGGGGGGGGGGGGGGGGGGGT',
-      'TGOOOOOOGGGGGGPGGGGGGGGGGGGT',
-      'TGOOOOOOGGGGGGPGGGGGGGGGGGGT',
-      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGG7GGGGGGGGGGGGGGGGGGGT',
+      'TGGGGG6GGGGGGGGGGGGGGGGGGGGG6GGGGGGGGT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPYPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPYPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPYPPP9',
+      'TPPPPPPPPPPPPPPPPPPPPPPPYPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPP6PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGPGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGPGGGGGGGGGGGGGGGGGGT',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
     ],
     warps: [
-      { x: 14, y: 18, to: 'village', tx: 24, ty: 6 },
+      { x: 18, y: 22, to: 'village', tx: 24, ty: 6 },
       // 구역① 살금의 접수처
-      { x: 5, y: 4, to: 'traceroom', tx: 9, ty: 11 },
+      { x: 6, y: 5, to: 'traceroom', tx: 9, ty: 11 },
       // 구역② 새김의 게시판 광장 — 접수처를 먼저 다녀와야 내 조각이 존재한다 (순서 강제)
-      { x: 22, y: 4, to: 'boardplaza', tx: 12, ty: 13, needPuzzleClear: 'traces',
+      { x: 28, y: 5, to: 'boardplaza', tx: 12, ty: 13, needPuzzleClear: 'traces',
         lockText: '문틈에서 낮은 목소리가 들린다.\n새김: "아직 여기엔 네 조각이 없네.\n…먼저 접수처에 다녀와."' },
       // 구역③ 배달 창고
-      { x: 4, y: 15, to: 'warehouse', tx: 12, ty: 13 },
+      { x: 5, y: 18, to: 'warehouse', tx: 12, ty: 13 },
       // 금고문 — 잠금 3개(구역 클리어마다 1개)가 다 풀려야 주인의 방이 열린다
-      { x: 14, y: 4, to: 'ownerroom', tx: 5, ty: 7, needS1Locks: 3,
+      { x: 17, y: 4, to: 'ownerroom', tx: 5, ty: 7, needS1Locks: 3,
         lockText: '금고 문은 꿈쩍도 하지 않는다.\n잠금 세 개가 나란히 붙어 있다.' },
       // 2장 「기울어진 거리」 — 담아를 되돌린 뒤에야(chapter1Clear) 열리는 동쪽 문
-      { x: 27, y: 13, to: 'tiltstreet', tx: 1, ty: 10, needFlag: 'chapter1Clear', exitDir: 'east', dir: 'right',
-        lockText: '동쪽에 낯선 문이 하나 생겼다.\n문 너머가 이상하게… 기울어 보인다.\n지금은 굳게 잠겨 있다.' },
+      { x: 37, y: 15, to: 'tiltstreet', tx: 1, ty: 10, needFlag: 'chapter1Clear', exitDir: 'east', dir: 'right',
+        lockText: '동쪽 끝에 낯선 문이 하나 생겼다.\n멀리 걸어온 거리 너머가 이상하게… 기울어 보인다.\n지금은 굳게 잠겨 있다.' },
     ],
     npcs: [
-      // 살금 — 담아의 점원. 시킨 일이 미안한 아이 (거리를 서성인다)
-      { id: 'salgeum_st1', x: 9, y: 9, monSprite: 'mollaemon', name: '살금', wander: true },
-      { id: 'salgeum_st2', x: 19, y: 12, monSprite: 'mollaemon', name: '살금', wander: true },
+      // 살금 — 담아의 점원. 시킨 일이 미안한 아이. 넓은 거리 곳곳에 흩어져 있다.
+      { id: 'salgeum_st1', x: 10, y: 12, monSprite: 'mollaemon', name: '살금', wander: true },
+      { id: 'salgeum_st2', x: 26, y: 14, monSprite: 'mollaemon', name: '살금', wander: true },
     ],
     signs: [
-      { x: 9, y: 6, text: '≪전부 공짜 거리≫\n전부! 공짜! 진짜로!\n※약관은 아주 작게 적혀 있다.' },
-      { x: 18, y: 6, text: '[오늘의 안내]\n접수처는 왼쪽★ 게시판 광장은 오른쪽★\n창고는 아래쪽★ 전부 공짜!' },
-      { x: 20, y: 13, text: '[금고 안내]\n주인 전용★ 손님은 사절★\n…열쇠? 그런 건 손님이 알 거 없고~' },
+      { x: 10, y: 7, text: '≪전부 공짜 거리≫\n전부! 공짜! 진짜로!\n※약관은 아주 작게 적혀 있다.' },
+      { x: 22, y: 10, text: '[오늘의 안내]\n왼쪽 끝 접수처★ 오른쪽 끝 게시판 광장★\n남서쪽 창고★ 중앙 위 금고문★\n걸어 다니면 광고가 이름을 외운다.' },
+      { x: 24, y: 16, text: '[금고 안내]\n주인 전용★ 손님은 사절★\n…열쇠? 그런 건 손님이 알 거 없고~' },
+      { x: 33, y: 15, text: '[동쪽 문]\n아직은 잠겨 있다.\n하지만 담아를 만나고 나면, 다음 거리로 이어질 것 같다.' },
     ],
     monsters: [],
   },
@@ -2665,7 +2670,7 @@ function getObjective(flags, curMap) {
 // 보스/금고 문 좌표를 그대로 가리킨다(보스방 안이면 보스 좌표로 더 좁힌다).
 const V2_CHAPTERS = [
   { zoneMaps: ['freestreet', 'traceroom', 'boardplaza', 'warehouse'],
-    gate: { map: 'freestreet', x: 14, y: 4, label: '금고문' },
+    gate: { map: 'freestreet', x: 17, y: 4, label: '금고문' },
     bossMap: 'ownerroom', boss: { map: 'ownerroom', x: 5, y: 2, label: '담아' } },
   { zoneMaps: ['tiltstreet', 'echoalley', 'samplehouse', 'dimstreet'],
     gate: { map: 'tiltstreet', x: 14, y: 2, label: '문지기의 방' },
@@ -2683,7 +2688,7 @@ const V2_CHAPTERS = [
 // 챕터 진입 전 — 이전 챕터(또는 마을)에서 다음 챕터로 가는 문. 인덱스 = 클리어한 장 수.
 const V2_ENTRANCE = [
   { map: 'village', x: 24, y: 5, label: '전부 공짜 거리' },     // 0장 클리어(따라 격파 후) — 마을 문
-  { map: 'freestreet', x: 27, y: 13, label: '기울어진 거리' },  // 1장 클리어 — 2장 문
+  { map: 'freestreet', x: 37, y: 15, label: '기울어진 거리' },  // 1장 클리어 — 2장 문
   { map: 'tiltstreet', x: 27, y: 10, label: '대문짝 신문사' },  // 2장 클리어 — 3장 문
   { map: 'rumorstreet', x: 27, y: 10, label: '반짝 아케이드' }, // 3장 클리어 — 4장 문
   { map: 'arcade', x: 21, y: 8, label: '포근한 집' },           // 4장 클리어 — 5장 문
@@ -3575,7 +3580,7 @@ const PUZZLES = {
     objective: '정보를 지키며 출구를 찾자',
     objectiveCleared: '거리로 돌아가자',
     // 클리어 후 복귀 지점 (거리의 접수처 문 앞)
-    exitTo: { map: 'freestreet', x: 5, y: 5 },
+    exitTo: { map: 'freestreet', x: 6, y: 6 },
     steps: ['tokens', 'board', 'eraser', 'exit'], // 진행 단계 키
     // 각 단계 3단계 점진 힌트 (1:무엇을 볼지 / 2:왜 / 3:무엇을 할지) — 살금의 말투
     hints: {
@@ -3651,7 +3656,7 @@ const PUZZLES = {
     title: '새김의 게시판 광장',
     objective: '떠도는 내 조각 3개를 붙잡자',
     objectiveCleared: '거리로 돌아가자',
-    exitTo: { map: 'freestreet', x: 22, y: 5 },
+    exitTo: { map: 'freestreet', x: 28, y: 6 },
     steps: ['copies'],
     hints: {
       copies: [
@@ -3684,7 +3689,7 @@ const PUZZLES = {
     title: '배달 창고',
     objective: '상자 3개를 반송함으로 돌리자',
     objectiveCleared: '거리로 돌아가자',
-    exitTo: { map: 'freestreet', x: 4, y: 14 },
+    exitTo: { map: 'freestreet', x: 5, y: 17 },
     steps: ['levers'],
     hints: {
       levers: [
@@ -4196,6 +4201,14 @@ const EXAMINE_TILES = {
 
 // 맵별 특별 살펴보기 지점(좌표). 같은 좌표면 기본 타일 문구보다 우선.
 const MAP_PROPS = {
+  freestreet: [
+    { x: 12, y: 8, kind: 'dama_buildup', label: '작은 약관', flag: 'damaStreetTermsRead',
+      text: '광고판 아래 아주 작은 글씨가 있다.\n「무료 이용을 위해, 발자국·시선·망설임을 보관합니다.」\n담아의 이름이 맨 아래에 찍혀 있다.' },
+    { x: 22, y: 14, kind: 'dama_buildup', label: '비어 있는 상자', flag: 'damaStreetBoxRead',
+      text: '커다란 상자 안에는 물건 대신 이름표만 가득하다.\n누군가 소중한 걸 모으려다, 사람의 이름까지 모아 버린 것 같다.' },
+    { x: 31, y: 11, kind: 'dama_buildup', label: '멈춘 확성기', flag: 'damaStreetSpeakerRead',
+      text: '확성기가 잡음 섞인 목소리로 같은 말을 반복한다.\n"전부 공짜야… 버리지 마… 모아 두면 외롭지 않아…"\n목소리는 담아를 닮았다.' },
+  ],
   village: [
     { x: 5, y: 15, text: '경계마을의 연못.\n물고기 대신 작은 빛 알갱이가\n헤엄치고 있다.' },
     { x: 21, y: 14, text: '벽에 붙은 게시판.\n"제1회 AI 바르게 쓰기 그림 대회"\n포스터가 붙어 있다.' },
