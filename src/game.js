@@ -1834,6 +1834,17 @@
       scanLines: false,
     };
   }
+  function chapter2HubVisualProfile(n, lowGraphics) {
+    const level = Math.max(0, Math.min(3, n || 0));
+    const low = !!lowGraphics;
+    return {
+      level,
+      recommendSigns: low ? Math.min(2, 1 + Math.floor(level / 3)) : Math.min(5, 2 + level),
+      echoMarks: low ? 1 : Math.min(3, 1 + level),
+      labels: !low,
+      fullScreenSkew: false,
+    };
+  }
   function addPrivacyLeak(reason) {
     const before = privacyLeak();
     const after = Math.min(PRIVACY_LEAK_MAX, before + 1);
@@ -7528,6 +7539,65 @@
     ctx.restore();
   }
 
+  function chapter2HubVisibleMarks() {
+    const props = MAP_PROPS.tiltstreet || [];
+    return props.filter((prop) => prop.kind === 'ch2_district')
+      .map((prop) => ({ map: 'tiltstreet', x: prop.x, y: prop.y, kind: prop.kind, label: prop.label || '' }));
+  }
+
+  function drawChapter2HubMarks(cx, cy) {
+    if (game.map !== 'tiltstreet') return;
+    const profile = chapter2HubVisualProfile(s2ClearCount(), game.lowGraphics || game.reduceFx);
+    const marks = chapter2HubVisibleMarks();
+    ctx.save();
+    for (const [i, mark] of marks.entries()) {
+      const sx = Math.round(mark.x * TS - cx);
+      const sy = Math.round(mark.y * TS - cy - 2);
+      if (sx < -60 || sx > LW + 60 || sy < -50 || sy > LH + 50) continue;
+      const isScale = mark.label === '기울어진 저울';
+      const isExit = mark.label === '동쪽 소란 문';
+      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.82 : 0.92;
+      ctx.fillStyle = isScale ? '#40361c' : isExit ? '#2b2436' : '#1f2d36';
+      ctx.fillRect(sx + 6, sy + 8, TS - 12, TS - 12);
+      ctx.strokeStyle = isScale ? '#ffd644' : isExit ? '#e9a7ff' : '#9bd3ff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx + 6.5, sy + 8.5, TS - 13, TS - 13);
+      ctx.fillStyle = isScale ? '#ffd644' : isExit ? '#e9a7ff' : '#9bd3ff';
+      ctx.font = fs(14, true);
+      ctx.textAlign = 'center';
+      ctx.fillText(isScale ? '⚖' : isExit ? '!' : '↗', sx + TS / 2, sy + 24);
+      if (profile.labels) {
+        ctx.font = fs(9, true);
+        ctx.fillText(mark.label, sx + TS / 2, sy + 4);
+      }
+      if (i < profile.echoMarks && !(game.lowGraphics || game.reduceFx)) {
+        ctx.globalAlpha = 0.28;
+        ctx.strokeStyle = '#ffd644';
+        ctx.strokeRect(sx + 3.5, sy + 5.5, TS - 7, TS - 7);
+        ctx.globalAlpha = 0.92;
+      }
+    }
+    const hints = [
+      { x: 7, y: 8, text: '추천' }, { x: 18, y: 7, text: '이쪽' }, { x: 11, y: 12, text: '다수' },
+      { x: 21, y: 14, text: '별점' }, { x: 24, y: 9, text: '인기' },
+    ];
+    ctx.font = 'bold 10px monospace';
+    for (const hint of hints.slice(0, profile.recommendSigns)) {
+      const sx = Math.round(hint.x * TS - cx + 6);
+      const sy = Math.round(hint.y * TS - cy + 8);
+      if (sx < -70 || sx > LW + 40 || sy < -40 || sy > LH + 40) continue;
+      ctx.globalAlpha = 0.62;
+      ctx.fillStyle = '#2f2110';
+      ctx.fillRect(sx, sy, 34, 15);
+      ctx.strokeStyle = '#8b733d';
+      ctx.strokeRect(sx + 0.5, sy + 0.5, 33, 14);
+      ctx.fillStyle = '#ffd644';
+      ctx.fillText(hint.text, sx + 4, sy + 11);
+    }
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
   function drawWorld() {
     const m = MAPS[game.map];
     const { cx, cy } = camera();
@@ -7555,6 +7625,8 @@
     drawCh1HubMarks(cx, cy);
     // 1장 허브 — 노출도가 오를수록 광고/감시 표식이 늘어나되 저사양 모드에서는 수를 줄인다.
     drawCh1StreetPressureObjects(cx, cy);
+    // 2장 허브 — 새 NPC 없이 구역 입구/저울/다음 문을 정적 표식으로 보여 준다.
+    drawChapter2HubMarks(cx, cy);
     // 2장 허브 — 중앙의 거대한 저울 (구역 클리어마다 기울기가 준다)
     if (game.map === 'tiltstreet') drawTiltScale(cx, cy);
 
@@ -9128,6 +9200,7 @@
     getPuzzleLog, writePuzzleLog, nextWaypoint, currentObjective: () => getObjective(game.flags, game.map), // 나침반/HUD 경로 — E2E가 '화살표 따라가기'를 재현할 때 사용
     privacyLeak, privacyPressureProfile, addPrivacyLeak, notePrivacyRecoveryPiece,
     toggleLowGraphics, effectiveDprCap, prologueVisibleMarks, ch1StreetVisualProfile, ch1HubVisibleMarks,
+    chapter2HubVisualProfile, chapter2HubVisibleMarks,
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록
