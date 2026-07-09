@@ -11,12 +11,13 @@
   // 교실 태블릿·저전력 노트북에서 버벅이지 않도록 고해상도 백킹 스토어를 더 낮게 제한한다.
   const LW = 720, LH = 528;
   const DPR_CAP = 1.5;
+  function effectiveDprCap() { return (typeof game !== 'undefined' && game.lowGraphics) ? 1 : DPR_CAP; }
   let currentDPR = Math.max(1, Math.min(window.devicePixelRatio || 1, DPR_CAP));
   canvas.width = LW * currentDPR;
   canvas.height = LH * currentDPR;
   ctx.scale(currentDPR, currentDPR);
   function checkDPR() {
-    const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, DPR_CAP));
+    const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, effectiveDprCap()));
     if (dpr !== currentDPR) {
       currentDPR = dpr;
       canvas.width = LW * dpr;
@@ -75,6 +76,7 @@
     difficulty: 'normal', // easy | normal | hard — 학년별 난이도
     tts: false,          // 읽어주기(TTS) 접근성
     reduceFx: false,     // 화면 효과 줄이기(광과민성·모션 민감 배려)
+    lowGraphics: false,  // 저사양 그래픽(백킹 해상도 1x + 무거운 효과 최소화)
     dashboard: { ret: 'title', cursor: 0, toast: 0 }, // 교사용 대시보드
     classmode: { ret: 'world', sel: 0, confirm: false, toast: 0 }, // 수업 모드(챕터 바로 시작)
     report: { ret: 'world', slot: 0, toast: 0 }, // 교사용 학생 진단 리포트
@@ -166,6 +168,8 @@
       introDoorOpen: false, // 프롤로그 실험실 출구 개방 — 단서 3개 수집 완료
       introForestTrace: false, // 실험실 탈출 직후 정적의 숲 첫 흔적 조사
       ttaraFirstEncounter: false, // 정적의 숲 안쪽에서 따라와 처음 마주친 전용 조우 연출
+      prologueClosed: false, // 따라 설득 후 프롤로그 마무리 컷신을 보고 1장으로 진입했는가
+      forestClearingRead: false, // 정적의 숲 안쪽 공터 조사 결과 표식
       privacyLeak: 0,       // 1장 개인정보 그림자가 붙을 때 오르는 노출도(0~5)
       privacyRecovery: 0,   // 노출도 MAX 후 회복 목표 진행(지운 정보 조각 수)
       privacyRecoveryActive: false, // 노출도 5에서 즉시 실패 대신 회복 목표 발동
@@ -246,10 +250,20 @@
     return data;
   }
 
+  // v7→v8: 프롤로그 마무리/숲 안쪽 조사 표식 기본값. 이미 따라를 되돌린 세이브는 1장 진입 흐름을 본 것으로 승계한다.
+  function migrateSlotV8(data) {
+    if (!data || !data.flags) return data;
+    const f = data.flags;
+    if (f.prologueClosed === undefined) f.prologueClosed = !!(f.defeated && f.defeated.bekkyeomon);
+    if (f.forestClearingRead === undefined) f.forestClearingRead = false;
+    data.v = 8;
+    return data;
+  }
+
   function loadSlot(i) {
     try {
       const raw = localStorage.getItem(slotKey(i));
-      return raw ? migrateSlotV7(migrateSlotV6(migrateSlotV5(migrateSlotV4(migrateSlotV3(JSON.parse(raw)))))) : null;
+      return raw ? migrateSlotV8(migrateSlotV7(migrateSlotV6(migrateSlotV5(migrateSlotV4(migrateSlotV3(JSON.parse(raw))))))) : null;
     } catch (e) { return null; }
   }
 
@@ -273,7 +287,7 @@
     }
   }
 
-  const SAVE_VERSION = 7;
+  const SAVE_VERSION = 8;
   function save() {
     writeSlot(game.currentSlot, {
       v: SAVE_VERSION,
@@ -345,20 +359,29 @@
       if (!DIFF_ORDER.includes(s.difficulty)) s.difficulty = 'normal';
       s.tts = !!s.tts;
       s.reduceFx = ('reduceFx' in s) ? !!s.reduceFx : prefersReduce;
+      s.lowGraphics = !!s.lowGraphics;
       return s;
-    } catch (e) { return { textSpeed: 'normal', largeText: false, colorBlind: false, difficulty: 'normal', tts: false, reduceFx: prefersReduce }; }
+    } catch (e) { return { textSpeed: 'normal', largeText: false, colorBlind: false, difficulty: 'normal', tts: false, reduceFx: prefersReduce, lowGraphics: false }; }
   }
   function saveSettings() {
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
         textSpeed: game.textSpeed, largeText: game.largeText, colorBlind: game.colorBlind,
-        difficulty: game.difficulty, tts: game.tts, reduceFx: game.reduceFx,
+        difficulty: game.difficulty, tts: game.tts, reduceFx: game.reduceFx, lowGraphics: game.lowGraphics,
       }));
     } catch (e) { noteStorageFail(); }
   }
   function toggleReduceFx() {
     game.reduceFx = !game.reduceFx;
     saveSettings();
+    Sound.blip();
+  }
+  function toggleLowGraphics() {
+    game.lowGraphics = !game.lowGraphics;
+    saveSettings();
+    checkDPR();
+    try { tileCache.clear(); } catch (e) {}
+    game.notice = { text: game.lowGraphics ? '저사양 그래픽 ON — 화면 효과와 해상도를 낮췄다' : '저사양 그래픽 OFF', t: 140 };
     Sound.blip();
   }
   function cycleDifficulty() {
@@ -1786,12 +1809,19 @@
   const PRIVACY_RECOVERY_NEED = 3;
 
   function privacyLeak() { return Math.max(0, Math.min(PRIVACY_LEAK_MAX, game.flags.privacyLeak || 0)); }
-  function privacyLevelLabel(n) {
-    if (n >= 5) return '회복 필요';
-    if (n >= 3) return '따라붙는 광고';
-    if (n >= 1) return '찜찜한 시선';
-    return '안전';
+  function privacyPressureProfile(n) {
+    const level = Math.max(0, Math.min(PRIVACY_LEAK_MAX, n || 0));
+    const table = [
+      { label: '안전', stalkerWanted: 0, noise: '조용함' },
+      { label: '찜찜한 시선', stalkerWanted: 1, noise: '시선' },
+      { label: '이름이 불림', stalkerWanted: 1, noise: '속삭임' },
+      { label: '따라붙는 광고', stalkerWanted: 2, noise: '광고' },
+      { label: '문 앞 확인 증가', stalkerWanted: 2, noise: '확인요구' },
+      { label: '회복 필요', stalkerWanted: 3, noise: '추적' },
+    ];
+    return Object.assign({ level }, table[level]);
   }
+  function privacyLevelLabel(n) { return privacyPressureProfile(n).label; }
   function addPrivacyLeak(reason) {
     const before = privacyLeak();
     const after = Math.min(PRIVACY_LEAK_MAX, before + 1);
@@ -1862,7 +1892,7 @@
   function refreshStalkers(run) {
     if (boardCount(run) >= 3) {
       const leak = privacyLeak();
-      const wanted = 1 + (leak >= 3 ? 1 : 0) + (leak >= PRIVACY_LEAK_MAX ? 1 : 0);
+      const wanted = Math.max(1, privacyPressureProfile(leak).stalkerWanted);
       while (run.stalkers.length < wanted) spawnStalker(run);
       if (run.stalkers.length > wanted) run.stalkers.length = wanted;
     } else {
@@ -3011,9 +3041,14 @@
     }
   }
 
+  function prologueVisibleMarks() {
+    const props = MAP_PROPS[game.map] || [];
+    return props.filter((prop) => prop.flag || prop.kind === 'trace' || prop.kind === 'clearing')
+      .map((prop) => ({ map: game.map, x: prop.x, y: prop.y, label: prop.label || '', done: !!(prop.flag && game.flags[prop.flag]) }));
+  }
   function drawForestPrologueObjects(cx, cy) {
-    if (game.map !== 'forest' || game.flags.defeated.bekkyeomon) return;
-    const props = (MAP_PROPS.forest || []).filter((prop) => prop.kind === 'trace');
+    if (!['forest', 'forestdeep'].includes(game.map) || game.flags.defeated.bekkyeomon) return;
+    const props = (MAP_PROPS[game.map] || []).filter((prop) => prop.kind === 'trace' || prop.kind === 'clearing' || prop.flag);
     // 숲 흔적은 안내용 정적 표식에 가깝게 유지한다. 과한 펄스/부유감을 줄여
     // 저전력 기기에서 버벅임을 줄이고, 퍼즐 방 이펙트처럼 보이지 않게 한다.
     const bob = 0;
@@ -3498,14 +3533,14 @@
     }
     const mon = monsterAt(game.map, f.x, f.y);
     if (mon) {
-      if (game.map === 'forest' && mon.id === 'bekkyeomon' && !game.flags.introForestTrace) {
+      if ((game.map === 'forest' || game.map === 'forestdeep') && mon.id === 'bekkyeomon' && !game.flags.introForestTrace) {
         startDialog([
           '숲 안쪽에서 누군가의 목소리가 들린다.\n하지만 아직 길이 보이지 않는다.',
           '먼저 바로 뒤의 노란 발자국을 조사하자.\n흔적을 읽어야 따라에게 다가갈 수 있다.',
         ], '반디');
         return;
       }
-      if (game.map === 'forest' && mon.id === 'bekkyeomon' && !game.flags.ttaraFirstEncounter) {
+      if ((game.map === 'forest' || game.map === 'forestdeep') && mon.id === 'bekkyeomon' && !game.flags.ttaraFirstEncounter) {
         startDialog([
           '노란 발자국의 끝,\n나뭇잎 사이에 하얀 종이가 흩어져 있다.',
           '종이마다 누군가의 그림을 따라 그린 선이\n겹겹이 남아 있다.\n하지만 한가운데만 비어 있다.',
@@ -3540,10 +3575,10 @@
     const facingProp = getPropAt(game.map, f.x, f.y);
     // 숲 첫 흔적은 바닥 위 시각 오브젝트다. 목표 화살표를 따라 정확히 그 칸에 올라서도
     // Z/Enter가 먹히도록, 아직 확인 전이면 현재 발밑의 trace도 조사 대상으로 인정한다.
-    const standingTrace = (game.map === 'forest' && !game.flags.introForestTrace)
-      ? getPropAt(game.map, game.player.x, game.player.y)
-      : null;
-    const prop = facingProp || (standingTrace && standingTrace.kind === 'trace' ? standingTrace : null);
+    const standingProp = getPropAt(game.map, game.player.x, game.player.y);
+    const standingTrace = (game.map === 'forest' && !game.flags.introForestTrace) ? standingProp : null;
+    const standingFlagProp = (standingProp && standingProp.flag && !game.flags[standingProp.flag]) ? standingProp : null;
+    const prop = facingProp || (standingTrace && standingTrace.kind === 'trace' ? standingTrace : null) || standingFlagProp;
     if (prop) {
       const lines = [];
       if (game.map === 'introlab' && prop.kind === 'exit') {
@@ -4174,6 +4209,17 @@
     // 갱생 연출: 마음을 안아 준(자비) 경우, 친구가 되었음을 분명히 보여 준다
     if (b.mercyChoiceKind === 'mercy' && b.monId !== 'yeongi') {
       lines.push(`💛 ${mon.name}의 굳어 있던 마음이\n환하게 풀렸어요. 또 한 친구를 되돌렸다!`);
+    }
+    if (b.monId === 'bekkyeomon') {
+      game.flags.prologueClosed = true;
+      game.map = 'freestreet';
+      const p = game.player;
+      p.x = 14; p.y = 17; p.px = 14 * TS; p.py = 17 * TS; p.moving = false; p.dir = 'up';
+      held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
+      stickDir = null; stickRepeatFrames = 0;
+      lines.push('숲 안쪽 공터의 종이들이 조용히 접힌다.\n멀리서 네온 간판 하나가 반짝이며 문처럼 열린다.');
+      lines.push('프롤로그 끝.\n이제 1장 — 「전부 공짜 거리」로 들어간다.');
+      save();
     }
     if (mon.clear) lines.push(mon.clear);
     if (b.monId === 'yeongi') {
@@ -5195,7 +5241,7 @@
   // 단, 데이터 백업은 학생도 쓰는 기능이라 그대로 남겨 둔다.
   const PAUSE_ITEMS = ['journal', 'cards', 'halloffame', 'awards', 'cosmetics',
     'challenge', 'review', 'dex', 'backup', 'difficulty', 'textspeed', 'tts',
-    'largetext', 'colorblind', 'reducefx', 'mute', 'help', 'close'];
+    'largetext', 'colorblind', 'reducefx', 'lowgraphics', 'mute', 'help', 'close'];
   // 방탈출 중에는 「힌트」 항목을 맨 위에 붙인다 (터치 기기에서 H키 대체)
   function pauseItems() {
     return game.puzzleRun ? ['hint'].concat(PAUSE_ITEMS) : PAUSE_ITEMS;
@@ -5222,6 +5268,7 @@
     largetext: '큰 글씨',
     colorblind: '색약 모드',
     reducefx: '화면 효과 줄이기',
+    lowgraphics: '저사양 그래픽',
     mute: '소리',
     help: '? 도움말',
     close: '닫기',
@@ -5235,6 +5282,7 @@
     if (item === 'largetext') return game.largeText ? 'ON' : 'OFF';
     if (item === 'colorblind') return game.colorBlind ? 'ON' : 'OFF';
     if (item === 'reducefx') return game.reduceFx ? 'ON' : 'OFF';
+    if (item === 'lowgraphics') return game.lowGraphics ? 'ON' : 'OFF';
     if (item === 'mute') return Sound.muted ? '음소거' : 'ON';
     if (item === 'review') return `${mistakeCount(game.currentSlot)}개`;
     if (item === 'awards') return `${countAchievements(game.currentSlot)}/${ACHIEVEMENTS.length}`;
@@ -5295,6 +5343,7 @@
       else if (item === 'largetext') toggleLargeText();
       else if (item === 'colorblind') toggleColorBlind();
       else if (item === 'reducefx') toggleReduceFx();
+      else if (item === 'lowgraphics') toggleLowGraphics();
       else if (item === 'mute') Sound.toggleMute();
       else if (item === 'help') openHelp('pause');
       else if (item === 'close') closePause();
@@ -7832,11 +7881,11 @@
 
     if ((game.flags.privacyLeak || 0) > 0 || game.flags.privacyRecoveryActive) {
       const leak = privacyLeak();
-      const boxW = 148;
+      const boxW = 206;
       utBox(LW - boxW - 10, game.flags.mercy > 0 ? 46 : 12, boxW, 30, 4);
       ctx.fillStyle = leak >= 5 ? '#e0453a' : leak >= 3 ? '#ffd644' : '#9bd3ff';
       ctx.font = 'bold 13px monospace';
-      ctx.fillText(`노출도 ${leak}/5`, LW - boxW, game.flags.mercy > 0 ? 66 : 32);
+      ctx.fillText(`노출도 ${leak}/5 · ${privacyLevelLabel(leak)}`, LW - boxW, game.flags.mercy > 0 ? 66 : 32);
     }
 
     if (Sound.muted) {
@@ -8969,7 +9018,7 @@
   window.__game = game; // 디버그/테스트용
   window.__test = { // 테스트용 훅
     buildReportText, buildLearningSummary, recordTopicResult, countAchievements,
-    migrateSlotV6, migrateSlotV7,
+    migrateSlotV6, migrateSlotV7, migrateSlotV8,
     buildBackupText, applyBackup, buildAdaptivePool, buildDailyPool,
     recordPlayDay, recordDailyDone, getMeta, todayStr,
     unlockedCount, getCosmetic, setCosmetic, achievementCtx,
@@ -8980,7 +9029,8 @@
     applyTraceRoomClass, applyTiltStreetClass, applyRumorStreetClass,
     applyArcadeClass, applyCozyhomeClass, applyFinalClass,
     getPuzzleLog, writePuzzleLog, nextWaypoint, currentObjective: () => getObjective(game.flags, game.map), // 나침반/HUD 경로 — E2E가 '화살표 따라가기'를 재현할 때 사용
-    privacyLeak, addPrivacyLeak, notePrivacyRecoveryPiece,
+    privacyLeak, privacyPressureProfile, addPrivacyLeak, notePrivacyRecoveryPiece,
+    toggleLowGraphics, effectiveDprCap, prologueVisibleMarks,
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록
