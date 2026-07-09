@@ -4202,6 +4202,14 @@ const EXAMINE_TILES = {
 // 맵별 특별 살펴보기 지점(좌표). 같은 좌표면 기본 타일 문구보다 우선.
 const MAP_PROPS = {
   freestreet: [
+    { x: 6, y: 6, kind: 'district', label: '접수처 불빛',
+      text: '왼쪽 골목 전체가 접수처 화면빛으로 푸르게 깜빡인다.\n거리의 첫 구역이라는 표시처럼 보인다.' },
+    { x: 28, y: 6, kind: 'district', label: '게시판 벽',
+      text: '오른쪽 건물 벽에 빈 칸 많은 게시판들이 층층이 붙어 있다.\n내 이름이 들어갈 자리를 비워 둔 것 같다.' },
+    { x: 5, y: 17, kind: 'district', label: '배달 상자길',
+      text: '남서쪽 바닥에 낡은 상자 자국이 길처럼 이어져 있다.\n창고 쪽으로 물건보다 정보가 더 많이 지나간 듯하다.' },
+    { x: 17, y: 5, kind: 'district', label: '세 잠금 금고문',
+      text: '금고문 앞에 작은 불 세 개가 꺼져 있다.\n각 구역을 지나야 하나씩 켜질 것 같다.' },
     { x: 12, y: 8, kind: 'dama_buildup', label: '작은 약관', flag: 'damaStreetTermsRead',
       text: '광고판 아래 아주 작은 글씨가 있다.\n「무료 이용을 위해, 발자국·시선·망설임을 보관합니다.」\n담아의 이름이 맨 아래에 찍혀 있다.' },
     { x: 22, y: 14, kind: 'dama_buildup', label: '비어 있는 상자', flag: 'damaStreetBoxRead',
@@ -4222,12 +4230,20 @@ const MAP_PROPS = {
   forest: [
     { x: 17, y: 16, flag: 'introForestTrace', kind: 'trace', label: '노란 발자국', clue: true,
       text: '넓은 숲길 한가운데, 젖은 흙 위로 노란 발자국이 이어진다.\n작고 급한 걸음. 누군가 방금 안쪽 공터로 사라진 듯하다.\n발자국 끝에 삐뚤어진 연필선이 하나 그어져 있다.' },
+    { x: 20, y: 12, kind: 'trace', label: '찢어진 종이길',
+      text: '노란 발자국 옆으로 찢어진 종이 조각이 듬성듬성 이어진다.\n누군가 급히 지나간 길이 숲 안쪽으로 길게 남아 있다.' },
+    { x: 12, y: 10, kind: 'trace', label: '굽은 이정표',
+      text: '작은 이정표가 반쯤 돌아가 있다.\n화살표 끝에는 누군가 연필로 그은 노란 선이 덧칠되어 있다.' },
     { x: 14, y: 18, text: '나무 사이로 실험실 문빛이 아주 작게 보인다.\n돌아갈 수는 있지만, 발자국은 더 깊은 곳을 향한다.' },
     { x: 9, y: 8, text: '풀숲에 찢어진 종이 조각이 걸려 있다.\n남의 그림을 따라 그린 선들이 겹쳐져, 원래 모양을 잃었다.' },
   ],
   forestdeep: [
     { x: 13, y: 14, flag: 'forestClearingRead', kind: 'clearing', label: '망설임의 원',
       text: '안쪽 공터 바닥에 작은 원이 남아 있다.\n남의 선을 따라 긋던 발끝이, 여기서 처음 멈춘 것 같다.' },
+    { x: 10, y: 6, kind: 'clearing', label: '빈 스케치틀',
+      text: '나뭇가지로 세운 작은 틀 안이 비어 있다.\n누군가 남의 그림이 아니라 자기 선을 기다리는 것 같다.' },
+    { x: 15, y: 8, kind: 'clearing', label: '하얀 종이 더미',
+      text: '마른 잎 위에 하얀 종이들이 조용히 모여 있다.\n가까이 갈수록 따라의 숨소리처럼 바스락거린다.' },
     { x: 11, y: 7, text: '나무껍질에 하얀 종이 조각이 붙어 있다.\n"잘 그리기보다, 내 선으로 시작하기."' },
   ],
   ownerroom: [
