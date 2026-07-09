@@ -1202,6 +1202,41 @@ const MAPS = {
     monsters: [],
   },
 
+  // 프롤로그 실험실 — 첫 5분. 단서 3개를 모아 문을 열면 정적의 숲으로.
+  introlab: {
+    name: '어두운 실험실',
+    song: 'silence',
+    intro: [
+      '눈을 뜨니, 좁은 방이다.\n컴퓨터 몇 대와 낡은 기계들이\n어둠 속에 잠들어 있다.',
+      '…벽 한가운데, 문이 하나 있다.\n반짝이지 않는, 칙칙한 문.',
+      '이 방에서 나가려면\n무언가를 찾아야 한다 —\n실마리를.',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEH',
+      'HHHHHHHHHH9HHHHHHHHH',
+    ],
+    warps: [
+      { x: 10, y: 14, to: 'forest', tx: 13, ty: 10, needFlag: 'introDoorOpen',
+        lockText: '칙칙한 문은 굳게 닫혀 있다.' },
+    ],
+    npcs: [],
+    signs: [],
+    monsters: [],
+  },
+
   forest: {
     name: '정적의 숲',
     song: 'field',
@@ -2544,8 +2579,18 @@ function computeEnding(choiceKind, mercy) {
 
 // 현재 목표 텍스트. curMap은 생략 가능(허브/보스방 안인지 좁히는 용도 — getObjectiveTarget과
 // 같은 구조). 프롤로그(따라)부터 파이널까지 getV2ObjectiveText의 사다리를 그대로 쓴다.
+function introClueCount(flags) {
+  return (flags.introClue1 ? 1 : 0) + (flags.introClue2 ? 1 : 0) + (flags.introClue3 ? 1 : 0);
+}
+
 function getObjective(flags, curMap) {
   const d = flags.defeated;
+  // 프롤로그 실험실 — 단서 수집
+  if (curMap === 'introlab' && !flags.introDoorOpen) {
+    const c = introClueCount(flags);
+    if (c === 0) return '실험실을 살펴보자 — 무언가 있을지도';
+    return `실험실의 단서를 모으자 (${c}/3)`;
+  }
   if (d.yeongi) {
     return flags.trueEnding
       ? '모든 이야기의 끝. 영이가 마을에서 기다려요'
@@ -2660,6 +2705,10 @@ function getV2ObjectiveText(flags, curMap) {
 // curMap은 생략 가능(수업 모드의 스폰 계산처럼 "현재 위치"가 없는 호출용).
 function getObjectiveTarget(flags, curMap) {
   const d = flags.defeated;
+  // 프롤로그 실험실 — 출구를 가리킨다 (단서 수집 안내는 getObjective)
+  if (curMap === 'introlab' && !flags.introDoorOpen) {
+    return { map: 'introlab', x: 10, y: 14, label: '출구' };
+  }
   if (!flags.talkedProf) return { map: 'village', x: 4, y: 12, label: '박사님' };
   if (d.yeongi) {
     return flags.trueEnding ? { map: 'village', x: 5, y: 12, label: '영이' } : null;
@@ -4121,6 +4170,15 @@ const MAP_PROPS = {
     { x: 2, y: 11, flag: 'seenButtons',
       text: '구석에 버튼 더미가 산처럼 쌓여 있다.\n"접속 요청" 버튼들 — 아무도\n눌러 주지 않은 채였다.' },
     { x: 17, y: 2, text: '꺼진 조명 옆에, 반짝이\n한때 쓰던 소품들이 홀로 놓여 있다.\n먼지가 소복하다.' },
+  ],
+  // 프롤로그 실험실 — 단서 3개
+  introlab: [
+    { x: 4, y: 7, flag: 'introClue1',
+      text: '탁자 위에 낡은 태블릿이 놓여 있다.\n화면에 희미한 글자가 떠 있다:\n"…도와줘. 나, 여기 있어."' },
+    { x: 16, y: 5, flag: 'introClue2',
+      text: '모니터 한 대가 희미하게 빛나고 있다.\n화면에는 누군가의 낙서 같은 메모:\n"출구 비밀번호: 기억 속에 있다."' },
+    { x: 4, y: 11, flag: 'introClue3',
+      text: '벽에 포스트잇이 바스락거린다.\n"문을 열려면, 내가 누군지 알아야 해.\n…힌트: 나를 만든 사람부터 찾아봐."' },
   ],
 };
 

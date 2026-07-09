@@ -157,6 +157,10 @@
       bandiJoined: false,  // 동행자 반디 합류(오프닝 직후)
       bandiRevealed: false, // 반디 정체 공개(코어 봉헌 완료) — 동행 종료
       bandiSaid: {},       // 반디 조언을 이미 건넨 맵 (맵당 1회)
+      introClue1: false,   // 프롤로그 실험실 단서① 태블릿
+      introClue2: false,   // 프롤로그 실험실 단서② 모니터
+      introClue3: false,   // 프롤로그 실험실 단서③ 포스트잇
+      introDoorOpen: false, // 프롤로그 실험실 출구 개방 — 단서 3개 수집 완료
     };
   }
 
@@ -189,11 +193,23 @@
     data.v = 3;
     return data;
   }
+  // v3→v4: introlab 플래그 기본값. 이미 숲 이상을 진행한 세이브라면 문을 열고 지난 것으로 본다.
+  function migrateSlotV4(data) {
+    if (!data || !data.flags) return data;
+    const f = data.flags;
+    if (f.introClue1 !== undefined) return data; // 이미 v4 이상
+    f.introClue1 = !!f.talkedProf;
+    f.introClue2 = !!f.talkedProf;
+    f.introClue3 = !!f.talkedProf;
+    f.introDoorOpen = !!f.talkedProf;
+    data.v = 4;
+    return data;
+  }
 
   function loadSlot(i) {
     try {
       const raw = localStorage.getItem(slotKey(i));
-      return raw ? migrateSlotV3(JSON.parse(raw)) : null;
+      return raw ? migrateSlotV4(migrateSlotV3(JSON.parse(raw))) : null;
     } catch (e) { return null; }
   }
 
@@ -217,7 +233,7 @@
     }
   }
 
-  const SAVE_VERSION = 3;
+  const SAVE_VERSION = 4;
   function save() {
     writeSlot(game.currentSlot, {
       v: SAVE_VERSION,
@@ -3309,7 +3325,16 @@
     const prop = getPropAt(game.map, f.x, f.y);
     if (prop) {
       // 스토리 복선 등 — 조사 지점에 flag가 있으면 플래그를 남긴다 (예: seenPhoto1)
-      if (prop.flag && !game.flags[prop.flag]) { game.flags[prop.flag] = true; save(); }
+      if (prop.flag && !game.flags[prop.flag]) {
+        game.flags[prop.flag] = true; save();
+        // 프롤로그 실험실 — 단서 3개 수집 시 문 개방
+        if (game.map === 'introlab' && !game.flags.introDoorOpen &&
+            introClueCount(game.flags) >= 3) {
+          game.flags.introDoorOpen = true;
+          save();
+          game.notice = { text: '칙칙한 문이 철컥하고 열렸다!', t: 200 };
+        }
+      }
       startDialog([prop.text]);
       return;
     }
@@ -3400,6 +3425,14 @@
     }
     // 플래그 게이트 (예: 2장 입구 — chapter1Clear 전엔 잠김)
     if (w.needFlag && !game.flags[w.needFlag]) {
+      // 프롤로그 실험실 — 동적 단서 카운트 표시
+      if (game.map === 'introlab') {
+        const c = introClueCount(game.flags);
+        pushBack();
+        Sound.bump();
+        startDialog([w.lockText || '문이 잠겨 있다.', `단서 ${c}/3 확보.`]);
+        return;
+      }
       pushBack();
       Sound.bump();
       startDialog([w.lockText || '문이 잠겨 있다.']);
@@ -7435,6 +7468,7 @@
   // v2 신규 스테이지 맵(전부 공짜 거리~코어) → 장 번호를 맵 자체에 고정한다.
   // HUD가 진행 플래그로 다시 계산하지 않고 그 스테이지의 장을 우선 보여 주기 위함.
   const MAP_CHAPTER = {
+    introlab: 0, // 프롤로그
     freestreet: 1, traceroom: 1, boardplaza: 1, warehouse: 1, ownerroom: 1,
     tiltstreet: 2, echoalley: 2, samplehouse: 2, dimstreet: 2, gatekeeper: 2,
     rumorstreet: 3, tipsroom: 3, editroom: 3, towerroom: 3, towerroof: 3,
@@ -7446,6 +7480,7 @@
   // "(N+1)장", chapter5Clear 이후 = "파이널". 신규 스테이지 맵은 그 맵 자신의 장을 우선한다.
   function chapterBadgeLabel(mapId, flags) {
     const fixed = MAP_CHAPTER[mapId];
+    if (fixed === 0) return '프롤로그';
     if (fixed === 'final') return '파이널';
     if (fixed) return `${fixed}장`;
     if (flags.chapter5Clear) return '파이널';
@@ -8078,9 +8113,9 @@
   function startNewGame(slot, name) {
     game.currentSlot = slot;
     game.playerName = name || '수호자';
-    game.map = 'village';
-    game.player.x = 13; game.player.y = 16;
-    game.player.px = 13 * TS; game.player.py = 16 * TS;
+    game.map = 'introlab';
+    game.player.x = 10; game.player.y = 13;
+    game.player.px = 10 * TS; game.player.py = 13 * TS;
     game.player.dir = 'up';
     game.flags = newFlags();
     game.mode = 'world';
@@ -8088,15 +8123,15 @@
     recordPlayDay(slot);
     checkCosmeticUnlocks(slot);
     // 인트로 암전 — 첫 3줄(컴퓨터실 장면) 동안 화면을 거의 검게 덮는다.
-    // 4번째 줄(idx===3, "저 어른에게 물어보자")부터 걷히기 시작한다(drawWorld에서 처리).
+    // 4번째 줄부터 걷히기 시작한다(drawWorld에서 처리).
     // 인트로 동안은 아무 음악도 흐르지 않는다 — 침묵으로 시작해, 눈을 뜬 뒤에야
-    // 마을의 곡이 아주 낮게 흘러든다 (다크 톤 오프닝 연출).
+    // 음악이 아주 낮게 흘러든다 (다크 톤 오프닝 연출).
     game.introDim = { fadeFrame: -1 };
     startDialog([
-      '방과 후, 텅 빈 컴퓨터실.\n낡은 태블릿 하나가\n혼자 켜져 있다.',
-      `${game.playerName}이(가) 화면에 손을 대는 순간—\n빛이 손끝을 붙잡고 끌어당긴다.\n…떨어진다.`,
-      '눈을 뜨니 낯선 마을.\n한 번도 와 본 적 없는데…\n어딘가, 낯이 익다.',
-      '저만치 누군가 서 있다.\n일단, 저 어른에게 물어보자.\n(목표는 왼쪽 위에 표시돼요)',
+      '눈을 뜨니 좁은 방이다.\n낡은 기계들과 컴퓨터 몇 대가\n어둠 속에 잠들어 있다.',
+      `${game.playerName}이(가) 일어난 곳은\n어디일까… 기억이 잘 나지 않는다.`,
+      '벽 한가운데, 반짝이지 않는 문.\n이 방에서 나가려면\n무언가를 찾아야 한다.',
+      '방 안을 살펴보자 — 실마리가 있을지도.\n(목표는 왼쪽 위에 표시돼요)',
     ], null, () => {
       // 동행자 합류 — 무음의 인트로 끝에 작은 빛이 날아든다. 음악은 그 뒤에야 흘러든다.
       startDialog([

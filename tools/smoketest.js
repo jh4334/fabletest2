@@ -110,13 +110,35 @@ check('이름 입력 화면', g.mode === 'title' && g.titleScreen === 'name');
 g.nameConfirm = true; step(2);
 check('인트로 대화 시작', g.mode === 'dialog');
 advanceDialog();
-check('월드 진입', g.mode === 'world' && g.map === 'village');
-check('시작 위치 (13,16)', g.player.x === 13 && g.player.y === 16);
+check('월드 진입', g.mode === 'world' && g.map === 'introlab');
+check('시작 위치 (10,13)', g.player.x === 10 && g.player.y === 13);
 check('슬롯 0에 저장됨', !!storage.get('ai-ethics-adventure-slot-0'));
 check('기본 이름 수호자', g.playerName === '수호자');
 check('동행자 반디 합류 (오프닝 직후)', g.flags.bandiJoined === true);
 
-console.log('[2] 박사님과 대화 (메인 퀘스트 시작)');
+console.log('[1b] 프롤로그 실험실 — 단서 수집 및 출구 개방');
+// 단서① 태블릿 (4,7): 아래 칸에서 위를 보며 조사
+setPos(4, 8, 'up'); tap('z');
+check('단서① 태블릿 발견', g.mode === 'dialog');
+advanceDialog();
+check('태블릿 플래그 설정', g.flags.introClue1 === true);
+// 단서② 모니터 (16,5): 아래 칸에서 위를 보며 조사
+setPos(16, 6, 'up'); tap('z');
+check('단서② 모니터 발견', g.mode === 'dialog');
+advanceDialog();
+check('모니터 플래그 설정', g.flags.introClue2 === true);
+check('문 아직 닫힘 (2/3)', g.flags.introDoorOpen === false);
+// 단서③ 포스트잇 (4,11): 아래 칸에서 위를 보며 조사
+setPos(4, 12, 'up'); tap('z');
+check('단서③ 포스트잇 발견', g.mode === 'dialog');
+advanceDialog();
+check('포스트잇 플래그 설정', g.flags.introClue3 === true);
+check('모든 단서 수집 → 문 개방', g.flags.introDoorOpen === true);
+// 워프를 건너뛰고 정적의 숲으로 직접 이동 (이후 테스트 연속성)
+g.map = 'forest'; g.flags.visited.forest = true;
+
+console.log('[2] 마을 → 박사님과 대화 (메인 퀘스트 시작)');
+g.map = 'village'; // 숲→마을 워프 완료 상태로 진행
 setPos(5, 12, 'left'); // 박사님 (4,12) 옆
 tap('z');
 check('박사님 대화 시작', g.mode === 'dialog');
@@ -252,7 +274,7 @@ console.log('[22] 저장 데이터 무결성 (v3)');
 g.map = 'village';
 setPos(13, 16, 'up');
 const save = JSON.parse(storage.get('ai-ethics-adventure-slot-0'));
-check('세이브 버전 3', save.v === 3);
+check('세이브 버전 4', save.v === 4);
 check('증표 필드 없음(v3)', save.flags.badges === undefined);
 check('프롤로그 진행 저장(따라)', save.flags.defeated.bekkyeomon === true);
 check('v3 인물 8종만 defeated에 존재', Object.keys(save.flags.defeated).length === 8);
