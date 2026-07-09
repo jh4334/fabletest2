@@ -1,4 +1,4 @@
-// 게임 데이터: 맵, NPC, 몬스터, 퀴즈
+// 게임 데이터: 맵, NPC, 인물(여덟 조각), 퀴즈
 //
 // 타일 종류
 //  G 풀  P 길  F 꽃  S 모래  B 다리  C 동굴바닥  M 탑바닥  1 탑문(워프)
@@ -234,7 +234,7 @@ const MAPS = {
   },
 
   // 1장 보스 「주인의 방」 — 금고 잠금 3개가 풀리면 열리는 담아의 은신처.
-  // 담아(보스)는 map 몬스터가 아니라 NPC(sujip_boss)로 두어 도감/처치 플래그를
+  // 담아(보스)는 map 배치 인물이 아니라 NPC(sujip_boss)로 두어 친구 수첩/마음 기록 플래그를
   // 오염시키지 않는다. 조우 시 설득 배틀(PERSUADE.sujipmon_boss)로 이어진다.
   ownerroom: {
     name: '주인의 방',
@@ -1009,7 +1009,7 @@ const MAPS = {
   },
 
   // 파이널 보스 「고요」 — 뜰이 끝나는 자리. 조우는 PERSUADE.goyo_boss로 진행한다.
-  // 조우 → PERSUADE.goyo_boss. 승리 → goyoClear(코어 개방).
+  // 조우 → PERSUADE.goyo_boss. 클리어 → goyoClear(코어 개방).
   goyostage: {
     name: '고요의 안쪽',
     song: 'battle',
@@ -1030,7 +1030,7 @@ const MAPS = {
     ],
     warps: [
       { x: 7, y: 9, to: 'quietyard3', tx: 9, ty: 11 },
-      // 고요가 있던 자리 뒤 — 승리(goyoClear) 후에야 열리는 코어 입구
+      // 고요가 있던 자리 뒤 — 클리어(goyoClear) 후에야 열리는 코어 입구
       { x: 7, y: 1, to: 'coreroom', tx: 7, ty: 8, needFlag: 'goyoClear',
         lockText: '고요가 있던 자리 뒤로,\n옅은 빛이 새어 나온다.\n…아직, 열리지 않는다.' },
     ],
@@ -1242,7 +1242,7 @@ const MAPS = {
 
 };
 
-// ---- 몬스터 정의 ----
+// ---- 인물(여덟 조각) 정의 ----
 // hp = 맞혀야 하는 문제 수
 const MONSTERS = {
   bekkyeomon: {
@@ -1386,7 +1386,7 @@ const MONSTERS = {
     },
   },
 
-  // ---- 보너스: AI 미래연구소 (증표·자비 없음, 자유 연습) ----
+  // ---- 보너스: AI 미래연구소 (자비 없음, 자유 연습) ----
   hwangakmon: {
     name: '그럴싸',
     topic: 'genai',
@@ -2708,8 +2708,8 @@ const DEX_ORDER = [
 ];
 
 // ===== v2 설득 배틀 (M1 프로토타입) =====
-// 퀴즈 출제 대신, 몬스터의 오개념 주장(claim)에 공감/질문/증거/반박으로 대응해
-// 마음 게이지를 채우는 배틀. PERSUADE에 정의된 몬스터만 이 방식으로 조우한다.
+// 퀴즈 출제 대신, 인물의 오개념 주장(claim)에 공감/질문/증거/반박으로 대응해
+// 마음 게이지를 채우는 배틀. PERSUADE에 정의된 인물만 이 방식으로 조우한다.
 // 대응 효과는 마음 상태(닫힘→동요→열림)에 따라 달라진다 — 순서가 전략이다.
 
 // 증거 카드 — 배틀에서 「증거 보여주기」로 사용. desc는 카드 뒷면 설명.
@@ -2908,7 +2908,7 @@ const PERSUADE = {
       },
       {
         text: '…모은 걸 다 돌려주면,\n나한텐 뭐가 남는데?',
-        best: 'empathy',  // 정답은 공감 — 논리로 시작한 전투가 마음으로 끝나는 곡선
+        best: 'empathy',  // 정답은 공감 — 논리로 시작한 설득이 마음으로 끝나는 곡선
         unlockAt: 70,     // 마음이 열린 뒤에야 꺼내는 속마음
         hint: '"…빈손이 되는 게 무서워.\n혼자 남는 게 무서운 거야."\n(증거 말고 「공감하기」가 필요해!)',
         fragments: ['…빈손이 되는 게 무서워.', '혼자 남는 게, 무서운 거야…'],
@@ -3360,7 +3360,7 @@ const PERSUADE = {
   // v1 winBattle의 기존 yeongi 분기(computeEnding·진엔딩 연출)를 그대로 재사용한다.
   // intro/win/mercy는 정의하지 않는다 — resolvePersuadeMon이 MONSTERS.yeongi의 기존
   // 텍스트로 자동 대체한다(이미 잘 쓰인 대사이므로 그대로 물려받는 쪽을 택했다).
-  // 기믹 없음 — 가장 조용한 전투(탄막 최소·느린 rain).
+  // 기믹 없음 — 가장 조용한 배틀(탄막 최소·느린 rain).
   yeongi_boss: {
     gaugeMax: 100,
     closedThreshold: 2,
