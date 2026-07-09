@@ -134,6 +134,9 @@ check('단서③ 포스트잇 발견', g.mode === 'dialog');
 advanceDialog();
 check('포스트잇 플래그 설정', g.flags.introClue3 === true);
 check('모든 단서 수집 → 문 개방', g.flags.introDoorOpen === true);
+check('문 개방 후 목표는 박사님이 아니라 출구', windowObj.__test.currentObjective() === '출구가 열렸다 — 문으로 나가자');
+const introExitTarget = windowObj.__test.nextWaypoint(g.flags, 'introlab');
+check('문 개방 후 나침반은 열린 출구를 가리킴', introExitTarget && introExitTarget.x === 10 && introExitTarget.y === 14);
 // 워프를 건너뛰고 정적의 숲으로 직접 이동 (이후 테스트 연속성)
 g.map = 'forest'; g.flags.visited.forest = true;
 
