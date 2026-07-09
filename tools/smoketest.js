@@ -60,7 +60,7 @@ for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/game.js']
 }
 
 const g = windowObj.__game;
-const { MAPS } = vm.runInContext('({ MAPS })', sandbox);
+const { MAPS, MAP_PROPS } = vm.runInContext('({ MAPS, MAP_PROPS })', sandbox);
 
 // ---------- 시뮬레이션 도우미 ----------
 function step(n = 1) {
@@ -307,7 +307,7 @@ check('승리 대화', g.mode === 'dialog');
 advanceDialog();
 check('베껴몬 깨우침(설득)', g.flags.defeated.bekkyeomon === true);
 check('프롤로그 마무리 컷신 완료 플래그', g.flags.prologueClosed === true);
-check('프롤로그 마무리 후 1장 거리 입구로 자연 진입', g.map === 'freestreet' && g.player.x === 14 && g.player.y === 17 && g.player.dir === 'up');
+check('프롤로그 마무리 후 1장 거리 입구로 자연 진입', g.map === 'freestreet' && g.player.x === 18 && g.player.y === 21 && g.player.dir === 'up');
 check('1장 목표가 바로 거리 탐험으로 이어짐', windowObj.__test.currentObjective() === '금고문으로 — 구역을 돌자');
 check('기억은 승리 후 지워짐', !g.flags.persuadeMemory.bekkyeomon);
 check('설득 로그 누적(문·조각)', g.flags.pStats.gateRight === 1 && g.flags.pStats.gateWrong === 1 &&
@@ -891,7 +891,7 @@ check('워프 직후 멈춤(도착칸에 정지)', g.player.x === 20 && g.player
 console.log('[67b] 주요 챕터 경계 워프 — 나간 방향의 반대편 입구에서 시작');
 {
   const cases = [
-    ['freestreet', 27, 13, 'tiltstreet', 1, 10, 'right'],
+    ['freestreet', 37, 15, 'tiltstreet', 1, 10, 'right'],
     ['tiltstreet', 27, 10, 'rumorstreet', 1, 10, 'right'],
     ['rumorstreet', 27, 10, 'arcade', 1, 8, 'right'],
     ['arcade', 21, 8, 'cozyhome', 1, 8, 'right'],
@@ -922,27 +922,44 @@ storage.set('ai-ethics-adventure-puzzle-0', JSON.stringify({}));
 g.dialog = null; g.mode = 'world'; g.map = 'village'; setPos(24, 6, 'up');
 hold('ArrowUp', 14);
 check('마을 네온 문 → 거리 진입 (허브)', g.map === 'freestreet' && !g.puzzleRun);
+check('1장 거리 허브가 넓어짐', MAPS.freestreet.tiles[0].length >= 36 && MAPS.freestreet.tiles.length >= 22);
+const freestreetWarp = (to) => MAPS.freestreet.warps.find((w) => w.to === to);
+const manhattan = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+check('1장 주요 구역 입구가 한 화면에 다닥다닥 붙지 않음',
+  manhattan(freestreetWarp('traceroom'), freestreetWarp('boardplaza')) >= 18 &&
+  manhattan(freestreetWarp('traceroom'), freestreetWarp('warehouse')) >= 12 &&
+  manhattan(freestreetWarp('ownerroom'), freestreetWarp('tiltstreet')) >= 24);
+check('1장 빌드업 조사 표식 3개 이상', (MAP_PROPS.freestreet || []).filter((p) => p.kind === 'dama_buildup').length >= 3);
 check('거리에 살금 2명(wander NPC)', MAPS.freestreet.npcs.filter((n) => n.name === '살금' && n.wander).length === 2);
+const streetVisuals0 = windowObj.__test.ch1StreetVisualProfile(0, false);
+const streetVisuals3 = windowObj.__test.ch1StreetVisualProfile(3, false);
+const streetVisuals5 = windowObj.__test.ch1StreetVisualProfile(5, false);
+const streetVisualsLow = windowObj.__test.ch1StreetVisualProfile(5, true);
+check('1장 노출도 단계별 거리 표식이 공간 변화로 분화',
+  streetVisuals0.adSigns < streetVisuals3.adSigns && streetVisuals3.adSigns < streetVisuals5.adSigns &&
+  streetVisuals0.sensors < streetVisuals5.sensors);
+check('저사양 모드에서 1장 거리 장식 부담 감소',
+  streetVisualsLow.adSigns < streetVisuals5.adSigns && streetVisualsLow.glow === false);
 const getNpcDialogT = vm.runInContext('getNpcDialog', sandbox);
 check('살금 대사 2종 — 미안해하는 말투',
   /미안/.test(getNpcDialogT('salgeum_st1', g.flags).join(' ')) &&
   /미안/.test(getNpcDialogT('salgeum_st2', g.flags).join(' ')));
 
 // 순서 강제: 구역① 클리어 전엔 게시판 광장(새김)이 돌려보낸다
-g.dialog = null; g.mode = 'world'; setPos(22, 5, 'up');
+g.dialog = null; g.mode = 'world'; setPos(28, 6, 'up');
 hold('ArrowUp', 12);
 check('구역① 전 — 광장 입장 거절(거리에 남음)', g.map === 'freestreet');
 check('새김이 돌려보내는 안내', g.mode === 'dialog' && /조각이 없네/.test(g.dialog.lines[0]));
 advanceDialog();
 // 금고문: 잠금 0/3 — 굳게 닫혀 있다
-g.dialog = null; g.mode = 'world'; setPos(14, 5, 'up');
+g.dialog = null; g.mode = 'world'; setPos(17, 5, 'up');
 hold('ArrowUp', 12);
 check('잠금 0/3 — 금고문 잠김', g.map === 'freestreet' && g.mode === 'dialog');
 check('잠금 진행 안내(0/3)', g.dialog.lines.some((l) => /0\/3/.test(l)));
 advanceDialog();
 
 // 구역① 진입 (거리 왼쪽 문 5,4)
-g.dialog = null; g.mode = 'world'; setPos(5, 5, 'up');
+g.dialog = null; g.mode = 'world'; setPos(6, 6, 'up');
 hold('ArrowUp', 14);
 check('살금의 접수처 입장', g.map === 'traceroom' && !!g.puzzleRun && g.puzzleRun.id === 'traces');
 check('정보 토큰 5종 소지 시작', Object.values(g.puzzleRun.held).filter(Boolean).length === 5);
@@ -1028,7 +1045,7 @@ check('클리어 대화 시작', g.mode === 'dialog');
 check('금고 잠금 해제 안내(1/3)', g.dialog.lines.some((l) => /1\/3/.test(l)));
 advanceDialog();
 check('클리어 → 거리 복귀(접수처 문 앞)', g.map === 'freestreet' && !g.puzzleRun &&
-  g.player.x === 5 && g.player.y === 5);
+  g.player.x === 6 && g.player.y === 6);
 check('구역① 보상은 ev_minimal 1장', g.flags.evCards.includes('ev_minimal') &&
   !g.flags.evCards.includes('ev_footprint'));
 plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
@@ -1036,7 +1053,7 @@ check('퍼즐 done/clears 기록', plog.traces.done === true && plog.traces.clea
 check('입장~클리어 프레임 누적 기록', plog.traces.timeFrames > 0);
 
 // 재입장 가능(연습용) — clears 증가
-g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(5, 5, 'up');
+g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(6, 6, 'up');
 hold('ArrowUp', 14);
 check('재입장 가능', g.map === 'traceroom' && !!g.puzzleRun);
 g.puzzleRun.given = []; g.puzzleRun.boardFace = false; g.puzzleRun.held.nickname = true;
@@ -1045,7 +1062,7 @@ plog = JSON.parse(storage.get('ai-ethics-adventure-puzzle-0'));
 check('재클리어로 clears 증가', plog.traces.clears >= 2);
 
 console.log('[68b] 구역② 새김의 게시판 광장 — 사본 3개 회수 (금고 사본은 회수 불가)');
-g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(22, 5, 'up');
+g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(28, 6, 'up');
 hold('ArrowUp', 14);
 check('구역① 클리어 후 광장 입장', g.map === 'boardplaza' && !!g.puzzleRun && g.puzzleRun.id === 'copies');
 check('떠도는 사본 3개', g.puzzleRun.copies.length === 3 && g.puzzleRun.collected === 0);
@@ -1080,7 +1097,7 @@ check('copies done/clears 기록(같은 스키마)', plog.copies.done === true &
   plog.copies.timeFrames > 0);
 
 console.log('[68c] 구역③ 배달 창고 — 차단 레버 순서 퍼즐 (오답 기록 포함)');
-g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(4, 14, 'down');
+g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(5, 17, 'down');
 hold('ArrowDown', 14);
 check('창고 입장', g.map === 'warehouse' && !!g.puzzleRun && g.puzzleRun.id === 'levers');
 check('첫 상자(1호·달 레인) 대기', g.puzzleRun.boxIdx === 0 && g.puzzleRun.diverted === 0);
@@ -1112,7 +1129,7 @@ check('levers done + 오답 기록 유지(같은 스키마)', plog.levers.done =
 
 console.log('[68d] 금고 잠금 3개 해제 → 주인의 방 개방 + 복선 조사');
 g.flags.visited.ownerroom = true; // 인트로 스킵
-g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(14, 5, 'up');
+g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(17, 5, 'up');
 hold('ArrowUp', 12);
 check('잠금 3/3 → 주인의 방 진입', g.map === 'ownerroom');
 // 복선: 서랍의 낡은 사진 (9,1) — 조사하면 seenPhoto1 플래그
@@ -1144,7 +1161,7 @@ storage.set('ai-ethics-adventure-puzzle-0',
   JSON.stringify({ traces: { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 10 } }));
 g.flags.visited = g.flags.visited || {};
 g.flags.visited.freestreet = true; g.flags.visited.ownerroom = true;
-g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(14, 5, 'up');
+g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(17, 5, 'up');
 hold('ArrowUp', 12);
 check('잠금 1/3 — 금고문 잠김(거리에 남음)', g.map === 'freestreet');
 check('잠김 안내 대사 표시', g.mode === 'dialog' && g.dialog.lines.some((l) => /1\/3/.test(l)));
@@ -1156,7 +1173,7 @@ storage.set('ai-ethics-adventure-puzzle-0', JSON.stringify({
   levers: { done: true, clears: 1, hintsUsed: {}, wrongTries: 1, timeFrames: 10 },
 }));
 g.flags.traceGiven = 3; // 콜백 인트로 3+ 경로를 실제 조우에서 확인
-g.dialog = null; g.mode = 'world'; setPos(14, 5, 'up'); hold('ArrowUp', 12);
+g.dialog = null; g.mode = 'world'; setPos(17, 5, 'up'); hold('ArrowUp', 12);
 check('잠금 3/3 → 금고 개방 → 주인의 방 진입', g.map === 'ownerroom');
 
 // ── 보스 조우 → 설득 배틀 시작 ──
@@ -1228,7 +1245,7 @@ tap('z'); // 응답 닫기 → 승리 처리
 check('승리 대화 시작', g.mode === 'dialog');
 advanceDialog();
 check('1장 클리어 플래그', g.flags.chapter1Clear === true);
-check('보스 승리 후 금고 앞(거리) 복귀', g.map === 'freestreet' && g.player.x === 14 && g.player.y === 5);
+check('보스 승리 후 금고 앞(거리) 복귀', g.map === 'freestreet' && g.player.x === 17 && g.player.y === 5);
 check('라이브러리 수집몬 처치 플래그 오염 없음', g.flags.defeated.sujipmon === false);
 check('보스는 도감 순서에 없음', !DEX_ORDER.includes('sujipmon_boss'));
 check('보스 설득 로그 기록', g.flags.pStats.gateRight === 2 && g.flags.pStats.gateWrong === 1 && g.flags.pStats.gateTimeout === 1);
@@ -1242,7 +1259,7 @@ check('수업 목록에 1장 특별 항목(TRACE_SEL=0) 진입', g.classmode.sel
 tap('z'); // 확인 단계
 check('확인 단계', g.classmode.confirm === true);
 tap('z'); // 적용 → 1장 시작 + 거리 입구
-check('1장 수업: 전부 공짜 거리 입구에서 시작', g.map === 'freestreet' && g.player.x === 14 && g.player.y === 17);
+check('1장 수업: 전부 공짜 거리 입구에서 시작', g.map === 'freestreet' && g.player.x === 18 && g.player.y === 21);
 check('1장 수업: 챕터 클리어 없음(1장 시작 상태)', !g.flags.chapter1Clear);
 check('1장 수업: 프롤로그(따라) 클리어 상태로 맞춰짐', g.flags.defeated.bekkyeomon === true);
 {
@@ -1261,7 +1278,7 @@ g.flags.visited = g.flags.visited || {};
 g.flags.evCards = [];
 // 진입 게이트: chapter1Clear 전에는 잠김
 g.flags.chapter1Clear = false;
-g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(26, 13, 'right');
+g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(36, 15, 'right');
 hold('ArrowRight', 12);
 check('2장 입구 — chapter1Clear 전 잠김(거리에 남음)', g.map === 'freestreet' && g.mode === 'dialog');
 check('잠김 안내(기울어 보인다)', g.dialog.lines.some((l) => /기울어 보인다/.test(l)));
@@ -1269,7 +1286,7 @@ advanceDialog();
 // chapter1Clear 후 개방
 g.flags.chapter1Clear = true;
 g.flags.visited.tiltstreet = true; // 인트로 스킵
-g.dialog = null; g.mode = 'world'; setPos(26, 13, 'right');
+g.dialog = null; g.mode = 'world'; setPos(36, 15, 'right');
 hold('ArrowRight', 12);
 check('chapter1Clear 후 2장 허브 진입 — 서쪽 입구에서 오른쪽을 바라봄',
   g.map === 'tiltstreet' && g.player.x === 1 && g.player.y === 10 && g.player.dir === 'right');
@@ -1441,7 +1458,7 @@ tap('ArrowUp'); // 0 → -1 (TILT_SEL)
 check('수업 목록에 2장 특별 항목(TILT_SEL=-1) 진입', g.classmode.sel === -1);
 tap('z'); check('확인 단계', g.classmode.confirm === true);
 tap('z'); // 적용 → 2장 시작 + 기울어진 거리 입구
-check('2장 수업: 기울어진 거리 입구에서 시작', g.map === 'tiltstreet' && g.player.x === 14 && g.player.y === 17);
+check('2장 수업: 기울어진 거리 입구에서 시작', g.map === 'tiltstreet' && g.player.x === 18 && g.player.y === 21);
 check('2장 수업: chapter1Clear=true 세팅', g.flags.chapter1Clear === true);
 check('2장 수업: 프롤로그(따라) 클리어 상태로 맞춰짐', g.flags.defeated.bekkyeomon === true);
 {
@@ -1660,7 +1677,7 @@ tap('z');
 check('승리 대화 시작', g.mode === 'dialog');
 advanceDialog();
 check('3장 클리어 플래그', g.flags.chapter3Clear === true);
-check('보스 승리 후 신문사 입구(허브) 복귀', g.map === 'rumorstreet' && g.player.x === 14 && g.player.y === 5);
+check('보스 승리 후 신문사 입구(허브) 복귀', g.map === 'rumorstreet' && g.player.x === 17 && g.player.y === 5);
 check('v1 환각몬 처치 플래그 오염 없음', g.flags.defeated.hwangakmon === false);
 check('보스는 도감 순서에 없음', !DEX_ORDER.includes('hwangak_boss'));
 
@@ -1670,7 +1687,7 @@ check('진입 전 profConfession 없음', !g.flags.profConfession);
 // seenPhoto1은 "봤음"(반영 분기), seenPhoto2는 "못 봤음"(미반영 분기)으로 대비시켜 확인한다.
 g.flags.seenPhoto1 = true;
 g.flags.seenPhoto2 = false;
-g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(14, 17, 'down');
+g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(18, 21, 'down');
 hold('ArrowDown', 12); step(2);
 check('마을 진입 시 박사 고백 자동 시작', g.map === 'village' && g.mode === 'dialog');
 check('고백 대사 — 프로젝트 0호', g.dialog.lines.some((l) => /프로젝트 0호/.test(l)));
@@ -1689,7 +1706,7 @@ g.flags.visited.freestreet = true; // 수업 모드 점프로 초기화된 방�
 setPos(24, 6, 'up'); hold('ArrowUp', 12);
 check('마을 → 거리로 이동', g.map === 'freestreet');
 g.dialog = null; g.mode = 'world';
-setPos(14, 17, 'down'); hold('ArrowDown', 12); step(2);
+setPos(18, 21, 'down'); hold('ArrowDown', 12); step(2);
 check('재진입해도 고백이 재발생하지 않음', g.map === 'village' && g.mode === 'world');
 
 console.log('[83] 수업 모드 — 「3장 — 대문짝 신문사」 특별 항목');
@@ -1702,7 +1719,7 @@ tap('ArrowUp'); // -1 → -2 (RUMOR_SEL)
 check('수업 목록에 3장 특별 항목(RUMOR_SEL=-2) 진입', g.classmode.sel === -2);
 tap('z'); check('확인 단계', g.classmode.confirm === true);
 tap('z'); // 적용 → 3장 시작 + 대문짝 신문사 입구
-check('3장 수업: 대문짝 신문사 입구에서 시작', g.map === 'rumorstreet' && g.player.x === 14 && g.player.y === 17);
+check('3장 수업: 대문짝 신문사 입구에서 시작', g.map === 'rumorstreet' && g.player.x === 18 && g.player.y === 21);
 check('3장 수업: chapter1Clear/chapter2Clear=true 세팅',
   g.flags.chapter1Clear === true && g.flags.chapter2Clear === true);
 check('3장 수업: 프롤로그(따라) 클리어 상태로 맞춰짐', g.flags.defeated.bekkyeomon === true);
@@ -2443,7 +2460,7 @@ console.log('[109] 목표 나침반(getObjectiveTarget) — v2 사다리 — v1 
   check('나침반 — 고백 후에도 같은 사다리(rumorstreet)', !!t4 && t4.map === 'rumorstreet');
   // 이미 허브/보스방 안에 있으면 그 챕터의 보스·금고 문/보스 좌표로 좁혀진다
   const t2b = getObjectiveTarget(s2, 'freestreet');
-  check('나침반 — 이미 1장 허브 안 → 금고문(14,4)', !!t2b && t2b.map === 'freestreet' && t2b.x === 14 && t2b.y === 4);
+  check('나침반 — 이미 1장 허브 안 → 금고문(17,4)', !!t2b && t2b.map === 'freestreet' && t2b.x === 17 && t2b.y === 4);
   const t2c = getObjectiveTarget(s2, 'ownerroom');
   check('나침반 — 이미 1장 보스방 안 → 담아(5,2)', !!t2c && t2c.map === 'ownerroom' && t2c.x === 5 && t2c.y === 2);
 }
@@ -2534,7 +2551,7 @@ console.log('[114] 배달 창고 상자 라벨 근접 표시 — HUD 상시 표�
 {
   // 캔버스 스텁이 fillText 내용을 가로챌 수 없으므로(makeCtx는 no-op 프록시), 지시대로
   // HUD 문자열 변경은 직접 재현해 확인하고, 3타일 근접 조건은 소스에서 확인한다.
-  g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(4, 14, 'down');
+  g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(5, 17, 'down');
   hold('ArrowDown', 14);
   check('창고 재입장', g.map === 'warehouse' && !!g.puzzleRun && g.puzzleRun.id === 'levers');
   const gameSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
