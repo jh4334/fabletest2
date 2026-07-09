@@ -151,21 +151,23 @@ check('문 개방 후 목표는 박사님이 아니라 출구', windowObj.__test
 const introExitTarget = windowObj.__test.nextWaypoint(g.flags, 'introlab');
 check('문 개방 후 나침반은 열린 출구를 가리킴', introExitTarget && introExitTarget.x === 14 && introExitTarget.y === 17);
 // 워프를 건너뛰고 정적의 숲으로 직접 이동 — 숲 첫 1분은 박사님이 아니라 흔적 조사로 이어진다.
-g.map = 'forest'; g.flags.visited.forest = true; setPos(13, 10, 'left');
+g.map = 'forest'; g.flags.visited.forest = true; setPos(20, 22, 'up');
 check('숲 진입 직후 목표는 박사님이 아니라 노란 발자국', windowObj.__test.currentObjective() === '노란 발자국을 조사하자 — 따라의 흔적');
 let forestHintTarget = windowObj.__test.nextWaypoint(g.flags, 'forest');
-check('숲 진입 직후 나침반은 첫 흔적을 가리킴', forestHintTarget && forestHintTarget.x === 12 && forestHintTarget.y === 10);
-setPos(8, 10, 'left'); tap('z');
+check('숲 진입 직후 나침반은 첫 흔적을 가리킴', forestHintTarget && forestHintTarget.x === 17 && forestHintTarget.y === 16);
+check('숲 시작점과 첫 흔적은 한 화면보다 넓게 떨어짐', Math.abs(g.player.x - forestHintTarget.x) + Math.abs(g.player.y - forestHintTarget.y) >= 9);
+setPos(9, 6, 'left'); tap('z');
 check('흔적 전 따라 조우는 차단되고 안내 대화', g.mode === 'dialog' && !g.battle && g.flags.introForestTrace === false);
 advanceDialog();
-setPos(12, 10, 'left');
+setPos(17, 16, 'left');
 tap('z');
 check('숲 첫 흔적 조사 대화 시작', g.mode === 'dialog');
 advanceDialog();
 check('숲 첫 흔적 플래그 설정', g.flags.introForestTrace === true);
 check('흔적 조사 후 목표는 따라 조우', windowObj.__test.currentObjective() === '노란 흔적을 따라 따라를 만나자');
 forestHintTarget = windowObj.__test.nextWaypoint(g.flags, 'forest');
-check('흔적 조사 후 나침반은 따라를 가리킴', forestHintTarget && forestHintTarget.x === 7 && forestHintTarget.y === 10);
+check('흔적 조사 후 나침반은 따라를 가리킴', forestHintTarget && forestHintTarget.x === 8 && forestHintTarget.y === 6);
+check('첫 흔적과 따라는 한 화면에 다닥다닥 붙지 않음', Math.abs(17 - forestHintTarget.x) + Math.abs(16 - forestHintTarget.y) >= 15);
 
 console.log('[2] 마을 → 박사님과 대화 (메인 퀘스트 시작)');
 g.map = 'village'; // 숲→마을 워프 완료 상태로 진행
@@ -186,8 +188,8 @@ check('나무에 막힘', g.player.x === 1);
 console.log('[4] 마을 → 숲 워프');
 setPos(13, 1, 'up');
 hold('ArrowUp', 14);
-// 워프 후에도 키를 누르고 있으면 계속 걸어갈 수 있으므로 맵과 x만 확인
-check('숲으로 워프', g.map === 'forest' && g.player.x === 13 && g.player.y >= 16);
+// 워프 후에도 키를 누르고 있으면 계속 걸어갈 수 있으므로 맵과 남쪽 넓은 숲 입구 권역만 확인
+check('숲으로 워프', g.map === 'forest' && g.player.x >= 18 && g.player.x <= 22 && g.player.y >= 20);
 check('반디의 한 줄 조언 (비차단 말풍선)', g.mode === 'world' && !!g.notice && /반디/.test(g.notice.text));
 check('조언은 맵당 1회 기록', g.flags.bandiSaid.forest === true);
 
@@ -224,7 +226,7 @@ function enterDoor(wantCorrect) { // 원하는(정답/오답) 열린 문으로 �
 }
 
 console.log('[5] 마음 조각 배틀 — 조각 수집·닫힘→동요·탈진(기억) (따라=베껴몬)');
-setPos(7, 9, 'down'); // 베껴몬 (7,10) 위
+setPos(8, 5, 'down'); // 따라 (8,6) 위 — 넓어진 숲 안쪽 공터
 tap('z');
 advanceDialog(); // 등장 대사 + 증거 카드 지급 + 조작 안내 → 배틀
 check('마음 조각 배틀 시작', g.mode === 'battle' && g.battle.monId === 'bekkyeomon' && g.battle.isPersuade === true);
@@ -835,7 +837,7 @@ dispatch('keydown', { key: 'ArrowUp' });
 step(60); // 60프레임 내내 위를 누른 채로 둔다
 dispatch('keyup', { key: 'ArrowUp' });
 check('워프 후에도 전 맵으로 튕기지 않음(forest 유지)', g.map === 'forest');
-check('워프 직후 멈춤(도착칸에 정지)', g.player.x === 13 && g.player.y === 18);
+check('워프 직후 멈춤(도착칸에 정지)', g.player.x === 20 && g.player.y === 22);
 
 console.log('[68] 1장 「전부 공짜 거리」 — 허브 진입 + 구역① 살금의 접수처');
 function pickChoice(idx) { // 월드 선택지 박스에서 idx번째를 고른다

@@ -8,9 +8,9 @@
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
   // 논리 해상도(좌표계는 항상 720×528). 백킹 스토어는 기기 픽셀 밀도(DPR)만큼 키우되,
-  // 교실 태블릿·저전력 노트북에서 버벅이지 않도록 2배까지만 사용한다.
+  // 교실 태블릿·저전력 노트북에서 버벅이지 않도록 고해상도 백킹 스토어를 더 낮게 제한한다.
   const LW = 720, LH = 528;
-  const DPR_CAP = 2;
+  const DPR_CAP = 1.5;
   let currentDPR = Math.max(1, Math.min(window.devicePixelRatio || 1, DPR_CAP));
   canvas.width = LW * currentDPR;
   canvas.height = LH * currentDPR;
@@ -2936,7 +2936,9 @@
   function drawForestPrologueObjects(cx, cy) {
     if (game.map !== 'forest' || game.flags.defeated.bekkyeomon) return;
     const props = (MAP_PROPS.forest || []).filter((prop) => prop.kind === 'trace');
-    const bob = game.reduceFx ? 0 : Math.round(Math.sin(game.time / 16) * 2);
+    // 숲 흔적은 안내용 정적 표식에 가깝게 유지한다. 과한 펄스/부유감을 줄여
+    // 저전력 기기에서 버벅임을 줄이고, 퍼즐 방 이펙트처럼 보이지 않게 한다.
+    const bob = 0;
     for (const prop of props) {
       const done = prop.flag && game.flags[prop.flag];
       const nx = Math.round(prop.x * TS - cx);
@@ -2944,7 +2946,7 @@
       const active = !done;
       if (active) {
         ctx.save();
-        ctx.globalAlpha = 0.24 + (game.reduceFx ? 0 : Math.abs(Math.sin(game.time / 12)) * 0.18);
+        ctx.globalAlpha = game.reduceFx ? 0.16 : 0.20;
         ctx.fillStyle = '#ffd644';
         ctx.beginPath();
         ctx.ellipse(nx + TS / 2, ny + TS / 2 + 5, 24, 10, 0, 0, Math.PI * 2);
@@ -3074,7 +3076,7 @@
   // 황혼 앰비언트 — 경계마을과 정적의 숲은 늘 해 질 녘이다 (다크 톤 기조).
   // 마을은 마음의 온도가 쌓일수록(이사 온 친구 수만큼) 조금씩 밝아진다 —
   // "어두운 세계에 온기가 켜진다"를 화면 밝기로 체감시키는 카르마 연출.
-  const DUSK_BASE = { village: 0.24, forest: 0.30 };
+  const DUSK_BASE = { village: 0.24, forest: 0.22 };
   function duskWarmCount(flags) {
     let n = 0;
     if (flags.mercyChoice && flags.mercyChoice.bekkyeomon === 'mercy') n += 1;
@@ -3085,6 +3087,11 @@
     let a = DUSK_BASE[game.map];
     if (!a || !game.flags) return;
     if (game.map === 'village') a = Math.max(0.08, a - 0.025 * duskWarmCount(game.flags));
+    if (game.reduceFx) {
+      ctx.fillStyle = `rgba(8,9,28,${a * 0.82})`;
+      ctx.fillRect(0, 0, LW, LH);
+      return;
+    }
     // 깊은 남빛 어스름 — 위(하늘)가 더 어둡다
     const grad = ctx.createLinearGradient(0, 0, 0, LH);
     if (grad && grad.addColorStop) {
