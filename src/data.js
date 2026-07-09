@@ -2585,9 +2585,10 @@ function introClueCount(flags) {
 
 function getObjective(flags, curMap) {
   const d = flags.defeated;
-  // 프롤로그 실험실 — 단서 수집
-  if (curMap === 'introlab' && !flags.introDoorOpen) {
+  // 프롤로그 실험실 — 단서 수집 → 문 개방 → 출구 이동까지 방 안 목표로 유지한다.
+  if (curMap === 'introlab') {
     const c = introClueCount(flags);
+    if (flags.introDoorOpen) return '출구가 열렸다 — 문으로 나가자';
     if (c === 0) return '실험실을 살펴보자 — 무언가 있을지도';
     return `실험실의 단서를 모으자 (${c}/3)`;
   }
@@ -2705,9 +2706,10 @@ function getV2ObjectiveText(flags, curMap) {
 // curMap은 생략 가능(수업 모드의 스폰 계산처럼 "현재 위치"가 없는 호출용).
 function getObjectiveTarget(flags, curMap) {
   const d = flags.defeated;
-  // 프롤로그 실험실 — 출구를 가리킨다 (단서 수집 안내는 getObjective)
-  if (curMap === 'introlab' && !flags.introDoorOpen) {
-    return { map: 'introlab', x: 10, y: 14, label: '출구' };
+  // 프롤로그 실험실 — 단서를 모으는 동안에도, 문이 열린 뒤에도 출구를 가리킨다.
+  // 문이 열린 직후 HUD/나침반이 박사님으로 건너뛰면 방탈출의 마무리감이 깨진다.
+  if (curMap === 'introlab') {
+    return { map: 'introlab', x: 10, y: 14, label: flags.introDoorOpen ? '열린 출구' : '잠긴 출구' };
   }
   if (!flags.talkedProf) return { map: 'village', x: 4, y: 12, label: '박사님' };
   if (d.yeongi) {

@@ -3324,6 +3324,7 @@
     // 조사(살펴보기): 특별 지점 → 타일 기본 문구
     const prop = getPropAt(game.map, f.x, f.y);
     if (prop) {
+      const lines = [prop.text];
       // 스토리 복선 등 — 조사 지점에 flag가 있으면 플래그를 남긴다 (예: seenPhoto1)
       if (prop.flag && !game.flags[prop.flag]) {
         game.flags[prop.flag] = true; save();
@@ -3332,10 +3333,12 @@
             introClueCount(game.flags) >= 3) {
           game.flags.introDoorOpen = true;
           save();
-          game.notice = { text: '칙칙한 문이 철컥하고 열렸다!', t: 200 };
+          game.notice = { text: '철컥 — 출구가 열렸다!', t: 220 };
+          lines.push('방 끝에서 철컥, 하고 잠금이 풀렸다.\n문틈으로 차가운 숲의 공기가 스며든다.');
+          lines.push('이제 출구로 나가자.\n정적의 숲이 기다리고 있다.');
         }
       }
-      startDialog([prop.text]);
+      startDialog(lines);
       return;
     }
     const ch = tileAt(game.map, f.x, f.y);
@@ -8680,7 +8683,7 @@
     buildClassCsv, setupClassBaseFlags, classSelForFlags,
     applyTraceRoomClass, applyTiltStreetClass, applyRumorStreetClass,
     applyArcadeClass, applyCozyhomeClass, applyFinalClass,
-    getPuzzleLog, writePuzzleLog, nextWaypoint, // 나침반 경로 — E2E가 '화살표 따라가기'를 재현할 때 사용
+    getPuzzleLog, writePuzzleLog, nextWaypoint, currentObjective: () => getObjective(game.flags, game.map), // 나침반/HUD 경로 — E2E가 '화살표 따라가기'를 재현할 때 사용
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록
