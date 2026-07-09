@@ -163,6 +163,7 @@
       introClue3: false,   // 프롤로그 실험실 단서③ 포스트잇
       introDoorOpen: false, // 프롤로그 실험실 출구 개방 — 단서 3개 수집 완료
       introForestTrace: false, // 실험실 탈출 직후 정적의 숲 첫 흔적 조사
+      ttaraFirstEncounter: false, // 정적의 숲 안쪽에서 따라와 처음 마주친 전용 조우 연출
     };
   }
 
@@ -219,10 +220,20 @@
     return data;
   }
 
+  // v5→v6: 따라 첫 조우 전용 연출 플래그. 이미 따라를 되돌렸거나 마을까지 진행한 세이브는 본 것으로 승계한다.
+  function migrateSlotV6(data) {
+    if (!data || !data.flags) return data;
+    if (data.flags.ttaraFirstEncounter === undefined) {
+      data.flags.ttaraFirstEncounter = !!(data.flags.defeated && data.flags.defeated.bekkyeomon);
+    }
+    data.v = 6;
+    return data;
+  }
+
   function loadSlot(i) {
     try {
       const raw = localStorage.getItem(slotKey(i));
-      return raw ? migrateSlotV5(migrateSlotV4(migrateSlotV3(JSON.parse(raw)))) : null;
+      return raw ? migrateSlotV6(migrateSlotV5(migrateSlotV4(migrateSlotV3(JSON.parse(raw))))) : null;
     } catch (e) { return null; }
   }
 
@@ -246,7 +257,7 @@
     }
   }
 
-  const SAVE_VERSION = 5;
+  const SAVE_VERSION = 6;
   function save() {
     writeSlot(game.currentSlot, {
       v: SAVE_VERSION,
@@ -3427,6 +3438,19 @@
         ], '반디');
         return;
       }
+      if (game.map === 'forest' && mon.id === 'bekkyeomon' && !game.flags.ttaraFirstEncounter) {
+        startDialog([
+          '노란 발자국의 끝,\n나뭇잎 사이에 하얀 종이가 흩어져 있다.',
+          '종이마다 누군가의 그림을 따라 그린 선이\n겹겹이 남아 있다.\n하지만 한가운데만 비어 있다.',
+          '따라: "잘 그린 건 전부 남의 거였어.\n그럼 내 마음은… 어디서 베끼면 돼?"',
+          '반디: "싸우는 게 아니야.\n저 아이 마음 안쪽으로 들어가서,\n흩어진 속마음 조각을 들어 보자."',
+        ], '따라', () => {
+          game.flags.ttaraFirstEncounter = true;
+          save();
+          startBattleIntro(mon.id);
+        });
+        return;
+      }
       startBattleIntro(mon.id);
       return;
     }
@@ -4254,6 +4278,7 @@
       playerHp: maxHearts,
       maxHearts,
       phase: 'wave', // wave | gates | mercy | mercyReply
+      prologueTutorial: !!(p.tutorial && monId === 'bekkyeomon'),
       cursor: 0,
       fragmentTotal: 0, // 누적 수집 조각 (closed→shaken 임계 판정)
       pIntense: false,  // 오답 문 → 다음 파도 강화
@@ -7969,7 +7994,22 @@
     // 인물의 외침 + 조작 안내
     drawArenaGuide(box, b.attack ? b.attack.taunt : null, b.phase === 'gates'
       ? '마음에 닿는 문으로 하트를 넣어요! (자물쇠 문은 아직 못 열어요)'
-      : '✦를 주워 속마음을 들어요. 탄막은 피하고!');
+      : (b.prologueTutorial ? '마음 안쪽: ✦ 속마음 조각을 주워요. 탄막은 피하고!' : '✦를 주워 속마음을 들어요. 탄막은 피하고!'));
+
+    if (b.prologueTutorial) {
+      ctx.textAlign = 'left';
+      ctx.fillStyle = 'rgba(255,214,68,0.12)';
+      ctx.fillRect(24, 154, 210, 42);
+      ctx.strokeStyle = 'rgba(255,214,68,0.45)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(24.5, 154.5, 210, 42);
+      ctx.fillStyle = '#ffd644';
+      ctx.font = 'bold 13px monospace';
+      ctx.fillText('프롤로그 · 따라의 마음 안쪽', 36, 176);
+      ctx.fillStyle = '#bbb';
+      ctx.font = '11px monospace';
+      ctx.fillText('퀴즈가 아니라, 듣고 피하고 다가가기', 36, 192);
+    }
 
     // 박스 — 루미(보스)는 포근한 색 테두리로 표시된다(축소 기믹 진행 중 안내)
     ctx.strokeStyle = b.p.openMechanic === 'shrink' ? '#e0a583' : '#fff';
@@ -8826,6 +8866,7 @@
   window.__game = game; // 디버그/테스트용
   window.__test = { // 테스트용 훅
     buildReportText, buildLearningSummary, recordTopicResult, countAchievements,
+    migrateSlotV6,
     buildBackupText, applyBackup, buildAdaptivePool, buildDailyPool,
     recordPlayDay, recordDailyDone, getMeta, todayStr,
     unlockedCount, getCosmetic, setCosmetic, achievementCtx,
