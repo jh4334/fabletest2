@@ -89,6 +89,8 @@
     hint: null,          // 퍼즐 힌트 오버레이 { step, level, hints }
     hintRet: 'world',
     introDim: null,      // 새 게임 인트로 암전 { fadeFrame } — startNewGame에서 세팅
+    warpCooldownFrames: 0, // 맵 전환 직후 즉시 되돌아가는 auto-bounce 방지
+    lastWarp: null,        // { fromMap, toMap, exitDir, arrivedAt } — UX 검증/테스트용
   };
 
   const SLOT_COUNT = 3;
@@ -164,6 +166,9 @@
       introDoorOpen: false, // 프롤로그 실험실 출구 개방 — 단서 3개 수집 완료
       introForestTrace: false, // 실험실 탈출 직후 정적의 숲 첫 흔적 조사
       ttaraFirstEncounter: false, // 정적의 숲 안쪽에서 따라와 처음 마주친 전용 조우 연출
+      privacyLeak: 0,       // 1장 개인정보 그림자가 붙을 때 오르는 노출도(0~5)
+      privacyRecovery: 0,   // 노출도 MAX 후 회복 목표 진행(지운 정보 조각 수)
+      privacyRecoveryActive: false, // 노출도 5에서 즉시 실패 대신 회복 목표 발동
     };
   }
 
@@ -230,10 +235,21 @@
     return data;
   }
 
+  // v6→v7: 개인정보 그림자 접촉 페널티(노출도) 기본값. 기존 세이브는 안전 상태에서 시작한다.
+  function migrateSlotV7(data) {
+    if (!data || !data.flags) return data;
+    const f = data.flags;
+    if (f.privacyLeak === undefined) f.privacyLeak = 0;
+    if (f.privacyRecovery === undefined) f.privacyRecovery = 0;
+    if (f.privacyRecoveryActive === undefined) f.privacyRecoveryActive = false;
+    data.v = 7;
+    return data;
+  }
+
   function loadSlot(i) {
     try {
       const raw = localStorage.getItem(slotKey(i));
-      return raw ? migrateSlotV6(migrateSlotV5(migrateSlotV4(migrateSlotV3(JSON.parse(raw))))) : null;
+      return raw ? migrateSlotV7(migrateSlotV6(migrateSlotV5(migrateSlotV4(migrateSlotV3(JSON.parse(raw)))))) : null;
     } catch (e) { return null; }
   }
 
@@ -257,7 +273,7 @@
     }
   }
 
-  const SAVE_VERSION = 6;
+  const SAVE_VERSION = 7;
   function save() {
     writeSlot(game.currentSlot, {
       v: SAVE_VERSION,
@@ -1766,6 +1782,46 @@
     }
     game.puzzleRun = run;
   }
+  const PRIVACY_LEAK_MAX = 5;
+  const PRIVACY_RECOVERY_NEED = 3;
+
+  function privacyLeak() { return Math.max(0, Math.min(PRIVACY_LEAK_MAX, game.flags.privacyLeak || 0)); }
+  function privacyLevelLabel(n) {
+    if (n >= 5) return '회복 필요';
+    if (n >= 3) return '따라붙는 광고';
+    if (n >= 1) return '찜찜한 시선';
+    return '안전';
+  }
+  function addPrivacyLeak(reason) {
+    const before = privacyLeak();
+    const after = Math.min(PRIVACY_LEAK_MAX, before + 1);
+    game.flags.privacyLeak = after;
+    if (after >= PRIVACY_LEAK_MAX) {
+      game.flags.privacyRecoveryActive = true;
+      if (!game.flags.privacyRecovery) game.flags.privacyRecovery = 0;
+      game.notice = { text: '노출도 MAX — 지우개로 흩어진 정보 조각 3개를 회수하자', t: 210 };
+    } else if (after >= 3) {
+      game.notice = { text: `노출도 ${after}/5 — 가짜 광고와 그림자가 더 따라붙는다`, t: 160 };
+    } else {
+      game.notice = { text: `노출도 ${after}/5 — ${reason || '정보 그림자가 붙었다'}`, t: 140 };
+    }
+    save();
+  }
+  function notePrivacyRecoveryPiece() {
+    if (!game.flags.privacyRecoveryActive) return;
+    game.flags.privacyRecovery = Math.min(PRIVACY_RECOVERY_NEED, (game.flags.privacyRecovery || 0) + 1);
+    if (game.flags.privacyRecovery >= PRIVACY_RECOVERY_NEED) {
+      game.flags.privacyLeak = 2;
+      game.flags.privacyRecovery = 0;
+      game.flags.privacyRecoveryActive = false;
+      game.notice = { text: '회복 완료 — 노출도 2/5로 낮아졌다', t: 180 };
+      Sound.correct();
+    } else {
+      game.notice = { text: `정보 조각 회수 ${game.flags.privacyRecovery}/${PRIVACY_RECOVERY_NEED}`, t: 140 };
+    }
+    save();
+  }
+
   // 지금 밖에 내보낸 토큰 (되돌릴 수 있는 것 + 게시판 공유 얼굴사진)
   function givenTokens(run) {
     return run.given.concat(run.boardFace ? ['face'] : []);
@@ -1805,7 +1861,10 @@
   // 보드 카운트에 맞춰 스토커를 스폰/소멸 (3 이상이면 최소 1, 미만이면 전부 소멸)
   function refreshStalkers(run) {
     if (boardCount(run) >= 3) {
-      if (run.stalkers.length === 0) spawnStalker(run);
+      const leak = privacyLeak();
+      const wanted = 1 + (leak >= 3 ? 1 : 0) + (leak >= PRIVACY_LEAK_MAX ? 1 : 0);
+      while (run.stalkers.length < wanted) spawnStalker(run);
+      if (run.stalkers.length > wanted) run.stalkers.length = wanted;
     } else {
       run.stalkers.length = 0;
       run.flashT = 0;
@@ -1843,7 +1902,8 @@
         run.flashT = 8;
         if (run.warnCool <= 0) {
           run.warnCool = 90; // 연속 접촉 스로틀
-          game.notice = { text: '그림자: 네 정보를 따라왔어…', t: 120 };
+          addPrivacyLeak('정보 그림자가 붙었다');
+          refreshStalkers(run);
           Sound.bump();
         }
       }
@@ -2452,8 +2512,10 @@
       if (idx >= 0) run.given.splice(idx, 1);
       run.held[o.key] = true; // 되돌려 받음
       refreshStalkers(run);
+      notePrivacyRecoveryPiece();
       Sound.correct();
-      startDialog([`${puz.tokens[o.key]} 정보를 지웠어요.`], puz.eraser.name);
+      startDialog([`${puz.tokens[o.key]} 정보를 지웠어요.`,
+        game.flags.privacyRecoveryActive ? `흩어진 정보 조각을 회수했다. (${game.flags.privacyRecovery}/${PRIVACY_RECOVERY_NEED})` : `현재 노출도: ${privacyLeak()}/5 (${privacyLevelLabel(privacyLeak())})`], puz.eraser.name);
     });
   }
   function openVipExit() {
@@ -2463,6 +2525,7 @@
       if (i === 0) {
         for (const k in run.held) if (run.held[k]) { run.held[k] = false; run.given.push(k); }
         spawnStalker(run); spawnStalker(run); // 함정: 스토커 2 추가
+        addPrivacyLeak('남은 정보를 한꺼번에 넘겼다');
         recordPuzzleWrong(run.id);
         run.flashT = 12;
         Sound.wrong();
@@ -2475,6 +2538,10 @@
   function openNormalExit() {
     const run = game.puzzleRun;
     const puz = run.puzzle;
+    if (game.flags.privacyRecoveryActive) {
+      startDialog(['노출도가 너무 높다.\n그림자가 문 앞까지 따라붙었다.', `지우개로 흩어진 정보 조각을 ${PRIVACY_RECOVERY_NEED}개 회수하자. (${game.flags.privacyRecovery || 0}/${PRIVACY_RECOVERY_NEED})`], puz.exits.normal.name);
+      return;
+    }
     const nonNick = givenTokens(run).filter((k) => k !== 'nickname');
     if (nonNick.length > 1) { startDialog([puz.exits.normal.tooMany], puz.exits.normal.name); return; }
     startChoice(`${puz.exits.normal.ask}\n\n닉네임을 주고 나갈까요?`, ['나간다', '아직'], (i) => {
@@ -3562,6 +3629,24 @@
     }
   }
 
+  function inferWarpExitDir(map, w) {
+    if (w.exitDir) return w.exitDir;
+    const width = map.tiles[0].length, height = map.tiles.length;
+    if (w.y === 0) return 'north';
+    if (w.y === height - 1) return 'south';
+    if (w.x === 0) return 'west';
+    if (w.x === width - 1) return 'east';
+    // 내부 문은 플레이어가 밟고 들어온 방향을 출구 방향으로 본다.
+    return game.player.dir || null;
+  }
+  function arrivalFacing(exitDir) {
+    if (exitDir === 'south') return 'down';
+    if (exitDir === 'north') return 'up';
+    if (exitDir === 'east') return 'right';
+    if (exitDir === 'west') return 'left';
+    return null;
+  }
+
   function pushBack() {
     const p = game.player;
     const nx = p.x + (p.dir === 'left' ? 1 : p.dir === 'right' ? -1 : 0);
@@ -3575,6 +3660,7 @@
 
   function checkWarp() {
     const p = game.player;
+    if (game.warpCooldownFrames > 0) return;
     const w = warpAt(game.map, p.x, p.y);
     if (!w) return;
     if (w.needAllDefeated && !w.needAllDefeated.every((id) => game.flags.defeated[id])) {
@@ -3634,10 +3720,15 @@
       startDialog([w.lockText || '문이 잠겨 있다.', `확인하는 용기 ${s5ClearCount()}/${w.needS5Zones}.`]);
       return;
     }
+    const fromMap = game.map;
+    const exitDir = inferWarpExitDir(MAPS[fromMap], w);
     game.map = w.to;
     p.x = w.tx; p.y = w.ty;
     p.px = w.tx * TS; p.py = w.ty * TS;
+    p.dir = w.dir || arrivalFacing(exitDir) || p.dir;
     p.moving = false;
+    game.warpCooldownFrames = 12;
+    game.lastWarp = { fromMap, toMap: w.to, exitDir, arrivedAt: { x: w.tx, y: w.ty } };
     // 새 맵에 도착하면 이동을 멈춘다. (방향키/스틱을 누른 채 워프해도
     // 도착하자마자 되돌아가는 워프 칸으로 걸어 들어가 '바로 전 맵으로 튕기는'
     // 현상을 막는다 — 계속 가려면 다시 눌러야 한다.)
@@ -3709,6 +3800,7 @@
       return;
     }
     if (game.notice.t > 0) game.notice.t -= 1;
+    if (game.warpCooldownFrames > 0) game.warpCooldownFrames -= 1;
     if (game.puzzleRun) updatePuzzleWorld(); // 방탈출: 시간 누적 + 구역별 물체 갱신
     // 5장 구역③ 소파 코너 — 앉아 있는 동안은 이동을 잠그고, 방향키 버티기만 판정한다
     if (game.puzzleRun && game.puzzleRun.puzzle.type === 'sofa' && game.puzzleRun.sitting) {
@@ -7685,8 +7777,10 @@
     let objText;
     if (game.puzzleRun) {
       const puz = game.puzzleRun.puzzle;
-      objText = (isPuzzleCleared(game.puzzleRun.id) && puz.objectiveCleared) ? puz.objectiveCleared
-        : (puz.objective || '방을 빠져나가자');
+      objText = game.flags.privacyRecoveryActive
+        ? `노출도 MAX — 정보 조각 회수 ${game.flags.privacyRecovery || 0}/${PRIVACY_RECOVERY_NEED}`
+        : (isPuzzleCleared(game.puzzleRun.id) && puz.objectiveCleared) ? puz.objectiveCleared
+          : (puz.objective || '방을 빠져나가자');
     } else if (game.map === 'freestreet') {
       // 허브 HUD — 금고 잠금 진행을 상시 가시화
       const n = s1LockCount();
@@ -7734,6 +7828,15 @@
       ctx.fillStyle = '#e0453a';
       ctx.font = 'bold 14px monospace';
       ctx.fillText(`♥ ${game.flags.mercy}`, LW - 184, 31);
+    }
+
+    if ((game.flags.privacyLeak || 0) > 0 || game.flags.privacyRecoveryActive) {
+      const leak = privacyLeak();
+      const boxW = 148;
+      utBox(LW - boxW - 10, game.flags.mercy > 0 ? 46 : 12, boxW, 30, 4);
+      ctx.fillStyle = leak >= 5 ? '#e0453a' : leak >= 3 ? '#ffd644' : '#9bd3ff';
+      ctx.font = 'bold 13px monospace';
+      ctx.fillText(`노출도 ${leak}/5`, LW - boxW, game.flags.mercy > 0 ? 66 : 32);
     }
 
     if (Sound.muted) {
@@ -8866,7 +8969,7 @@
   window.__game = game; // 디버그/테스트용
   window.__test = { // 테스트용 훅
     buildReportText, buildLearningSummary, recordTopicResult, countAchievements,
-    migrateSlotV6,
+    migrateSlotV6, migrateSlotV7,
     buildBackupText, applyBackup, buildAdaptivePool, buildDailyPool,
     recordPlayDay, recordDailyDone, getMeta, todayStr,
     unlockedCount, getCosmetic, setCosmetic, achievementCtx,
@@ -8877,6 +8980,7 @@
     applyTraceRoomClass, applyTiltStreetClass, applyRumorStreetClass,
     applyArcadeClass, applyCozyhomeClass, applyFinalClass,
     getPuzzleLog, writePuzzleLog, nextWaypoint, currentObjective: () => getObjective(game.flags, game.map), // 나침반/HUD 경로 — E2E가 '화살표 따라가기'를 재현할 때 사용
+    privacyLeak, addPrivacyLeak, notePrivacyRecoveryPiece,
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록

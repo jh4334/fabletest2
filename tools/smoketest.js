@@ -150,8 +150,12 @@ check('모든 단서 수집 → 문 개방', g.flags.introDoorOpen === true);
 check('문 개방 후 목표는 박사님이 아니라 출구', windowObj.__test.currentObjective() === '출구가 열렸다 — 문으로 나가자');
 const introExitTarget = windowObj.__test.nextWaypoint(g.flags, 'introlab');
 check('문 개방 후 나침반은 열린 출구를 가리킴', introExitTarget && introExitTarget.x === 14 && introExitTarget.y === 17);
-// 워프를 건너뛰고 정적의 숲으로 직접 이동 — 숲 첫 1분은 박사님이 아니라 흔적 조사로 이어진다.
-g.map = 'forest'; g.flags.visited.forest = true; setPos(20, 22, 'up');
+// 실험실 아래 출구 → 숲 북쪽 입구. 아래를 누르고 나가도 다음 맵 12시 쪽에서 자연스럽게 내려온다.
+setPos(14, 16, 'down');
+hold('ArrowDown', 14);
+check('실험실 아래 출구 → 숲 북쪽 입구에서 시작', g.map === 'forest' && g.player.x === 20 && g.player.y === 2 && g.player.dir === 'down');
+check('워프 직후 즉시 되돌아가기 방지 쿨다운 기록', g.lastWarp && g.lastWarp.fromMap === 'introlab' && g.lastWarp.exitDir === 'south' && g.warpCooldownFrames > 0);
+g.flags.visited.forest = true;
 check('숲 진입 직후 목표는 박사님이 아니라 노란 발자국', windowObj.__test.currentObjective() === '노란 발자국을 조사하자 — 따라의 흔적');
 let forestHintTarget = windowObj.__test.nextWaypoint(g.flags, 'forest');
 check('숲 진입 직후 나침반은 첫 흔적을 가리킴', forestHintTarget && forestHintTarget.x === 17 && forestHintTarget.y === 16);
@@ -186,10 +190,12 @@ hold('ArrowLeft', 12); // (0,6)은 T(나무) → 막힘
 check('나무에 막힘', g.player.x === 1);
 
 console.log('[4] 마을 → 숲 워프');
+delete g.flags.bandiSaid.forest;
 setPos(13, 1, 'up');
 hold('ArrowUp', 14);
 // 워프 후에도 키를 누르고 있으면 계속 걸어갈 수 있으므로 맵과 남쪽 넓은 숲 입구 권역만 확인
 check('숲으로 워프', g.map === 'forest' && g.player.x >= 18 && g.player.x <= 22 && g.player.y >= 20);
+check('마을 북쪽 출구 → 숲 남쪽 입구/위쪽 바라봄', g.lastWarp && g.lastWarp.fromMap === 'village' && g.lastWarp.exitDir === 'north' && g.player.dir === 'up');
 check('반디의 한 줄 조언 (비차단 말풍선)', g.mode === 'world' && !!g.notice && /반디/.test(g.notice.text));
 check('조언은 맵당 1회 기록', g.flags.bandiSaid.forest === true);
 
@@ -309,12 +315,14 @@ console.log('[22] 저장 데이터 무결성 (v3)');
 g.map = 'village';
 setPos(13, 16, 'up');
 const save = JSON.parse(storage.get('ai-ethics-adventure-slot-0'));
-check('세이브 버전 6', save.v === 6);
+check('세이브 버전 7', save.v === 7);
 {
   const migratedBeforeTtara = windowObj.__test.migrateSlotV6({ v: 5, flags: { talkedProf: true, defeated: { bekkyeomon: false } } });
   const migratedAfterTtara = windowObj.__test.migrateSlotV6({ v: 5, flags: { talkedProf: true, defeated: { bekkyeomon: true } } });
   check('v5→v6 이전 — 박사 대화만으론 따라 첫 조우를 건너뛰지 않음', migratedBeforeTtara.flags.ttaraFirstEncounter === false);
   check('v5→v6 이전 — 따라 완료 세이브는 첫 조우 완료로 승계', migratedAfterTtara.flags.ttaraFirstEncounter === true);
+  const migratedPrivacy = windowObj.__test.migrateSlotV7({ v: 6, flags: { talkedProf: true } });
+  check('v6→v7 이전 — 개인정보 노출도 기본값 추가', migratedPrivacy.v === 7 && migratedPrivacy.flags.privacyLeak === 0 && migratedPrivacy.flags.privacyRecoveryActive === false);
 }
 check('증표 필드 없음(v3)', save.flags.badges === undefined);
 check('프롤로그 진행 저장(따라)', save.flags.defeated.bekkyeomon === true);
@@ -848,6 +856,21 @@ dispatch('keyup', { key: 'ArrowUp' });
 check('워프 후에도 전 맵으로 튕기지 않음(forest 유지)', g.map === 'forest');
 check('워프 직후 멈춤(도착칸에 정지)', g.player.x === 20 && g.player.y === 22);
 
+console.log('[67b] 주요 챕터 경계 워프 — 나간 방향의 반대편 입구에서 시작');
+{
+  const cases = [
+    ['freestreet', 27, 13, 'tiltstreet', 1, 10, 'right'],
+    ['tiltstreet', 27, 10, 'rumorstreet', 1, 10, 'right'],
+    ['rumorstreet', 27, 10, 'arcade', 1, 8, 'right'],
+    ['arcade', 21, 8, 'cozyhome', 1, 8, 'right'],
+    ['introlab', 14, 17, 'forest', 20, 2, 'down'],
+  ];
+  for (const [from, x, y, to, tx, ty, dir] of cases) {
+    const w = MAPS[from].warps.find((a) => a.x === x && a.y === y && a.to === to);
+    check(`${from}→${to} 자연스러운 입구 좌표`, !!w && w.tx === tx && w.ty === ty && w.dir === dir);
+  }
+}
+
 console.log('[68] 1장 「전부 공짜 거리」 — 허브 진입 + 구역① 살금의 접수처');
 function pickChoice(idx) { // 월드 선택지 박스에서 idx번째를 고른다
   if (g.mode !== 'choice') throw new Error('선택 모드가 아님: ' + g.mode);
@@ -904,6 +927,20 @@ setPos(9, 2, 'up'); tap('z'); pickChoice(0); advanceDialog();
 check('얼굴사진 게시판 공유(영구)', g.puzzleRun.boardFace === true);
 check('내보낸 정보 3개 → 그림자 스토커 스폰', g.puzzleRun.stalkers.length >= 1);
 check('프로필 보드 카운트 3', g.puzzleRun.given.filter((k) => k !== 'nickname').length + 1 === 3);
+const privacyBeforeContact = g.flags.privacyLeak || 0;
+g.puzzleRun.stalkers[0].px = g.player.px;
+g.puzzleRun.stalkers[0].py = g.player.py;
+step(1);
+check('그림자 접촉 → 개인정보 노출도 증가', g.flags.privacyLeak === privacyBeforeContact + 1);
+windowObj.__test.addPrivacyLeak('테스트 누적');
+windowObj.__test.addPrivacyLeak('테스트 누적');
+windowObj.__test.addPrivacyLeak('테스트 누적');
+windowObj.__test.addPrivacyLeak('테스트 누적');
+check('노출도 MAX → 회복 목표 발동', g.flags.privacyLeak === 5 && g.flags.privacyRecoveryActive === true);
+windowObj.__test.notePrivacyRecoveryPiece();
+windowObj.__test.notePrivacyRecoveryPiece();
+windowObj.__test.notePrivacyRecoveryPiece();
+check('정보 조각 3개 회수 → 노출도 완화', g.flags.privacyLeak === 2 && g.flags.privacyRecoveryActive === false);
 
 // 3단계 점진 힌트 (H) — 로그에 단계별 기록
 tap('h');
@@ -947,6 +984,11 @@ g.puzzleRun.given = [];
 g.puzzleRun.boardFace = true; // 게시판 얼굴사진(닉네임 제외 1개) — 클리어 허용
 g.puzzleRun.stalkers = [];
 g.puzzleRun.held.nickname = true;
+g.flags.privacyLeak = 5; g.flags.privacyRecoveryActive = true; g.flags.privacyRecovery = 1;
+setPos(3, 11, 'up'); tap('z');
+check('노출도 MAX 상태에선 일반 출구가 회복 목표를 요구', g.mode === 'dialog' && /정보 조각/.test(g.dialog.lines.join(' ')));
+advanceDialog();
+g.flags.privacyLeak = 0; g.flags.privacyRecoveryActive = false; g.flags.privacyRecovery = 0;
 setPos(3, 11, 'up'); tap('z');
 check('일반 출구 — 선택창 열림', g.mode === 'choice');
 pickChoice(0);
@@ -1197,7 +1239,8 @@ g.flags.chapter1Clear = true;
 g.flags.visited.tiltstreet = true; // 인트로 스킵
 g.dialog = null; g.mode = 'world'; setPos(26, 13, 'right');
 hold('ArrowRight', 12);
-check('chapter1Clear 후 2장 허브 진입', g.map === 'tiltstreet');
+check('chapter1Clear 후 2장 허브 진입 — 서쪽 입구에서 오른쪽을 바라봄',
+  g.map === 'tiltstreet' && g.player.x === 1 && g.player.y === 10 && g.player.dir === 'right');
 check('허브에 뱅뱅(wander) + 또또 2명',
   MAPS.tiltstreet.npcs.filter((n) => n.name === '또또').length === 2 &&
   MAPS.tiltstreet.npcs.some((n) => n.name === '뱅뱅' && n.wander));
@@ -1391,7 +1434,8 @@ check('3장 입구 — chapter2Clear 전 잠김(거리에 남음)', g.map === 't
 advanceDialog();
 g.flags.chapter2Clear = true;
 g.dialog = null; g.mode = 'world'; setPos(26, 10, 'right'); hold('ArrowRight', 12);
-check('chapter2Clear 후 3장 허브 진입', g.map === 'rumorstreet' && g.player.x === 14 && g.player.y === 17);
+check('chapter2Clear 후 3장 허브 진입 — 서쪽 입구에서 오른쪽을 바라봄',
+  g.map === 'rumorstreet' && g.player.x === 1 && g.player.y === 10 && g.player.dir === 'right');
 
 console.log('[77] 소문 거리 허브 — 잠긴 상점 + 겁먹은 주민 (송출 전)');
 setPos(5, 5, 'up'); tap('z');
@@ -1654,7 +1698,8 @@ check('4장 입구 — chapter3Clear 전 잠김(거리에 남음)', g.map === 'r
 advanceDialog();
 g.flags.chapter3Clear = true;
 g.dialog = null; g.mode = 'world'; setPos(26, 10, 'right'); hold('ArrowRight', 12);
-check('chapter3Clear 후 아케이드 진입', g.map === 'arcade' && g.player.x === 11 && g.player.y === 14);
+check('chapter3Clear 후 아케이드 진입 — 서쪽 입구에서 오른쪽을 바라봄',
+  g.map === 'arcade' && g.player.x === 1 && g.player.y === 8 && g.player.dir === 'right');
 
 console.log('[85] 아케이드 정문 — 열쇠 0/2일 때 잠김');
 g.dialog = null; g.mode = 'world'; setPos(11, 2, 'up'); hold('ArrowUp', 12);
@@ -1881,7 +1926,8 @@ check('5장 입구 — chapter4Clear 전 잠김(아케이드에 남음)', g.map 
 advanceDialog();
 g.flags.chapter4Clear = true;
 g.dialog = null; g.mode = 'world'; setPos(20, 8, 'right'); hold('ArrowRight', 12);
-check('chapter4Clear 후 포근한 집 진입', g.map === 'cozyhome' && g.player.x === 3 && g.player.y === 8);
+check('chapter4Clear 후 포근한 집 진입 — 서쪽 입구에서 오른쪽을 바라봄',
+  g.map === 'cozyhome' && g.player.x === 1 && g.player.y === 8 && g.player.dir === 'right');
 
 console.log('[93] 포근한 집 현관 — 확인하는 용기 0/3일 때 잠김');
 g.dialog = null; g.mode = 'world'; setPos(11, 2, 'up'); hold('ArrowUp', 12);

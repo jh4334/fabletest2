@@ -111,7 +111,7 @@ const MAPS = {
       { x: 14, y: 4, to: 'ownerroom', tx: 5, ty: 7, needS1Locks: 3,
         lockText: '금고 문은 꿈쩍도 하지 않는다.\n잠금 세 개가 나란히 붙어 있다.' },
       // 2장 「기울어진 거리」 — 담아를 되돌린 뒤에야(chapter1Clear) 열리는 동쪽 문
-      { x: 27, y: 13, to: 'tiltstreet', tx: 14, ty: 17, needFlag: 'chapter1Clear',
+      { x: 27, y: 13, to: 'tiltstreet', tx: 1, ty: 10, needFlag: 'chapter1Clear', exitDir: 'east', dir: 'right',
         lockText: '동쪽에 낯선 문이 하나 생겼다.\n문 너머가 이상하게… 기울어 보인다.\n지금은 굳게 잠겨 있다.' },
     ],
     npcs: [
@@ -300,7 +300,7 @@ const MAPS = {
       'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
     ],
     warps: [
-      { x: 14, y: 18, to: 'freestreet', tx: 26, ty: 13 },
+      { x: 14, y: 18, to: 'freestreet', tx: 26, ty: 13, exitDir: 'west', dir: 'left' },
       // 구역① 메아리 골목 (반짝 추천 문)
       { x: 5, y: 5, to: 'echoalley', tx: 11, ty: 13 },
       // 구역② 표본 창고 (반짝 추천 문)
@@ -311,7 +311,7 @@ const MAPS = {
       { x: 14, y: 2, to: 'gatekeeper', tx: 7, ty: 8, needS2Scale: 3,
         lockText: '저울이 아직 기울어 있다.\n수평이 되기 전엔, 저울 뒤 문이\n꿈쩍도 하지 않는다.' },
       // 3장 「대문짝 신문사」 — 기울을 되돌린 뒤에야(chapter2Clear) 열리는 동쪽 문
-      { x: 27, y: 10, to: 'rumorstreet', tx: 14, ty: 17, needFlag: 'chapter2Clear',
+      { x: 27, y: 10, to: 'rumorstreet', tx: 1, ty: 10, needFlag: 'chapter2Clear', exitDir: 'east', dir: 'right',
         lockText: '동쪽 벽에 낯선 문이 하나 더 생겼다.\n문 너머가 소란스럽다. …[속보]?\n지금은 굳게 잠겨 있다.' },
     ],
     npcs: [
@@ -512,9 +512,9 @@ const MAPS = {
       // 신문사 건물 입구 — 언제나 열려 있다 (1층부터 순서대로 진행)
       { x: 14, y: 4, to: 'tipsroom', tx: 9, ty: 1 },
       // 기울어진 거리로 복귀
-      { x: 14, y: 18, to: 'tiltstreet', tx: 26, ty: 10 },
+      { x: 14, y: 18, to: 'tiltstreet', tx: 26, ty: 10, exitDir: 'west', dir: 'left' },
       // 4장 「반짝 아케이드」 — 그럴싸를 되돌린 뒤에야(chapter3Clear) 열리는 동쪽 가장자리 문
-      { x: 27, y: 10, to: 'arcade', tx: 11, ty: 14, needFlag: 'chapter3Clear',
+      { x: 27, y: 10, to: 'arcade', tx: 1, ty: 8, needFlag: 'chapter3Clear', exitDir: 'east', dir: 'right',
         lockText: '동쪽 벽 너머, 네온 불빛이 새어 나온다.\n"무료! 당첨! 오늘만!"…\n지금은 굳게 잠겨 있다.' },
     ],
     npcs: [
@@ -701,7 +701,7 @@ const MAPS = {
     ],
     warps: [
       // 소문 거리로 복귀
-      { x: 11, y: 13, to: 'rumorstreet', tx: 26, ty: 10 },
+      { x: 11, y: 13, to: 'rumorstreet', tx: 26, ty: 10, exitDir: 'west', dir: 'left' },
       // 구역① 룰렛 광장
       { x: 5, y: 3, to: 'roulettesquare', tx: 9, ty: 1 },
       // 구역② 회원가입 골목
@@ -712,7 +712,7 @@ const MAPS = {
       { x: 11, y: 1, to: 'yuhokstage', tx: 7, ty: 8, needS4Keys: 2,
         lockText: '정문에 자물쇠가 두 개 걸려 있다.\n"비밀조각"과 "본인표" — 둘 다 있어야\n열리는 문이라고 적혀 있다.' },
       // 5장 「포근한 집」 — 반짝을 되돌린 뒤에야(chapter4Clear) 열리는 동쪽 가장자리 문
-      { x: 21, y: 8, to: 'cozyhome', tx: 3, ty: 8, needFlag: 'chapter4Clear',
+      { x: 21, y: 8, to: 'cozyhome', tx: 1, ty: 8, needFlag: 'chapter4Clear', exitDir: 'east', dir: 'right',
         lockText: '동쪽 벽 너머, 따뜻한 불빛이 새어 나온다.\n…지금은 굳게 잠겨 있다.' },
     ],
     npcs: [],
@@ -1233,7 +1233,7 @@ const MAPS = {
       'HHHHHHHHHHHHHH9HHHHHHHHHHHHH',
     ],
     warps: [
-      { x: 14, y: 17, to: 'forest', tx: 20, ty: 22, needFlag: 'introDoorOpen',
+      { x: 14, y: 17, to: 'forest', tx: 20, ty: 2, needFlag: 'introDoorOpen', exitDir: 'south', dir: 'down',
         lockText: '실험실 출구는 아직 잠겨 있다.' },
     ],
     npcs: [],
