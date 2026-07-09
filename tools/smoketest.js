@@ -60,7 +60,7 @@ for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/game.js']
 }
 
 const g = windowObj.__game;
-const { MAPS, MAP_PROPS } = vm.runInContext('({ MAPS, MAP_PROPS })', sandbox);
+const { MAPS, MAP_PROPS, WALKABLE } = vm.runInContext('({ MAPS, MAP_PROPS, WALKABLE })', sandbox);
 
 // ---------- 시뮬레이션 도우미 ----------
 function step(n = 1) {
@@ -378,6 +378,87 @@ const districtMarks = streetMarks.filter((m) => m.kind === 'district');
 check('1장 거리 구역 랜드마크 4개 이상 — 접수처·게시판·창고·금고문이 보임', districtMarks.length >= 4 && ['접수처 불빛', '게시판 벽', '배달 상자길', '세 잠금 금고문'].every((label) => districtMarks.some((m) => m.label === label)));
 check('1장 거리 담아 빌드업 표식 3개 유지', streetMarks.filter((m) => m.kind === 'dama_buildup').length >= 3);
 check('1장 거리 NPC 추가 없음', (MAPS.freestreet.npcs || []).length === 2);
+function mapSize(mapId) {
+  const rows = MAPS[mapId].tiles || [];
+  return { w: rows.reduce((n, row) => Math.max(n, row.length), 0), h: rows.length };
+}
+function pointDist(a, b) { return Math.abs(a.x - b.x) + Math.abs(a.y - b.y); }
+function propsOf(mapId, kind) { return (MAP_PROPS[mapId] || []).filter((p) => !kind || p.kind === kind); }
+function mapTile(mapId, x, y) {
+  const rows = MAPS[mapId].tiles || [];
+  if (y < 0 || y >= rows.length) return 'T';
+  const row = rows[y] || '';
+  if (x < 0 || x >= row.length) return 'T';
+  return row[x];
+}
+function isWalkableTile(mapId, x, y) { return WALKABLE.has(mapTile(mapId, x, y)); }
+function reachableTiles(mapId, starts) {
+  const seen = new Set();
+  const q = [];
+  for (const s of starts) {
+    if (!s || !isWalkableTile(mapId, s.x, s.y)) continue;
+    const key = `${s.x},${s.y}`;
+    seen.add(key); q.push({ x: s.x, y: s.y });
+  }
+  for (let i = 0; i < q.length; i++) {
+    const p = q[i];
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const n = { x: p.x + dx, y: p.y + dy };
+      const key = `${n.x},${n.y}`;
+      if (seen.has(key) || !isWalkableTile(mapId, n.x, n.y)) continue;
+      seen.add(key); q.push(n);
+    }
+  }
+  return q;
+}
+function reachableProfile(mapId, starts) {
+  const pts = reachableTiles(mapId, starts);
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+  return {
+    count: pts.length,
+    minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys),
+    has: (x, y) => pts.some((p) => p.x === x && p.y === y),
+    near: (p, radius = 1) => pts.some((r) => pointDist(r, p) <= radius),
+  };
+}
+function nearestWarp(mapId, to) {
+  const matches = (MAPS[mapId].warps || []).filter((w) => w.to === to);
+  return matches[0] || null;
+}
+function requirePropNearWarp(mapId, kind, label, to, profile, maxDist = 3) {
+  const prop = propsOf(mapId, kind).find((p) => p.label === label);
+  const warp = nearestWarp(mapId, to);
+  return !!prop && !!warp && pointDist(prop, warp) <= maxDist && profile.near(prop, 1) && profile.near(warp, 0);
+}
+{
+  const s2 = mapSize('tiltstreet');
+  const s3 = mapSize('rumorstreet');
+  const r2 = reachableProfile('tiltstreet', [{ x: 14, y: 18 }, { x: 26, y: 10 }, { x: 5, y: 6 }, { x: 22, y: 6 }, { x: 5, y: 16 }]);
+  const r3 = reachableProfile('rumorstreet', [{ x: 1, y: 10 }, { x: 14, y: 18 }, { x: 14, y: 4 }]);
+  const ch23HubChecks = [
+    ['2장 허브는 36x22 이상으로 넓어짐', s2.w >= 36 && s2.h >= 22, `${s2.w}x${s2.h}`],
+    ['3장 허브는 36x22 이상으로 넓어짐', s3.w >= 36 && s3.h >= 22, `${s3.w}x${s3.h}`],
+    ['2장 허브 reachable playable area가 실제로 확장됨', r2.count >= 620 && (r2.maxX - r2.minX) >= 32 && (r2.maxY - r2.minY) >= 19, `count ${r2.count}, bounds ${r2.minX}-${r2.maxX}/${r2.minY}-${r2.maxY}`],
+    ['3장 허브 reachable playable area가 실제로 확장됨', r3.count >= 620 && (r3.maxX - r3.minX) >= 32 && (r3.maxY - r3.minY) >= 19, `count ${r3.count}, bounds ${r3.minX}-${r3.maxX}/${r3.minY}-${r3.maxY}`],
+    ['2장 구역 입구 props는 실제 warp와 가까운 reachable landmark',
+      requirePropNearWarp('tiltstreet', 'ch2_district', '메아리 골목 입구', 'echoalley', r2) &&
+      requirePropNearWarp('tiltstreet', 'ch2_district', '표본 창고 입구', 'samplehouse', r2) &&
+      requirePropNearWarp('tiltstreet', 'ch2_district', '꺼진 거리 입구', 'dimstreet', r2) &&
+      requirePropNearWarp('tiltstreet', 'ch2_district', '동쪽 소란 문', 'rumorstreet', r2), 'prop/warp mismatch'],
+    ['3장 구역 입구 props는 실제 warp와 가까운 reachable landmark',
+      requirePropNearWarp('rumorstreet', 'ch3_district', '신문사 입구', 'tipsroom', r3) &&
+      requirePropNearWarp('rumorstreet', 'ch3_district', '반짝 아케이드 문', 'arcade', r3) &&
+      requirePropNearWarp('rumorstreet', 'ch3_district', '정정 보도 길', 'tiltstreet', r3, 5), 'prop/warp mismatch'],
+    ['2장 동쪽 게이트는 unreachable padding 표식이 아님', propsOf('tiltstreet', 'ch2_district').every((p) => p.label !== '동쪽 소란 문' || (pointDist(p, nearestWarp('tiltstreet', 'rumorstreet')) <= 3 && r2.near(p, 1))), 'east gate misleading'],
+    ['3장 동쪽 게이트는 unreachable padding 표식이 아님', propsOf('rumorstreet', 'ch3_district').every((p) => p.label !== '반짝 아케이드 문' || (pointDist(p, nearestWarp('rumorstreet', 'arcade')) <= 3 && r3.near(p, 1))), 'east gate misleading'],
+  ];
+  const failures = ch23HubChecks.filter(([, ok]) => !ok);
+  if (failures.length) {
+    for (const [name,, detail] of failures) console.error(`  ✘ ${name}${detail ? ` — ${detail}` : ''}`);
+    process.exit(1);
+  }
+  for (const [name] of ch23HubChecks) { console.log('  ✔ ' + name); passed++; }
+}
 {
   const ch2Marks = windowObj.__test.chapter2HubVisibleMarks();
   const ch2DistrictMarks = ch2Marks.filter((m) => m.kind === 'ch2_district');
@@ -887,7 +968,6 @@ step(6);
 check('테스트 환경에선 프레임마다 진행', g.time - t0 === 6);
 
 console.log('[64] 수업 모드 — 챕터 기본 상태 (v3)');
-const { WALKABLE } = vm.runInContext('({ WALKABLE })', sandbox);
 const TJ = vm.runInContext('window.__test', sandbox);
 {
   const base = TJ.setupClassBaseFlags();
