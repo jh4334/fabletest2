@@ -111,32 +111,45 @@ g.nameConfirm = true; step(2);
 check('인트로 대화 시작', g.mode === 'dialog');
 advanceDialog();
 check('월드 진입', g.mode === 'world' && g.map === 'introlab');
-check('시작 위치 (10,13)', g.player.x === 10 && g.player.y === 13);
+check('시작 위치 (14,16)', g.player.x === 14 && g.player.y === 16);
 check('슬롯 0에 저장됨', !!storage.get('ai-ethics-adventure-slot-0'));
 check('기본 이름 수호자', g.playerName === '수호자');
 check('동행자 반디 합류 (오프닝 직후)', g.flags.bandiJoined === true);
 
-console.log('[1b] 프롤로그 실험실 — 단서 수집 및 출구 개방');
-// 단서① 태블릿 (4,7): 아래 칸에서 위를 보며 조사
-setPos(4, 8, 'up'); tap('z');
+console.log('[1b] 프롤로그 실험실 — 보조 조사물은 문 개방 카운트에 포함하지 않음');
+setPos(12, 5, 'up'); tap('z');
+check('보조 조사물 발견', g.mode === 'dialog');
+advanceDialog();
+check('보조 조사물 조사 후 문 아직 닫힘', g.flags.introDoorOpen === false);
+check('보조 조사물 조사 후 다음 단서 안내 유지', windowObj.__test.currentObjective() === '단서 0/3 — 왼쪽 위 태블릿을 조사하자');
+let introHintTarget = windowObj.__test.nextWaypoint(g.flags, 'introlab');
+check('나침반은 첫 단서 태블릿을 가리킴', introHintTarget && introHintTarget.x === 4 && introHintTarget.y === 3);
+
+console.log('[1c] 프롤로그 실험실 — 단서 수집 및 출구 개방');
+// 단서① 태블릿 (4,3): 아래 칸에서 위를 보며 조사
+setPos(4, 4, 'up'); tap('z');
 check('단서① 태블릿 발견', g.mode === 'dialog');
 advanceDialog();
 check('태블릿 플래그 설정', g.flags.introClue1 === true);
-// 단서② 모니터 (16,5): 아래 칸에서 위를 보며 조사
-setPos(16, 6, 'up'); tap('z');
+introHintTarget = windowObj.__test.nextWaypoint(g.flags, 'introlab');
+check('나침반은 두 번째 단서 모니터를 가리킴', introHintTarget && introHintTarget.x === 23 && introHintTarget.y === 6);
+// 단서② 모니터 (23,6): 왼쪽 칸에서 오른쪽을 보며 조사
+setPos(22, 6, 'right'); tap('z');
 check('단서② 모니터 발견', g.mode === 'dialog');
 advanceDialog();
 check('모니터 플래그 설정', g.flags.introClue2 === true);
 check('문 아직 닫힘 (2/3)', g.flags.introDoorOpen === false);
-// 단서③ 포스트잇 (4,11): 아래 칸에서 위를 보며 조사
-setPos(4, 12, 'up'); tap('z');
+introHintTarget = windowObj.__test.nextWaypoint(g.flags, 'introlab');
+check('나침반은 세 번째 단서 포스트잇을 가리킴', introHintTarget && introHintTarget.x === 6 && introHintTarget.y === 12);
+// 단서③ 포스트잇 (6,12): 아래 칸에서 위를 보며 조사
+setPos(6, 13, 'up'); tap('z');
 check('단서③ 포스트잇 발견', g.mode === 'dialog');
 advanceDialog();
 check('포스트잇 플래그 설정', g.flags.introClue3 === true);
 check('모든 단서 수집 → 문 개방', g.flags.introDoorOpen === true);
 check('문 개방 후 목표는 박사님이 아니라 출구', windowObj.__test.currentObjective() === '출구가 열렸다 — 문으로 나가자');
 const introExitTarget = windowObj.__test.nextWaypoint(g.flags, 'introlab');
-check('문 개방 후 나침반은 열린 출구를 가리킴', introExitTarget && introExitTarget.x === 10 && introExitTarget.y === 14);
+check('문 개방 후 나침반은 열린 출구를 가리킴', introExitTarget && introExitTarget.x === 14 && introExitTarget.y === 17);
 // 워프를 건너뛰고 정적의 숲으로 직접 이동 (이후 테스트 연속성)
 g.map = 'forest'; g.flags.visited.forest = true;
 
