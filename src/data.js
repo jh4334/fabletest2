@@ -2608,6 +2608,13 @@ function getObjective(flags, curMap) {
   if (flags.profConfession) {
     return '영이의 조각을 따라가자 — 어디서 본 낯익은 얼굴들';
   }
+  // 프롤로그 숲 — 실험실을 나왔으면 박사님에게 되돌아가기보다 숲 안의 흔적을 먼저 따라간다.
+  if (flags.introDoorOpen && !d.bekkyeomon) {
+    if (!flags.introForestTrace) return curMap === 'forest'
+      ? '노란 발자국을 조사하자 — 따라의 흔적'
+      : '정적의 숲에서 따라의 흔적을 찾자';
+    return '노란 흔적을 따라 따라를 만나자';
+  }
   if (!flags.talkedProf) return '박사님과 이야기하기 (마을 왼쪽 아래)';
   if (!d.bekkyeomon) return '숲의 따라를 만나 보자';
   return getV2ObjectiveText(flags, curMap);
@@ -2721,6 +2728,10 @@ function getObjectiveTarget(flags, curMap) {
     if (!flags.introClue2) return { map: 'introlab', x: 23, y: 6, label: '단서: 모니터' };
     if (!flags.introClue3) return { map: 'introlab', x: 6, y: 12, label: '단서: 포스트잇' };
     return { map: 'introlab', x: 14, y: 17, label: '잠긴 출구' };
+  }
+  if (flags.introDoorOpen && !d.bekkyeomon) {
+    if (!flags.introForestTrace) return { map: 'forest', x: 12, y: 10, label: '노란 발자국' };
+    return { map: 'forest', x: 7, y: 10, label: '따라' };
   }
   if (!flags.talkedProf) return { map: 'village', x: 4, y: 12, label: '박사님' };
   if (d.yeongi) {
@@ -4157,6 +4168,8 @@ const MAP_PROPS = {
     { x: 22, y: 9, text: '낡은 평상 하나.\n…아직, 비어 있다.' },
   ],
   forest: [
+    { x: 12, y: 10, flag: 'introForestTrace', kind: 'trace', label: '노란 발자국', clue: true,
+      text: '젖은 흙 위에 노란 발자국이 남아 있다.\n작고 급한 걸음. 누군가 방금 지나간 듯하다.\n발자국 끝에 삐뚤어진 연필선이 하나 그어져 있다.' },
     { x: 13, y: 2, text: '나무 둥치에 누군가\n작게 새겨 놓았다.\n"여기서부터, 용기."' },
   ],
   ownerroom: [

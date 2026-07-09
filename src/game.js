@@ -162,6 +162,7 @@
       introClue2: false,   // 프롤로그 실험실 단서② 모니터
       introClue3: false,   // 프롤로그 실험실 단서③ 포스트잇
       introDoorOpen: false, // 프롤로그 실험실 출구 개방 — 단서 3개 수집 완료
+      introForestTrace: false, // 실험실 탈출 직후 정적의 숲 첫 흔적 조사
     };
   }
 
@@ -203,14 +204,25 @@
     f.introClue2 = !!f.talkedProf;
     f.introClue3 = !!f.talkedProf;
     f.introDoorOpen = !!f.talkedProf;
+    f.introForestTrace = !!f.talkedProf;
     data.v = 4;
+    return data;
+  }
+
+  // v4→v5: 실험실 탈출 직후 숲 흔적 플래그. 기존 진행 세이브는 이미 본 것으로 승계한다.
+  function migrateSlotV5(data) {
+    if (!data || !data.flags) return data;
+    if (data.flags.introForestTrace === undefined) {
+      data.flags.introForestTrace = !!data.flags.talkedProf || !!(data.flags.defeated && data.flags.defeated.bekkyeomon);
+    }
+    data.v = 5;
     return data;
   }
 
   function loadSlot(i) {
     try {
       const raw = localStorage.getItem(slotKey(i));
-      return raw ? migrateSlotV4(migrateSlotV3(JSON.parse(raw))) : null;
+      return raw ? migrateSlotV5(migrateSlotV4(migrateSlotV3(JSON.parse(raw)))) : null;
     } catch (e) { return null; }
   }
 
@@ -234,7 +246,7 @@
     }
   }
 
-  const SAVE_VERSION = 4;
+  const SAVE_VERSION = 5;
   function save() {
     writeSlot(game.currentSlot, {
       v: SAVE_VERSION,
@@ -2921,6 +2933,40 @@
     }
   }
 
+  function drawForestPrologueObjects(cx, cy) {
+    if (game.map !== 'forest' || game.flags.defeated.bekkyeomon) return;
+    const props = (MAP_PROPS.forest || []).filter((prop) => prop.kind === 'trace');
+    const bob = game.reduceFx ? 0 : Math.round(Math.sin(game.time / 16) * 2);
+    for (const prop of props) {
+      const done = prop.flag && game.flags[prop.flag];
+      const nx = Math.round(prop.x * TS - cx);
+      const ny = Math.round(prop.y * TS - cy - 4);
+      const active = !done;
+      if (active) {
+        ctx.save();
+        ctx.globalAlpha = 0.24 + (game.reduceFx ? 0 : Math.abs(Math.sin(game.time / 12)) * 0.18);
+        ctx.fillStyle = '#ffd644';
+        ctx.beginPath();
+        ctx.ellipse(nx + TS / 2, ny + TS / 2 + 5, 24, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.fillStyle = done ? '#6b7158' : '#ffd644';
+      ctx.font = fs(20, true);
+      ctx.textAlign = 'center';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 3;
+      ctx.strokeText(done ? '✓' : '⌁', nx + TS / 2, ny + TS / 2 + 10 + bob);
+      ctx.fillText(done ? '✓' : '⌁', nx + TS / 2, ny + TS / 2 + 10 + bob);
+      ctx.font = fs(10, true);
+      const labelText = done ? '확인한 흔적' : prop.label;
+      ctx.strokeText(labelText, nx + TS / 2, ny - 5 + bob);
+      ctx.fillStyle = active ? '#fff1a6' : '#8a8f78';
+      ctx.fillText(labelText, nx + TS / 2, ny - 5 + bob);
+      ctx.textAlign = 'left';
+    }
+  }
+
   function drawStalkers(cx, cy) {
     const run = game.puzzleRun;
     for (const s of run.stalkers) {
@@ -3367,6 +3413,13 @@
     }
     const mon = monsterAt(game.map, f.x, f.y);
     if (mon) {
+      if (game.map === 'forest' && mon.id === 'bekkyeomon' && !game.flags.introForestTrace) {
+        startDialog([
+          '숲 안쪽에서 누군가의 목소리가 들린다.\n하지만 아직 길이 보이지 않는다.',
+          '먼저 바로 뒤의 노란 발자국을 조사하자.\n흔적을 읽어야 따라에게 다가갈 수 있다.',
+        ], '반디');
+        return;
+      }
       startBattleIntro(mon.id);
       return;
     }
@@ -3386,7 +3439,13 @@
       return;
     }
     // 조사(살펴보기): 특별 지점 → 타일 기본 문구
-    const prop = getPropAt(game.map, f.x, f.y);
+    const facingProp = getPropAt(game.map, f.x, f.y);
+    // 숲 첫 흔적은 바닥 위 시각 오브젝트다. 목표 화살표를 따라 정확히 그 칸에 올라서도
+    // Z/Enter가 먹히도록, 아직 확인 전이면 현재 발밑의 trace도 조사 대상으로 인정한다.
+    const standingTrace = (game.map === 'forest' && !game.flags.introForestTrace)
+      ? getPropAt(game.map, game.player.x, game.player.y)
+      : null;
+    const prop = facingProp || (standingTrace && standingTrace.kind === 'trace' ? standingTrace : null);
     if (prop) {
       const lines = [];
       if (game.map === 'introlab' && prop.kind === 'exit') {
@@ -3404,6 +3463,11 @@
       // 스토리 복선 등 — 조사 지점에 flag가 있으면 플래그를 남긴다 (예: seenPhoto1)
       if (prop.flag && !game.flags[prop.flag]) {
         game.flags[prop.flag] = true; save();
+        if (game.map === 'forest' && prop.flag === 'introForestTrace') {
+          game.notice = { text: '노란 흔적이 숲 안쪽으로 이어진다.', t: 220 };
+          lines.push('흔적은 숲 왼쪽으로 이어진다.\n희미한 목소리가, 남의 말을 따라 하듯\n작게 중얼거린다.');
+          lines.push('이제 노란 화살표를 따라가자.\n따라가 숲 안쪽에서 기다리고 있다.');
+        }
         // 프롤로그 실험실 — 단서 3개 수집 시 문 개방
         if (game.map === 'introlab' && !game.flags.introDoorOpen &&
             introClueCount(game.flags) >= 3) {
@@ -7219,6 +7283,8 @@
     if (game.puzzleRun) drawPuzzleObjects(cx, cy);
     // 프롤로그 실험실 — 핵심 단서/보조 조사물/출구를 눈에 보이게 배치한다.
     drawIntroLabObjects(cx, cy);
+    // 프롤로그 숲 — 출구 직후 따라의 첫 흔적을 실제 조사물로 보여 준다.
+    drawForestPrologueObjects(cx, cy);
     // 2장 허브 — 중앙의 거대한 저울 (구역 클리어마다 기울기가 준다)
     if (game.map === 'tiltstreet') drawTiltScale(cx, cy);
 

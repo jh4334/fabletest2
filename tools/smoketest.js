@@ -150,8 +150,22 @@ check('모든 단서 수집 → 문 개방', g.flags.introDoorOpen === true);
 check('문 개방 후 목표는 박사님이 아니라 출구', windowObj.__test.currentObjective() === '출구가 열렸다 — 문으로 나가자');
 const introExitTarget = windowObj.__test.nextWaypoint(g.flags, 'introlab');
 check('문 개방 후 나침반은 열린 출구를 가리킴', introExitTarget && introExitTarget.x === 14 && introExitTarget.y === 17);
-// 워프를 건너뛰고 정적의 숲으로 직접 이동 (이후 테스트 연속성)
-g.map = 'forest'; g.flags.visited.forest = true;
+// 워프를 건너뛰고 정적의 숲으로 직접 이동 — 숲 첫 1분은 박사님이 아니라 흔적 조사로 이어진다.
+g.map = 'forest'; g.flags.visited.forest = true; setPos(13, 10, 'left');
+check('숲 진입 직후 목표는 박사님이 아니라 노란 발자국', windowObj.__test.currentObjective() === '노란 발자국을 조사하자 — 따라의 흔적');
+let forestHintTarget = windowObj.__test.nextWaypoint(g.flags, 'forest');
+check('숲 진입 직후 나침반은 첫 흔적을 가리킴', forestHintTarget && forestHintTarget.x === 12 && forestHintTarget.y === 10);
+setPos(8, 10, 'left'); tap('z');
+check('흔적 전 따라 조우는 차단되고 안내 대화', g.mode === 'dialog' && !g.battle && g.flags.introForestTrace === false);
+advanceDialog();
+setPos(12, 10, 'left');
+tap('z');
+check('숲 첫 흔적 조사 대화 시작', g.mode === 'dialog');
+advanceDialog();
+check('숲 첫 흔적 플래그 설정', g.flags.introForestTrace === true);
+check('흔적 조사 후 목표는 따라 조우', windowObj.__test.currentObjective() === '노란 흔적을 따라 따라를 만나자');
+forestHintTarget = windowObj.__test.nextWaypoint(g.flags, 'forest');
+check('흔적 조사 후 나침반은 따라를 가리킴', forestHintTarget && forestHintTarget.x === 7 && forestHintTarget.y === 10);
 
 console.log('[2] 마을 → 박사님과 대화 (메인 퀘스트 시작)');
 g.map = 'village'; // 숲→마을 워프 완료 상태로 진행
@@ -290,7 +304,7 @@ console.log('[22] 저장 데이터 무결성 (v3)');
 g.map = 'village';
 setPos(13, 16, 'up');
 const save = JSON.parse(storage.get('ai-ethics-adventure-slot-0'));
-check('세이브 버전 4', save.v === 4);
+check('세이브 버전 5', save.v === 5);
 check('증표 필드 없음(v3)', save.flags.badges === undefined);
 check('프롤로그 진행 저장(따라)', save.flags.defeated.bekkyeomon === true);
 check('v3 인물 8종만 defeated에 존재', Object.keys(save.flags.defeated).length === 8);
@@ -1785,6 +1799,9 @@ step(1);
 check('접촉 시 피해(역효과)', g.battle.playerHp === temptHpBefore - 1);
 check('접촉 시 광고 딱지 +1(역효과)', g.flags.adStickers === temptStickersBefore + 1);
 check('접촉한 아이템 소멸', g.battle.wave.tempt.obj === null);
+// 재스폰 좌표가 직전 접촉 좌표와 우연히 겹치면 같은 프레임에 다시 먹혀 테스트가 흔들린다.
+// 실제 플레이어도 접촉 후 무적/이동 중이므로, 재스폰 검증 전 하트를 안전 위치로 옮겨 격리한다.
+g.battle.arena.soul.x = g.battle.arena.box.x + 8; g.battle.arena.soul.y = g.battle.arena.box.y + 8;
 step(61); // 재스폰
 check('새 반짝 아이템 재스폰', !!g.battle.wave.tempt.obj);
 g.battle.wave.tempt.obj.age = 239; // 240프레임 임박
