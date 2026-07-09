@@ -78,8 +78,9 @@ for (const [id, m] of Object.entries(MAPS)) {
   };
   const key = (mapId, x, y) => `${mapId}:${x},${y}`;
   const visited = new Set();
-  const queue = [['village', 13, 16]];
+  const queue = [['village', 13, 16], ['introlab', 10, 13]];
   visited.add(key('village', 13, 16));
+  visited.add(key('introlab', 10, 13));
   while (queue.length) {
     const [mapId, x, y] = queue.shift();
     const m = MAPS[mapId];
@@ -260,6 +261,15 @@ if (typeof getObjectiveTarget === 'function') {
     if (!hit) err(`목표 안내(${stageName}): '${t.label}' (${t.map} ${t.x},${t.y}) 주변에 상호작용 대상이 없음`);
   };
   checkTarget('프롤로그');
+  // 프롤로그 실험실 안 따로 검증 — curMap을 전달하지 않아 일반 프롤로그 목표와 같다.
+  // getObjectiveTarget(flags, 'introlab')은 {map:'introlab', x:10, y:14, label:'출구'}를 반환해야 한다.
+  if (typeof getObjectiveTarget === 'function') {
+    const ft = getObjectiveTarget(flags, 'introlab');
+    if (!ft || ft.map !== 'introlab') err(`목표 안내(introlab): 출구 좌표 없음`);
+    const tm = MAPS[ft.map];
+    if (ft.y < 0 || ft.y >= tm.tiles.length || ft.x < 0 || ft.x >= tm.tiles[0].length)
+      err(`목표 안내(introlab): 좌표 (${ft.x},${ft.y}) 범위 밖`);
+  }
   flags.defeated.bekkyeomon = true; checkTarget('1장 입구');
   for (let n = 1; n <= 5; n++) { flags[`chapter${n}Clear`] = true; checkTarget(`${n}장 클리어 후`); }
   flags.goyoClear = true; checkTarget('고요 이후');
