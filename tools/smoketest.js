@@ -228,9 +228,12 @@ function enterDoor(wantCorrect) { // 원하는(정답/오답) 열린 문으로 �
 console.log('[5] 마음 조각 배틀 — 조각 수집·닫힘→동요·탈진(기억) (따라=베껴몬)');
 setPos(8, 5, 'down'); // 따라 (8,6) 위 — 넓어진 숲 안쪽 공터
 tap('z');
-advanceDialog(); // 등장 대사 + 증거 카드 지급 + 조작 안내 → 배틀
+check('따라 첫 조우 전용 대화 시작', g.mode === 'dialog' && g.flags.ttaraFirstEncounter === false && !g.battle);
+advanceDialog(); // 첫 조우 연출 + 등장 대사 + 증거 카드 지급 + 조작 안내 → 배틀
+check('첫 조우 완료 후 전용 플래그 저장', g.flags.ttaraFirstEncounter === true);
 check('마음 조각 배틀 시작', g.mode === 'battle' && g.battle.monId === 'bekkyeomon' && g.battle.isPersuade === true);
 check('표시 이름은 따라(displayName)', g.battle.mon.name === '따라');
+check('첫 설득 배틀은 프롤로그 튜토리얼 표지 표시', g.battle.prologueTutorial === true);
 check('증거 카드 4장 지급', g.flags.evCards.length === 4);
 check('닫힘·게이지0·파도에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'wave');
 check('하트 4개(고학년 기본)', g.battle.maxHearts === 4);
@@ -306,7 +309,13 @@ console.log('[22] 저장 데이터 무결성 (v3)');
 g.map = 'village';
 setPos(13, 16, 'up');
 const save = JSON.parse(storage.get('ai-ethics-adventure-slot-0'));
-check('세이브 버전 5', save.v === 5);
+check('세이브 버전 6', save.v === 6);
+{
+  const migratedBeforeTtara = windowObj.__test.migrateSlotV6({ v: 5, flags: { talkedProf: true, defeated: { bekkyeomon: false } } });
+  const migratedAfterTtara = windowObj.__test.migrateSlotV6({ v: 5, flags: { talkedProf: true, defeated: { bekkyeomon: true } } });
+  check('v5→v6 이전 — 박사 대화만으론 따라 첫 조우를 건너뛰지 않음', migratedBeforeTtara.flags.ttaraFirstEncounter === false);
+  check('v5→v6 이전 — 따라 완료 세이브는 첫 조우 완료로 승계', migratedAfterTtara.flags.ttaraFirstEncounter === true);
+}
 check('증표 필드 없음(v3)', save.flags.badges === undefined);
 check('프롤로그 진행 저장(따라)', save.flags.defeated.bekkyeomon === true);
 check('v3 인물 8종만 defeated에 존재', Object.keys(save.flags.defeated).length === 8);
