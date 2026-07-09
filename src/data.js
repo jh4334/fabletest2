@@ -34,8 +34,8 @@ const MAPS = {
       'TTTTTTTTTTTTTPPTTTTTTTTTTTTT',
     ],
     warps: [
-      { x: 13, y: 0, to: 'forest', tx: 13, ty: 18 },
-      { x: 14, y: 0, to: 'forest', tx: 14, ty: 18 },
+      { x: 13, y: 0, to: 'forest', tx: 20, ty: 22 },
+      { x: 14, y: 0, to: 'forest', tx: 21, ty: 22 },
       { x: 24, y: 5, to: 'freestreet', tx: 14, ty: 17 },
     ],
     npcs: [
@@ -1233,7 +1233,7 @@ const MAPS = {
       'HHHHHHHHHHHHHH9HHHHHHHHHHHHH',
     ],
     warps: [
-      { x: 14, y: 17, to: 'forest', tx: 13, ty: 10, needFlag: 'introDoorOpen',
+      { x: 14, y: 17, to: 'forest', tx: 20, ty: 22, needFlag: 'introDoorOpen',
         lockText: '실험실 출구는 아직 잠겨 있다.' },
     ],
     npcs: [],
@@ -1245,37 +1245,41 @@ const MAPS = {
     name: '정적의 숲',
     song: 'field',
     tiles: [
-      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
-      'TTTTTTTTTTTTGGGGTTTTTTTTTTTT',
-      'TTTGGGTTTTTGGGGGGTTTTTGGGTTT',
-      'TTGGGGGTTTGGGGGGGGTTTGGGGGTT',
-      'TTGFGGGTTGGGGGGGGGGTTGGGFGTT',
-      'TTGGGGGTTGGGGPPGGGGGTTGGGGTT',
-      'TTTGGGGTTTGGGPPGGGTTTGGGGTTT',
-      'TTTTGGGGGTTGGPPGGTTGGGGGTTTT',
-      'TTTTTGGGGGGGGPPGGGGGGGGTTTTT',
-      'TTTGGGGGGGGGGPPGGGGGGGGGGTTT',
-      'TTGGGGGGGGGGGPPGGGGGGGGGGGTT',
-      'TTGFGGGGTTTGGPPGGTTTGGGGFGTT',
-      'TTGGGGGTTTTTGPPGTTTTTGGGGGTT',
-      'TTTGGGGTTTTTGPPGTTTTTGGGGTTT',
-      'TTTTTTTTTTTTGPPGTTTTTTTTTTTT',
-      'TTTTTTTTTTTTGPPGTTTTTTTTTTTT',
-      'TTTTTTTTTTTTGPPGTTTTTTTTTTTT',
-      'TTTTTTTTTTTTYPPGTTTTTTTTTTTT',
-      'TTTTTTTTTTTTGPPGTTTTTTTTTTTT',
-      'TTTTTTTTTTTTTPPTTTTTTTTTTTTT',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'TTTTTTTTTTTTTTTTTTTGGGGGGGTTTTTTTTTT',
+      'TTTTTTTTTTTTTTGGGGGGGGGGGGGTTTTTTTTT',
+      'TTTTTTGGGGGGGGGGGGGGGGGGGGGGGTTTTTTT',
+      'TTTTTGGGGGGGGGGGTTTGGGGGGGGGGGTTTTTT',
+      'TTTTGGGGGGPPPPGGTTTGGGGGGGGGGGGTTTTT',
+      'TTTTGGGGPPPPPPGGGGGGGGGGGGGGGGGTTTTT',
+      'TTTTGGGGPPGGPPGGGGGGTTTGGGGGGGGTTTTT',
+      'TTTTGGGGPPGGPPPGGGGGTTTGGGGFGGGTTTTT',
+      'TTTTTGGGPPGGGPPGGGGGGGGGGGGGGGTTTTTT',
+      'TTTTTTGGPPGGGPPPPPPGGGGGGGGGGTTTTTTT',
+      'TTTTTTGGPPGGGGGGGPPGGGGTTTGGGTTTTTTT',
+      'TTTTTTGGPPPPPPPGGGPPGGGGTTGGGGTTTTTT',
+      'TTTTTTTGGGGGGPPGGGPPGGGGGGGGGGTTTTTT',
+      'TTTTTTTTGGGGGPPGGGPPPPPPGGGGGTTTTTTT',
+      'TTTTTTTTTGGGGPPGGGGGGGPPGGGGTTTTTTTT',
+      'TTTTTTTTTTGGGPPPPPPPGGPPGGGGTTTTTTTT',
+      'TTTTTTTTTTTGGGGGGGGPPPPGGGGTTTTTTTTT',
+      'TTTTTTTTTTTTGGGFGGGGPPGGGGTTTTTTTTTT',
+      'TTTTTTTTTTTTTGGGGGGGPPGGGTTTTTTTTTTT',
+      'TTTTTTTTTTTTTTGGGGGGPPGGTTTTTTTTTTTT',
+      'TTTTTTTTTTTTTTTYGGGGPPGGTTTTTTTTTTTT',
+      'TTTTTTTTTTTTTTTGGGGGPPGGTTTTTTTTTTTT',
+      'TTTTTTTTTTTTTTTTTTTTPPTTTTTTTTTTTTTT',
     ],
     warps: [
-      { x: 13, y: 19, to: 'village', tx: 13, ty: 1 },
-      { x: 14, y: 19, to: 'village', tx: 14, ty: 1 },
+      { x: 20, y: 23, to: 'village', tx: 13, ty: 1 },
+      { x: 21, y: 23, to: 'village', tx: 14, ty: 1 },
     ],
     npcs: [],
     signs: [
-      { x: 12, y: 17, text: '≪정적의 숲≫\n버려진 목소리들이 잦아드는 곳.\n…발소리를 낮추고 지나가요.' },
+      { x: 15, y: 21, text: '≪정적의 숲≫\n버려진 목소리들이 잦아드는 곳.\n길은 넓지만, 발자국은 하나만 남았다.' },
     ],
     monsters: [
-      { id: 'bekkyeomon', x: 7, y: 10 },
+      { id: 'bekkyeomon', x: 8, y: 6 },
     ],
   },
 
@@ -2730,15 +2734,15 @@ function getObjectiveTarget(flags, curMap) {
     return { map: 'introlab', x: 14, y: 17, label: '잠긴 출구' };
   }
   if (flags.introDoorOpen && !d.bekkyeomon) {
-    if (!flags.introForestTrace) return { map: 'forest', x: 12, y: 10, label: '노란 발자국' };
-    return { map: 'forest', x: 7, y: 10, label: '따라' };
+    if (!flags.introForestTrace) return { map: 'forest', x: 17, y: 16, label: '노란 발자국' };
+    return { map: 'forest', x: 8, y: 6, label: '따라' };
   }
   if (!flags.talkedProf) return { map: 'village', x: 4, y: 12, label: '박사님' };
   if (d.yeongi) {
     return flags.trueEnding ? { map: 'village', x: 5, y: 12, label: '영이' } : null;
   }
   // 프롤로그(따라)부터 파이널까지 chapterNClear 기반으로 다음 목적지를 가리킨다.
-  if (!d.bekkyeomon) return { map: 'forest', x: 7, y: 10, label: '따라' };
+  if (!d.bekkyeomon) return { map: 'forest', x: 8, y: 6, label: '따라' };
   return getV2ChapterTarget(flags, curMap);
 }
 
@@ -4168,9 +4172,10 @@ const MAP_PROPS = {
     { x: 22, y: 9, text: '낡은 평상 하나.\n…아직, 비어 있다.' },
   ],
   forest: [
-    { x: 12, y: 10, flag: 'introForestTrace', kind: 'trace', label: '노란 발자국', clue: true,
-      text: '젖은 흙 위에 노란 발자국이 남아 있다.\n작고 급한 걸음. 누군가 방금 지나간 듯하다.\n발자국 끝에 삐뚤어진 연필선이 하나 그어져 있다.' },
-    { x: 13, y: 2, text: '나무 둥치에 누군가\n작게 새겨 놓았다.\n"여기서부터, 용기."' },
+    { x: 17, y: 16, flag: 'introForestTrace', kind: 'trace', label: '노란 발자국', clue: true,
+      text: '넓은 숲길 한가운데, 젖은 흙 위로 노란 발자국이 이어진다.\n작고 급한 걸음. 누군가 방금 안쪽 공터로 사라진 듯하다.\n발자국 끝에 삐뚤어진 연필선이 하나 그어져 있다.' },
+    { x: 14, y: 18, text: '나무 사이로 실험실 문빛이 아주 작게 보인다.\n돌아갈 수는 있지만, 발자국은 더 깊은 곳을 향한다.' },
+    { x: 9, y: 8, text: '풀숲에 찢어진 종이 조각이 걸려 있다.\n남의 그림을 따라 그린 선들이 겹쳐져, 원래 모양을 잃었다.' },
   ],
   ownerroom: [
     // 스토리 복선 — 조사하면 flags.seenPhoto1이 기록된다 (flag: game.js interact)
