@@ -523,7 +523,7 @@ const MAPS = {
       // 기울어진 거리로 복귀
       { x: 14, y: 18, to: 'tiltstreet', tx: 26, ty: 10, exitDir: 'west', dir: 'left' },
       // 4장 「반짝 아케이드」 — 그럴싸를 되돌린 뒤에야(chapter3Clear) 열리는 동쪽 가장자리 문
-      { x: 27, y: 10, to: 'arcade', tx: 1, ty: 8, needFlag: 'chapter3Clear', exitDir: 'east', dir: 'right',
+      { x: 27, y: 10, to: 'arcade', tx: 1, ty: 10, needFlag: 'chapter3Clear', exitDir: 'east', dir: 'right',
         lockText: '동쪽 벽 너머, 네온 불빛이 새어 나온다.\n"무료! 당첨! 오늘만!"…\n지금은 굳게 잠겨 있다.' },
     ],
     npcs: [
@@ -686,48 +686,54 @@ const MAPS = {
     name: '반짝 아케이드',
     song: 'glitch',
     intro: [
-      '문을 열자 요란한 네온 간판이 쏟아진다.\n"무료!" "당첨!" "오늘만!"',
-      '천장에선 색종이 폭죽 오브젝트가\n계속 터지고, 또 터진다.',
-      '안쪽 정문은 굳게 잠겨 있다.\n"…열쇠가 두 개는 있어야 열린대."',
+      '문을 열자 네온 간판들이 멀리 흩어진다.\n"무료!" "당첨!" "오늘만!"',
+      '폭죽 오브젝트는 천장 높은 곳에서 드문드문 터진다.\n한눈에 다 보이지 않는 큰 아케이드다.',
+      '북쪽 정문은 멀찍이 잠겨 있다.\n"…열쇠가 두 개는 있어야 열린대."',
     ],
     tiles: [
-      'HHHHHHHHHHHHHHHHHHHHHH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIYIIIIIIIIIIIIIIYIIH',
-      'HIIIIIIIIIIIIIIIIIIII6',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HHHHHHHHHHHHHHHHHHHHHH',
+      'HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIYIIIIIIIIIIIIYIIIIIIIIIIIIIIYIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      '6IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIYIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIYIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH',
     ],
     warps: [
       // 소문 거리로 복귀
-      { x: 11, y: 13, to: 'rumorstreet', tx: 26, ty: 10, exitDir: 'west', dir: 'left' },
+      { x: 0, y: 10, to: 'rumorstreet', tx: 26, ty: 10, exitDir: 'west', dir: 'left' },
       // 구역① 룰렛 광장
-      { x: 5, y: 3, to: 'roulettesquare', tx: 9, ty: 1 },
+      { x: 6, y: 4, to: 'roulettesquare', tx: 9, ty: 1 },
       // 구역② 회원가입 골목
-      { x: 16, y: 3, to: 'signupalley', tx: 9, ty: 1 },
+      { x: 22, y: 4, to: 'signupalley', tx: 9, ty: 1 },
       // 구역③ 백스테이지
-      { x: 11, y: 3, to: 'backstage', tx: 9, ty: 1 },
+      { x: 15, y: 4, to: 'backstage', tx: 9, ty: 1 },
       // 정문 — 열쇠 두 개(비밀조각·본인표)를 모두 모아야 열린다
-      { x: 11, y: 1, to: 'yuhokstage', tx: 7, ty: 8, needS4Keys: 2,
+      { x: 18, y: 1, to: 'yuhokstage', tx: 7, ty: 8, needS4Keys: 2,
         lockText: '정문에 자물쇠가 두 개 걸려 있다.\n"비밀조각"과 "본인표" — 둘 다 있어야\n열리는 문이라고 적혀 있다.' },
       // 5장 「포근한 집」 — 반짝을 되돌린 뒤에야(chapter4Clear) 열리는 동쪽 가장자리 문
-      { x: 21, y: 8, to: 'cozyhome', tx: 1, ty: 8, needFlag: 'chapter4Clear', exitDir: 'east', dir: 'right',
+      { x: 34, y: 10, to: 'cozyhome', tx: 1, ty: 10, needFlag: 'chapter4Clear', exitDir: 'east', dir: 'right',
         lockText: '동쪽 벽 너머, 따뜻한 불빛이 새어 나온다.\n…지금은 굳게 잠겨 있다.' },
     ],
     npcs: [],
     signs: [
-      { x: 3, y: 7, text: '≪반짝 아케이드≫\n"무료!" "당첨!" "오늘만!"\n…간판마다 느낌표뿐이다.' },
-      { x: 18, y: 7, text: '천장의 폭죽 오브젝트가\n쉬지 않고 색종이를 뿌린다.\n…치울 사람은 아무도 없어 보인다.' },
+      { x: 4, y: 12, text: '≪반짝 아케이드≫\n"무료!" "당첨!" "오늘만!"\n…간판마다 느낌표뿐이다.' },
+      { x: 29, y: 13, text: '천장의 폭죽 오브젝트가\n이따금 색종이를 뿌린다.\n시끄럽지만, 숨 쉴 공간은 있다.' },
     ],
     monsters: [],
   },
@@ -758,7 +764,7 @@ const MAPS = {
       'HHHHHHHHHHHHHHHHHHHH',
     ],
     warps: [
-      { x: 9, y: 12, to: 'arcade', tx: 5, ty: 4 },
+      { x: 9, y: 12, to: 'arcade', tx: 6, ty: 5 },
     ],
     npcs: [],
     signs: [],
@@ -791,7 +797,7 @@ const MAPS = {
       'HHHHHHHHHHHHHHHHHHHH',
     ],
     warps: [
-      { x: 9, y: 12, to: 'arcade', tx: 16, ty: 4 },
+      { x: 9, y: 12, to: 'arcade', tx: 22, ty: 5 },
     ],
     npcs: [],
     signs: [],
@@ -825,7 +831,7 @@ const MAPS = {
       'HHHHHHHHHHHHHHHHHHHH',
     ],
     warps: [
-      { x: 9, y: 12, to: 'arcade', tx: 11, ty: 4 },
+      { x: 9, y: 12, to: 'arcade', tx: 15, ty: 5 },
     ],
     npcs: [],
     signs: [],
@@ -854,7 +860,7 @@ const MAPS = {
       'HHHHHHHIHHHHHH',
     ],
     warps: [
-      { x: 7, y: 9, to: 'arcade', tx: 11, ty: 2 },
+      { x: 7, y: 9, to: 'arcade', tx: 18, ty: 2 },
     ],
     npcs: [
       { id: 'yuhok_boss', x: 7, y: 2, monSprite: 'yuhokmon', name: '반짝' },
@@ -871,48 +877,54 @@ const MAPS = {
     name: '포근한 집',
     song: 'village',
     intro: [
-      '문을 열자, 따뜻한 공기가 훅 끼친다.\n작은 집 안, 은은한 불빛이 켜져 있다.',
+      '문을 열자, 따뜻한 공기가 천천히 퍼진다.\n넓은 집 안 곳곳에 은은한 불빛이 켜져 있다.',
       '어디선가 루미의 목소리가 들린다.\n"어서 와. 여기 있으면 다 괜찮을 거야."',
-      '현관 안쪽 문은 굳게 잠겨 있다.\n"…세 곳을 확인해야 열린대."',
+      '현관 안쪽 문은 멀리 굳게 잠겨 있다.\n"…세 곳을 확인해야 열린대."',
     ],
     tiles: [
-      'HHHHHHHHHHHHHHHHHHHHHH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIYIIIIIIIIIIIIIIYIIH',
-      '7IIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HHHHHHHHHHHHHHHHHHHHHH',
+      'HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIYIIIIIIIIIIIIYIIIIIIIIIIIIIIYIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      '7IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIYIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIYIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH',
     ],
     warps: [
       // 아케이드로 복귀
-      { x: 0, y: 8, to: 'arcade', tx: 20, ty: 8 },
+      { x: 0, y: 10, to: 'arcade', tx: 33, ty: 10 },
       // 구역① 전화의 방
-      { x: 5, y: 3, to: 'callroom', tx: 9, ty: 1 },
+      { x: 6, y: 4, to: 'callroom', tx: 9, ty: 1 },
       // 구역② 잠긴 복도
-      { x: 11, y: 3, to: 'corridor', tx: 9, ty: 1 },
+      { x: 18, y: 4, to: 'corridor', tx: 9, ty: 1 },
       // 구역③ 소파 코너
-      { x: 16, y: 3, to: 'sofaroom', tx: 9, ty: 1 },
+      { x: 30, y: 4, to: 'sofaroom', tx: 9, ty: 1 },
       // 현관 — 세 번의 「확인하는 용기」(구역 3개)를 모두 마쳐야 열린다
-      { x: 11, y: 1, to: 'lumiroom', tx: 7, ty: 8, needS5Zones: 3,
+      { x: 18, y: 1, to: 'lumiroom', tx: 7, ty: 8, needS5Zones: 3,
         lockText: '현관문이 굳게 잠겨 있다.\n"…세 곳 다 확인해야, 열리는 문이래."' },
       // 파이널 「고요의 뜰 → 코어」 — 루미를 되돌린 뒤에야(chapter5Clear) 열리는 안쪽 문(남쪽)
-      { x: 11, y: 14, to: 'quietyard', tx: 9, ty: 1, needFlag: 'chapter5Clear',
+      { x: 31, y: 20, to: 'quietyard', tx: 9, ty: 1, needFlag: 'chapter5Clear',
         lockText: '집 안쪽에 작은 문이 하나 더 있다.\n…그 너머는 유난히 조용하다.\n지금은 굳게 잠겨 있다.' },
     ],
     npcs: [],
     signs: [
-      { x: 3, y: 7, text: '≪포근한 집≫\n작은 액자 하나, 낡은 시계 하나.\n…아늑하다.' },
-      { x: 18, y: 7, text: '창가에 놓인 화분.\n물기가 촉촉하다. 누가 매일\n돌봐 온 것 같다.' },
+      { x: 4, y: 12, text: '≪포근한 집≫\n작은 액자 하나, 낡은 시계 하나.\n…아늑하다.' },
+      { x: 29, y: 13, text: '창가에 놓인 화분.\n물기가 촉촉하다. 누가 매일\n돌봐 온 것 같다.' },
     ],
     monsters: [],
   },
@@ -1108,7 +1120,7 @@ const MAPS = {
       'HHHHHHHHHHHHHHHHHHHH',
     ],
     warps: [
-      { x: 9, y: 12, to: 'cozyhome', tx: 5, ty: 4 },
+      { x: 9, y: 12, to: 'cozyhome', tx: 6, ty: 5 },
     ],
     npcs: [],
     signs: [],
@@ -1140,7 +1152,7 @@ const MAPS = {
       'HHHHHHHHHHHHHHHHHHHH',
     ],
     warps: [
-      { x: 9, y: 12, to: 'cozyhome', tx: 11, ty: 4 },
+      { x: 9, y: 12, to: 'cozyhome', tx: 18, ty: 5 },
     ],
     npcs: [],
     signs: [],
@@ -1172,7 +1184,7 @@ const MAPS = {
       'HHHHHHHHHHHHHHHHHHHH',
     ],
     warps: [
-      { x: 9, y: 12, to: 'cozyhome', tx: 16, ty: 4 },
+      { x: 9, y: 12, to: 'cozyhome', tx: 30, ty: 5 },
     ],
     npcs: [],
     signs: [],
@@ -1202,7 +1214,7 @@ const MAPS = {
       'HHHHHHHIHHHHHH',
     ],
     warps: [
-      { x: 7, y: 9, to: 'cozyhome', tx: 11, ty: 2 },
+      { x: 7, y: 9, to: 'cozyhome', tx: 18, ty: 2 },
     ],
     npcs: [
       { id: 'hollim_boss', x: 7, y: 2, monSprite: 'hollimmon', name: '루미' },
@@ -2683,10 +2695,10 @@ const V2_CHAPTERS = [
     gate: { map: 'rumorstreet', x: 14, y: 4, label: '신문사' },
     bossMap: 'towerroof', boss: { map: 'towerroof', x: 7, y: 2, label: '그럴싸' } },
   { zoneMaps: ['arcade', 'roulettesquare', 'signupalley', 'backstage'],
-    gate: { map: 'arcade', x: 11, y: 1, label: '정문' },
+    gate: { map: 'arcade', x: 18, y: 1, label: '정문' },
     bossMap: 'yuhokstage', boss: { map: 'yuhokstage', x: 7, y: 2, label: '반짝' } },
   { zoneMaps: ['cozyhome', 'callroom', 'corridor', 'sofaroom'],
-    gate: { map: 'cozyhome', x: 11, y: 1, label: '현관' },
+    gate: { map: 'cozyhome', x: 18, y: 1, label: '현관' },
     bossMap: 'lumiroom', boss: { map: 'lumiroom', x: 7, y: 2, label: '루미' } },
 ];
 // 챕터 진입 전 — 이전 챕터(또는 마을)에서 다음 챕터로 가는 문. 인덱스 = 클리어한 장 수.
@@ -2695,9 +2707,9 @@ const V2_ENTRANCE = [
   { map: 'freestreet', x: 37, y: 15, label: '기울어진 거리' },  // 1장 클리어 — 2장 문
   { map: 'tiltstreet', x: 27, y: 10, label: '대문짝 신문사' },  // 2장 클리어 — 3장 문
   { map: 'rumorstreet', x: 27, y: 10, label: '반짝 아케이드' }, // 3장 클리어 — 4장 문
-  { map: 'arcade', x: 21, y: 8, label: '포근한 집' },           // 4장 클리어 — 5장 문
+  { map: 'arcade', x: 34, y: 10, label: '포근한 집' },           // 4장 클리어 — 5장 문
 ];
-const V2_FINAL_DOOR = { map: 'cozyhome', x: 11, y: 14, label: '고요의 뜰' }; // 5장 클리어 — 파이널 문
+const V2_FINAL_DOOR = { map: 'cozyhome', x: 31, y: 20, label: '고요의 뜰' }; // 5장 클리어 — 파이널 문
 // 파이널 문 이후(고요의 뜰 1~3 → 고요 조우 → 코어 봉헌 제단 → 영이 등장)의 세부 구간.
 // V2_FINAL_DOOR 하나로는 "이미 뜰 안이다/고요를 이미 이겼다/영이가 기다린다" 같은 단계를
 // 구분할 수 없어, 리뷰 사이클 3에서 이 세 방(quietyard*, goyostage, coreroom) 전체에
@@ -3961,7 +3973,7 @@ const PUZZLES = {
     title: '룰렛 광장',
     objective: '룰렛 뒤 창고에서 비밀조각 열쇠를 찾자',
     objectiveCleared: '아케이드로 돌아가자',
-    exitTo: { map: 'arcade', x: 5, y: 4 },
+    exitTo: { map: 'arcade', x: 6, y: 5 },
     steps: ['roulette'],
     hints: {
       roulette: [
@@ -3998,7 +4010,7 @@ const PUZZLES = {
     title: '회원가입 골목',
     objective: '진짜 도메인을 가려 끝까지 가자',
     objectiveCleared: '아케이드로 돌아가자',
-    exitTo: { map: 'arcade', x: 16, y: 4 },
+    exitTo: { map: 'arcade', x: 22, y: 5 },
     steps: ['signup'],
     hints: {
       signup: [
@@ -4035,7 +4047,7 @@ const PUZZLES = {
     title: '백스테이지',
     objective: '진짜 열쇠 두 개로 안쪽 문을 열자',
     objectiveCleared: '아케이드로 돌아가자',
-    exitTo: { map: 'arcade', x: 11, y: 4 },
+    exitTo: { map: 'arcade', x: 15, y: 5 },
     steps: ['backstage'],
     hints: {
       backstage: [
@@ -4065,7 +4077,7 @@ const PUZZLES = {
     title: '전화의 방',
     objective: '전화를 받아 보자',
     objectiveCleared: '집으로 돌아가자',
-    exitTo: { map: 'cozyhome', x: 5, y: 4 },
+    exitTo: { map: 'cozyhome', x: 6, y: 5 },
     steps: ['call'],
     hints: {
       call: [
@@ -4097,7 +4109,7 @@ const PUZZLES = {
     title: '잠긴 복도',
     objective: '문을 직접 열어 확인해 보자',
     objectiveCleared: '집으로 돌아가자',
-    exitTo: { map: 'cozyhome', x: 11, y: 4 },
+    exitTo: { map: 'cozyhome', x: 18, y: 5 },
     steps: ['checkdoor'],
     hints: {
       checkdoor: [
@@ -4126,7 +4138,7 @@ const PUZZLES = {
     title: '소파 코너',
     objective: '소파에 앉았다가, 스스로 일어나 보자',
     objectiveCleared: '집으로 돌아가자',
-    exitTo: { map: 'cozyhome', x: 16, y: 4 },
+    exitTo: { map: 'cozyhome', x: 30, y: 5 },
     steps: ['sofa'],
     hints: {
       sofa: [
@@ -4244,6 +4256,20 @@ const MAP_PROPS = {
       text: '남쪽 길바닥에 흩어진 종이들이 신문사 쪽으로 되감기듯 놓여 있다.\n정정 보도가 끝나면 이 길부터 조용해질 것 같다.' },
     { x: 28, y: 10, kind: 'ch3_district', label: '반짝 아케이드 문',
       text: '동쪽 끝 문 너머에서 무료와 당첨을 외치는 네온이 새어 나온다.\n소문 거리가 바로잡혀야 다음 소란으로 넘어갈 수 있다.' },
+  ],
+  arcade: [
+    { x: 6, y: 5, kind: 'ch4_district', label: '룰렛 광장 입구', text: '서쪽 통로 너머에서 당첨 소리가 작게 튄다.\n요란하지만 거리가 있어, 미끼를 보고도 한 번 멈출 수 있다.' },
+    { x: 22, y: 5, kind: 'ch4_district', label: '회원가입 골목 입구', text: '북동쪽 벽에 비슷한 주소 두 개가 멀찍이 붙어 있다.\n가까이 가기 전부터 비교해 보라는 듯 여백이 넓다.' },
+    { x: 15, y: 5, kind: 'ch4_district', label: '백스테이지 입구', text: '중앙 위쪽의 어두운 문에서는 꺼진 조명 냄새가 난다.\n반짝임 뒤편을 보려면 이 문으로 들어가야 한다.' },
+    { x: 18, y: 2, kind: 'ch4_district', label: '잠긴 정문', text: '멀리 북쪽 정문에 두 개의 자물쇠가 걸려 있다.\n넓어진 아케이드의 목적지가 한눈에 보이지만, 아직은 닿지 않는다.' },
+    { x: 34, y: 10, kind: 'ch4_district', label: '포근한 집 문', text: '동쪽 끝 문틈에서 따뜻한 빛이 새어 나온다.\n반짝을 되돌린 뒤에야 다음 장으로 이어질 문이다.' },
+  ],
+  cozyhome: [
+    { x: 6, y: 5, kind: 'ch5_district', label: '전화의 방 입구', text: '왼쪽 방 너머에서 전화벨이 한 번 울리고 멈춘다.\n곧장 달려가기보다 직접 대답할 시간을 남겨 둔 거리다.' },
+    { x: 18, y: 5, kind: 'ch5_district', label: '잠긴 복도 입구', text: '중앙 복도는 따뜻한 집 안에서도 조금 서늘하다.\n위험하다는 말만 믿지 말고 직접 살펴볼 길이다.' },
+    { x: 30, y: 5, kind: 'ch5_district', label: '소파 코너 입구', text: '오른쪽 방의 소파는 멀리서도 포근해 보인다.\n쉬어도 되지만, 일어날 수 있는지는 내가 정해야 한다.' },
+    { x: 18, y: 2, kind: 'ch5_district', label: '현관 안쪽 문', text: '북쪽 현관문은 세 곳을 확인하기 전까지 닫혀 있다.\n집의 중심축이지만, 강제로 당기지는 않는다.' },
+    { x: 31, y: 20, kind: 'ch5_district', label: '고요의 뜰 문', text: '남동쪽 깊은 복도 끝에 조용한 문이 있다.\n루미와 마주한 뒤, 더 마지막 이야기로 이어질 듯하다.' },
   ],
   village: [
     { x: 5, y: 15, text: '경계마을의 연못.\n물고기 대신 작은 빛 알갱이가\n헤엄치고 있다.' },
