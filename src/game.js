@@ -1858,6 +1858,28 @@
       fullScreenNoise: false,
     };
   }
+  function chapter4HubVisualProfile(n, lowGraphics) {
+    const level = Math.max(0, Math.min(4, n || 0));
+    const low = !!lowGraphics;
+    return {
+      level,
+      neonSigns: low ? Math.min(3, 1 + Math.floor(level / 2)) : Math.min(6, 2 + level),
+      confetti: low ? 1 : Math.min(3, 1 + Math.floor(level / 2)),
+      labels: !low,
+      fullScreenFlash: false,
+    };
+  }
+  function chapter5HubVisualProfile(n, lowGraphics) {
+    const level = Math.max(0, Math.min(3, n || 0));
+    const low = !!lowGraphics;
+    return {
+      level,
+      warmLamps: low ? Math.min(2, 1 + Math.floor(level / 2)) : Math.min(5, 2 + level),
+      voiceRipples: low ? 1 : Math.min(3, 1 + level),
+      labels: !low,
+      fullScreenBlur: false,
+    };
+  }
   function addPrivacyLeak(reason) {
     const before = privacyLeak();
     const after = Math.min(PRIVACY_LEAK_MAX, before + 1);
@@ -4147,7 +4169,7 @@
     // 아케이드 정문 앞(허브)으로 복귀
     game.map = 'arcade';
     const p = game.player;
-    p.x = 11; p.y = 2; p.px = 11 * TS; p.py = 2 * TS; p.moving = false; p.dir = 'down';
+    p.x = 18; p.y = 2; p.px = 18 * TS; p.py = 2 * TS; p.moving = false; p.dir = 'down';
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.badge();
@@ -4176,7 +4198,7 @@
     // 포근한 집 현관 앞(허브)으로 복귀
     game.map = 'cozyhome';
     const p = game.player;
-    p.x = 11; p.y = 2; p.px = 11 * TS; p.py = 2 * TS; p.moving = false; p.dir = 'down';
+    p.x = 18; p.y = 2; p.px = 18 * TS; p.py = 2 * TS; p.moving = false; p.dir = 'down';
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.badge();
@@ -6900,7 +6922,7 @@
     game.flags = flags;
     game.map = 'arcade';
     const p = game.player;
-    p.x = 11; p.y = 14; p.px = 11 * TS; p.py = 14 * TS;
+    p.x = 18; p.y = 20; p.px = 18 * TS; p.py = 20 * TS;
     p.moving = false; p.dir = 'up';
     save();
   }
@@ -6915,7 +6937,7 @@
     game.flags = flags;
     game.map = 'cozyhome';
     const p = game.player;
-    p.x = 3; p.y = 8; p.px = 3 * TS; p.py = 8 * TS;
+    p.x = 3; p.y = 10; p.px = 3 * TS; p.py = 10 * TS;
     p.moving = false; p.dir = 'down';
     save();
   }
@@ -6931,7 +6953,7 @@
     game.flags = flags;
     game.map = 'cozyhome';
     const p = game.player;
-    p.x = 11; p.y = 13; p.px = 11 * TS; p.py = 13 * TS;
+    p.x = 31; p.y = 19; p.px = 31 * TS; p.py = 19 * TS;
     p.moving = false; p.dir = 'down';
     save();
   }
@@ -7674,6 +7696,102 @@
     ctx.restore();
   }
 
+  function chapter4HubVisibleMarks() {
+    const props = MAP_PROPS.arcade || [];
+    return props.filter((prop) => prop.kind === 'ch4_district')
+      .map((prop) => ({ map: 'arcade', x: prop.x, y: prop.y, kind: prop.kind, label: prop.label || '' }));
+  }
+
+  function chapter5HubVisibleMarks() {
+    const props = MAP_PROPS.cozyhome || [];
+    return props.filter((prop) => prop.kind === 'ch5_district')
+      .map((prop) => ({ map: 'cozyhome', x: prop.x, y: prop.y, kind: prop.kind, label: prop.label || '' }));
+  }
+
+  function drawStaticHubMarks(marks, cx, cy, profile, palette) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    for (const [i, mark] of marks.entries()) {
+      const sx = Math.round(mark.x * TS - cx);
+      const sy = Math.round(mark.y * TS - cy - 2);
+      if (sx < -60 || sx > LW + 60 || sy < -50 || sy > LH + 50) continue;
+      const icon = palette.icon(mark.label);
+      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.76 : 0.90;
+      ctx.fillStyle = icon.bg;
+      ctx.fillRect(sx + 5, sy + 8, TS - 10, TS - 12);
+      ctx.strokeStyle = icon.fg;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx + 5.5, sy + 8.5, TS - 11, TS - 13);
+      ctx.fillStyle = icon.fg;
+      ctx.font = fs(14, true);
+      ctx.fillText(icon.text, sx + TS / 2, sy + 24);
+      if (profile.labels) {
+        ctx.font = fs(9, true);
+        ctx.fillText(mark.label, sx + TS / 2, sy + 4);
+      }
+      if (i < (palette.rings || 0) && !(game.lowGraphics || game.reduceFx)) {
+        ctx.globalAlpha = 0.22;
+        ctx.strokeRect(sx + 2.5, sy + 5.5, TS - 5, TS - 7);
+      }
+    }
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  function drawChapter4HubMarks(cx, cy) {
+    if (game.map !== 'arcade') return;
+    const profile = chapter4HubVisualProfile(s4KeyCount(), game.lowGraphics || game.reduceFx);
+    drawStaticHubMarks(chapter4HubVisibleMarks(), cx, cy, profile, {
+      rings: profile.confetti,
+      icon: (label) => {
+        if (label === '포근한 집 문') return { text: '▶', bg: '#30213a', fg: '#e9a7ff' };
+        if (label === '잠긴 정문') return { text: '🔒', bg: '#2f2110', fg: '#ffd644' };
+        if (label === '백스테이지 입구') return { text: '▣', bg: '#202532', fg: '#9bd3ff' };
+        return { text: '★', bg: '#3a1f2d', fg: '#ff8ec7' };
+      },
+    });
+    const signs = [
+      { x: 9, y: 8, text: '무료' }, { x: 25, y: 8, text: '동의' }, { x: 13, y: 15, text: '당첨' },
+      { x: 31, y: 14, text: '오늘' }, { x: 4, y: 17, text: '해지' }, { x: 20, y: 19, text: '보안' },
+    ];
+    ctx.save(); ctx.font = 'bold 10px monospace';
+    for (const s of signs.slice(0, profile.neonSigns)) {
+      const sx = Math.round(s.x * TS - cx + 5), sy = Math.round(s.y * TS - cy + 7);
+      if (sx < -70 || sx > LW + 40 || sy < -40 || sy > LH + 40) continue;
+      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.38 : 0.58;
+      ctx.fillStyle = '#2d1832'; ctx.fillRect(sx, sy, 34, 15);
+      ctx.strokeStyle = '#ff8ec7'; ctx.strokeRect(sx + 0.5, sy + 0.5, 33, 14);
+      ctx.fillStyle = '#ffd6f0'; ctx.fillText(s.text, sx + 4, sy + 11);
+    }
+    ctx.restore();
+  }
+
+  function drawChapter5HubMarks(cx, cy) {
+    if (game.map !== 'cozyhome') return;
+    const profile = chapter5HubVisualProfile(s5ClearCount(), game.lowGraphics || game.reduceFx);
+    drawStaticHubMarks(chapter5HubVisibleMarks(), cx, cy, profile, {
+      rings: profile.voiceRipples,
+      icon: (label) => {
+        if (label === '고요의 뜰 문') return { text: '▶', bg: '#22302b', fg: '#8fe0c0' };
+        if (label === '현관 안쪽 문') return { text: '◇', bg: '#3b2a1e', fg: '#ffd08a' };
+        if (label === '잠긴 복도 입구') return { text: '…', bg: '#25303a', fg: '#9bd3ff' };
+        return { text: '⌂', bg: '#3a2a20', fg: '#ffd08a' };
+      },
+    });
+    const lamps = [
+      { x: 8, y: 9 }, { x: 18, y: 10 }, { x: 28, y: 9 }, { x: 12, y: 17 }, { x: 31, y: 16 },
+    ];
+    ctx.save();
+    for (const lamp of lamps.slice(0, profile.warmLamps)) {
+      const sx = Math.round(lamp.x * TS - cx + TS / 2), sy = Math.round(lamp.y * TS - cy + TS / 2);
+      if (sx < -50 || sx > LW + 50 || sy < -50 || sy > LH + 50) continue;
+      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.18 : 0.32;
+      ctx.fillStyle = '#ffd08a'; ctx.beginPath(); ctx.arc(sx, sy, 16, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.72; ctx.fillRect(sx - 2, sy - 2, 4, 4);
+    }
+    ctx.restore();
+  }
+
   function drawWorld() {
     const m = MAPS[game.map];
     const { cx, cy } = camera();
@@ -7705,6 +7823,9 @@
     drawChapter2HubMarks(cx, cy);
     // 3장 허브 — 소문 거리의 신문사/상점/헤드라인/다음 문을 정적 표식으로 보여 준다.
     drawChapter3HubMarks(cx, cy);
+    // 4·5장 허브 — 새 NPC를 늘리지 않고 넓은 공간의 목적지 표식만 띄운다.
+    drawChapter4HubMarks(cx, cy);
+    drawChapter5HubMarks(cx, cy);
     // 2장 허브 — 중앙의 거대한 저울 (구역 클리어마다 기울기가 준다)
     if (game.map === 'tiltstreet') drawTiltScale(cx, cy);
 
@@ -9279,6 +9400,7 @@
     privacyLeak, privacyPressureProfile, addPrivacyLeak, notePrivacyRecoveryPiece,
     toggleLowGraphics, effectiveDprCap, prologueVisibleMarks, ch1StreetVisualProfile, ch1HubVisibleMarks,
     chapter2HubVisualProfile, chapter2HubVisibleMarks, chapter3HubVisualProfile, chapter3HubVisibleMarks,
+    chapter4HubVisualProfile, chapter4HubVisibleMarks, chapter5HubVisualProfile, chapter5HubVisibleMarks,
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록

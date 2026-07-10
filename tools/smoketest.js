@@ -493,6 +493,70 @@ function requirePropNearWarp(mapId, kind, label, to, profile, maxDist = 3) {
     ch3Dist(ch3DistrictMarks.find((m) => m.label === '닫힌 상점가'), ch3DistrictMarks.find((m) => m.label === '정정 보도 길')) >= 10 &&
     ch3Dist(ch3DistrictMarks.find((m) => m.label === '대문짝 헤드라인'), ch3DistrictMarks.find((m) => m.label === '반짝 아케이드 문')) >= 10);
 }
+{
+  const s4 = mapSize('arcade');
+  const s5 = mapSize('cozyhome');
+  const r4 = reachableProfile('arcade', [{ x: 1, y: 8 }, { x: 6, y: 5 }, { x: 18, y: 5 }, { x: 18, y: 16 }]);
+  const r5 = reachableProfile('cozyhome', [{ x: 1, y: 8 }, { x: 7, y: 5 }, { x: 17, y: 5 }, { x: 28, y: 10 }]);
+  const ch45HubChecks = [
+    ['4장 허브는 36x22 이상으로 넓어짐', s4.w >= 36 && s4.h >= 22, `${s4.w}x${s4.h}`],
+    ['5장 허브는 36x22 이상으로 넓어짐', s5.w >= 36 && s5.h >= 22, `${s5.w}x${s5.h}`],
+    ['4장 허브 reachable playable area가 실제로 확장됨', r4.count >= 620 && (r4.maxX - r4.minX) >= 32 && (r4.maxY - r4.minY) >= 19, `count ${r4.count}, bounds ${r4.minX}-${r4.maxX}/${r4.minY}-${r4.maxY}`],
+    ['5장 허브 reachable playable area가 실제로 확장됨', r5.count >= 620 && (r5.maxX - r5.minX) >= 32 && (r5.maxY - r5.minY) >= 19, `count ${r5.count}, bounds ${r5.minX}-${r5.maxX}/${r5.minY}-${r5.maxY}`],
+    ['4장 구역 입구 props는 실제 warp와 가까운 reachable landmark',
+      requirePropNearWarp('arcade', 'ch4_district', '룰렛 광장 입구', 'roulettesquare', r4) &&
+      requirePropNearWarp('arcade', 'ch4_district', '회원가입 골목 입구', 'signupalley', r4) &&
+      requirePropNearWarp('arcade', 'ch4_district', '백스테이지 입구', 'backstage', r4) &&
+      requirePropNearWarp('arcade', 'ch4_district', '포근한 집 문', 'cozyhome', r4), 'prop/warp mismatch'],
+    ['5장 구역 입구 props는 실제 warp와 가까운 reachable landmark',
+      requirePropNearWarp('cozyhome', 'ch5_district', '전화의 방 입구', 'callroom', r5) &&
+      requirePropNearWarp('cozyhome', 'ch5_district', '잠긴 복도 입구', 'corridor', r5) &&
+      requirePropNearWarp('cozyhome', 'ch5_district', '소파 코너 입구', 'sofaroom', r5) &&
+      requirePropNearWarp('cozyhome', 'ch5_district', '고요의 뜰 문', 'quietyard', r5), 'prop/warp mismatch'],
+  ];
+  const failures = ch45HubChecks.filter(([, ok]) => !ok);
+  if (failures.length) {
+    for (const [name,, detail] of failures) console.error(`  ✘ ${name}${detail ? ` — ${detail}` : ''}`);
+    process.exit(1);
+  }
+  for (const [name] of ch45HubChecks) { console.log('  ✔ ' + name); passed++; }
+}
+{
+  const hasCh4Hooks = typeof windowObj.__test.chapter4HubVisibleMarks === 'function' && typeof windowObj.__test.chapter4HubVisualProfile === 'function';
+  const hasCh5Hooks = typeof windowObj.__test.chapter5HubVisibleMarks === 'function' && typeof windowObj.__test.chapter5HubVisualProfile === 'function';
+  check('4장 허브 랜드마크 테스트 훅 존재', hasCh4Hooks);
+  check('5장 허브 랜드마크 테스트 훅 존재', hasCh5Hooks);
+  if (hasCh4Hooks) {
+    const ch4Marks = windowObj.__test.chapter4HubVisibleMarks();
+    const ch4DistrictMarks = ch4Marks.filter((m) => m.kind === 'ch4_district');
+    check('4장 아케이드 랜드마크 5개 이상 — 룰렛·회원가입·백스테이지·정문·다음 문이 보임',
+      ch4DistrictMarks.length >= 5 && ['룰렛 광장 입구', '회원가입 골목 입구', '백스테이지 입구', '잠긴 정문', '포근한 집 문'].every((label) => ch4DistrictMarks.some((m) => m.label === label)));
+    check('4장 아케이드 NPC 추가 없음', (MAPS.arcade.npcs || []).length === 0);
+    const ch4Fx = windowObj.__test.chapter4HubVisualProfile(4, false);
+    const ch4LowFx = windowObj.__test.chapter4HubVisualProfile(4, true);
+    check('4장 기본 허브 FX 부담은 과하지 않음', ch4Fx.neonSigns <= 6 && ch4Fx.confetti <= 3 && ch4Fx.fullScreenFlash === false);
+    check('4장 저사양 허브 효과는 일반보다 가벼움', ch4LowFx.neonSigns < ch4Fx.neonSigns && ch4LowFx.confetti < ch4Fx.confetti && ch4LowFx.labels === false);
+    const ch4Dist = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+    check('4장 표식이 한 화면에 다닥다닥 붙지 않음',
+      ch4Dist(ch4DistrictMarks.find((m) => m.label === '룰렛 광장 입구'), ch4DistrictMarks.find((m) => m.label === '회원가입 골목 입구')) >= 12 &&
+      ch4Dist(ch4DistrictMarks.find((m) => m.label === '백스테이지 입구'), ch4DistrictMarks.find((m) => m.label === '포근한 집 문')) >= 12);
+  }
+  if (hasCh5Hooks) {
+    const ch5Marks = windowObj.__test.chapter5HubVisibleMarks();
+    const ch5DistrictMarks = ch5Marks.filter((m) => m.kind === 'ch5_district');
+    check('5장 포근한 집 랜드마크 5개 이상 — 전화·복도·소파·현관·고요 문이 보임',
+      ch5DistrictMarks.length >= 5 && ['전화의 방 입구', '잠긴 복도 입구', '소파 코너 입구', '현관 안쪽 문', '고요의 뜰 문'].every((label) => ch5DistrictMarks.some((m) => m.label === label)));
+    check('5장 포근한 집 NPC 추가 없음', (MAPS.cozyhome.npcs || []).length === 0);
+    const ch5Fx = windowObj.__test.chapter5HubVisualProfile(3, false);
+    const ch5LowFx = windowObj.__test.chapter5HubVisualProfile(3, true);
+    check('5장 기본 허브 FX 부담은 과하지 않음', ch5Fx.warmLamps <= 5 && ch5Fx.voiceRipples <= 3 && ch5Fx.fullScreenBlur === false);
+    check('5장 저사양 허브 효과는 일반보다 가벼움', ch5LowFx.warmLamps < ch5Fx.warmLamps && ch5LowFx.voiceRipples < ch5Fx.voiceRipples && ch5LowFx.labels === false);
+    const ch5Dist = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+    check('5장 표식이 한 화면에 다닥다닥 붙지 않음',
+      ch5Dist(ch5DistrictMarks.find((m) => m.label === '전화의 방 입구'), ch5DistrictMarks.find((m) => m.label === '소파 코너 입구')) >= 12 &&
+      ch5Dist(ch5DistrictMarks.find((m) => m.label === '현관 안쪽 문'), ch5DistrictMarks.find((m) => m.label === '고요의 뜰 문')) >= 12);
+  }
+}
 
 console.log('[23] 엔딩 분기 로직 (4종) — v2 스케일(자비 최대 8회: 따라+담아·기울·그럴싸·반짝·루미+고요+영이)');
 const { computeEnding } = vm.runInContext('({ computeEnding })', sandbox);
@@ -1026,8 +1090,8 @@ console.log('[67b] 주요 챕터 경계 워프 — 나간 방향의 반대편 �
   const cases = [
     ['freestreet', 37, 15, 'tiltstreet', 1, 10, 'right'],
     ['tiltstreet', 27, 10, 'rumorstreet', 1, 10, 'right'],
-    ['rumorstreet', 27, 10, 'arcade', 1, 8, 'right'],
-    ['arcade', 21, 8, 'cozyhome', 1, 8, 'right'],
+    ['rumorstreet', 27, 10, 'arcade', 1, 10, 'right'],
+    ['arcade', 34, 10, 'cozyhome', 1, 10, 'right'],
     ['introlab', 14, 17, 'forest', 20, 2, 'down'],
   ];
   for (const [from, x, y, to, tx, ty, dir] of cases) {
@@ -1881,16 +1945,16 @@ advanceDialog();
 g.flags.chapter3Clear = true;
 g.dialog = null; g.mode = 'world'; setPos(26, 10, 'right'); hold('ArrowRight', 12);
 check('chapter3Clear 후 아케이드 진입 — 서쪽 입구에서 오른쪽을 바라봄',
-  g.map === 'arcade' && g.player.x === 1 && g.player.y === 8 && g.player.dir === 'right');
+  g.map === 'arcade' && g.player.x === 1 && g.player.y === 10 && g.player.dir === 'right');
 
 console.log('[85] 아케이드 정문 — 열쇠 0/2일 때 잠김');
-g.dialog = null; g.mode = 'world'; setPos(11, 2, 'up'); hold('ArrowUp', 12);
+g.dialog = null; g.mode = 'world'; setPos(18, 2, 'up'); hold('ArrowUp', 12);
 check('정문 잠김(0/2, 아케이드에 남음)', g.map === 'arcade' && g.mode === 'dialog' &&
   g.dialog.lines.some((l) => /0\/2/.test(l)));
 advanceDialog();
 
 console.log('[86] 4장 구역③ 「백스테이지」 (0/2 열쇠) — 마스터키 함정 + 2단계 인증 + 복선 4호');
-g.dialog = null; g.mode = 'world'; setPos(11, 4, 'up'); hold('ArrowUp', 12);
+g.dialog = null; g.mode = 'world'; setPos(15, 5, 'up'); hold('ArrowUp', 12);
 check('백스테이지 진입', g.map === 'backstage' && g.player.x === 9 && g.player.y === 1);
 check('진입 전 seenButtons 없음', !g.flags.seenButtons);
 setPos(2, 12, 'up'); tap('z');
@@ -1921,7 +1985,7 @@ setPos(9, 10, 'down'); hold('ArrowDown', 30);
 check('아케이드로 복귀', g.map === 'arcade');
 
 console.log('[87] 4장 구역① 「룰렛 광장」 — 룰렛(미끼)+해지 단말(다크패턴)+비밀조각 열쇠');
-g.dialog = null; g.mode = 'world'; setPos(5, 4, 'up'); hold('ArrowUp', 12);
+g.dialog = null; g.mode = 'world'; setPos(6, 5, 'up'); hold('ArrowUp', 12);
 check('룰렛 광장 진입', g.map === 'roulettesquare' && g.player.x === 9 && g.player.y === 1);
 check('진입 전 adStickers 0', g.flags.adStickers === 0);
 setPos(5, 4, 'up'); tap('z');
@@ -1947,16 +2011,16 @@ check('해지 — 딱지 전부 제거', g.mode === 'dialog' && g.flags.adSticke
 advanceDialog();
 setPos(9, 10, 'up'); tap('z');
 check('창고 상자 클리어 → 아케이드 복귀(입구서 1칸 떨어진 칸) + ev_free + 비밀조각 열쇠',
-  g.map === 'arcade' && !g.puzzleRun && g.player.x === 5 && g.player.y === 4 &&
+  g.map === 'arcade' && !g.puzzleRun && g.player.x === 6 && g.player.y === 5 &&
   g.flags.evCards.includes('ev_free') && g.flags.s4KeySecret === true);
 advanceDialog();
-setPos(11, 2, 'up'); hold('ArrowUp', 12);
+setPos(18, 2, 'up'); hold('ArrowUp', 12);
 check('정문 여전히 잠김(1/2)', g.map === 'arcade' && g.mode === 'dialog' &&
   g.dialog.lines.some((l) => /1\/2/.test(l)));
 advanceDialog();
 
 console.log('[88] 4장 구역② 「회원가입 골목」 — 갈림길 판별(오답=함정 되돌림+wrongTries)+본인표 열쇠');
-g.dialog = null; g.mode = 'world'; setPos(16, 4, 'up'); hold('ArrowUp', 12);
+g.dialog = null; g.mode = 'world'; setPos(22, 5, 'up'); hold('ArrowUp', 12);
 check('회원가입 골목 진입', g.map === 'signupalley' && g.player.x === 9 && g.player.y === 1);
 setPos(9, 10, 'up'); tap('z');
 check('통과 전 본인 확인함 잠김', g.mode === 'dialog' && g.dialog.lines.some((l) => /먼저 갈림길/.test(l)));
@@ -1975,19 +2039,19 @@ check('정답 — 통과', g.mode === 'dialog');
 advanceDialog();
 setPos(9, 10, 'up'); tap('z');
 check('본인 확인함 클리어 → 아케이드 복귀(입구서 1칸 떨어진 칸) + ev_twokeys + 본인표 열쇠',
-  g.map === 'arcade' && !g.puzzleRun && g.player.x === 16 && g.player.y === 4 &&
+  g.map === 'arcade' && !g.puzzleRun && g.player.x === 22 && g.player.y === 5 &&
   g.flags.evCards.includes('ev_twokeys') && g.flags.s4KeyId === true);
 advanceDialog();
 
 console.log('[89] 4장 구역③ 재방문(2/2 열쇠) — 마스터키 무효화 + 안쪽 문 개방(ev_offstage)');
-g.dialog = null; g.mode = 'world'; setPos(11, 4, 'up'); hold('ArrowUp', 12);
+g.dialog = null; g.mode = 'world'; setPos(15, 5, 'up'); hold('ArrowUp', 12);
 check('백스테이지 재진입', g.map === 'backstage');
 setPos(5, 5, 'up'); tap('z');
 check('마스터키 — 이제 필요 없음(2/2 열쇠)', g.mode === 'dialog' && g.dialog.lines.some((l) => /필요 없다/.test(l)));
 advanceDialog();
 setPos(9, 10, 'up'); tap('z');
 check('안쪽 문 개방 → ev_offstage + 아케이드 복귀(입구서 1칸 떨어진 칸)',
-  g.map === 'arcade' && !g.puzzleRun && g.player.x === 11 && g.player.y === 4 &&
+  g.map === 'arcade' && !g.puzzleRun && g.player.x === 15 && g.player.y === 5 &&
   g.flags.evCards.includes('ev_offstage'));
 advanceDialog();
 
@@ -1996,7 +2060,7 @@ check('콜백 인트로 — 자비 경로에 콜백 한 줄', /이상한 애 출
 check('콜백 인트로 — 비자비 경로엔 콜백 없음', !/이상한 애 출현/.test(PERSUADE.yuhok_boss.intro({ chapter3Mercy: false })));
 g.flags.chapter3Mercy = true; // 콜백 조우 확인용
 g.dialog = null; g.mode = 'world'; g.map = 'arcade';
-setPos(11, 2, 'up'); hold('ArrowUp', 12);
+setPos(18, 2, 'up'); hold('ArrowUp', 12);
 check('정문 개방(2/2 열쇠) → 반짝의 무대 진입', g.map === 'yuhokstage');
 setPos(7, 3, 'up'); tap('z');
 check('보스 조우 대화 시작', g.mode === 'dialog');
@@ -2066,7 +2130,7 @@ check('승리 대화 시작', g.mode === 'dialog');
 advanceDialog();
 check('4장 클리어 플래그', g.flags.chapter4Clear === true);
 check('4장 자비 플래그(다음 장 콜백용)', g.flags.chapter4Mercy === true);
-check('보스 승리 후 아케이드 정문 앞 복귀', g.map === 'arcade' && g.player.x === 11 && g.player.y === 2);
+check('보스 승리 후 아케이드 정문 앞 복귀', g.map === 'arcade' && g.player.x === 18 && g.player.y === 2);
 check('v1 정원 유혹몬 처치 플래그 오염 없음', g.flags.defeated.yuhokmon === false);
 check('보스는 도감 순서에 없음', !DEX_ORDER.includes('yuhok_boss'));
 
@@ -2081,7 +2145,7 @@ tap('ArrowUp'); // -2 → -3 (ARCADE_SEL)
 check('수업 목록에 4장 특별 항목(ARCADE_SEL=-3) 진입', g.classmode.sel === -3);
 tap('z'); check('확인 단계', g.classmode.confirm === true);
 tap('z'); // 적용 → 4장 시작 + 반짝 아케이드 입구
-check('4장 수업: 반짝 아케이드 입구에서 시작', g.map === 'arcade' && g.player.x === 11 && g.player.y === 14);
+check('4장 수업: 반짝 아케이드 입구에서 시작', g.map === 'arcade' && g.player.x === 18 && g.player.y === 20);
 check('4장 수업: chapter1~3Clear=true 세팅',
   g.flags.chapter1Clear === true && g.flags.chapter2Clear === true && g.flags.chapter3Clear === true);
 check('4장 수업: 프롤로그(따라) 클리어 상태로 맞춰짐', g.flags.defeated.bekkyeomon === true);
@@ -2102,23 +2166,23 @@ g.flags.visited.lumiroom = true;
 console.log('[92] 5장 「포근한 집」 — 진입 게이트(chapter4Clear)');
 g.dialog = null; g.mode = 'world'; g.map = 'arcade';
 g.flags.chapter4Clear = false;
-setPos(20, 8, 'right');
+setPos(33, 10, 'right');
 hold('ArrowRight', 12);
 check('5장 입구 — chapter4Clear 전 잠김(아케이드에 남음)', g.map === 'arcade' && g.mode === 'dialog');
 advanceDialog();
 g.flags.chapter4Clear = true;
-g.dialog = null; g.mode = 'world'; setPos(20, 8, 'right'); hold('ArrowRight', 12);
+g.dialog = null; g.mode = 'world'; setPos(33, 10, 'right'); hold('ArrowRight', 12);
 check('chapter4Clear 후 포근한 집 진입 — 서쪽 입구에서 오른쪽을 바라봄',
-  g.map === 'cozyhome' && g.player.x === 1 && g.player.y === 8 && g.player.dir === 'right');
+  g.map === 'cozyhome' && g.player.x === 1 && g.player.y === 10 && g.player.dir === 'right');
 
 console.log('[93] 포근한 집 현관 — 확인하는 용기 0/3일 때 잠김');
-g.dialog = null; g.mode = 'world'; setPos(11, 2, 'up'); hold('ArrowUp', 12);
+g.dialog = null; g.mode = 'world'; setPos(18, 2, 'up'); hold('ArrowUp', 12);
 check('현관 잠김(0/3, 집에 남음)', g.map === 'cozyhome' && g.mode === 'dialog' &&
   g.dialog.lines.some((l) => /0\/3/.test(l)));
 advanceDialog();
 
 console.log('[94] 5장 구역① 「전화의 방」 — 루미의 3회 만류 + 4번째 조사에 받기(클리어)');
-g.dialog = null; g.mode = 'world'; setPos(5, 4, 'up'); hold('ArrowUp', 12);
+g.dialog = null; g.mode = 'world'; setPos(6, 5, 'up'); hold('ArrowUp', 12);
 check('전화의 방 진입', g.map === 'callroom' && g.player.x === 9 && g.player.y === 1);
 setPos(9, 7, 'up'); tap('z');
 check('1차 만류 — "받지 마"', g.mode === 'dialog' && g.dialog.lines.some((l) => /받지 마/.test(l)));
@@ -2129,28 +2193,30 @@ setPos(9, 7, 'up'); tap('z'); advanceDialog();
 check('경고 횟수 3(누적)', g.puzzleRun.warnCount === 3);
 setPos(9, 7, 'up'); tap('z');
 check('4번째 조사 — 친구 목소리(클리어)', g.mode === 'dialog' && g.dialog.lines.some((l) => /기다릴게/.test(l)));
-check('전화의 방 클리어 → 집 복귀 + ev_answer', g.map === 'cozyhome' && !g.puzzleRun &&
+check('전화의 방 클리어 → 넓어진 집의 전화의 방 입구 근처 복귀 + ev_answer',
+  g.map === 'cozyhome' && g.player.x === 6 && g.player.y === 5 && !g.puzzleRun &&
   g.flags.evCards.includes('ev_answer'));
 advanceDialog();
-g.dialog = null; g.mode = 'world'; setPos(11, 2, 'up'); hold('ArrowUp', 12);
+g.dialog = null; g.mode = 'world'; setPos(18, 2, 'up'); hold('ArrowUp', 12);
 check('현관 여전히 잠김(1/3)', g.map === 'cozyhome' && g.mode === 'dialog' &&
   g.dialog.lines.some((l) => /1\/3/.test(l)));
 advanceDialog();
 
 console.log('[95] 5장 구역② 「잠긴 복도」 — 직접 열기(위험 없음) + 복선 5호(heardLumi)');
-g.dialog = null; g.mode = 'world'; setPos(11, 4, 'up'); hold('ArrowUp', 12);
+g.dialog = null; g.mode = 'world'; setPos(18, 5, 'up'); hold('ArrowUp', 12);
 check('잠긴 복도 진입', g.map === 'corridor' && g.player.x === 9 && g.player.y === 1);
 check('진입 전 heardLumi 없음', !g.flags.heardLumi);
 setPos(9, 7, 'up'); tap('z');
 check('문을 열면 베란다 대사(위험 없음)', g.mode === 'dialog' && g.dialog.lines.some((l) => /베란다/.test(l)));
 check('복선 5호 대사 포함("…가지 마")', g.dialog.lines.some((l) => /가지 마/.test(l)));
-check('잠긴 복도 클리어 → 집 복귀 + ev_see', g.map === 'cozyhome' && !g.puzzleRun &&
+check('잠긴 복도 클리어 → 넓어진 집의 잠긴 복도 입구 근처 복귀 + ev_see',
+  g.map === 'cozyhome' && g.player.x === 18 && g.player.y === 5 && !g.puzzleRun &&
   g.flags.evCards.includes('ev_see'));
 advanceDialog();
 check('복선 5호 — heardLumi 기록', g.flags.heardLumi === true);
 
 console.log('[96] 5장 구역③ 「소파 코너」 — 앉기 + 일어나기 버티기(90프레임, 이탈 시 리셋)');
-g.dialog = null; g.mode = 'world'; setPos(16, 4, 'up'); hold('ArrowUp', 12);
+g.dialog = null; g.mode = 'world'; setPos(30, 5, 'up'); hold('ArrowUp', 12);
 check('소파 코너 진입', g.map === 'sofaroom' && g.player.x === 9 && g.player.y === 1);
 setPos(9, 7, 'up'); tap('z');
 check('소파에 앉음(대사 시작)', g.mode === 'dialog');
@@ -2169,7 +2235,8 @@ step(90);
 check('90프레임 연속 버팀 → 일어나기(클리어)', g.mode === 'dialog' && g.puzzleRun === null);
 dispatch('keyup', { key: 'ArrowUp' });
 advanceDialog();
-check('소파 코너 클리어 → 집 복귀 + ev_standup', g.map === 'cozyhome' &&
+check('소파 코너 클리어 → 넓어진 집의 소파 코너 입구 근처 복귀 + ev_standup',
+  g.map === 'cozyhome' && g.player.x === 30 && g.player.y === 5 &&
   g.flags.evCards.includes('ev_standup'));
 
 console.log('[97] 현관 개방(3/3 용기) + 루미 마음 조각 배틀 — 콜백(chapter4Mercy)+shrink 기믹+승리');
@@ -2177,7 +2244,7 @@ check('콜백 인트로 — 자비 경로에 콜백 한 줄', /관객이 아니�
 check('콜백 인트로 — 비자비 경로엔 콜백 없음', !/관객이 아니라/.test(PERSUADE.hollim_boss.intro({ chapter4Mercy: false })));
 g.flags.chapter4Mercy = true; // 콜백 조우 확인용
 g.dialog = null; g.mode = 'world'; g.map = 'cozyhome';
-setPos(11, 2, 'up'); hold('ArrowUp', 12);
+setPos(18, 2, 'up'); hold('ArrowUp', 12);
 check('현관 개방(3/3 용기) → 루미의 방 진입', g.map === 'lumiroom');
 setPos(7, 3, 'up'); tap('z');
 check('보스 조우 대화 시작', g.mode === 'dialog');
@@ -2247,7 +2314,7 @@ check('승리 대화 시작', g.mode === 'dialog');
 advanceDialog();
 check('5장 클리어 플래그', g.flags.chapter5Clear === true);
 check('5장 자비 플래그(다음 장 콜백용)', g.flags.chapter5Mercy === true);
-check('보스 승리 후 포근한 집 현관 앞 복귀', g.map === 'cozyhome' && g.player.x === 11 && g.player.y === 2);
+check('보스 승리 후 포근한 집 현관 앞 복귀', g.map === 'cozyhome' && g.player.x === 18 && g.player.y === 2);
 check('v1 홀림몬 처치 플래그 오염 없음', g.flags.defeated.hollimmon === false);
 check('보스는 도감 순서에 없음', !DEX_ORDER.includes('hollim_boss'));
 
@@ -2256,7 +2323,7 @@ g.flags.lumiTrust = 0;
 g.dialog = null; g.mode = 'world'; g.map = 'arcade';
 function enterCozyOnce() { // 아케이드 게이트를 다시 통과해 포근한 집에 재진입(루미 안내 1회 트리거)
   g.dialog = null; g.mode = 'world'; g.map = 'arcade';
-  setPos(20, 8, 'right'); hold('ArrowRight', 12);
+  setPos(33, 10, 'right'); hold('ArrowRight', 12);
 }
 enterCozyOnce(); // 1회차
 check('1회차 — 신뢰 구간(전화는 급하지 않아도 된다는 진짜 안내)',
@@ -2288,7 +2355,7 @@ tap('ArrowUp'); // -3 → -4 (COZY_SEL)
 check('수업 목록에 5장 특별 항목(COZY_SEL=-4) 진입', g.classmode.sel === -4);
 tap('z'); check('확인 단계', g.classmode.confirm === true);
 tap('z'); // 적용 → 5장 시작 + 포근한 집 입구
-check('5장 수업: 포근한 집 입구에서 시작', g.map === 'cozyhome' && g.player.x === 3 && g.player.y === 8);
+check('5장 수업: 포근한 집 입구에서 시작', g.map === 'cozyhome' && g.player.x === 3 && g.player.y === 10);
 check('5장 수업: chapter1~4Clear=true 세팅',
   g.flags.chapter1Clear === true && g.flags.chapter2Clear === true &&
   g.flags.chapter3Clear === true && g.flags.chapter4Clear === true);
@@ -2316,12 +2383,12 @@ g.flags.evCards = Object.keys(EVIDENCE_CARDS);
 console.log('[100] 파이널 진입 게이트 — cozyhome 안쪽 문(needFlag chapter5Clear)');
 g.dialog = null; g.mode = 'world'; g.map = 'cozyhome';
 g.flags.chapter5Clear = false;
-setPos(11, 13, 'down');
+setPos(31, 19, 'down');
 hold('ArrowDown', 12);
 check('chapter5Clear 전 잠김(집에 남음)', g.map === 'cozyhome' && g.mode === 'dialog');
 advanceDialog();
 g.flags.chapter5Clear = true;
-g.dialog = null; g.mode = 'world'; setPos(11, 13, 'down'); hold('ArrowDown', 12);
+g.dialog = null; g.mode = 'world'; setPos(31, 19, 'down'); hold('ArrowDown', 12);
 check('chapter5Clear 후 고요의 뜰 진입', g.map === 'quietyard' && g.player.x === 9 && g.player.y === 1);
 
 console.log('[101] 고요의 뜰 — 구역을 지날 때마다 BGM 트랙이 줄고 화면이 어두워짐');
@@ -2465,7 +2532,7 @@ tap('ArrowUp'); // -4 → -5 (FINAL_SEL)
 check('수업 목록에 파이널 특별 항목(FINAL_SEL=-5) 진입', g.classmode.sel === -5);
 tap('z'); check('확인 단계', g.classmode.confirm === true);
 tap('z'); // 적용 → 파이널 시작 + 포근한 집 안쪽 문 앞
-check('파이널 수업: 포근한 집 안쪽 문 앞에서 시작', g.map === 'cozyhome' && g.player.x === 11 && g.player.y === 13);
+check('파이널 수업: 포근한 집 안쪽 문 앞에서 시작', g.map === 'cozyhome' && g.player.x === 31 && g.player.y === 19);
 check('파이널 수업: chapter1~5Clear=true 세팅',
   g.flags.chapter1Clear === true && g.flags.chapter2Clear === true && g.flags.chapter3Clear === true &&
   g.flags.chapter4Clear === true && g.flags.chapter5Clear === true);
