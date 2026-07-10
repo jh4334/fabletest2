@@ -532,6 +532,11 @@ function requirePropNearWarp(mapId, kind, label, to, profile, maxDist = 3) {
     check('4장 아케이드 랜드마크 5개 이상 — 룰렛·회원가입·백스테이지·정문·다음 문이 보임',
       ch4DistrictMarks.length >= 5 && ['룰렛 광장 입구', '회원가입 골목 입구', '백스테이지 입구', '잠긴 정문', '포근한 집 문'].every((label) => ch4DistrictMarks.some((m) => m.label === label)));
     check('4장 아케이드 NPC 추가 없음', (MAPS.arcade.npcs || []).length === 0);
+    const ch4Atmosphere = (MAP_PROPS.arcade || []).filter((p) => p.kind === 'ch4_atmosphere');
+    check('4장 넓어진 허브는 정적 장식으로 빈 공간만 가볍게 보강',
+      ch4Atmosphere.length >= 3 && ch4Atmosphere.length <= 5 &&
+      ch4Atmosphere.every((p) => WALKABLE.has(MAPS.arcade.tiles[p.y][p.x])) &&
+      ch4Atmosphere.some((p) => /꺼진|조명|네온|포스터/.test(p.label || p.text || '')));
     const ch4Fx = windowObj.__test.chapter4HubVisualProfile(4, false);
     const ch4LowFx = windowObj.__test.chapter4HubVisualProfile(4, true);
     check('4장 기본 허브 FX 부담은 과하지 않음', ch4Fx.neonSigns <= 6 && ch4Fx.confetti <= 3 && ch4Fx.fullScreenFlash === false);
@@ -547,6 +552,11 @@ function requirePropNearWarp(mapId, kind, label, to, profile, maxDist = 3) {
     check('5장 포근한 집 랜드마크 5개 이상 — 전화·복도·소파·현관·고요 문이 보임',
       ch5DistrictMarks.length >= 5 && ['전화의 방 입구', '잠긴 복도 입구', '소파 코너 입구', '현관 안쪽 문', '고요의 뜰 문'].every((label) => ch5DistrictMarks.some((m) => m.label === label)));
     check('5장 포근한 집 NPC 추가 없음', (MAPS.cozyhome.npcs || []).length === 0);
+    const ch5Atmosphere = (MAP_PROPS.cozyhome || []).filter((p) => p.kind === 'ch5_atmosphere');
+    check('5장 넓어진 집은 정적 소품으로 포근함만 가볍게 보강',
+      ch5Atmosphere.length >= 3 && ch5Atmosphere.length <= 5 &&
+      ch5Atmosphere.every((p) => WALKABLE.has(MAPS.cozyhome.tiles[p.y][p.x])) &&
+      ch5Atmosphere.some((p) => /러그|조명|화분|액자|신발장/.test(p.label || p.text || '')));
     const ch5Fx = windowObj.__test.chapter5HubVisualProfile(3, false);
     const ch5LowFx = windowObj.__test.chapter5HubVisualProfile(3, true);
     check('5장 기본 허브 FX 부담은 과하지 않음', ch5Fx.warmLamps <= 5 && ch5Fx.voiceRipples <= 3 && ch5Fx.fullScreenBlur === false);

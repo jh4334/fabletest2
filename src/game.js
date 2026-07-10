@@ -7738,6 +7738,30 @@
     ctx.restore();
   }
 
+  function drawHubAtmosphereProps(mapId, kind, cx, cy, palette) {
+    const props = (MAP_PROPS[mapId] || []).filter((prop) => prop.kind === kind);
+    if (!props.length) return;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = fs(12, true);
+    for (const prop of props) {
+      const sx = Math.round(prop.x * TS - cx);
+      const sy = Math.round(prop.y * TS - cy);
+      if (sx < -40 || sx > LW + 40 || sy < -40 || sy > LH + 40) continue;
+      const icon = palette.icon(prop.label || '');
+      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.42 : 0.62;
+      ctx.fillStyle = icon.bg;
+      ctx.fillRect(sx + 12, sy + 16, TS - 24, TS - 24);
+      ctx.strokeStyle = icon.fg;
+      ctx.strokeRect(sx + 12.5, sy + 16.5, TS - 25, TS - 25);
+      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.60 : 0.78;
+      ctx.fillStyle = icon.fg;
+      ctx.fillText(icon.text, sx + TS / 2, sy + 30);
+    }
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
   function drawChapter4HubMarks(cx, cy) {
     if (game.map !== 'arcade') return;
     const profile = chapter4HubVisualProfile(s4KeyCount(), game.lowGraphics || game.reduceFx);
@@ -7748,6 +7772,13 @@
         if (label === '잠긴 정문') return { text: '🔒', bg: '#2f2110', fg: '#ffd644' };
         if (label === '백스테이지 입구') return { text: '▣', bg: '#202532', fg: '#9bd3ff' };
         return { text: '★', bg: '#3a1f2d', fg: '#ff8ec7' };
+      },
+    });
+    drawHubAtmosphereProps('arcade', 'ch4_atmosphere', cx, cy, {
+      icon: (label) => {
+        if (/포스터/.test(label)) return { text: '▤', bg: '#281d28', fg: '#ffb3d8' };
+        if (/보안/.test(label)) return { text: '□', bg: '#1d2230', fg: '#9bd3ff' };
+        return { text: '▭', bg: '#2d1832', fg: '#ffd6f0' };
       },
     });
     const signs = [
@@ -7776,6 +7807,13 @@
         if (label === '현관 안쪽 문') return { text: '◇', bg: '#3b2a1e', fg: '#ffd08a' };
         if (label === '잠긴 복도 입구') return { text: '…', bg: '#25303a', fg: '#9bd3ff' };
         return { text: '⌂', bg: '#3a2a20', fg: '#ffd08a' };
+      },
+    });
+    drawHubAtmosphereProps('cozyhome', 'ch5_atmosphere', cx, cy, {
+      icon: (label) => {
+        if (/화분/.test(label)) return { text: '♧', bg: '#213025', fg: '#9fe0a0' };
+        if (/러그/.test(label)) return { text: '▤', bg: '#3a241d', fg: '#ffd08a' };
+        return { text: '▪', bg: '#3a2a20', fg: '#ffe0a8' };
       },
     });
     const lamps = [
