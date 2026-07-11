@@ -3043,6 +3043,7 @@ const EVIDENCE_CARDS = {
 
 const PERSUADE = {
   bekkyeomon: {
+    song: 'boss_ttara', // 전용 테마 (N-2)
     gaugeMax: 100,
     // 마음 조각 배틀(행동 설득) 튜닝 — 프롤로그 튜토리얼 축소판:
     //   closedThreshold 낮게(2), 탄속 완화(waveBulletMul), 파도 짧게(waveDur)
@@ -3101,6 +3102,7 @@ const PERSUADE = {
 
   // ── 1장 보스 「담아」 (주인의 방) ──────────────────────────────
   sujipmon_boss: {
+    song: 'boss_dama', // 전용 테마 (N-2)
     // 5개 챕터 보스 난이도 곡선의 첫 단계 — 가장 쉬움(110/320/0.95). 담아<기울<그럴싸<반짝<루미 순으로
     // gaugeMax·waveDur·waveBulletMul이 조금씩 오른다(고요·영이는 별도 설계 — 이 곡선 밖).
     gaugeMax: 110,
@@ -3195,6 +3197,7 @@ const PERSUADE = {
 
   // ── 2장 보스 「기울」 (문지기의 방) ─────────────────────────────
   pyeonhyang_boss: {
+    song: 'boss_giul', // 전용 테마 (N-2)
     // 난이도 곡선 2단계(115/330/1.0) — 담아보다 살짝 더 어렵다.
     gaugeMax: 115,
     closedThreshold: 3,
@@ -3288,6 +3291,7 @@ const PERSUADE = {
   // 최소 변형). [진] 접촉 = 게이지+6 + 파도 넘어 영속 카운트(b.truthCaught, 3회째 gaugeMax-2로
   // 밀어줌). [낚] 접촉 = 게이지-4 + 화면 얼룩 플래시(광고 딱지와는 무관, flash만 재사용).
   hwangak_boss: {
+    song: 'boss_geureol', // 전용 테마 (N-2)
     // 난이도 곡선 3단계(120/340/1.05) — 중간 지점.
     gaugeMax: 120,
     closedThreshold: 3,
@@ -3380,6 +3384,7 @@ const PERSUADE = {
   // 역효과(피해+광고 얼룩), 240프레임 동안 건드리지 않고 버티면 소멸하며 게이지+10
   // 및 조명 하나가 꺼진다(최대 3회, b.temptResisted — tilt/parcel과 같은 파도-간 영속 패턴).
   yuhok_boss: {
+    song: 'boss_banjjak', // 전용 테마 (N-2)
     // 난이도 곡선 4단계(125/350/1.1) — 루미 바로 앞 단계.
     gaugeMax: 125,
     closedThreshold: 3,
@@ -3471,6 +3476,7 @@ const PERSUADE = {
   // openMechanic 'shrink' — open 페이즈 중 파도가 바뀔 때마다 상자가 한 단계씩 좁아진다
   // (최소 200×120, b.shrinkLevel — 파도 넘어 영속). 정답 문을 통과하면 한 단계 회복된다.
   hollim_boss: {
+    song: 'boss_lumi', // 전용 테마 (N-2)
     // 난이도 곡선 5단계(130/360/1.15) — 챕터 보스 중 가장 어려움(고요·영이는 별도 설계).
     gaugeMax: 130,
     closedThreshold: 3,
@@ -3565,6 +3571,7 @@ const PERSUADE = {
   // 스케일)면 gaugeMax 140 + 탄속 1.15배. (gaugeMax·waveBulletMul을 flags를 받는 함수로
   // 정의 — 배틀 시작 시 1회만 계산해 굳힌다.)
   goyo_boss: {
+    song: 'boss_goyo', // 전용 테마 (N-2)
     gaugeMax: (flags) => (flags && flags.mercy <= 2 ? 140 : 100),
     closedThreshold: 3,
     fragmentsPerWave: 3,
@@ -3647,6 +3654,7 @@ const PERSUADE = {
   // 텍스트로 자동 대체한다(이미 잘 쓰인 대사이므로 그대로 물려받는 쪽을 택했다).
   // 기믹 없음 — 가장 조용한 배틀(탄막 최소·느린 rain).
   yeongi_boss: {
+    song: 'boss_yeongi', // 전용 테마 (N-2)
     gaugeMax: 100,
     closedThreshold: 2,
     fragmentsPerWave: 3,

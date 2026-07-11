@@ -4582,7 +4582,7 @@
     const p = getPersuade(persuadeKey);
     const mon = resolvePersuadeMon(monId, persuadeKey);
     game.mode = 'battle';
-    Sound.playSong(mon.song || 'battle');
+    Sound.playSong(p.song || mon.song || 'battle'); // 보스별 전용 테마 (N-2)
     // 물러났던 상대는 이야기를 절반쯤 기억한다 (재도전은 더 짧게). 기억은 프로필별로 구분한다.
     const memo = (game.flags.persuadeMemory || {})[persuadeKey];
     const maxHearts = 4 + (game.difficulty === 'easy' ? 1 : 0);

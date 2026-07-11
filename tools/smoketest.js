@@ -2866,4 +2866,20 @@ console.log('[114] 배달 창고 상자 라벨 근접 표시 — HUD 상시 표�
     /if \(near\) label\(nx, ny, `\$\{curBox\.label\}·\$\{curBox\.lane\}`/.test(gameSrc));
 }
 
+console.log('[115] N-2 보스별 전용 테마 — 프로필 song이 실제 SONGS에 존재');
+{
+  const SONG_KEYS = vm.runInContext('Object.keys(SONGS)', sandbox);
+  const BOSS_SONG = {
+    bekkyeomon: 'boss_ttara', sujipmon_boss: 'boss_dama', pyeonhyang_boss: 'boss_giul',
+    hwangak_boss: 'boss_geureol', yuhok_boss: 'boss_banjjak', hollim_boss: 'boss_lumi',
+    goyo_boss: 'boss_goyo', yeongi_boss: 'boss_yeongi',
+  };
+  for (const [k, s] of Object.entries(BOSS_SONG)) {
+    check(`${k} → ${s}`, PERSUADE[k].song === s && SONG_KEYS.includes(s));
+  }
+  // 영이 테마는 라이트모티프(E-C-A-B-G)로 시작한다 — 타이틀·마을·코어와 같은 악구
+  const yeongiNotes = vm.runInContext('SONGS.boss_yeongi.tracks[0].notes.slice(0,5).map(n=>n[0]).join()', sandbox);
+  check('영이 테마 = 라이트모티프 완전판(76,72,69,71,67 시작)', yeongiNotes === '76,72,69,71,67');
+}
+
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
