@@ -1732,8 +1732,8 @@ check('오답이 wrongTries에 기록', plog3.tips.wrongTries >= 1);
 setPos(9, 11, 'up'); tap('z');
 check('채택함 재오픈(남은 4+그만두기)', g.mode === 'choice' && g.choice.options.length === 5);
 tap('z'); // cursor0 = 제보①(출처 있음)
-check('정답 채택 1회', g.mode === 'dialog');
-advanceDialog();
+check('정답 채택 1회 — 비차단 말풍선(대화 상자 없음)', g.mode === 'world' &&
+  !!g.notice && /출처가 확실하다.*1\/2/.test(g.notice.text));
 setPos(9, 11, 'up'); tap('z');
 tap('z'); // remain=[1,3,4] → cursor0 = 제보②(출처 있음) → 클리어
 check('제보함 클리어 → 허브 복귀 + ev_check', g.map === 'rumorstreet' && !g.puzzleRun &&
@@ -2487,16 +2487,20 @@ check('첫 속삭임 — 선택창 열림', g.mode === 'choice' && g.choice.opti
 check('오답 대사', g.mode === 'dialog');
 advanceDialog();
 check('오답 기록(shrineWrong=1) + 진행(shrineIdx=1) — 오답 허용', g.flags.shrineWrong === 1 && g.flags.shrineIdx === 1);
-// 나머지 속삭임은 정답 카드로 진행해 완료까지 확인한다
+check('오답 대사 후 다음 속삭임 자동 오픈(제단 재조사 불필요)', g.mode === 'choice');
+// 나머지 속삭임은 정답 카드로 진행 — 정답은 말풍선 + 다음 속삭임 연쇄 오픈
 for (let i = 1; i < SHRINE_WHISPERS.length; i++) {
-  setPos(7, 2, 'up'); tap('z'); // 제단을 다시 조사 → 다음 속삭임
   check(`속삭임 ${i + 1}/${SHRINE_WHISPERS.length} 선택창 열림`, g.mode === 'choice');
   const owned = g.flags.evCards.filter((id) => EVIDENCE_CARDS[id]);
   const idx = owned.indexOf(SHRINE_WHISPERS[i].answer);
   if (idx < 0) throw new Error('테스트 전제 오류: 정답 카드 미소지 - ' + SHRINE_WHISPERS[i].answer);
   pickChoice(idx);
-  advanceDialog();
+  if (i < SHRINE_WHISPERS.length - 1) {
+    check(`정답 ${i + 1} — 비차단 말풍선(${i + 1}/8)`, !!g.notice && new RegExp(`${i + 1}/8`).test(g.notice.text));
+  }
 }
+check('마지막 봉헌 → 정체 공개 대화 시작', g.mode === 'dialog');
+advanceDialog();
 check('반디 정체 공개(bandiRevealed) — 동행 종료', g.flags.bandiRevealed === true);
 check('봉헌 퍼즐 완료(shrineDone=true, shrineIdx=8) — 영이 등장', g.flags.shrineDone === true &&
   g.flags.shrineIdx === SHRINE_WHISPERS.length);
