@@ -304,6 +304,7 @@ while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답', g.battle.phase === 'mercyReply');
 tap('z');
 check('승리 대화', g.mode === 'dialog');
+check('승리 대화에 반디의 한마디 포함', g.dialog.lines.some((l) => /^반디:/.test(l)));
 advanceDialog();
 check('베껴몬 깨우침(설득)', g.flags.defeated.bekkyeomon === true);
 check('프롤로그 마무리 컷신 완료 플래그', g.flags.prologueClosed === true);
@@ -2567,7 +2568,12 @@ console.log('[106] 스테이지 HUD — 챕터 플래그 기반 표기');
     f.chapter4Clear = n >= 4; f.chapter5Clear = n >= 5;
     return f;
   };
-  check('프롤로그~1장 클리어 전 = "1장"', T.hudBadgeText('village', withClear(0)) === '1장');
+  check('따라 격파 후 1장 클리어 전 = "1장"', T.hudBadgeText('village', withClear(0)) === '1장');
+  {
+    const pre = withClear(0);
+    pre.defeated = Object.assign({}, pre.defeated, { bekkyeomon: false });
+    check('따라 격파 전 = "프롤로그"', T.hudBadgeText('village', pre) === '프롤로그');
+  }
   check('1장 클리어 후 = "2장"', T.hudBadgeText('village', withClear(1)) === '2장');
   check('2장 클리어 후 = "3장"', T.hudBadgeText('village', withClear(2)) === '3장');
   check('3장 클리어 후 = "4장"', T.hudBadgeText('village', withClear(3)) === '4장');

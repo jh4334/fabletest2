@@ -6,6 +6,7 @@
   "scripts": {
     "validate": "node tools/validate.js",
     "bump": "node tools/bump-sw.js",
+    "playtest": "node tools/playbot.js",
     "test": "node tools/smoketest.js && node tools/slottest.js",
     "test:browser": "node tools/browsertest.js",
     "shots": "node tools/shots.js",
