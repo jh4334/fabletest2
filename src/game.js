@@ -6717,7 +6717,7 @@
         i + 1,
         sum.name,
         title ? title.name : '',
-        sum.done ? '모험 완료' : ('스테이지 ' + sum.stage + '/5'),
+        sum.done ? '모험 완료' : sum.stage,
         sum.done ? 'Y' : 'N',
         s.attempted,
         s.correct,
@@ -6815,7 +6815,7 @@
         ctx.textAlign = 'right'; ctx.fillText(val, x + w - 14, ly); ctx.textAlign = 'left';
         ly += 24;
       };
-      line('진행', sum.done ? '모험 완료' : `스테이지 ${sum.stage}/5`);
+      line('진행', sum.done ? '모험 완료' : sum.stage);
       line('푼 문제', `${s.attempted}개`);
       line('정답률', s.attempted ? `${Math.round(s.overallRate * 100)}%` : '—',
         s.attempted ? (s.overallRate >= 0.8 ? okColor() : s.overallRate >= 0.6 ? warnColor() : badColor()) : '#888');
@@ -7035,10 +7035,10 @@
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 22px monospace';
-    ctx.fillText('▶ 수업 모드 — 스테이지 바로 시작', 24, 40);
+    ctx.fillText('▶ 수업 모드 — 거리(챕터) 바로 시작', 24, 40);
     ctx.fillStyle = '#888';
     ctx.font = '13px monospace';
-    ctx.fillText('오늘 수업할 스테이지를 골라 바로 시작해요. (지금 학생 슬롯에 적용)', 24, 64);
+    ctx.fillText('오늘 수업할 거리를 골라 바로 시작해요. (지금 학생 슬롯에 적용)', 24, 64);
 
     // 특별 항목 6개(v2 항목만 순환) — 「1장 — 전부 공짜 거리」는 그 외 모든 값이 아닐 때(else)로 처리한다.
     const isTilt = cm.sel === TILT_SEL;
@@ -7085,7 +7085,7 @@
       : '개인정보 · 디지털 발자국 · 동의 (구역 3개 → 담아 보스)', LW / 2, 250);
     ctx.fillStyle = '#666';
     ctx.font = '13px monospace';
-    ctx.fillText('◀ ▶ 스테이지/수업 고르기', LW / 2, 286);
+    ctx.fillText('◀ ▶ 거리 고르기', LW / 2, 286);
 
     if (cm.toast > 0) {
       ctx.fillStyle = okColor();
@@ -7108,7 +7108,7 @@
     } else {
       ctx.fillStyle = '#777';
       ctx.font = '13px monospace';
-      ctx.fillText('Z: 이 스테이지로 시작 · X: 닫기', LW / 2, 360);
+      ctx.fillText('Z: 이 거리로 시작 · X: 닫기', LW / 2, 360);
       ctx.fillStyle = '#555';
       ctx.font = '12px monospace';
       ctx.fillText('※ 미리 「데이터 백업」을 해 두면 안전해요.', LW / 2, 388);
@@ -7152,7 +7152,7 @@
       return { empty: true, name: '', recommendations: [], sessions: [], text: lines.join('\n') };
     }
     lines.push('이름: ' + slotLearnName(slot));
-    lines.push('진행: ' + (sum.done ? '모험 완료' : `스테이지 ${sum.stage}/5`));
+    lines.push('진행: ' + (sum.done ? '모험 완료' : sum.stage));
     lines.push(`푼 문제: ${s.attempted}개 · 정답률 ${s.attempted ? pct(s.overallRate) : '—'} · 복습 노트 ${mistakeCount(slot)}개`);
     lines.push('──────────────────────');
     if (recommendations.length === 0) {
@@ -8818,7 +8818,7 @@
         ctx.fillText(sum.name, boxX + 18, y + 46);
         ctx.fillStyle = '#888';
         ctx.font = '13px monospace';
-        const prog = sum.done ? '모험 완료' : `스테이지 ${sum.stage}/5`;
+        const prog = sum.done ? '모험 완료' : sum.stage;
         const streak = getMeta(i).streak || 0;
         ctx.textAlign = 'right';
         ctx.fillText(`${prog}   ♥ ${sum.mercy}${streak ? '   🔥' + streak : ''}`, boxX + boxW - 18, y + 40);
@@ -9171,7 +9171,7 @@
     ctx.font = '16px monospace';
     ctx.fillStyle = '#ccc';
     const lines = [
-      '위 어린이는 다섯 스테이지를 모두 넘으며',
+      '위 어린이는 다섯 거리를 모두 지나며',
       '개인정보 보호, 저작권, 진실 분별, 공정함, 절제,',
       '바른 말, 안전, 환경, 투명함, 책임, 창의성,',
       '협력, 그리고 사람을 아끼는 마음을 보여준',
