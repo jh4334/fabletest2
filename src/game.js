@@ -3730,6 +3730,16 @@
         return;
       }
     }
+    // N-3 「모든 것을 조사할 수 있다」 — 맵별 조사 플레이버 (한 줄 관찰 + 마른 유머)
+    const flavor = (MAPS[game.map].flavors || []).find((v) => v.x === f.x && v.y === f.y);
+    if (flavor) {
+      startDialog(['* ' + flavor.text]);
+      // 반디 동행 중이면 한마디 얹는다 — 대화가 닫힌 뒤 말풍선으로 보인다
+      if (flavor.bandi && game.flags.bandiJoined && !game.flags.bandiRevealed) {
+        game.notice = { text: '반디: ' + flavor.bandi, t: 280 };
+      }
+      return;
+    }
     const examine = getExamineTile(ch);
     if (examine) {
       startDialog([examine]);

@@ -2866,6 +2866,26 @@ console.log('[114] 배달 창고 상자 라벨 근접 표시 — HUD 상시 표�
     /if \(near\) label\(nx, ny, `\$\{curBox\.label\}·\$\{curBox\.lane\}`/.test(gameSrc));
 }
 
+console.log('[116] N-3 조사 플레이버 — 모든 것을 조사할 수 있다');
+{
+  g.dialog = null; g.mode = 'world'; g.map = 'village';
+  g.flags.profConfession = true; // 마을 자동 이벤트(박사 고백)가 끼어들지 않게
+  const total = ['village', 'freestreet', 'tiltstreet', 'rumorstreet', 'arcade', 'cozyhome']
+    .reduce((s, m) => s + (MAPS[m].flavors || []).length, 0);
+  check('플레이버 총 40개 이상', total >= 40);
+  // 마을 연못 (6,14) — 서쪽에서 바라보고 조사
+  setPos(5, 14, 'right'); g.player.x = 5; g.player.y = 14; g.player.dir = 'right';
+  tap('z');
+  check('연못 조사 — * 플레이버 대화', g.mode === 'dialog' && /^\* 연못/.test(g.dialog.lines[0]));
+  advanceDialog();
+  check('반디 한마디(말풍선) — 물속엔 내가 안 비치네', !!g.notice && /안 비치네/.test(g.notice.text));
+  // 정체 공개 후에는 반디가 얹지 않는다
+  g.flags.bandiRevealed = true; g.notice = { text: '', t: 0 };
+  tap('z'); advanceDialog();
+  check('정체 공개 후 — 반디 한마디 없음', !g.notice.text || !/안 비치네/.test(g.notice.text));
+  g.flags.bandiRevealed = false;
+}
+
 console.log('[115] N-2 보스별 전용 테마 — 프로필 song이 실제 SONGS에 존재');
 {
   const SONG_KEYS = vm.runInContext('Object.keys(SONGS)', sandbox);
