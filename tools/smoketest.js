@@ -222,7 +222,9 @@ function battleMenuPick(idx) { // 내 턴 메뉴 (0말걸기 1증거 2듣기 3�
 function advanceReact() { // 상대 반응 대사를 넘긴다 (react → wave 또는 menu)
   const b = g.battle;
   if (b.phase !== 'react') throw new Error('react가 아님: ' + b.phase);
-  tap('z');
+  let guard = 0; // 타자기 효과: 첫 Z는 전체 표시, 다음 Z가 진행
+  while (b.phase === 'react' && guard++ < 5) tap('z');
+  if (b.phase === 'react') throw new Error('react가 끝나지 않음');
 }
 function startListen() { // 가만히 듣기 → 상대 턴(속마음 조각 ✦이 있는 wave)
   battleMenuPick(2);

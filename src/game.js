@@ -1597,6 +1597,21 @@
   }
 
   // ---------- 대화 ----------
+  // 인물별 목소리 음정 (타자기 blip 주파수) — 언더테일식 목소리 개성.
+  // 반디와 영이가 같은 음정인 것은 의도된 복선이다 (반디 = 영이의 가면).
+  const VOICE_PITCH = {
+    '따라': 1180, '담아': 760, '기울': 620, '그럴싸': 900, '반짝': 1050,
+    '루미': 990, '고요': 320, '박사님': 520, '박사': 520, '할머니': 640,
+    '반디': 1320, '영이': 1320,
+  };
+  function dialogBlipFreq(d) {
+    const line = d.lines[d.idx] || '';
+    const m = line.match(/^([가-힣A-Za-z]{1,4}):/); // 줄 안의 화자 표기가 우선 (예: 반디: "…")
+    if (m && VOICE_PITCH[m[1]]) return VOICE_PITCH[m[1]];
+    if (d.speaker && VOICE_PITCH[d.speaker]) return VOICE_PITCH[d.speaker];
+    return 880;
+  }
+
   function startDialog(lines, speaker, onEnd) {
     game.mode = 'dialog';
     game.dialog = { lines, idx: 0, chars: 0, speaker: speaker || null, onEnd: onEnd || null };
@@ -1609,7 +1624,7 @@
     if (d.chars < line.length) {
       const prev = Math.floor(d.chars);
       d.chars += TEXT_SPEEDS[game.textSpeed]; // 타자기 효과 (자막 속도 적용)
-      if (Math.floor(d.chars) !== prev && game.time % 4 === 0) Sound.blip();
+      if (Math.floor(d.chars) !== prev && game.time % 4 === 0) Sound.blip(dialogBlipFreq(d));
       if (justPressed('action')) d.chars = line.length; // 스킵
       return;
     }
@@ -4120,6 +4135,15 @@
 
     if (b.phase === 'react') {
       updateFloats(b);
+      // 타자기 효과 — 치는 중에는 Z가 스킵(전체 표시), 다 쳐진 뒤 Z가 진행
+      const r = b.react;
+      if (r.chars < r.text.length) {
+        const prev = Math.floor(r.chars);
+        r.chars += TEXT_SPEEDS[game.textSpeed];
+        if (Math.floor(r.chars) !== prev && game.time % 4 === 0) Sound.blip(battleVoice(b));
+        if (justPressed('action')) r.chars = r.text.length;
+        return;
+      }
       if (justPressed('action')) {
         const after = b.afterReact;
         b.react = null;
@@ -4600,6 +4624,7 @@
       wave: null,
       shake: 0,
       flash: 0,
+      hitstop: 0,
       attack: null,
     };
     game.flags.battleCount += 1;
@@ -4648,10 +4673,15 @@
       { label: wrongLabels[1], correct: false, locked: false }]);
   }
   function setReact(b, text, after) {
-    b.react = { text: String(text) };
+    b.react = { text: String(text), chars: 0 }; // 타자기 효과 (M-3)
     b.afterReact = after || 'wave';
     b.phase = 'react';
     if (game.tts) Speech.speak(b.react.text);
+  }
+  // 배틀 반응 대사의 목소리 — 내레이션(*)은 낮은 중립음, 인물 대사는 인물 음정
+  function battleVoice(b) {
+    if (b.react && /^\*/.test(b.react.text)) return 700;
+    return VOICE_PITCH[b.mon.name] || 880;
   }
   // 응답 판정 — 옛 「응답의 문」 판정과 같은 수치 (+26/32 · -6 역효과)
   function resolveResponse(b, correct, viaNote) {
@@ -4786,6 +4816,7 @@
     b.arena.carrying = false;
     if (b.mon.mercy && !b.mercyDone) {
       b.phase = 'mercy'; b.cursor = 0; Sound.badge();
+      if (!game.reduceFx) b.shake = 12; // 마음이 열리는 순간의 울림 (M-3)
     } else {
       winBattle();
     }
@@ -4880,6 +4911,7 @@
       if (dx * dx + dy * dy < (SOUL_R + bu.r) * (SOUL_R + bu.r)) {
         b.playerHp = Math.max(0, b.playerHp - 1);
         arena.inv = 42; b.flash = 12; Sound.bump();
+        if (!game.reduceFx) b.hitstop = 3; // 피격 히트스톱 (M-3)
         return true;
       }
     }
@@ -4888,6 +4920,8 @@
 
   function updateWave() {
     const b = game.battle, w = b.wave, arena = b.arena, box = arena.box;
+    // 히트스톱 (M-3) — 피격 순간 몇 프레임 멈춰 타격감을 준다 (탄막 턴에서만)
+    if (b.hitstop > 0) { b.hitstop -= 1; return; }
     if (b.shake > 0) b.shake -= 1;
     if (b.flash > 0) b.flash -= 1;
     w.t += 1;
@@ -4952,7 +4986,7 @@
     // 탄막 턴 종료: (듣기 턴) 조각을 다 모으거나 / 시간 만료 → 내 턴(메뉴)으로
     if ((w.fragTotal > 0 && w.collected >= w.fragTotal) || w.t >= w.dur) {
       if (w.hits === 0) { b.gauge = clamp(b.gauge + 6, 0, b.gaugeMax); pStats().perfectWaves += 1;
-        pushFloat('(끝까지 봐 줬다… 마음 +6)'); persuadeGaugeSync(b); }
+        pushFloat('* 끝까지 들어 줬다 — 마음 +6'); persuadeGaugeSync(b); }
       enterMenuPhase(b);
     }
   }
@@ -8539,8 +8573,12 @@
 
   function drawBattle() {
     const b = game.battle;
+    // 피격 직후 화면 흔들림 (M-3) — 시각 전용, 화면 효과 줄이기에선 끔
+    const jolt = (!game.reduceFx && (b.flash > 8 || b.hitstop > 0));
+    ctx.save();
+    if (jolt) ctx.translate(Math.round(Math.random() * 4 - 2), Math.round(Math.random() * 4 - 2));
     ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
+    ctx.fillRect(-4, -4, LW + 8, LH + 8);
     // 바닥 경계선
     ctx.strokeStyle = '#222';
     ctx.lineWidth = 1;
@@ -8598,7 +8636,7 @@
     }
 
     // 마음 조각 배틀 — 탄막 턴 (공간 행동)
-    if (b.isPersuade && b.phase === 'wave') { drawPersuadeArena(b); return; }
+    if (b.isPersuade && b.phase === 'wave') { drawPersuadeArena(b); ctx.restore(); return; }
 
     ctx.font = fs(16);
     let boxH = game.largeText ? 280 : 238;
@@ -8654,15 +8692,16 @@
       ctx.font = fs(13);
       ctx.fillText(isTouchDevice ? 'B: 뒤로' : 'X: 뒤로', LW - 110, boxY + boxH - 16);
     } else if (b.phase === 'react') {
-      // 상대 반응 대사 — Z로 진행하면 상대 턴(탄막)으로
+      // 상대 반응 대사 — 타자기 효과로 흐르고, Z로 진행하면 상대 턴(탄막)으로
       ctx.fillStyle = '#fff';
       ctx.font = fs(16);
+      const shown = b.react.text.slice(0, Math.floor(b.react.chars));
       let ty = boxY + 40;
-      for (const part of b.react.text.split('\n')) {
+      for (const part of shown.split('\n')) {
         ctx.fillText(part, 34, ty);
         ty += lh(24);
       }
-      if (Math.floor(game.time / 20) % 2 === 0) {
+      if (b.react.chars >= b.react.text.length && Math.floor(game.time / 20) % 2 === 0) {
         ctx.fillStyle = '#ffd644';
         ctx.font = fs(16);
         ctx.fillText('▼ (Z/스페이스)', LW - 150, hintY);
@@ -8701,6 +8740,7 @@
         ctx.fillText('▼ (Z/스페이스)', LW - 150, hintY);
       }
     }
+    ctx.restore(); // 흔들림 translate 복원 (drawBattle 시작의 save와 짝)
   }
 
   // 상자 폭을 넘는 글자는 말줄임(…)으로 자른다 — 호출 전에 ctx.font를 맞춰 둘 것
@@ -8775,10 +8815,19 @@
       ctx.fillText('퀴즈가 아니라, 듣고 피하고 다가가기', 36, 192);
     }
 
+    // 상자 크기 전환 애니메이션 (M-3) — 판정 상자(box)는 즉시 바뀌고
+    // 테두리는 몇 프레임에 걸쳐 따라온다 (루미의 축소/회복이 부드럽게 보인다)
+    if (!b.vbox || game.reduceFx) b.vbox = { x: box.x, y: box.y, w: box.w, h: box.h };
+    else {
+      b.vbox.x += (box.x - b.vbox.x) * 0.25;
+      b.vbox.y += (box.y - b.vbox.y) * 0.25;
+      b.vbox.w += (box.w - b.vbox.w) * 0.25;
+      b.vbox.h += (box.h - b.vbox.h) * 0.25;
+    }
     // 박스 — 루미(보스)는 포근한 색 테두리로 표시된다(축소 기믹 진행 중 안내)
     ctx.strokeStyle = b.p.openMechanic === 'shrink' ? '#e0a583' : '#fff';
     ctx.lineWidth = 2;
-    ctx.strokeRect(box.x + 0.5, box.y + 0.5, box.w, box.h);
+    ctx.strokeRect(b.vbox.x + 0.5, b.vbox.y + 0.5, b.vbox.w, b.vbox.h);
 
     // 탄막
     if (b.attack) {

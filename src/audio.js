@@ -325,7 +325,8 @@ const Sound = {
     }
   },
 
-  blip()    { this._sfxTone([880], 0.05, 'square', 0.06); },
+  // 타자기 blip — freq를 주면 인물별 목소리 음정으로 낸다 (M-3: 언더테일식 목소리 개성)
+  blip(freq) { this._sfxTone([freq || 880], 0.05, 'square', 0.06); },
   select()  { this._sfxTone([660, 880], 0.06, 'square', 0.07); },
   correct() { this._sfxTone([523, 659, 784, 1047], 0.09, 'square', 0.09); },
   wrong()   { this._sfxTone([330, 247, 196], 0.12, 'sawtooth', 0.07); },
