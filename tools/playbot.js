@@ -133,7 +133,7 @@ const firstBattleTaps = dialogTaps;
 // 마음 조각 배틀 — 서툰 회피(입력 없음)로 파도를 흘려보내고, 문만 정확히 고른다
 function crudeWin() {
   // M-2 턴제: [내 턴 메뉴] ↔ [상대 턴 탄막]을 오가며 최선 플레이로 마음을 연다.
-  //   닫힘 → 가만히 듣기(조각 수집), 동요/열림 → 말 걸기 정답(잠기면 듣기),
+  //   닫힘 → 가만히 듣기(속마음 즉시 공개), 동요/열림 → 말 걸기 정답(잠기면 듣기),
   //   만충(spareReady) → 마음 안아 주기 → 자비.
   let guard = 0;
   while (g.mode === 'battle' && guard++ < 20000) {
@@ -151,17 +151,10 @@ function crudeWin() {
     } else if (b.phase === 'react') {
       tap('z'); dialogTaps += 1;
     } else if (b.phase === 'wave') {
-      // 조각이 있으면 주워 게이지를 올린다 (하트 순간이동 = 최선 플레이 가정)
-      if (b.wave.fragments.length) {
-        const f = b.wave.fragments[0];
-        b.arena.soul.x = f.x; b.arena.soul.y = f.y;
-        step(1);
-      } else {
-        // 조각 없는 탄막 턴은 피격 없이 빨리 감기
-        b.arena.bullets.length = 0; b.arena.inv = 999;
-        b.wave.t = b.wave.dur; b.wave.hits = 1;
-        step(1);
-      }
+      // 탄막 턴은 피격 없이 빨리 감기 (조각 줍기는 폐지 — 듣기 즉시 공개)
+      b.arena.bullets.length = 0; b.arena.inv = 999;
+      b.wave.t = b.wave.dur; b.wave.hits = 1;
+      step(1);
     } else if (b.phase === 'mercy') {
       while (g.battle.cursor !== 0) tap('ArrowDown');
       tap('z');

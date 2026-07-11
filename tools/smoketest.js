@@ -231,15 +231,6 @@ function startListen() { // 가만히 듣기 → 상대 턴(속마음 조각 ✦
   advanceReact();
   if (g.battle.phase !== 'wave') throw new Error('듣기 턴 진입 실패: ' + g.battle.phase);
 }
-function grabFragment() { // 듣기 턴(wave)에서 속마음 조각 ✦을 하나 줍는다
-  const b = g.battle;
-  if (b.phase !== 'wave') throw new Error('상대 턴(wave)이 아님: ' + b.phase);
-  if (!b.wave.fragments.length) throw new Error('주울 조각이 없음');
-  const f = b.wave.fragments[0];
-  b.arena.bullets.length = 0; b.arena.inv = 0; // 피격 방지
-  b.arena.soul.x = f.x; b.arena.soul.y = f.y;
-  step(1);
-}
 function forceMenu() { // 상대 턴을 시간 만료로 끝내 내 턴(menu)으로 (무피격 보너스 배제)
   const b = g.battle;
   if (b.phase === 'menu') return;
@@ -282,18 +273,16 @@ check('닫힘 — 말 걸기가 막힘(react)', g.battle.phase === 'react' && /�
 advanceReact();
 check('막힌 말 걸기도 상대 턴은 온다(조각 없음)', g.battle.phase === 'wave' && g.battle.wave.fragTotal === 0);
 forceMenu();
-// 가만히 듣기 — 주장 대사(react) 후 조각이 있는 상대 턴
+// 가만히 듣기 — 주장 + 속마음(hint)이 즉시 흐르고, 마음이 조금 열린다 (조각 줍기 폐지)
 battleMenuPick(2);
-check('듣기 — 상대의 주장이 반응 대사로 나온다', g.battle.phase === 'react' && /따라:/.test(g.battle.react.text));
-advanceReact();
-check('듣기 턴 — 조각 3개 스폰', g.battle.phase === 'wave' && g.battle.wave.fragTotal === 3);
-grabFragment(); // 조각 1
-check('조각 수집: 게이지 +2 + 플로팅 텍스트', g.battle.gauge === 2 &&
+check('듣기 — 주장과 속마음이 한 반응 대사로', g.battle.phase === 'react' && /따라:/.test(g.battle.react.text) &&
+  /통할 것 같다/.test(g.battle.react.text));
+check('듣기 즉시 보상 — 게이지 +6·누적 3', g.battle.gauge === 6 && g.battle.fragmentTotal === 3);
+check('누적 3 ≥ 임계(2) → 동요 전환 + 플로팅', g.battle.pState === 'shaken' &&
   (g.battle.floatActive !== null || g.battle.floatQ.length > 0));
-check('닫힘 유지(임계 2 미만)', g.battle.pState === 'closed' && g.battle.fragmentTotal === 1);
-grabFragment(); // 조각 2 → 임계(2) 도달
-check('조각 누적 2 → 동요 전환', g.battle.pState === 'shaken' && g.battle.gauge === 4);
-check('조각 수집 로그', g.flags.pStats.fragments === 2);
+check('듣기 로그(조각 수 승계)', g.flags.pStats.fragments === 3);
+advanceReact();
+check('듣기 후 상대 턴 — 조각 없는 탄막', g.battle.phase === 'wave' && g.battle.wave.fragTotal === 0);
 // 탈진: 하트를 1로 두고 하트 위에 탄을 얹어 결정적으로 피격
 g.battle.playerHp = 1;
 g.battle.arena.inv = 0;
@@ -302,13 +291,13 @@ step(1);
 check('하트 소진 → 물러남 대화', g.mode === 'dialog');
 advanceDialog();
 check('베껴몬 아직 남아있음', g.flags.defeated.bekkyeomon === false);
-check('상대가 이야기를 절반 기억(게이지 반·동요)', g.flags.persuadeMemory.bekkyeomon.gauge === 2 &&
+check('상대가 이야기를 절반 기억(게이지 반·동요)', g.flags.persuadeMemory.bekkyeomon.gauge === 3 &&
   g.flags.persuadeMemory.bekkyeomon.state === 'shaken');
 
 console.log('[6] 마음 조각 배틀 — 응답 판정(정답/오답)·안아 주기·승리 (따라)');
 tap('z'); // 같은 자리에서 재도전
 advanceDialog();
-check('재도전 — 지난 이야기를 기억함', g.mode === 'battle' && g.battle.gauge === 2 && g.battle.pState === 'shaken');
+check('재도전 — 지난 이야기를 기억함', g.mode === 'battle' && g.battle.gauge === 3 && g.battle.pState === 'shaken');
 check('재도전도 내 턴에서 시작', g.battle.phase === 'menu');
 // 동요 상태 — 말 걸기 하위 선택이 열린다 (claim0 정답 카드 ev_maker 소지 → 잠금 없음)
 battleMenuPick(0);
@@ -321,7 +310,7 @@ check('동요에선 말 걸기가 열림 (선택지 3)', g.battle.phase === 'sub
   tap('z');
 }
 check('정답 응답 → 반응 대사(okLine)', g.battle.phase === 'react');
-check('정답 응답 (+26)', g.battle.gauge === 28 && g.flags.pStats.gateRight === 1);
+check('정답 응답 (+26)', g.battle.gauge === 29 && g.flags.pStats.gateRight === 1);
 check('정답 응답 시 HP +1 회복(최대치 이하일 때)', g.battle.playerHp === g.battle.maxHearts - 1);
 g.battle.playerHp = g.battle.maxHearts; // 이후 흐름에 영향 없도록 원복
 advanceReact();
@@ -329,7 +318,7 @@ check('반응 대사 후 상대 턴(탄막)', g.battle.phase === 'wave');
 // 오답 응답 (-6, 다음 탄막 턴 강화)
 answerClaim(false);
 // 오답 → 게이지 -6 + 다음 탄막 강화(pIntense는 이어진 enterWave에서 소비되어 rateMul<1로 반영)
-check('오답 응답 (-6·역효과·다음 턴 강화)', g.battle.gauge === 22 && g.flags.pStats.gateWrong === 1 &&
+check('오답 응답 (-6·역효과·다음 턴 강화)', g.battle.gauge === 23 && g.flags.pStats.gateWrong === 1 &&
   g.flags.pStats.backfire === 1 && g.battle.arena.rateMul === 0.75);
 // 게이지 만충 → 이름이 노래지고(spareReady) 「마음 안아 주기」로만 끝난다
 g.battle.gauge = g.battle.gaugeMax; step(1);
@@ -347,8 +336,8 @@ check('프롤로그 마무리 컷신 완료 플래그', g.flags.prologueClosed =
 check('프롤로그 마무리 후 1장 거리 입구로 자연 진입', g.map === 'freestreet' && g.player.x === 18 && g.player.y === 21 && g.player.dir === 'up');
 check('1장 목표가 바로 거리 탐험으로 이어짐', windowObj.__test.currentObjective() === '금고문으로 — 구역을 돌자');
 check('기억은 승리 후 지워짐', !g.flags.persuadeMemory.bekkyeomon);
-check('설득 로그 누적(응답·조각)', g.flags.pStats.gateRight === 1 && g.flags.pStats.gateWrong === 1 &&
-  g.flags.pStats.fragments === 2);
+check('설득 로그 누적(응답·듣기)', g.flags.pStats.gateRight === 1 && g.flags.pStats.gateWrong === 1 &&
+  g.flags.pStats.fragments === 3);
 
 console.log('[21] 진엔딩 플래그 → 마을의 영이 등장');
 {
@@ -2170,8 +2159,7 @@ check('증거 카드 제목이 실제 EVIDENCE_CARDS와 일치', EVIDENCE_CARDS.
 // 240프레임 버티면 소멸+게이지+10+조명 하나 꺼짐(b.temptResisted, 파도-간 영속)
 g.battle.pState = 'open';
 startListen(); // 상대 턴(wave) 진입 — 기믹은 탄막 턴에서만 돈다
-g.battle.wave.fragments.length = 0; g.battle.wave.fragTotal = 0; // 조각 오수집 방지
-step(61); // tempt.spawnTimer(60) 경과 → 아이템 스폰
+step(64); // tempt.spawnTimer(60) 경과 → 아이템 스폰 (react 타자기 소모 프레임 여유 포함)
 check('반짝 아이템 스폰(openMechanic tempt)', !!g.battle.wave.tempt.obj);
 const temptHpBefore = g.battle.playerHp;
 const temptStickersBefore = g.flags.adStickers;
