@@ -3730,6 +3730,25 @@
         return;
       }
     }
+    // 기억의 별 (N-4) — 조사하면 여기까지의 이야기가 마음에 새겨지고, 저장된다
+    const star = MAPS[game.map].star;
+    if (star && star.x === f.x && star.y === f.y) {
+      save();
+      Sound.unlock();
+      game.notice = { text: '✦ 기억의 별이 반짝였다 — 이야기가 저장되었다.', t: 240 };
+      startDialog(['* (따뜻한 빛이 손끝에 닿는다.)\n' + star.text]);
+      return;
+    }
+    // N-3 「모든 것을 조사할 수 있다」 — 맵별 조사 플레이버 (한 줄 관찰 + 마른 유머)
+    const flavor = (MAPS[game.map].flavors || []).find((v) => v.x === f.x && v.y === f.y);
+    if (flavor) {
+      startDialog(['* ' + flavor.text]);
+      // 반디 동행 중이면 한마디 얹는다 — 대화가 닫힌 뒤 말풍선으로 보인다
+      if (flavor.bandi && game.flags.bandiJoined && !game.flags.bandiRevealed) {
+        game.notice = { text: '반디: ' + flavor.bandi, t: 280 };
+      }
+      return;
+    }
     const examine = getExamineTile(ch);
     if (examine) {
       startDialog([examine]);
@@ -4103,6 +4122,7 @@
     const b = game.battle;
     if (b.shake > 0) b.shake -= 1;
     if (b.flash > 0) b.flash -= 1;
+    if (b.flinchT > 0) b.flinchT -= 1; // 흠칫 표정(N-1) 지속 시간
 
     if (b.isPersuade && b.phase === 'wave') {
       updatePersuadeBattle();
@@ -4581,7 +4601,7 @@
     const p = getPersuade(persuadeKey);
     const mon = resolvePersuadeMon(monId, persuadeKey);
     game.mode = 'battle';
-    Sound.playSong(mon.song || 'battle');
+    Sound.playSong(p.song || mon.song || 'battle'); // 보스별 전용 테마 (N-2)
     // 물러났던 상대는 이야기를 절반쯤 기억한다 (재도전은 더 짧게). 기억은 프로필별로 구분한다.
     const memo = (game.flags.persuadeMemory || {})[persuadeKey];
     const maxHearts = 4 + (game.difficulty === 'easy' ? 1 : 0);
@@ -4625,6 +4645,7 @@
       shake: 0,
       flash: 0,
       hitstop: 0,
+      flinchT: 0, // 정답 직후 흠칫 표정 (N-1)
       attack: null,
     };
     game.flags.battleCount += 1;
@@ -4699,7 +4720,7 @@
       const topic = cardId ? EVIDENCE_CARDS[cardId].topic : monTopic(b);
       recordTopicResult(game.currentSlot, topic, true);
       text = claim.okLine || r.evidenceRight || '…그랬구나.';
-      b.shake = 14; Sound.correct();
+      b.shake = 14; b.flinchT = 40; Sound.correct(); // 흠칫 — 말이 닿았다 (N-1)
       b.claimIdx += 1; // 다음 주장으로
       if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.max(0, (b.shrinkLevel || 0) - 1);
     } else {
@@ -4864,6 +4885,11 @@
       // 번갈아 스폰된다. 잡은 [진] 개수(caught)는 파도가 바뀌어도 이어진다(최대 3).
       truth: { obj: null, caught: b.truthCaught || 0, spawnTimer: 60, nextKind: 'real' },
     };
+    // 공격 예고 (N-5) — 상대 턴 시작 플레이버 + 20프레임 숨 고르기
+    if (b.p.announce && b.p.announce.length) {
+      pushFloat(b.p.announce[b.turnCount % b.p.announce.length]);
+    }
+    b.wave.spawnTimer += 20;
     // 고요(보스) open 페이즈 고유 기믹 — 어둠 속, 하트 주변만 보인다. 배틀 전체에서 딱 한 번,
     // 첫 open 파도에서 탄막이 나오기 전 스폰 위치를 잠깐 깜빡여 예고한다(darkWarnT).
     if (b.p.openMechanic === 'dark' && b.pState === 'open' && !b.darkWarned) {
@@ -8055,6 +8081,23 @@
       }
     }
 
+    // 기억의 별 (N-4) — 반짝이는 저장 의식 지점
+    if (m.star) {
+      const sx = Math.round(m.star.x * TS - cx) + TS / 2;
+      const sy = Math.round(m.star.y * TS - cy) + TS / 2;
+      const tw = 0.5 + 0.5 * Math.sin(game.time / 14);
+      ctx.textAlign = 'center';
+      if (!game.reduceFx) {
+        ctx.fillStyle = `rgba(255,244,180,${(0.28 * tw).toFixed(2)})`;
+        ctx.font = 'bold 30px monospace';
+        ctx.fillText('✦', sx, sy + 9);
+      }
+      ctx.fillStyle = `rgba(255,214,68,${(0.6 + 0.4 * tw).toFixed(2)})`;
+      ctx.font = 'bold 20px monospace';
+      ctx.fillText('✦', sx, sy + 7);
+      ctx.textAlign = 'left';
+    }
+
     // 플레이어
     const p = game.player;
     const walking = p.px !== p.x * TS || p.py !== p.y * TS;
@@ -8573,7 +8616,12 @@
     ctx.beginPath();
     ctx.ellipse(mcx, 222, 56 - bob, 12, 0, 0, Math.PI * 2);
     ctx.fill();
-    drawMon(ctx, b.monId, mx, my, monScale);
+    // 표정(N-1): 정답 직후 흠칫(flinch) > 자비 국면 눈물 > 마음 상태(땀/홍조)
+    const mood = b.isPersuade
+      ? (b.flinchT > 0 ? 'flinch'
+        : (b.phase === 'mercy' || b.phase === 'mercyReply') ? 'mercy' : b.pState)
+      : null;
+    drawMon(ctx, b.monId, mx, my, monScale, false, mood, game.time);
     // 인물 이름 + 마음 게이지·상태 — 마음이 활짝 열리면 이름이 노래진다 (안아 줄 수 있다는 신호)
     utBox(24, 24, 240, 64, 6);
     ctx.fillStyle = b.spareReady ? '#ffd644' : '#fff';

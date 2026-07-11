@@ -2500,7 +2500,7 @@ g.battle.pState = 'open';
 answerClaim(true); // 정답 문 통과(ev_answer 소지) → 다음 파도(open) 진입
 // (advanceReact의 탭이 파도 1프레임을 진행시키므로 30/60에서 1씩 깎인 값으로 확인)
 check('첫 open 파도 — 탄막 예고 1회(darkWarned + darkWarnT)', g.battle.darkWarned === true &&
-  g.battle.wave.darkWarnT === 29 && g.battle.wave.spawnTimer === 59);
+  g.battle.wave.darkWarnT === 29 && g.battle.wave.spawnTimer === 79); // 30+숨고르기20+어둠30-1
 // 게이지 만충 → 마음의 선택 → 자비 → 승리
 g.battle.gauge = g.battle.gaugeMax; step(1); // 게이지 만충 → 내 턴 + spareReady
 check('게이지 만충 → 내 턴 + spareReady', g.battle.phase === 'menu' && g.battle.spareReady === true);
@@ -2864,6 +2864,63 @@ console.log('[114] 배달 창고 상자 라벨 근접 표시 — HUD 상시 표�
   check('HUD 안내 — 가까이 가면 라벨이 보인다', gameSrc.includes("'벨트로 가까이 가면 상자 라벨이 보인다'"));
   check('벨트 상자 라벨 — 3타일 이내 조건으로 렌더링', /near = Math\.max\([\s\S]{0,80}<= 3/.test(gameSrc) &&
     /if \(near\) label\(nx, ny, `\$\{curBox\.label\}·\$\{curBox\.lane\}`/.test(gameSrc));
+}
+
+console.log('[116] N-3 조사 플레이버 — 모든 것을 조사할 수 있다');
+{
+  g.dialog = null; g.mode = 'world'; g.map = 'village';
+  g.flags.profConfession = true; // 마을 자동 이벤트(박사 고백)가 끼어들지 않게
+  const total = ['village', 'freestreet', 'tiltstreet', 'rumorstreet', 'arcade', 'cozyhome']
+    .reduce((s, m) => s + (MAPS[m].flavors || []).length, 0);
+  check('플레이버 총 40개 이상', total >= 40);
+  // 마을 연못 (6,14) — 서쪽에서 바라보고 조사
+  setPos(5, 14, 'right'); g.player.x = 5; g.player.y = 14; g.player.dir = 'right';
+  tap('z');
+  check('연못 조사 — * 플레이버 대화', g.mode === 'dialog' && /^\* 연못/.test(g.dialog.lines[0]));
+  advanceDialog();
+  check('반디 한마디(말풍선) — 물속엔 내가 안 비치네', !!g.notice && /안 비치네/.test(g.notice.text));
+  // 정체 공개 후에는 반디가 얹지 않는다
+  g.flags.bandiRevealed = true; g.notice = { text: '', t: 0 };
+  tap('z'); advanceDialog();
+  check('정체 공개 후 — 반디 한마디 없음', !g.notice.text || !/안 비치네/.test(g.notice.text));
+  g.flags.bandiRevealed = false;
+}
+
+console.log('[117] N-4 기억의 별 — 조사하면 저장 + 결심 플레이버');
+{
+  g.dialog = null; g.mode = 'world'; g.map = 'village'; g.flags.profConfession = true;
+  const st = MAPS.village.star;
+  check('마을 기억의 별 존재', !!st && typeof st.text === 'string');
+  setPos(st.x, st.y + 1, 'up');
+  tap('z');
+  check('별 조사 — 결심 플레이버 대화', g.mode === 'dialog' && /단단하게 한다/.test(g.dialog.lines[0]));
+  check('별 조사 — 저장 말풍선', !!g.notice && /저장되었다/.test(g.notice.text));
+  advanceDialog();
+  check('허브 6곳 모두 별 보유', ['village','freestreet','tiltstreet','rumorstreet','arcade','cozyhome']
+    .every((m2) => !!MAPS[m2].star));
+}
+
+console.log('[118] N-5 공격 예고 — 프로필 announce가 상대 턴 시작에 흐른다');
+{
+  check('8프로필 모두 announce 보유', ['bekkyeomon','sujipmon_boss','pyeonhyang_boss','hwangak_boss',
+    'yuhok_boss','hollim_boss','goyo_boss','yeongi_boss'].every((k) => PERSUADE[k].announce.length >= 2));
+  check('announce는 * 내레이션 문법', PERSUADE.bekkyeomon.announce.every((a) => /^\* /.test(a)));
+}
+
+console.log('[115] N-2 보스별 전용 테마 — 프로필 song이 실제 SONGS에 존재');
+{
+  const SONG_KEYS = vm.runInContext('Object.keys(SONGS)', sandbox);
+  const BOSS_SONG = {
+    bekkyeomon: 'boss_ttara', sujipmon_boss: 'boss_dama', pyeonhyang_boss: 'boss_giul',
+    hwangak_boss: 'boss_geureol', yuhok_boss: 'boss_banjjak', hollim_boss: 'boss_lumi',
+    goyo_boss: 'boss_goyo', yeongi_boss: 'boss_yeongi',
+  };
+  for (const [k, s] of Object.entries(BOSS_SONG)) {
+    check(`${k} → ${s}`, PERSUADE[k].song === s && SONG_KEYS.includes(s));
+  }
+  // 영이 테마는 라이트모티프(E-C-A-B-G)로 시작한다 — 타이틀·마을·코어와 같은 악구
+  const yeongiNotes = vm.runInContext('SONGS.boss_yeongi.tracks[0].notes.slice(0,5).map(n=>n[0]).join()', sandbox);
+  check('영이 테마 = 라이트모티프 완전판(76,72,69,71,67 시작)', yeongiNotes === '76,72,69,71,67');
 }
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
