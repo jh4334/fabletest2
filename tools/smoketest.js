@@ -553,15 +553,18 @@ function requirePropNearWarp(mapId, kind, label, to, profile, maxDist = 3) {
       ch5DistrictMarks.length >= 5 && ['전화의 방 입구', '잠긴 복도 입구', '소파 코너 입구', '현관 안쪽 문', '고요의 뜰 문'].every((label) => ch5DistrictMarks.some((m) => m.label === label)));
     check('5장 포근한 집 NPC 추가 없음', (MAPS.cozyhome.npcs || []).length === 0);
     const ch5Atmosphere = (MAP_PROPS.cozyhome || []).filter((p) => p.kind === 'ch5_atmosphere');
-    check('5장 넓어진 집은 정적 소품으로 포근함만 가볍게 보강',
-      ch5Atmosphere.length >= 3 && ch5Atmosphere.length <= 5 &&
+    const ch5Dist = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+    check('5장 넓어진 집은 정적 생활 소품 5개로 포근함만 가볍게 보강',
+      ch5Atmosphere.length === 5 &&
       ch5Atmosphere.every((p) => WALKABLE.has(MAPS.cozyhome.tiles[p.y][p.x])) &&
-      ch5Atmosphere.some((p) => /러그|조명|화분|액자|신발장/.test(p.label || p.text || '')));
+      ['작은 화분', '따뜻한 러그', '낮은 조명', '가족 액자', '작은 책장'].every((label) => ch5Atmosphere.some((p) => p.label === label)));
+    check('5장 생활 소품은 한 화면에 다닥다닥 몰리지 않음',
+      ch5Atmosphere.every((a, i) => ch5Atmosphere.every((b, j) => i === j || ch5Dist(a, b) >= 4)) &&
+      ch5Atmosphere.some((p) => p.y >= 14) && ch5Atmosphere.some((p) => p.x >= 24));
     const ch5Fx = windowObj.__test.chapter5HubVisualProfile(3, false);
     const ch5LowFx = windowObj.__test.chapter5HubVisualProfile(3, true);
     check('5장 기본 허브 FX 부담은 과하지 않음', ch5Fx.warmLamps <= 5 && ch5Fx.voiceRipples <= 3 && ch5Fx.fullScreenBlur === false);
     check('5장 저사양 허브 효과는 일반보다 가벼움', ch5LowFx.warmLamps < ch5Fx.warmLamps && ch5LowFx.voiceRipples < ch5Fx.voiceRipples && ch5LowFx.labels === false);
-    const ch5Dist = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
     check('5장 표식이 한 화면에 다닥다닥 붙지 않음',
       ch5Dist(ch5DistrictMarks.find((m) => m.label === '전화의 방 입구'), ch5DistrictMarks.find((m) => m.label === '소파 코너 입구')) >= 12 &&
       ch5Dist(ch5DistrictMarks.find((m) => m.label === '현관 안쪽 문'), ch5DistrictMarks.find((m) => m.label === '고요의 뜰 문')) >= 12);
