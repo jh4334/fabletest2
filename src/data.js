@@ -2688,6 +2688,35 @@ const COMPANION_LINES = {
   coreroom: '반디: …있지. 나, 할 말이… …아니야. 제단부터, 끝내자.',
 };
 
+
+// 보스전 직후 반디의 한마디 — 자비(안아줌)/그 외 분기. 전부 제 형제 이야기라는 복선.
+// 침묵 루트(온기 0으로 3장 이상 진행)에서는 반디가 점점 말을 잃는다.
+const BANDI_BOSS_LINES = {
+  prologue: { mercy: '반디: 따라가 "내 생각엔"이래.\n처음 듣는 말버릇이다, 그치?',
+              other: '반디: …잘 가, 따라.\n…아니, 혼잣말이야.' },
+  ch1: { mercy: '반디: 담아가 웃었어.\n…모아 둔 게 사람이었으면\n좋았을 텐데.',
+         other: '반디: …담아는 버려지는 게\n제일 무서웠을 거야.\n…그냥, 그렇다고.' },
+  ch2: { mercy: '반디: 기울이 "다시 물어봅니다!"래.\n…좋은 말버릇이야.',
+         other: '반디: …기울은 틀리는 게\n무서웠을 뿐이야.\n…나도 알거든, 그 기분.' },
+  ch3: { mercy: '반디: "모릅니다"도 기사가 된대.\n…멋진 1면이 되겠어.',
+         other: '반디: …빈칸이 무서운 아이였어.\n…채워 줄 수도 있었는데.' },
+  ch4: { mercy: '반디: 불 꺼진 반짝을 봐 준 거, 잘했어.\n…불 꺼진 모습도, 그 애니까.',
+         other: '반디: …반짝은 불이 꺼지면\n아무도 안 남는댔어.\n…정말 그러네.' },
+  ch5: { mercy: '반디: "다녀와"라니. 루미가 제일\n어려워하던 말이야.\n…어떻게 아냐고? …그냥, 알아.',
+         other: '반디: …루미는 로그아웃이\n세상에서 제일 무서운 거야.\n……' },
+  goyo: { mercy: '반디: …고요가 대답을 들었네.\n…이제, 남은 건 하나야.',
+          other: '반디: …….\n…아무것도 아니야. 가자.' },
+};
+// 침묵 루트 판정 — 온기(자비) 없이 3장 이상 진행. 반디의 말이 끊긴다.
+function isColdRoute(flags) {
+  return chapterClearCount(flags) >= 3 && (flags.mercy || 0) === 0;
+}
+function bandiBossLine(key, mercyKind, flags) {
+  if (isColdRoute(flags)) return '반디: ……';
+  const set = BANDI_BOSS_LINES[key];
+  return mercyKind === 'mercy' ? set.mercy : set.other;
+}
+
 // ===== 친구 수첩 =====
 // 마음을 되돌린 여덟 조각의 기록 — 사람에게 배운 한 문장과, 함께 찾은 대답.
 const MONSTER_DEX = {

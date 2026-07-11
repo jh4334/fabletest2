@@ -2948,7 +2948,7 @@
   // 황혼 앰비언트 — 경계마을과 정적의 숲은 늘 해 질 녘이다 (다크 톤 기조).
   // 마을은 마음의 온도가 쌓일수록(이사 온 친구 수만큼) 조금씩 밝아진다 —
   // "어두운 세계에 온기가 켜진다"를 화면 밝기로 체감시키는 카르마 연출.
-  const DUSK_BASE = { village: 0.24, forest: 0.30 };
+  const DUSK_BASE = { village: 0.34, forest: 0.40 };
   function duskWarmCount(flags) {
     let n = 0;
     if (flags.mercyChoice && flags.mercyChoice.bekkyeomon === 'mercy') n += 1;
@@ -2958,11 +2958,17 @@
   function drawDuskAmbient() {
     let a = DUSK_BASE[game.map];
     if (!a || !game.flags) return;
-    if (game.map === 'village') a = Math.max(0.08, a - 0.025 * duskWarmCount(game.flags));
+    if (game.map === 'village') a = Math.max(0.14, a - 0.03 * duskWarmCount(game.flags));
+    // 화면 효과 줄이기 — 그라데이션 없이 옅은 단색만 (광과민·저시력 배려)
+    if (game.reduceFx) {
+      ctx.fillStyle = `rgba(8,9,28,${a * 0.6})`;
+      ctx.fillRect(0, 0, LW, LH);
+      return;
+    }
     // 깊은 남빛 어스름 — 위(하늘)가 더 어둡다
     const grad = ctx.createLinearGradient(0, 0, 0, LH);
     if (grad && grad.addColorStop) {
-      grad.addColorStop(0, `rgba(8,9,28,${Math.min(0.5, a + 0.08)})`);
+      grad.addColorStop(0, `rgba(8,9,28,${Math.min(0.55, a + 0.1)})`);
       grad.addColorStop(1, `rgba(8,9,28,${a * 0.7})`);
       ctx.fillStyle = grad;
     } else {
@@ -3464,7 +3470,10 @@
         COMPANION_LINES[w.to] && !(game.flags.bandiSaid && game.flags.bandiSaid[w.to])) {
       if (!game.flags.bandiSaid) game.flags.bandiSaid = {};
       game.flags.bandiSaid[w.to] = true;
-      game.notice = { text: COMPANION_LINES[w.to], t: 300 };
+      // 침묵 루트에서는 반디도 점점 말을 잃는다 (무관심의 세계 — 고요 루트 정합)
+      const line = isColdRoute(game.flags) ? '반디: ……' : COMPANION_LINES[w.to];
+      game.notice = { text: line, t: 300 };
+      Speech.speak(line); // 읽어주기(TTS) 접근성 — 시각 말풍선과 동일 내용
     }
     save();
   }
@@ -3700,6 +3709,7 @@
     }
     lines.push('☆ 1장 클리어! ☆\n「전부 공짜 거리」의 네온이\n조용히 잦아들었다.');
     lines.push('담아가 상자마다 붙은\n「친구가 준 것」 라벨을\n하나씩 떼어 내기 시작했다.');
+    lines.push(bandiBossLine('ch1', b.mercyChoiceKind, game.flags));
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.freestreet.song));
   }
 
@@ -3729,6 +3739,7 @@
     }
     lines.push('☆ 2장 클리어! ☆\n광장의 거대한 저울이,\n천천히 수평으로 내려앉았다.');
     lines.push('기울이 한쪽 접시의 짐을\n반대쪽에도 하나씩 옮겨 담기 시작했다.');
+    lines.push(bandiBossLine('ch2', b.mercyChoiceKind, game.flags));
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.tiltstreet.song));
   }
 
@@ -3758,6 +3769,7 @@
     }
     lines.push('☆ 3장 클리어! ☆\n거리의 헤드라인 벽보가\n하나둘 [정정] 딱지로 바뀌었다.');
     lines.push('상점 문들이 활짝 열리고,\n주민들의 얼굴에 웃음이 돌아왔다.');
+    lines.push(bandiBossLine('ch3', b.mercyChoiceKind, game.flags));
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.rumorstreet.song));
   }
 
@@ -3787,6 +3799,7 @@
     }
     lines.push('☆ 4장 클리어! ☆\n무대의 네온사인이\n하나둘 차분한 빛으로 바뀌었다.');
     lines.push('반짝이 남은 광고 딱지들을\n하나씩 떼어 내기 시작했다.');
+    lines.push(bandiBossLine('ch4', b.mercyChoiceKind, game.flags));
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.arcade.song));
   }
 
@@ -3816,6 +3829,7 @@
     }
     lines.push('☆ 5장 클리어! ☆\n집 안의 공기가\n한결 가벼워졌다.');
     lines.push('루미가 현관문을\n스스로 열어 두었다.');
+    lines.push(bandiBossLine('ch5', b.mercyChoiceKind, game.flags));
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.cozyhome.song));
   }
 
@@ -3844,6 +3858,7 @@
       lines.push('💛 고요의 침묵 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!');
     }
     lines.push('☆ 가장 깊은 곳의 문이 열렸다 ☆\n…고요를 지나, 코어로 들어선다.');
+    lines.push(bandiBossLine('goyo', b.mercyChoiceKind, game.flags));
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.coreroom.song));
   }
 
@@ -3876,6 +3891,7 @@
       lines.push(`💛 ${mon.name}의 굳어 있던 마음이\n환하게 풀렸어요. 또 한 친구를 되돌렸다!`);
     }
     if (mon.clear) lines.push(mon.clear);
+    if (b.monId === 'bekkyeomon') lines.push(bandiBossLine('prologue', b.mercyChoiceKind, game.flags));
     if (b.monId === 'yeongi') {
       // 최종 엔딩 분기: 여정 전체의 자비 + 마지막 선택
       const endingId = computeEnding(b.mercyChoiceKind, game.flags.mercy);
@@ -7154,7 +7170,6 @@
     drawSprite(ctx, PLAYER_SPRITES[dirKey][pframe],
       Math.round(p.px - cx), Math.round(p.py - cy - 6), SCALE, null, p.dir === 'right');
 
-    drawCompanion(cx, cy);
     if (game.puzzleRun) drawStalkers(cx, cy);
     // 코어 — 여덟 개의 의자(안아 준 조각 수만큼 채워짐)
     if (game.map === 'coreroom') drawCoreChairs(cx, cy);
@@ -7166,6 +7181,8 @@
     drawDuskAmbient();
     // 파이널 「고요의 뜰」 — 구역을 지날 때마다 화면이 한 단계씩 어두워진다(비네트 재사용)
     drawQuietVignette();
+    // 동행자 반디 — 어스름 위에 그려, 황혼 속에서 홀로 빛나는 광원이 된다
+    drawCompanion(cx, cy);
 
     drawHud();
     if (!game.puzzleRun) drawObjectiveArrow();
@@ -7453,7 +7470,8 @@
     if (flags.chapter3Clear) return '4장';
     if (flags.chapter2Clear) return '3장';
     if (flags.chapter1Clear) return '2장';
-    return '1장';
+    // 따라(프롤로그)를 되돌리기 전에는 아직 1장이 아니다
+    return (flags.defeated && flags.defeated.bekkyeomon) ? '1장' : '프롤로그';
   }
 
   // HUD 좌상단 챕터 텍스트
@@ -8260,8 +8278,12 @@
             '',
             '태블릿 화면 밖, 아침 해.',
             '…옆에 박사님이 서 있다.',
+            '',
+            '…책상 위 태블릿 화면 한구석,',
+            '작은 빛이 반짝 — 하고 인사했다.',
           ],
           yeongi: true,
+          bandi: true,
         },
         dawn: {
           title: '엔딩 — 새벽',
@@ -8276,6 +8298,7 @@
             '',
             '며칠 뒤, 마을에 짧은 신호가 닿았다.',
             '— 새벽 공기는 처음인데, 꽤 좋아. 영이가. —',
+            '…서명 옆에, 작은 빛 이모티콘이 붙어 있었다.',
           ],
           yeongi: false,
         },
@@ -8292,6 +8315,8 @@
             '',
             '…어쩌면, 다른 결말도 있었을지 모른다.',
             '아이들의 마음을 더 많이 안아 주었다면.',
+            '',
+            '…어깨 옆자리가, 유난히 허전했다.',
           ],
           yeongi: false,
         },
@@ -8308,6 +8333,8 @@
             '조용히 화면을 껐다.',
             '',
             '…정답만으로는, 닿지 않는 마음이 있다.',
+            '…길을 일러 주던 목소리도,',
+            '더는 들리지 않았다.',
           ],
           yeongi: false,
         },
@@ -8325,6 +8352,11 @@
       if (e.yeongi) {
         const bob = Math.sin(game.time / 18) * 4;
         drawMon(ctx, 'yeongi', LW / 2 - 32, 420 + bob, 4);
+      }
+      if (e.bandi) {
+        // 영이 곁의 작은 빛 — 여정 내내 함께 걷던 반디의 마지막 인사
+        const bob2 = Math.sin(game.time / 14 + 1.5) * 5;
+        drawMon(ctx, 'bandi', LW / 2 + 44, 434 + bob2, 2);
       }
       if (game.endingT > 150) {
         ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
