@@ -2175,7 +2175,7 @@
         run.fed += 1;
         Sound.select();
         if (run.fed >= 3) { clearPuzzle(run); return; }
-        startDialog([line, `(판독기에 ${run.fed}/3장 투입)`], rd.name);
+        startDialog([`${line}\n(판독기에 ${run.fed}/3장 투입)`], rd.name);
       } else if (i > 0) {
         startDialog(['(판독기에서 손을 뗐다)'], rd.name);
       }
@@ -2524,7 +2524,7 @@
       Sound.correct();
       game.notice = { text: `다른 목소리를 들었다 (${run.voices.length}/3)`, t: 120 };
       if (run.voices.length >= 3) {
-        startDialog([line, '…셋 다, 조금씩 다른 이야기였다.'], '다른 목소리', () => clearPuzzle(run));
+        startDialog([line + '\n…셋 다, 조금씩 다른 이야기였다.'], '다른 목소리', () => clearPuzzle(run));
         return true;
       }
     }
@@ -2674,36 +2674,37 @@
     Sound.warp();
     Sound.playSong(MAPS[exit.map].song);
     const lines = (puz.clearLines || ['방을 빠져나왔다.']).slice();
-    for (const id of fresh) lines.push(`◆ 증거 카드 「${EVIDENCE_CARDS[id].title}」 획득!`);
-    // 잠금/저울 진행 안내 (이번 클리어로 새로 풀렸을 때만)
+    // 보상 카드와 잠금/진행 안내를 한 상자로 묶는다 — 클리어 꼬리 상자 다이어트
+    const tail = fresh.map((id) => `◆ 증거 카드 「${EVIDENCE_CARDS[id].title}」 획득!`);
     const locks = isS2 ? s2ClearCount() : isS1 ? s1LockCount() : 0;
     if ((isS1 || isS2) && locks > locksBefore) {
       if (isS2) {
         const tilt = 3 - locks;
-        lines.push(tilt <= 0
+        tail.push(tilt <= 0
           ? '광장 쪽에서, 거대한 저울이\n수평으로 맞춰지는 소리가 났다!'
           : `광장의 거대한 저울이\n기울기를 하나 낮췄다. (기울기 ${tilt}/3)`);
       } else {
-        lines.push(locks >= 3
+        tail.push(locks >= 3
           ? '철컹 — 거리의 금고에서\n마지막 잠금이 풀리는 소리가 났다!'
           : `철컥. 거리의 금고에서\n잠금 풀리는 소리가 났다. (${locks}/3)`);
       }
     } else if (isS3) {
       const n = s3ClearCount();
-      lines.push(n >= 3
+      tail.push(n >= 3
         ? '거리 쪽에서 함성이 들린다!\n상점 문들이 하나둘 열리기 시작한다.'
         : `신문사 ${n}/3층을 정리했다.`);
     } else if (isS4 && (run.id === 'roulette' || run.id === 'signup')) {
       const n = s4KeyCount();
-      lines.push(n >= 2
+      tail.push(n >= 2
         ? '…열쇠가 모두 모였다!\n아케이드 정문 안쪽에서\n반응하는 소리가 들린다.'
         : `열쇠를 하나 손에 넣었다. (${n}/2)`);
     } else if (isS5) {
       const n = s5ClearCount();
-      lines.push(n >= 3
+      tail.push(n >= 3
         ? '…현관 안쪽에서, 문이 스르르\n열리는 소리가 들린다!'
         : `확인하는 용기를 하나 냈다. (${n}/3)`);
     }
+    if (tail.length) lines.push(tail.join('\n'));
     save();
     startDialog(lines, puz.title);
   }
