@@ -1018,13 +1018,23 @@
   // 돌아왔을 때 캐릭터가 계속 걷는 문제를 막는다.
   window.addEventListener('blur', () => { held.clear(); pressed.clear(); });
 
-  // 가상 스틱: 중심에서의 변위(dx,dy)를 4방향 중 하나로 환산. 데드존 안이면 null.
-  // (그리드 이동 게임이라 우세 축 하나만 사용한다.) — 순수 함수라 테스트로 검증한다.
+  // 가상 스틱: 중심에서의 변위(dx,dy)를 우세 4방향 하나로 환산. 데드존 안이면 null.
+  // (메뉴 커서 이동 등 단일 방향이 필요한 곳에서 사용) — 순수 함수라 테스트로 검증한다.
   function stickDirection(dx, dy, max) {
     const dist = Math.hypot(dx, dy);
     if (dist < max * 0.34) return null; // 데드존: 가운데 근처는 정지
     if (Math.abs(dx) > Math.abs(dy)) return dx < 0 ? 'left' : 'right';
     return dy < 0 ? 'up' : 'down';
+  }
+  // 8방향 스틱 (M-1b 자유 이동용): 우세축 + 대각선 밴드(부축 비율 0.45 이상)면 부축도 함께.
+  // 반환은 [주방향] 또는 [주방향, 부방향]. 데드존이면 [].
+  function stickDirections(dx, dy, max) {
+    const main = stickDirection(dx, dy, max);
+    if (!main) return [];
+    const ah = Math.abs(dx), av = Math.abs(dy);
+    const sub = (Math.abs(dx) > Math.abs(dy)) ? (dy < 0 ? 'up' : 'down') : (dx < 0 ? 'left' : 'right');
+    if (Math.min(ah, av) / Math.max(ah, av) > 0.45) return [main, sub];
+    return [main];
   }
   let stickDir = null;       // 스틱이 현재 가리키는 방향(없으면 null)
   let stickRepeatFrames = 0; // 메뉴에서 누른 채로 두면 자동 반복시키는 카운터
@@ -1086,12 +1096,15 @@
     const knob = document.getElementById('t-stick-knob');
     if (stick && knob) {
       let stickId = null, cx = 0, cy = 0, radius = 1;
-      const setDir = (dir) => {
+      // 8방향: dirs 배열(0~2개)을 눌린 키로 반영. 메뉴 반복(stickDir)은 우세축만 쓴다.
+      const setDir = (dirs) => {
+        dirs = dirs || [];
         for (const d of DIRS4) {
-          if (d === dir) { if (!held.has(d)) pressed.add(d); held.add(d); }
+          if (dirs.includes(d)) { if (!held.has(d)) pressed.add(d); held.add(d); }
           else held.delete(d);
         }
-        if (dir !== stickDir) { stickDir = dir; stickRepeatFrames = 0; }
+        const main = dirs[0] || null;
+        if (main !== stickDir) { stickDir = main; stickRepeatFrames = 0; }
       };
       const place = (dx, dy) => {
         knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
@@ -1115,7 +1128,7 @@
         const dist = Math.hypot(dx, dy);
         if (dist > radius) { dx = dx / dist * radius; dy = dy / dist * radius; }
         place(dx, dy);
-        setDir(stickDirection(dx, dy, radius));
+        setDir(stickDirections(dx, dy, radius));
       };
       const onEnd = (e) => {
         let mine = false;
@@ -1123,7 +1136,7 @@
         if (!mine) return;
         e.preventDefault();
         stickId = null;
-        setDir(null);
+        setDir([]);
         place(0, 0);
       };
       stick.addEventListener('touchstart', onStart);
@@ -3739,7 +3752,13 @@
 
   function checkWarp() {
     const p = game.player;
-    if (game.warpCooldownFrames > 0) return;
+    if (game.warpCooldownFrames > 0) {
+      // 쿨다운 중 워프 칸에 들어섰다 — 자유 이동은 칸을 스치듯 지나므로,
+      // 쿨다운이 끝나는 프레임에 한 번 더 판정한다 (updateWorld에서 소비)
+      if (warpAt(game.map, p.x, p.y)) game.pendingWarpRecheck = true;
+      return;
+    }
+    game.pendingWarpRecheck = false;
     const w = warpAt(game.map, p.x, p.y);
     if (!w) return;
     if (w.needAllDefeated && !w.needAllDefeated.every((id) => game.flags.defeated[id])) {
@@ -3850,39 +3869,44 @@
     save();
   }
 
-  const MOVE_SPEED = TS / 7; // 프레임당 픽셀 (한 칸 7프레임 — M-1a 속도 상향)
+  const MOVE_SPEED = TS / 7; // 프레임당 픽셀
 
-  // M-1a 이동감 — 방향키 신선도(누른 지 몇 프레임째인지)를 기록한다.
-  // 값이 작을수록 최근에 눌린 키: 대각선 조합의 우선축·탭 방향전환 판정에 쓴다.
+  // M-1b 자유 픽셀 이동 (언더테일식) — 그리드 스냅 없이 px/py가 진실이고,
+  // 타일 좌표(p.x/p.y)는 파생값(반올림)이다. 상호작용·워프·퍼즐 판정은
+  // 전부 타일 좌표로 이루어지므로 기존 맵 데이터는 그대로 동작한다.
   const DIR_KEYS = ['up', 'down', 'left', 'right'];
   const DIR_DX = { left: -1, right: 1, up: 0, down: 0 };
   const DIR_DY = { up: -1, down: 1, left: 0, right: 0 };
-  const dirHeldFrames = { up: 0, down: 0, left: 0, right: 0 };
+  const dirHeldFrames = { up: 0, down: 0, left: 0, right: 0 }; // 방향키 신선도 — 작을수록 최근
   const isHorizontalDir = (d) => d === 'left' || d === 'right';
-  function walkableTile(nx, ny) {
-    return !(SOLID(tileAt(game.map, nx, ny)) || npcAt(game.map, nx, ny) ||
-      monsterAt(game.map, nx, ny) || friendAt(game.map, nx, ny) ||
-      (game.puzzleRun && puzzleObjAt(game.map, nx, ny)));
+  // 발밑 히트박스 — 스프라이트(48px)보다 작아 문틀·모서리에 덜 걸린다
+  const HB = { ox: 10, oy: 26, w: 28, h: 20 };
+  function tileBlocked(tx, ty) {
+    return SOLID(tileAt(game.map, tx, ty)) || !!npcAt(game.map, tx, ty) ||
+      !!monsterAt(game.map, tx, ty) || !!friendAt(game.map, tx, ty) ||
+      !!(game.puzzleRun && puzzleObjAt(game.map, tx, ty));
   }
-  // 대각선 포함 이동 — 주 방향(dir)을 바라보고, 보조 방향(perp)이 있으면 함께 간다.
-  // 대각선이 막히면 열린 축으로 미끄러진다 (벽 슬라이드).
-  function tryMoveCombo(dir, perp) {
-    const p = game.player;
-    p.dir = dir;
-    let dx = DIR_DX[dir] + (perp ? DIR_DX[perp] : 0);
-    let dy = DIR_DY[dir] + (perp ? DIR_DY[perp] : 0);
-    if (dx && dy) {
-      // 대각선: 목적 칸과 양옆 칸이 모두 열려 있어야 한다 (모서리 끼임 방지)
-      if (!(walkableTile(p.x + dx, p.y + dy) && walkableTile(p.x + dx, p.y) && walkableTile(p.x, p.y + dy))) {
-        if (walkableTile(p.x + DIR_DX[dir], p.y + DIR_DY[dir])) { dx = DIR_DX[dir]; dy = DIR_DY[dir]; }
-        else if (perp && walkableTile(p.x + DIR_DX[perp], p.y + DIR_DY[perp])) { dx = DIR_DX[perp]; dy = DIR_DY[perp]; p.dir = perp; }
-        else return;
-      }
-    } else if (!walkableTile(p.x + dx, p.y + dy)) {
-      return;
+  function rectBlocked(px, py) {
+    const x0 = px + HB.ox, y0 = py + HB.oy, x1 = x0 + HB.w - 1, y1 = y0 + HB.h - 1;
+    for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) {
+      if (tileBlocked(Math.floor(x / TS), Math.floor(y / TS))) return true;
     }
-    p.x += dx; p.y += dy;
-    p.moving = true;
+    return false;
+  }
+  // 축을 나눠 이동한다 — 대각선이 벽에 막히면 열린 축으로 자연히 미끄러진다.
+  function moveFreely(dx, dy) {
+    const p = game.player;
+    const ox = p.px, oy = p.py;
+    if (dx && !rectBlocked(p.px + dx, p.py)) p.px += dx;
+    if (dy && !rectBlocked(p.px, p.py + dy)) p.py += dy;
+    const moved = p.px !== ox || p.py !== oy;
+    p.moving = moved;
+    if (moved) p.step += 1;
+    const nx = Math.round(p.px / TS), ny = Math.round(p.py / TS);
+    if (nx !== p.x || ny !== p.y) {
+      p.x = nx; p.y = ny;
+      checkWarp(); // 워프·잠금 안내는 타일 진입 시 판정 (기존과 동일)
+    }
   }
 
   // 박사 고백 이벤트 — chapter3Clear 후 경계마을 진입 시 1회 자동 발생.
@@ -3915,7 +3939,15 @@
       return;
     }
     if (game.notice.t > 0) game.notice.t -= 1;
-    if (game.warpCooldownFrames > 0) game.warpCooldownFrames -= 1;
+    if (game.warpCooldownFrames > 0) {
+      game.warpCooldownFrames -= 1;
+      // 쿨다운 중 워프 칸을 밟았다면, 쿨다운이 끝나는 즉시 재판정 (스치듯 통과 방지)
+      if (game.warpCooldownFrames === 0 && game.pendingWarpRecheck) {
+        game.pendingWarpRecheck = false;
+        checkWarp();
+        if (game.mode !== 'world') return;
+      }
+    }
     if (game.puzzleRun) updatePuzzleWorld(); // 방탈출: 시간 누적 + 구역별 물체 갱신
     // 5장 구역③ 소파 코너 — 앉아 있는 동안은 이동을 잠그고, 방향키 버티기만 판정한다
     if (game.puzzleRun && game.puzzleRun.puzzle.type === 'sofa' && game.puzzleRun.sitting) {
@@ -3945,19 +3977,6 @@
     // 방향키 신선도 갱신 — 최근에 눌린 방향(작은 값)이 우선
     for (const d of DIR_KEYS) dirHeldFrames[d] = held.has(d) ? dirHeldFrames[d] + 1 : 0;
 
-    // 픽셀 보간 이동 — 도착 프레임에는 아래 입력 처리로 곧장 이어져
-    // 다음 칸 이동/방향 전환이 한 프레임도 끊기지 않는다 (M-1a 입력 버퍼)
-    const tx = p.x * TS, ty = p.y * TS;
-    if (p.px !== tx || p.py !== ty) {
-      p.px += Math.sign(tx - p.px) * Math.min(MOVE_SPEED, Math.abs(tx - p.px));
-      p.py += Math.sign(ty - p.py) * Math.min(MOVE_SPEED, Math.abs(ty - p.py));
-      p.step += 1;
-      if (p.px !== tx || p.py !== ty) return;
-      p.moving = false;
-      checkWarp();
-      if (game.mode !== 'world' || game.dialog) return;
-    }
-
     if (justPressed('menu')) {
       openDex('world');
       return;
@@ -3973,14 +3992,19 @@
       return;
     }
 
+    // 자유 픽셀 이동 (M-1b) — 8방향, 대각선은 속도 정규화(×1/√2)
     const active = DIR_KEYS.filter((d) => held.has(d))
       .sort((a, b) => dirHeldFrames[a] - dirHeldFrames[b]);
-    if (!active.length) return;
+    if (!active.length) { p.moving = false; return; }
     const dir = active[0];
-    // 탭 = 제자리 방향 전환: 막 누른 다른 방향은 3프레임 동안 몸만 돌린다
+    // 탭 = 제자리 방향 전환: 정지 중 막 누른 다른 방향은 3프레임 동안 몸만 돌린다
     if (dir !== p.dir && dirHeldFrames[dir] <= 3 && !p.moving) { p.dir = dir; return; }
+    p.dir = dir;
     const perp = active.find((d) => isHorizontalDir(d) !== isHorizontalDir(dir));
-    tryMoveCombo(dir, perp);
+    const dx = DIR_DX[dir] + (perp ? DIR_DX[perp] : 0);
+    const dy = DIR_DY[dir] + (perp ? DIR_DY[perp] : 0);
+    const spd = (dx && dy) ? MOVE_SPEED * 0.7071 : MOVE_SPEED;
+    moveFreely(dx * spd, dy * spd);
   }
 
   // ---------- 배틀 ----------
