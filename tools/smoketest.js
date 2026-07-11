@@ -152,7 +152,7 @@ const introExitTarget = windowObj.__test.nextWaypoint(g.flags, 'introlab');
 check('문 개방 후 나침반은 열린 출구를 가리킴', introExitTarget && introExitTarget.x === 14 && introExitTarget.y === 17);
 // 실험실 아래 출구 → 숲 북쪽 입구. 아래를 누르고 나가도 다음 맵 12시 쪽에서 자연스럽게 내려온다.
 setPos(14, 16, 'down');
-hold('ArrowDown', 14);
+hold('ArrowDown', 8); // 자유 이동: 반 칸(24px)만 넘으면 워프 — 쿨다운이 남아 있는 동안 확인
 check('실험실 아래 출구 → 숲 북쪽 입구에서 시작', g.map === 'forest' && g.player.x === 20 && g.player.y === 2 && g.player.dir === 'down');
 check('워프 직후 즉시 되돌아가기 방지 쿨다운 기록', g.lastWarp && g.lastWarp.fromMap === 'introlab' && g.lastWarp.exitDir === 'south' && g.warpCooldownFrames > 0);
 g.flags.visited.forest = true;
