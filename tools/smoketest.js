@@ -2715,6 +2715,28 @@ console.log('[110b] 박사 재대화(talkedProf 후 기본 분기) — 챕터 �
 
 }
 
+console.log('[110c] 엔딩 분기별 후일담 — 박사·할머니 대사가 결말을 기억한다');
+{
+  const base = { talkedProf: true, mercy: 5, defeated: { bekkyeomon: true, yeongi: true } };
+  const mk = (endingId, trueEnding) => Object.assign({}, base, { endingId, trueEnding: !!trueEnding });
+  const profHome = getNpcDialogT('prof', mk('home', true)).join(' ');
+  const profDawn = getNpcDialogT('prof', mk('dawn')).join(' ');
+  const profFarewell = getNpcDialogT('prof', mk('farewell')).join(' ');
+  const profSilent = getNpcDialogT('prof', mk('silent')).join(' ');
+  check('박사 후일담(home) — 영이의 귀환', /영이가 돌아왔단다/.test(profHome));
+  check('박사 후일담(dawn) — 영이의 여행 신호', /신호/.test(profDawn) && /잘 다녀왔니/.test(profDawn));
+  check('박사 후일담(farewell) — 작별을 마주함', /혼자가 아니었어/.test(profFarewell));
+  check('박사 후일담(silent) — 조용한 마을', /조용할까/.test(profSilent));
+  check('네 후일담이 서로 다름', new Set([profHome, profDawn, profFarewell, profSilent]).size === 4);
+  const gmDawn = getNpcDialogT('grandma', mk('dawn')).join(' ');
+  const gmSilent = getNpcDialogT('grandma', Object.assign(mk('silent'), { mercy: 0 })).join(' ');
+  check('할머니 후일담(dawn) — 영이 소식', /영이 소식/.test(gmDawn));
+  check('할머니 후일담(silent) — 안부가 그립다', /안부/.test(gmSilent));
+  // 엔딩 전(endingId 없음)에는 후일담이 새지 않는다
+  const profBefore = getNpcDialogT('prof', { talkedProf: true, mercy: 3, defeated: { bekkyeomon: true, yeongi: false } }).join(' ');
+  check('엔딩 전 박사 — 후일담 미노출', !/잘 다녀왔니/.test(profBefore) && !/영이가 돌아왔단다/.test(profBefore));
+}
+
 console.log('[111] 수업 모드 선택기 — v1 숫자 스테이지 제거, v2 6개 항목만 순환');
 {
   const TJ2 = vm.runInContext('window.__test', sandbox);
