@@ -1852,12 +1852,13 @@ check('이미 최대 HP면 정답 문 통과해도 초과 회복 없음', g.batt
 // openMechanic 'truth' — open 페이즈 중 [진]/[낚] 헤드라인 조각이 60프레임 간격으로 번갈아
 // 스폰(tempt의 최소 변형). [진] 접촉=게이지+6(누적 3회째 gaugeMax-2 보너스), [낚] 접촉=게이지-4+화면 얼룩.
 g.battle.pState = 'open';
+// 앞 시나리오의 프레임/RNG 위상 변화에 흔들리지 않게 스폰 전에 격리한다 —
+// 파도 잔여 시간 확보 + 하트를 구석으로(무작위 스폰 좌표와 겹쳐 즉시 수집되는 사고 방지)
+g.battle.wave.t = 0;
+g.battle.arena.bullets.length = 0; g.battle.arena.inv = 999; g.battle.wave.fragments.length = 0;
+g.battle.arena.soul.x = g.battle.arena.box.x + 8; g.battle.arena.soul.y = g.battle.arena.box.y + 8;
 step(61); // truth.spawnTimer(60) 경과 → 첫 조각 스폰([진]부터 시작)
 check('첫 헤드라인 조각은 [진]', !!g.battle.wave.truth.obj && g.battle.wave.truth.obj.kind === 'real');
-// 속마음 조각(fragments)은 파도마다 무작위 좌표에 스폰된다 — 우연히 헤드라인 조각과
-// 겹치면 같은 프레임에 함께 수집되어 게이지 델타가 오염된다(RNG 시드는 이 파일 전역
-// 호출 순서에 따라 달라지므로 위쪽 시나리오 변경에도 흔들리지 않도록 매번 비워 격리한다).
-g.battle.arena.bullets.length = 0; g.battle.arena.inv = 999; g.battle.wave.fragments.length = 0;
 const truthGaugeBefore1 = g.battle.gauge;
 g.battle.arena.soul.x = g.battle.wave.truth.obj.x; g.battle.arena.soul.y = g.battle.wave.truth.obj.y;
 step(1);

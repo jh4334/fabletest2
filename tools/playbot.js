@@ -74,6 +74,7 @@ function pickChoice(idx) {
 function enterZone(x, y, key, expectMap) {
   const dirOf = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
   setPos(x, y, dirOf[key]);
+  step(14); // 직전 워프의 쿨다운(12프레임)이 남아 있으면 워프 칸을 그냥 지나친다
   let guard = 0;
   const from = g.map;
   while (g.map === from && guard++ < 6) hold(key, 14);
@@ -249,14 +250,136 @@ if (g.mode === 'battle') crudeWin();
 if (!g.flags.chapter2Clear) throw new Error('2장 클리어 실패');
 mark('2장 보스 「기울」 설득 배틀');
 
+// ── 3장 「대문짝 신문사」 — 1층 제보함 ──
+enterZone(26, 10, 'ArrowRight', 'rumorstreet');
+enterZone(14, 5, 'ArrowUp', 'tipsroom');
+for (const [x, y] of [[5, 4], [14, 4], [5, 10], [14, 10], [9, 7]]) { // 제보 5장 읽기
+  setPos(x, y, 'up'); tap('z'); advanceDialog();
+}
+setPos(9, 11, 'up'); tap('z'); pickChoice(0); advanceDialog(); // 제보①(출처) 채택
+setPos(9, 11, 'up'); tap('z'); pickChoice(0); advanceDialog(); // 제보②(출처) 채택 → 클리어
+if (!g.flags.evCards.includes('ev_check')) throw new Error('제보함 보상 없음');
+mark('3장 1층 제보함 (출처 2장 채택)');
+
+// ── 3장 2층 편집실 ──
+enterZone(14, 5, 'ArrowUp', 'tipsroom');
+enterZone(16, 2, 'ArrowRight', 'editroom');
+setPos(5, 5, 'up'); tap('z'); pickChoice(0); advanceDialog();   // 좌우 반전
+setPos(14, 5, 'up'); tap('z'); pickChoice(1); advanceDialog();  // 손가락 6개
+setPos(9, 10, 'up'); tap('z'); pickChoice(2); advanceDialog();  // 날짜 미래 → 클리어
+if (!g.flags.evCards.includes('ev_original')) throw new Error('편집실 보상 없음');
+mark('3장 2층 편집실 (대조 3)');
+
+// ── 3장 3층 송출탑 ──
+enterZone(14, 5, 'ArrowUp', 'tipsroom');
+enterZone(16, 2, 'ArrowRight', 'editroom');
+enterZone(16, 2, 'ArrowRight', 'towerroom');
+setPos(5, 5, 'up'); tap('z'); pickChoice(1); advanceDialog();   // 정정문
+setPos(14, 5, 'up'); tap('z'); pickChoice(0); advanceDialog();  // 출처(제보①)
+setPos(9, 10, 'up'); tap('z'); pickChoice(0); advanceDialog();  // 송출 레버 → 클리어
+if (!g.flags.rumorFixed) throw new Error('정정 보도 실패');
+mark('3장 3층 송출탑 (정정 보도)');
+
+// ── 3장 보스 「그럴싸」 ──
+enterZone(14, 5, 'ArrowUp', 'tipsroom');
+enterZone(16, 2, 'ArrowRight', 'editroom');
+enterZone(16, 2, 'ArrowRight', 'towerroom');
+enterZone(16, 2, 'ArrowRight', 'towerroof');
+setPos(7, 3, 'up'); tap('z'); advanceDialog();
+if (g.mode !== 'battle') throw new Error('그럴싸 배틀 시작 실패');
+crudeWin(); if (g.mode === 'battle') crudeWin();
+if (!g.flags.chapter3Clear) throw new Error('3장 클리어 실패');
+mark('3장 보스 「그럴싸」 설득 배틀');
+
+// ── 4장 「반짝 아케이드」 ──
+enterZone(26, 10, 'ArrowRight', 'arcade');
+enterZone(6, 5, 'ArrowUp', 'roulettesquare');
+setPos(5, 4, 'up'); tap('z'); advanceDialog();                  // 룰렛(미끼) 체험 1회
+setPos(9, 7, 'up'); tap('z'); pickChoice(1); advanceDialog();   // 작은 글씨 「해지」
+setPos(9, 10, 'up'); tap('z'); advanceDialog();                 // 상자 → 비밀조각 열쇠
+if (!g.flags.s4KeySecret) throw new Error('비밀조각 열쇠 없음');
+mark('4장 구역① 룰렛 광장 (해지 + 열쇠①)');
+
+enterZone(22, 5, 'ArrowUp', 'signupalley');
+setPos(9, 6, 'up'); tap('z'); pickChoice(0); advanceDialog();   // 진짜 도메인
+setPos(9, 10, 'up'); tap('z'); advanceDialog();                 // 본인 확인함 → 본인표 열쇠
+if (!g.flags.s4KeyId) throw new Error('본인표 열쇠 없음');
+mark('4장 구역② 회원가입 골목 (판별 + 열쇠②)');
+
+enterZone(18, 2, 'ArrowUp', 'yuhokstage');
+setPos(7, 3, 'up'); tap('z'); advanceDialog();
+if (g.mode !== 'battle') throw new Error('반짝 배틀 시작 실패');
+crudeWin(); if (g.mode === 'battle') crudeWin();
+if (!g.flags.chapter4Clear) throw new Error('4장 클리어 실패');
+mark('4장 보스 「반짝」 설득 배틀');
+
+// ── 5장 「포근한 집」 ──
+enterZone(33, 10, 'ArrowRight', 'cozyhome');
+enterZone(6, 5, 'ArrowUp', 'callroom');
+for (let i = 0; i < 4; i++) { setPos(9, 7, 'up'); tap('z'); advanceDialog(); } // 만류 3회 + 받기
+if (!g.flags.evCards.includes('ev_answer')) throw new Error('전화의 방 보상 없음');
+mark('5장 구역① 전화의 방 (용기 1)');
+
+enterZone(18, 5, 'ArrowUp', 'corridor');
+setPos(9, 7, 'up'); tap('z'); advanceDialog();                  // 직접 열어 확인
+if (!g.flags.evCards.includes('ev_see')) throw new Error('잠긴 복도 보상 없음');
+mark('5장 구역② 잠긴 복도 (용기 2)');
+
+enterZone(30, 5, 'ArrowUp', 'sofaroom');
+setPos(9, 7, 'up'); tap('z'); advanceDialog();                  // 소파에 앉음
+dispatch('keydown', { key: 'ArrowUp' }); step(92); dispatch('keyup', { key: 'ArrowUp' }); // 일어나기 버티기
+if (g.mode === 'dialog') advanceDialog();
+if (!g.flags.evCards.includes('ev_standup')) throw new Error('소파 코너 보상 없음');
+mark('5장 구역③ 소파 코너 (용기 3)');
+
+enterZone(18, 2, 'ArrowUp', 'lumiroom');
+setPos(7, 3, 'up'); tap('z'); advanceDialog();
+if (g.mode !== 'battle') throw new Error('루미 배틀 시작 실패');
+crudeWin(); if (g.mode === 'battle') crudeWin();
+if (!g.flags.chapter5Clear) throw new Error('5장 클리어 실패');
+mark('5장 보스 「루미」 설득 배틀');
+
+// ── 파이널: 고요의 뜰 → 고요 → 코어 봉헌 → 영이 ──
+enterZone(31, 19, 'ArrowDown', 'quietyard');
+enterZone(9, 11, 'ArrowDown', 'quietyard2');
+enterZone(9, 11, 'ArrowDown', 'quietyard3');
+enterZone(9, 11, 'ArrowDown', 'goyostage');
+setPos(7, 3, 'up'); tap('z'); advanceDialog();
+if (g.mode !== 'battle') throw new Error('고요 배틀 시작 실패');
+crudeWin(); if (g.mode === 'battle') crudeWin();
+if (!g.flags.goyoClear) throw new Error('고요 되돌리기 실패');
+mark('파이널 — 고요 설득 배틀');
+
+// 코어 봉헌 — 여덟 속삭임에 맞는 카드를 꽂는다
+const { SHRINE_WHISPERS, EVIDENCE_CARDS } = vm.runInContext('({ SHRINE_WHISPERS, EVIDENCE_CARDS })', sandbox);
+setPos(7, 2, 'up'); tap('z'); advanceDialog();                  // 제단 안내 → 첫 속삭임 선택창
+for (let i = 0; i < SHRINE_WHISPERS.length; i++) {
+  if (g.mode !== 'choice') { setPos(7, 2, 'up'); tap('z'); }
+  if (g.mode !== 'choice') throw new Error('봉헌 선택창 열기 실패 (' + i + ')');
+  const owned = (g.flags.evCards || []).filter((id) => EVIDENCE_CARDS[id]);
+  const idx = owned.indexOf(SHRINE_WHISPERS[i].answer);
+  if (idx < 0) throw new Error('정답 카드 미소지: ' + SHRINE_WHISPERS[i].answer);
+  pickChoice(idx); advanceDialog();
+}
+if (!g.flags.shrineDone || !g.flags.bandiRevealed) throw new Error('봉헌/정체 공개 실패');
+mark('파이널 — 코어 봉헌 (반디 정체 공개)');
+
+// 영이 — 마지막 설득 배틀 → 진엔딩
+setPos(7, 5, 'up'); tap('z'); advanceDialog();
+if (g.mode !== 'battle') throw new Error('영이 배틀 시작 실패: ' + g.mode);
+crudeWin(); if (g.mode === 'battle') crudeWin();
+if (g.mode === 'ending') { step(160); tap('z'); }
+if (!g.flags.defeated.yeongi) throw new Error('영이 되돌리기 실패');
+mark('파이널 — 영이 설득 배틀 + 엔딩');
+
 // ---- 리포트 ----
 console.log('\n===== 플레이테스트 봇 리포트 (v3 최속 주행) =====');
 console.table(report);
 console.log(`첫 배틀 시작까지 대화 탭: ${firstBattleTaps}탭 (상자당 2탭 ≈ ${Math.round(firstBattleTaps / 2)}상자)`);
 console.log(`누계: ${frames}프레임 ≈ ${(frames / 60).toFixed(1)}초(최속 하한) · 대화 탭 ${dialogTaps}회`);
-console.log(`도달 상태: map=${g.map}, 1장=${g.flags.chapter1Clear}, 2장=${g.flags.chapter2Clear}, 반디=${g.flags.bandiJoined}`);
-if (!g.flags.chapter1Clear || !g.flags.chapter2Clear) {
-  console.error('✘ 봇이 2장 클리어까지 도달하지 못했습니다');
+console.log(`도달 상태: map=${g.map}, 엔딩=${g.flags.endingId}, 자비=♥${g.flags.mercy}, 반디 정체 공개=${g.flags.bandiRevealed}`);
+if (!g.flags.defeated.yeongi) {
+  console.error('✘ 봇이 진엔딩까지 도달하지 못했습니다');
   process.exit(1);
 }
-console.log('✔ 프롤로그 → 1장 → 2장 클리어 경로 정상');
+console.log('✔ 프롤로그 → 5장 → 파이널(영이) 전 구간 완주');

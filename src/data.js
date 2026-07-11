@@ -3782,7 +3782,6 @@ const PUZZLES = {
     },
     rewards: ['ev_othervoice'],
     clearLines: [
-      '세 사람의 다른 이야기를 들었다.',
       '골목이 조금, 넓어 보인다.',
     ],
     // 다른 목소리 NPC별 한마디 (골목 주민과 다른 의견) — 각자 다르게 말한다
