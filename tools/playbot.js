@@ -132,21 +132,36 @@ const firstBattleTaps = dialogTaps;
 
 // 마음 조각 배틀 — 서툰 회피(입력 없음)로 파도를 흘려보내고, 문만 정확히 고른다
 function crudeWin() {
+  // M-2 턴제: [내 턴 메뉴] ↔ [상대 턴 탄막]을 오가며 최선 플레이로 마음을 연다.
+  //   닫힘 → 가만히 듣기(조각 수집), 동요/열림 → 말 걸기 정답(잠기면 듣기),
+  //   만충(spareReady) → 마음 안아 주기 → 자비.
   let guard = 0;
   while (g.mode === 'battle' && guard++ < 20000) {
     const b = g.battle;
-    if (b.phase === 'wave') {
+    if (b.phase === 'menu') {
+      if (b.gauge >= b.gaugeMax) { b.menuIdx = 3; tap('z'); dialogTaps += 1; continue; } // 안아 주기
+      if (b.pState === 'closed') { b.menuIdx = 2; tap('z'); dialogTaps += 1; continue; } // 듣기
+      b.menuIdx = 0; tap('z'); dialogTaps += 1; // 말 걸기
+      if (g.battle && g.battle.phase === 'sub') {
+        const i = g.battle.sub.options.findIndex((o) => o.correct && !o.locked);
+        if (i >= 0) { g.battle.subIdx = i; tap('z'); dialogTaps += 1; }
+        else { dispatch('keydown', { key: 'x' }); step(1); dispatch('keyup', { key: 'x' }); // 뒤로
+               g.battle.menuIdx = 2; tap('z'); dialogTaps += 1; } // 카드가 없으면 듣기
+      }
+    } else if (b.phase === 'react') {
+      tap('z'); dialogTaps += 1;
+    } else if (b.phase === 'wave') {
       // 조각이 있으면 주워 게이지를 올린다 (하트 순간이동 = 최선 플레이 가정)
       if (b.wave.fragments.length) {
         const f = b.wave.fragments[0];
         b.arena.soul.x = f.x; b.arena.soul.y = f.y;
+        step(1);
+      } else {
+        // 조각 없는 탄막 턴은 피격 없이 빨리 감기
+        b.arena.bullets.length = 0; b.arena.inv = 999;
+        b.wave.t = b.wave.dur; b.wave.hits = 1;
+        step(1);
       }
-      step(1);
-    } else if (b.phase === 'gates') {
-      const d = b.gates.doors.find((x) => x.correct && !x.locked) ||
-        b.gates.doors.find((x) => !x.locked);
-      if (d) { b.arena.soul.x = d.x + d.w / 2; b.arena.soul.y = d.y + d.h / 2; }
-      step(1);
     } else if (b.phase === 'mercy') {
       while (g.battle.cursor !== 0) tap('ArrowDown');
       tap('z');

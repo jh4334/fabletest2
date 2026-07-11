@@ -117,29 +117,35 @@ g.dialog = { lines: ['…정말로, 왔구나.\n나는 이 마을의… 박사�
 shot('03-dialog.png');
 
 // 4~6) 마음 조각 배틀 — 실제 조우(따라)를 키 입력으로 구동해 찍는다
-g.dialog = null; g.mode = 'world'; g.map = 'forest';
+g.dialog = null; g.mode = 'world'; g.map = 'forestdeep';
 g.flags = v3Flags({
   defeated: { bekkyeomon: false, sujipmon: false, pyeonhyangmon: false, hwangakmon: false,
     yuhokmon: false, hollimmon: false, finalboss: false, yeongi: false },
   chapter1Clear: false, chapter2Clear: false, mercy: 0, evCards: [],
   sawPersuadeTip: true, // 조작 안내는 스크린샷에서 생략
+  introForestTrace: true, ttaraFirstEncounter: true, // 첫 조우 연출 없이 곧장 배틀로
 });
-setPlayer(7, 9, 'down'); // 따라 (7,10) 위
+setPlayer(12, 4, 'down'); // 따라 (12,5) 위 — 정적의 숲 안쪽 공터
 tap('z');
-advanceDialog(); // 등장 대사 → 배틀
-step(30); // 파도(탄막+조각)가 화면에 깔릴 때까지
-shot('04-battle.png');
+advanceDialog(); // 등장 대사 → 배틀 (M-2: 내 턴 메뉴에서 시작)
+if (!g.battle) throw new Error('배틀 스크린샷 실패 — 조우가 시작되지 않음: ' + g.mode);
+step(10);
+shot('04-battle.png'); // 내 턴 — 관찰 한 줄(*) + 행동 메뉴 4종
 
-// 5) 문 고르기(gates) — 파도를 시간 만료로 끝낸다
-if (g.battle && g.battle.phase === 'wave') {
-  g.battle.arena.bullets.length = 0;
-  g.battle.wave.t = g.battle.wave.dur;
-  step(8);
+// 5) 상대 턴 — 「가만히 듣기」 → 탄막 + 속마음 조각 ✦
+if (g.battle && g.battle.phase === 'menu') {
+  g.battle.menuIdx = 2; tap('z');                      // 듣기 → 반응 대사
+  if (g.battle.phase === 'react') tap('z');            // → 상대 턴(탄막)
+  step(30); // 탄막·조각이 화면에 깔릴 때까지
 }
-shot('06-dodge.png'); // (README: 마음의 문 고르기)
+shot('06-dodge.png'); // (README: 탄막 턴 회피 + 조각 줍기)
 
-// 6) 마음의 선택 — 게이지 만충
-if (g.battle) { g.battle.gauge = g.battle.gaugeMax; step(2); }
+// 6) 마음의 선택 — 게이지 만충 → spareReady → 마음 안아 주기
+if (g.battle) {
+  g.battle.gauge = g.battle.gaugeMax; step(2);          // 탄막 턴 종료 → 내 턴(spareReady)
+  if (g.battle.phase === 'menu') { g.battle.menuIdx = 3; tap('z'); } // 안아 주기 → 마음의 선택
+  step(2);
+}
 shot('05-mercy.png');
 
 // 7) 친구 수첩
