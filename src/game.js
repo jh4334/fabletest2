@@ -2221,9 +2221,9 @@
       if (n.sourced) {
         run.correct += 1;
         Sound.correct();
-        game.notice = { text: `출처 있는 제보를 채택했다! (${run.correct}/2)`, t: 120 };
         if (run.correct >= 2) { clearPuzzle(run); return; }
-        startDialog([`「${n.label}」을(를) 채택함에 넣었다.\n출처가 확실하다.`], puz.title);
+        // 정답 피드백은 비차단 말풍선 하나로 — 대화 상자를 겹쳐 띄우지 않는다
+        game.notice = { text: `「${n.label}」 채택 — 출처가 확실하다. (${run.correct}/2)`, t: 150 };
       } else {
         recordPuzzleWrong(run.id);
         run.busted[idx] = true;
@@ -4334,8 +4334,7 @@
     }
     if ((game.flags.shrineIdx || 0) === 0) {
       startDialog([
-        '제단 위, 어둠이 남긴 마지막 속삭임들이\n희미하게 새겨져 있다.',
-        '가진 증거 카드로, 하나씩\n맞는 자리에 꽂아 보자.',
+        '제단 위, 어둠이 남긴 마지막 속삭임들이\n희미하게 새겨져 있다.\n…가진 증거 카드를, 맞는 자리에 꽂아 보자.',
       ], '제단', () => openShrineWhisper());
       return;
     }
@@ -4354,16 +4353,19 @@
       game.flags.shrineIdx = idx + 1;
       if (picked === w.answer) {
         Sound.correct();
-        startDialog([`「${EVIDENCE_CARDS[picked].title}」…\n속삭임이 스르르 옅어진다.`], '제단', () => {
-          save();
-          if (game.flags.shrineIdx >= SHRINE_WHISPERS.length) finishShrine();
-        });
+        // 정답은 비차단 말풍선으로 확인하고 다음 속삭임을 바로 잇는다
+        // (여덟 번의 확인 상자를 없앰 — 선택창의 「그만두기」로 언제든 중단 가능)
+        game.notice = { text: `「${EVIDENCE_CARDS[picked].title}」 — 속삭임이 옅어진다. (${game.flags.shrineIdx}/${SHRINE_WHISPERS.length})`, t: 150 };
+        save();
+        if (game.flags.shrineIdx >= SHRINE_WHISPERS.length) { finishShrine(); return; }
+        openShrineWhisper();
       } else {
         game.flags.shrineWrong = (game.flags.shrineWrong || 0) + 1;
         Sound.wrong();
         startDialog(['…그 카드는, 이 속삭임에는\n맞지 않는 듯하다.'], '제단', () => {
           save();
-          if (game.flags.shrineIdx >= SHRINE_WHISPERS.length) finishShrine();
+          if (game.flags.shrineIdx >= SHRINE_WHISPERS.length) { finishShrine(); return; }
+          openShrineWhisper();
         });
       }
     });
