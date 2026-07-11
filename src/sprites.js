@@ -590,7 +590,55 @@ function drawSprite(ctx, rows, x, y, scale, palOverride, flip) {
   ctx.drawImage(cv, x, y);
 }
 
+// 배틀 표정 오버레이(N-1) — 인물별 얼굴 기준점 (16×16 스프라이트 픽셀 좌표, 눈 근처)
+// 땀·홍조·눈물이 이 기준점 주변에 그려진다. 없으면 기본값 (8,6).
+const MONSTER_FACE = {
+  bekkyeomon: { ex: 8, ey: 6 },
+  sujipmon: { ex: 8, ey: 7 },
+  pyeonhyangmon: { ex: 8, ey: 6 },
+  hwangakmon: { ex: 8, ey: 6 },
+  yuhokmon: { ex: 8, ey: 6 },
+  hollimmon: { ex: 8, ey: 7 },
+  finalboss: { ex: 8, ey: 6 },
+  yeongi: { ex: 8, ey: 6 },
+};
+
+// 마음 상태 오버레이 — 스프라이트 위에 감정 픽셀을 얹는다 (캐시 밖, 매 프레임).
+//   shaken: 땀방울 / open: 홍조 + 반짝 / flinch: 흠칫(!) / mercy: 눈물 + 온기
+function drawMonMood(ctx, id, x, y, scale, mood, t) {
+  const f = MONSTER_FACE[id] || { ex: 8, ey: 6 };
+  const S = scale;
+  const px = (gx, gy, w, h, color) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(x + gx * S, y + gy * S, (w || 1) * S, (h || 1) * S);
+  };
+  if (mood === 'shaken') {
+    // 땀방울 — 관자놀이에서 또르르 (시간에 따라 살짝 흘러내린다)
+    const drop = Math.floor((t / 20) % 3);
+    px(f.ex + 5, f.ey - 3 + drop, 1, 1, '#bfe3ff');
+    px(f.ex + 5, f.ey - 2 + drop, 1, 2, '#8ecbff');
+  } else if (mood === 'open') {
+    // 홍조 — 양볼 + 머리 위 작은 반짝
+    px(f.ex - 4, f.ey + 2, 2, 1, 'rgba(255,150,160,0.8)');
+    px(f.ex + 2, f.ey + 2, 2, 1, 'rgba(255,150,160,0.8)');
+    if (Math.floor(t / 12) % 2 === 0) px(f.ex + 5, f.ey - 6, 1, 1, '#ffd644');
+  } else if (mood === 'flinch') {
+    // 흠칫 — 머리 위 노란 ! (마음에 말이 닿은 순간)
+    px(f.ex + 4, f.ey - 8, 1, 3, '#ffd644');
+    px(f.ex + 4, f.ey - 4, 1, 1, '#ffd644');
+  } else if (mood === 'mercy') {
+    // 눈물 한 방울 + 은은한 온기
+    px(f.ex - 3, f.ey + 1, 1, 2, '#8ecbff');
+    if (Math.floor(t / 14) % 2 === 0) {
+      px(f.ex - 6, f.ey - 5, 1, 1, 'rgba(255,214,68,0.7)');
+      px(f.ex + 6, f.ey - 4, 1, 1, 'rgba(255,214,68,0.7)');
+    }
+  }
+}
+
 // 인물 스프라이트 그리기 — 스프라이트별 팔레트(MONSTER_PAL)를 자동 적용.
-function drawMon(ctx, id, x, y, scale, flip) {
+// mood(선택)를 주면 배틀 표정 오버레이를 함께 그린다 (t = 애니메이션용 시간).
+function drawMon(ctx, id, x, y, scale, flip, mood, t) {
   drawSprite(ctx, MONSTER_SPRITES[id], x, y, scale, MONSTER_PAL[id] || null, flip);
+  if (mood && mood !== 'closed') drawMonMood(ctx, id, x, y, scale, mood, t || 0);
 }

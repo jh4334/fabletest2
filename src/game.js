@@ -4103,6 +4103,7 @@
     const b = game.battle;
     if (b.shake > 0) b.shake -= 1;
     if (b.flash > 0) b.flash -= 1;
+    if (b.flinchT > 0) b.flinchT -= 1; // 흠칫 표정(N-1) 지속 시간
 
     if (b.isPersuade && b.phase === 'wave') {
       updatePersuadeBattle();
@@ -4625,6 +4626,7 @@
       shake: 0,
       flash: 0,
       hitstop: 0,
+      flinchT: 0, // 정답 직후 흠칫 표정 (N-1)
       attack: null,
     };
     game.flags.battleCount += 1;
@@ -4699,7 +4701,7 @@
       const topic = cardId ? EVIDENCE_CARDS[cardId].topic : monTopic(b);
       recordTopicResult(game.currentSlot, topic, true);
       text = claim.okLine || r.evidenceRight || '…그랬구나.';
-      b.shake = 14; Sound.correct();
+      b.shake = 14; b.flinchT = 40; Sound.correct(); // 흠칫 — 말이 닿았다 (N-1)
       b.claimIdx += 1; // 다음 주장으로
       if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.max(0, (b.shrinkLevel || 0) - 1);
     } else {
@@ -8573,7 +8575,12 @@
     ctx.beginPath();
     ctx.ellipse(mcx, 222, 56 - bob, 12, 0, 0, Math.PI * 2);
     ctx.fill();
-    drawMon(ctx, b.monId, mx, my, monScale);
+    // 표정(N-1): 정답 직후 흠칫(flinch) > 자비 국면 눈물 > 마음 상태(땀/홍조)
+    const mood = b.isPersuade
+      ? (b.flinchT > 0 ? 'flinch'
+        : (b.phase === 'mercy' || b.phase === 'mercyReply') ? 'mercy' : b.pState)
+      : null;
+    drawMon(ctx, b.monId, mx, my, monScale, false, mood, game.time);
     // 인물 이름 + 마음 게이지·상태 — 마음이 활짝 열리면 이름이 노래진다 (안아 줄 수 있다는 신호)
     utBox(24, 24, 240, 64, 6);
     ctx.fillStyle = b.spareReady ? '#ffd644' : '#fff';
