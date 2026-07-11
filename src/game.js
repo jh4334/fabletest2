@@ -4542,7 +4542,7 @@
       game.flags.sawPersuadeTip = true;
       lines.push(
         '[마음 조각 배틀]\n서로 번갈아 이야기해요.\n내 차례엔 「말 걸기·증거·듣기·안아 주기」\n중 하나를 골라요.',
-        '상대 차례엔 ' + (isTouchDevice ? '스틱' : '화살표') + '로 하트를 움직여\n마음의 파도(탄막)를 피해요.\n「가만히 듣기」를 고르면 ✦ 속마음이 떨어져요.',
+        '「가만히 듣기」로 속마음을 들으면\n마음이 조금 열리고, 힌트를 얻어요.\n상대 차례엔 ' + (isTouchDevice ? '스틱' : '화살표') + '로 하트를 움직여\n마음의 파도(탄막)를 피해요.',
         '이름이 노랗게 변하면 —\n「마음 안아 주기」로 배틀이 끝나요.\n하트가 다 닳으면 잠시 물러났다 다시 와요.'
       );
     }
@@ -4630,7 +4630,7 @@
     game.flags.battleCount += 1;
     enterMenuPhase(game.battle);
     if (game.battle.prologueTutorial) {
-      pushFloat('* 먼저 「가만히 듣기」로\n속마음 조각 ✦을 주워 보자.');
+      pushFloat('* 먼저 「가만히 듣기」로\n속마음을 들어 보자.');
     }
   }
 
@@ -4734,11 +4734,18 @@
       b.subIdx = 0; b.phase = 'sub'; Sound.select();
       return;
     }
-    if (idx === 2) { // 가만히 듣기
-      b.listenTurn = true;
+    if (idx === 2) { // 가만히 듣기 — 주장 + 속마음이 즉시 흐른다 (조각 줍기 없음)
       Sound.select();
       const claim = currentClaim();
-      setReact(b, `${b.mon.name}: "${claim.text}"\n\n* 숨을 죽이고 귀를 기울였다 —\n(✦ 속마음 조각을 주울 수 있다!)`, 'wave');
+      const inner = claim.hint ||
+        ((claim.fragments && claim.fragments.length) ? claim.fragments.join('\n') : '……');
+      // 들어 준 만큼 마음이 조금 열린다 — 닫힘 해제(closedThreshold)와 게이지 소폭 상승
+      const n = b.p.fragmentsPerWave || 3;
+      b.fragmentTotal += n;
+      pStats().fragments += n;
+      b.gauge = clamp(b.gauge + n * 2, 0, b.gaugeMax);
+      persuadeGaugeSync(b);
+      setReact(b, `${b.mon.name}: "${claim.text}"\n\n* 가만히 귀를 기울였다 —\n${inner}`, 'wave');
       return;
     }
     // 마음 안아 주기
@@ -4822,16 +4829,7 @@
     }
   }
 
-  // ── 파도(wave): 탄막을 피하며 속마음 조각 ✦을 줍는다 ──
-  function spawnFragment(w, box, claim, i) {
-    const lines = (claim.fragments && claim.fragments.length) ? claim.fragments : [claim.hint || '…'];
-    return {
-      x: box.x + 30 + Math.random() * (box.w - 60),
-      y: box.y + 30 + Math.random() * (box.h - 60),
-      ttl: 360, // 6초 후 소멸·재스폰
-      line: lines[i % lines.length],
-    };
-  }
+  // ── 파도(wave): 상대 턴 — 탄막을 피하며 버틴다 ──
   function enterWave() {
     const b = game.battle;
     const claim = currentClaim();
@@ -4847,14 +4845,10 @@
     if (b.pIntense) { sf *= 1.3; rateMul *= 0.75; b.pIntense = false; }
     b.arena.sf = sf; b.arena.rateMul = rateMul; b.arena.bullets = []; b.arena.spiralA = 0; b.arena.inv = 0;
     b.arena.carrying = false;
-    // 속마음 조각 ✦은 「가만히 듣기」를 고른 턴에만 나온다 (M-2 턴제)
-    const n = b.listenTurn ? (b.p.fragmentsPerWave || 3) : 0;
-    b.listenTurn = false;
-    const frags = [];
-    for (let i = 0; i < n; i++) frags.push(spawnFragment(null, box, claim, i));
     b.wave = {
       t: 0, dur: b.p.waveDur || 300, spawnTimer: 30,
-      fragments: frags, fragTotal: n, collected: 0, hits: 0,
+      // fragments는 폐지(듣기 즉시 공개) — 기믹·테스트 호환을 위해 빈 배열 유지
+      fragments: [], fragTotal: 0, collected: 0, hits: 0,
       // 담아(보스) open 페이즈 고유 기믹 — 「정보 꾸러미」 운반
       // 배달 진행은 파도가 바뀌어도 이어진다 (한 파도 안에 3배달은 사실상 불가능하므로)
       parcel: { obj: null, deliveries: b.parcelDeliveries || 0, spawnTimer: 90,
@@ -4878,19 +4872,6 @@
       b.wave.spawnTimer += 30; // 예고가 끝난 뒤에야 첫 탄막이 나온다
     }
     if (game.tts) Speech.speak(claim.text);
-  }
-
-  function collectFragment(b, fi) {
-    const w = b.wave;
-    const f = w.fragments[fi];
-    pushFloat(f.line);
-    b.gauge = clamp(b.gauge + 2, 0, b.gaugeMax);
-    pStats().fragments += 1;
-    b.fragmentTotal += 1;
-    w.collected += 1;
-    w.fragments.splice(fi, 1); // 주운 조각은 사라진다 (미수집분만 6초 후 재스폰)
-    Sound.correct();
-    persuadeGaugeSync(b);
   }
 
   function moveSoul(arena, box, speedMul) {
@@ -4958,15 +4939,6 @@
 
     if (bulletHits(b, arena)) { w.hits += 1; if (b.playerHp <= 0) { persuadeExhaust(); return; } }
 
-    // 속마음 조각 ✦ — 접촉 수집 / 6초 지나면 재스폰
-    for (let i = w.fragments.length - 1; i >= 0; i--) {
-      const f = w.fragments[i];
-      f.ttl -= 1;
-      const dx = f.x - arena.soul.x, dy = f.y - arena.soul.y;
-      if (dx * dx + dy * dy < (SOUL_R + 9) * (SOUL_R + 9)) { collectFragment(b, i); continue; }
-      if (f.ttl <= 0) w.fragments[i] = spawnFragment(null, box, currentClaim(), i);
-    }
-
     // 담아(보스) open 페이즈 — 「정보 꾸러미」 운반 기믹
     if (b.p.openMechanic === 'parcel' && b.pState === 'open') updateParcel(b);
     // 기울(보스) open 페이즈 — 기울어지는 상자: 「반례 구슬」 운반 기믹
@@ -4983,8 +4955,8 @@
     // 게이지 만충 — 탄막 턴을 바로 끝내고 내 턴으로 (「마음 안아 주기」 마무리)
     if (b.gauge >= b.gaugeMax) { enterMenuPhase(b); return; }
 
-    // 탄막 턴 종료: (듣기 턴) 조각을 다 모으거나 / 시간 만료 → 내 턴(메뉴)으로
-    if ((w.fragTotal > 0 && w.collected >= w.fragTotal) || w.t >= w.dur) {
+    // 탄막 턴 종료: 시간 만료 → 내 턴(메뉴)으로
+    if (w.t >= w.dur) {
       if (w.hits === 0) { b.gauge = clamp(b.gauge + 6, 0, b.gaugeMax); pStats().perfectWaves += 1;
         pushFloat('* 끝까지 들어 줬다 — 마음 +6'); persuadeGaugeSync(b); }
       enterMenuPhase(b);
@@ -8794,11 +8766,8 @@
   function drawPersuadeArena(b) {
     const arena = b.arena, box = arena.box;
     // 인물의 외침 + 조작 안내
-    const listening = b.wave && b.wave.fragTotal > 0;
     drawArenaGuide(box, b.attack ? b.attack.taunt : null,
-      listening
-        ? (b.prologueTutorial ? '마음 안쪽: ✦ 속마음 조각을 주워요. 탄막은 피하고!' : '✦를 주워 속마음을 들어요. 탄막은 피하고!')
-        : '탄막을 피하며 버텨요 — 곧 내 차례가 온다!');
+      b.prologueTutorial ? '마음의 파도: 탄막을 피하며 버텨요 — 곧 내 차례!' : '탄막을 피하며 버텨요 — 곧 내 차례가 온다!');
 
     if (b.prologueTutorial) {
       ctx.textAlign = 'left';
@@ -8851,14 +8820,7 @@
         ctx.fillText('…!', box.x + box.w / 2, box.y - 12);
         ctx.textAlign = 'left';
       }
-      // 속마음 조각 ✦ (사라지기 직전 깜빡)
       ctx.textAlign = 'center';
-      for (const f of b.wave.fragments) {
-        if (f.ttl < 60 && Math.floor(game.time / 6) % 2 === 0) continue;
-        ctx.fillStyle = '#ffd644';
-        ctx.font = 'bold 18px monospace';
-        ctx.fillText('✦', f.x, f.y + 6);
-      }
       // 담아(보스) 정보 꾸러미 + 돌려주기 구멍
       if (b.p.openMechanic === 'parcel' && b.pState === 'open') {
         const pc = b.wave.parcel;
