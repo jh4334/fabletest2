@@ -554,10 +554,12 @@ function requirePropNearWarp(mapId, kind, label, to, profile, maxDist = 3) {
     check('5장 포근한 집 NPC 추가 없음', (MAPS.cozyhome.npcs || []).length === 0);
     const ch5Atmosphere = (MAP_PROPS.cozyhome || []).filter((p) => p.kind === 'ch5_atmosphere');
     const ch5Dist = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-    check('5장 넓어진 집은 정적 생활 소품 5개로 포근함만 가볍게 보강',
-      ch5Atmosphere.length === 5 &&
+    check('5장 넓어진 집은 정적 생활 소품 8개로 포근함만 가볍게 보강',
+      ch5Atmosphere.length === 8 &&
       ch5Atmosphere.every((p) => WALKABLE.has(MAPS.cozyhome.tiles[p.y][p.x])) &&
-      ['작은 화분', '따뜻한 러그', '낮은 조명', '가족 액자', '작은 책장'].every((label) => ch5Atmosphere.some((p) => p.label === label)));
+      ['작은 화분', '따뜻한 러그', '낮은 조명', '가족 액자', '작은 책장', '중앙 러그', '낮은 탁자', '쿠션 바구니'].every((label) => ch5Atmosphere.some((p) => p.label === label)));
+    check('5장 중앙 시야는 정적 생활 소품으로 빈 공간을 보강',
+      ch5Atmosphere.filter((p) => p.x >= 14 && p.x <= 23 && p.y >= 12 && p.y <= 16).length >= 3);
     check('5장 생활 소품은 한 화면에 다닥다닥 몰리지 않음',
       ch5Atmosphere.every((a, i) => ch5Atmosphere.every((b, j) => i === j || ch5Dist(a, b) >= 4)) &&
       ch5Atmosphere.some((p) => p.y >= 14) && ch5Atmosphere.some((p) => p.x >= 24));
