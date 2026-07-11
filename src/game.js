@@ -7,15 +7,17 @@
   const TS = TILE * SCALE; // 48px
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
-  // 논리 해상도(좌표계는 항상 720×528). 백킹 스토어는 기기 픽셀 밀도(DPR)만큼 키워
-  // 레티나·고DPI 화면에서도 글자가 또렷하게 보이게 한다.
+  // 논리 해상도(좌표계는 항상 720×528). 백킹 스토어는 기기 픽셀 밀도(DPR)만큼 키우되,
+  // 교실 태블릿·저전력 노트북에서 버벅이지 않도록 고해상도 백킹 스토어를 더 낮게 제한한다.
   const LW = 720, LH = 528;
-  let currentDPR = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
+  const DPR_CAP = 1.5;
+  function effectiveDprCap() { return (typeof game !== 'undefined' && game.lowGraphics) ? 1 : DPR_CAP; }
+  let currentDPR = Math.max(1, Math.min(window.devicePixelRatio || 1, DPR_CAP));
   canvas.width = LW * currentDPR;
   canvas.height = LH * currentDPR;
   ctx.scale(currentDPR, currentDPR);
   function checkDPR() {
-    const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 3));
+    const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, effectiveDprCap()));
     if (dpr !== currentDPR) {
       currentDPR = dpr;
       canvas.width = LW * dpr;
@@ -74,6 +76,7 @@
     difficulty: 'normal', // easy | normal | hard — 학년별 난이도
     tts: false,          // 읽어주기(TTS) 접근성
     reduceFx: false,     // 화면 효과 줄이기(광과민성·모션 민감 배려)
+    lowGraphics: false,  // 저사양 그래픽(백킹 해상도 1x + 무거운 효과 최소화)
     dashboard: { ret: 'title', cursor: 0, toast: 0 }, // 교사용 대시보드
     classmode: { ret: 'world', sel: 0, confirm: false, toast: 0 }, // 수업 모드(챕터 바로 시작)
     report: { ret: 'world', slot: 0, toast: 0 }, // 교사용 학생 진단 리포트
@@ -88,6 +91,8 @@
     hint: null,          // 퍼즐 힌트 오버레이 { step, level, hints }
     hintRet: 'world',
     introDim: null,      // 새 게임 인트로 암전 { fadeFrame } — startNewGame에서 세팅
+    warpCooldownFrames: 0, // 맵 전환 직후 즉시 되돌아가는 auto-bounce 방지
+    lastWarp: null,        // { fromMap, toMap, exitDir, arrivedAt } — UX 검증/테스트용
   };
 
   const SLOT_COUNT = 3;
@@ -157,6 +162,17 @@
       bandiJoined: false,  // 동행자 반디 합류(오프닝 직후)
       bandiRevealed: false, // 반디 정체 공개(코어 봉헌 완료) — 동행 종료
       bandiSaid: {},       // 반디 조언을 이미 건넨 맵 (맵당 1회)
+      introClue1: false,   // 프롤로그 실험실 단서① 태블릿
+      introClue2: false,   // 프롤로그 실험실 단서② 모니터
+      introClue3: false,   // 프롤로그 실험실 단서③ 포스트잇
+      introDoorOpen: false, // 프롤로그 실험실 출구 개방 — 단서 3개 수집 완료
+      introForestTrace: false, // 실험실 탈출 직후 정적의 숲 첫 흔적 조사
+      ttaraFirstEncounter: false, // 정적의 숲 안쪽에서 따라와 처음 마주친 전용 조우 연출
+      prologueClosed: false, // 따라 설득 후 프롤로그 마무리 컷신을 보고 1장으로 진입했는가
+      forestClearingRead: false, // 정적의 숲 안쪽 공터 조사 결과 표식
+      privacyLeak: 0,       // 1장 개인정보 그림자가 붙을 때 오르는 노출도(0~5)
+      privacyRecovery: 0,   // 노출도 MAX 후 회복 목표 진행(지운 정보 조각 수)
+      privacyRecoveryActive: false, // 노출도 5에서 즉시 실패 대신 회복 목표 발동
     };
   }
 
@@ -189,11 +205,65 @@
     data.v = 3;
     return data;
   }
+  // v3→v4: introlab 플래그 기본값. 이미 숲 이상을 진행한 세이브라면 문을 열고 지난 것으로 본다.
+  function migrateSlotV4(data) {
+    if (!data || !data.flags) return data;
+    const f = data.flags;
+    if (f.introClue1 !== undefined) return data; // 이미 v4 이상
+    f.introClue1 = !!f.talkedProf;
+    f.introClue2 = !!f.talkedProf;
+    f.introClue3 = !!f.talkedProf;
+    f.introDoorOpen = !!f.talkedProf;
+    f.introForestTrace = !!f.talkedProf;
+    data.v = 4;
+    return data;
+  }
+
+  // v4→v5: 실험실 탈출 직후 숲 흔적 플래그. 기존 진행 세이브는 이미 본 것으로 승계한다.
+  function migrateSlotV5(data) {
+    if (!data || !data.flags) return data;
+    if (data.flags.introForestTrace === undefined) {
+      data.flags.introForestTrace = !!data.flags.talkedProf || !!(data.flags.defeated && data.flags.defeated.bekkyeomon);
+    }
+    data.v = 5;
+    return data;
+  }
+
+  // v5→v6: 따라 첫 조우 전용 연출 플래그. 이미 따라를 되돌렸거나 마을까지 진행한 세이브는 본 것으로 승계한다.
+  function migrateSlotV6(data) {
+    if (!data || !data.flags) return data;
+    if (data.flags.ttaraFirstEncounter === undefined) {
+      data.flags.ttaraFirstEncounter = !!(data.flags.defeated && data.flags.defeated.bekkyeomon);
+    }
+    data.v = 6;
+    return data;
+  }
+
+  // v6→v7: 개인정보 그림자 접촉 페널티(노출도) 기본값. 기존 세이브는 안전 상태에서 시작한다.
+  function migrateSlotV7(data) {
+    if (!data || !data.flags) return data;
+    const f = data.flags;
+    if (f.privacyLeak === undefined) f.privacyLeak = 0;
+    if (f.privacyRecovery === undefined) f.privacyRecovery = 0;
+    if (f.privacyRecoveryActive === undefined) f.privacyRecoveryActive = false;
+    data.v = 7;
+    return data;
+  }
+
+  // v7→v8: 프롤로그 마무리/숲 안쪽 조사 표식 기본값. 이미 따라를 되돌린 세이브는 1장 진입 흐름을 본 것으로 승계한다.
+  function migrateSlotV8(data) {
+    if (!data || !data.flags) return data;
+    const f = data.flags;
+    if (f.prologueClosed === undefined) f.prologueClosed = !!(f.defeated && f.defeated.bekkyeomon);
+    if (f.forestClearingRead === undefined) f.forestClearingRead = false;
+    data.v = 8;
+    return data;
+  }
 
   function loadSlot(i) {
     try {
       const raw = localStorage.getItem(slotKey(i));
-      return raw ? migrateSlotV3(JSON.parse(raw)) : null;
+      return raw ? migrateSlotV8(migrateSlotV7(migrateSlotV6(migrateSlotV5(migrateSlotV4(migrateSlotV3(JSON.parse(raw))))))) : null;
     } catch (e) { return null; }
   }
 
@@ -217,7 +287,7 @@
     }
   }
 
-  const SAVE_VERSION = 3;
+  const SAVE_VERSION = 8;
   function save() {
     writeSlot(game.currentSlot, {
       v: SAVE_VERSION,
@@ -289,20 +359,29 @@
       if (!DIFF_ORDER.includes(s.difficulty)) s.difficulty = 'normal';
       s.tts = !!s.tts;
       s.reduceFx = ('reduceFx' in s) ? !!s.reduceFx : prefersReduce;
+      s.lowGraphics = !!s.lowGraphics;
       return s;
-    } catch (e) { return { textSpeed: 'normal', largeText: false, colorBlind: false, difficulty: 'normal', tts: false, reduceFx: prefersReduce }; }
+    } catch (e) { return { textSpeed: 'normal', largeText: false, colorBlind: false, difficulty: 'normal', tts: false, reduceFx: prefersReduce, lowGraphics: false }; }
   }
   function saveSettings() {
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
         textSpeed: game.textSpeed, largeText: game.largeText, colorBlind: game.colorBlind,
-        difficulty: game.difficulty, tts: game.tts, reduceFx: game.reduceFx,
+        difficulty: game.difficulty, tts: game.tts, reduceFx: game.reduceFx, lowGraphics: game.lowGraphics,
       }));
     } catch (e) { noteStorageFail(); }
   }
   function toggleReduceFx() {
     game.reduceFx = !game.reduceFx;
     saveSettings();
+    Sound.blip();
+  }
+  function toggleLowGraphics() {
+    game.lowGraphics = !game.lowGraphics;
+    saveSettings();
+    checkDPR();
+    try { tileCache.clear(); } catch (e) {}
+    game.notice = { text: game.lowGraphics ? '저사양 그래픽 ON — 화면 효과와 해상도를 낮췄다' : '저사양 그래픽 OFF', t: 140 };
     Sound.blip();
   }
   function cycleDifficulty() {
@@ -385,7 +464,7 @@
   // ---------- 학생(슬롯)별 학습 데이터 ----------
   // 일지·복습 노트·통계는 "이 슬롯을 쓰는 학생"의 개인 기록이다.
   // 슬롯마다 따로 누적되고, 슬롯을 지우면 함께 지워진다.
-  // (도감·발견 엔딩은 기기 공용 컬렉션으로 그대로 둔다.)
+  // (친구 수첩·발견 엔딩은 기기 공용 컬렉션으로 그대로 둔다.)
   function activeSlot() {
     // 타이틀에서는 커서가 가리키는 슬롯, 플레이 중에는 진행 중인 슬롯
     return game.mode === 'title' ? game.slotCursor : game.currentSlot;
@@ -819,7 +898,7 @@
       return !!ok;
     } catch (e) { return false; }
   }
-  // 도감 — 깨우친 몬스터 기록. 세이브와 별개로 누적 보존된다.
+  // 친구 수첩 — 만난 아이의 기록. 세이브와 별개로 누적 보존된다.
   const DEX_KEY = 'ai-ethics-adventure-dex';
   function getDexSeen() {
     try { return JSON.parse(localStorage.getItem(DEX_KEY)) || {}; }
@@ -1130,7 +1209,7 @@
     ) || null;
   }
 
-  // 자비로 마음을 되돌린 몬스터는 그 자리에 '친구'로 남는다 (선택이 세계에 남는다)
+  // 자비로 마음을 되돌린 인물은 그 자리에 '친구'로 남는다 (선택이 세계에 남는다)
   function isFriend(monId) {
     return !!(game.flags.defeated[monId] && game.flags.mercyChoice && game.flags.mercyChoice[monId] === 'mercy');
   }
@@ -1726,6 +1805,111 @@
     }
     game.puzzleRun = run;
   }
+  const PRIVACY_LEAK_MAX = 5;
+  const PRIVACY_RECOVERY_NEED = 3;
+
+  function privacyLeak() { return Math.max(0, Math.min(PRIVACY_LEAK_MAX, game.flags.privacyLeak || 0)); }
+  function privacyPressureProfile(n) {
+    const level = Math.max(0, Math.min(PRIVACY_LEAK_MAX, n || 0));
+    const table = [
+      { label: '안전', stalkerWanted: 0, noise: '조용함' },
+      { label: '찜찜한 시선', stalkerWanted: 1, noise: '시선' },
+      { label: '이름이 불림', stalkerWanted: 1, noise: '속삭임' },
+      { label: '따라붙는 광고', stalkerWanted: 2, noise: '광고' },
+      { label: '문 앞 확인 증가', stalkerWanted: 2, noise: '확인요구' },
+      { label: '회복 필요', stalkerWanted: 3, noise: '추적' },
+    ];
+    return Object.assign({ level }, table[level]);
+  }
+  function privacyLevelLabel(n) { return privacyPressureProfile(n).label; }
+  function ch1StreetVisualProfile(n, lowGraphics) {
+    const level = Math.max(0, Math.min(PRIVACY_LEAK_MAX, n || 0));
+    const low = !!lowGraphics;
+    return {
+      level,
+      adSigns: low ? Math.min(3, 1 + Math.floor(level / 2)) : Math.min(8, 2 + level),
+      sensors: low ? Math.min(2, Math.floor(level / 3)) : Math.min(3, Math.floor((level + 1) / 2)),
+      labelShadows: low ? Math.min(2, level >= 4 ? 2 : level >= 2 ? 1 : 0) : Math.min(4, level),
+      glow: !low && level >= 3,
+      scanLines: false,
+    };
+  }
+  function chapter2HubVisualProfile(n, lowGraphics) {
+    const level = Math.max(0, Math.min(3, n || 0));
+    const low = !!lowGraphics;
+    return {
+      level,
+      recommendSigns: low ? Math.min(2, 1 + Math.floor(level / 3)) : Math.min(5, 2 + level),
+      echoMarks: low ? 1 : Math.min(3, 1 + level),
+      labels: !low,
+      fullScreenSkew: false,
+    };
+  }
+  function chapter3HubVisualProfile(n, rumorFixed, lowGraphics) {
+    const level = Math.max(0, Math.min(3, n || 0));
+    const fixed = !!rumorFixed;
+    const low = !!lowGraphics;
+    return {
+      level,
+      fixed,
+      headlineSigns: fixed ? (low ? 1 : 2) : (low ? Math.min(2, 1 + Math.floor(level / 2)) : Math.min(6, 3 + level)),
+      echoMarks: fixed ? (low ? 0 : 1) : (low ? 1 : Math.min(3, 1 + level)),
+      labels: !low,
+      fullScreenNoise: false,
+    };
+  }
+  function chapter4HubVisualProfile(n, lowGraphics) {
+    const level = Math.max(0, Math.min(4, n || 0));
+    const low = !!lowGraphics;
+    return {
+      level,
+      neonSigns: low ? Math.min(3, 1 + Math.floor(level / 2)) : Math.min(6, 2 + level),
+      confetti: low ? 1 : Math.min(3, 1 + Math.floor(level / 2)),
+      labels: !low,
+      fullScreenFlash: false,
+    };
+  }
+  function chapter5HubVisualProfile(n, lowGraphics) {
+    const level = Math.max(0, Math.min(3, n || 0));
+    const low = !!lowGraphics;
+    return {
+      level,
+      warmLamps: low ? Math.min(2, 1 + Math.floor(level / 2)) : Math.min(5, 2 + level),
+      voiceRipples: low ? 1 : Math.min(3, 1 + level),
+      labels: !low,
+      fullScreenBlur: false,
+    };
+  }
+  function addPrivacyLeak(reason) {
+    const before = privacyLeak();
+    const after = Math.min(PRIVACY_LEAK_MAX, before + 1);
+    game.flags.privacyLeak = after;
+    if (after >= PRIVACY_LEAK_MAX) {
+      game.flags.privacyRecoveryActive = true;
+      if (!game.flags.privacyRecovery) game.flags.privacyRecovery = 0;
+      game.notice = { text: '노출도 MAX — 지우개로 흩어진 정보 조각 3개를 회수하자', t: 210 };
+    } else if (after >= 3) {
+      game.notice = { text: `노출도 ${after}/5 — 가짜 광고와 그림자가 더 따라붙는다`, t: 160 };
+    } else {
+      game.notice = { text: `노출도 ${after}/5 — ${reason || '정보 그림자가 붙었다'}`, t: 140 };
+    }
+    save();
+  }
+  function notePrivacyRecoveryPiece() {
+    if (!game.flags.privacyRecoveryActive) return;
+    game.flags.privacyRecovery = Math.min(PRIVACY_RECOVERY_NEED, (game.flags.privacyRecovery || 0) + 1);
+    if (game.flags.privacyRecovery >= PRIVACY_RECOVERY_NEED) {
+      game.flags.privacyLeak = 2;
+      game.flags.privacyRecovery = 0;
+      game.flags.privacyRecoveryActive = false;
+      game.notice = { text: '회복 완료 — 노출도 2/5로 낮아졌다', t: 180 };
+      Sound.correct();
+    } else {
+      game.notice = { text: `정보 조각 회수 ${game.flags.privacyRecovery}/${PRIVACY_RECOVERY_NEED}`, t: 140 };
+    }
+    save();
+  }
+
   // 지금 밖에 내보낸 토큰 (되돌릴 수 있는 것 + 게시판 공유 얼굴사진)
   function givenTokens(run) {
     return run.given.concat(run.boardFace ? ['face'] : []);
@@ -1765,7 +1949,10 @@
   // 보드 카운트에 맞춰 스토커를 스폰/소멸 (3 이상이면 최소 1, 미만이면 전부 소멸)
   function refreshStalkers(run) {
     if (boardCount(run) >= 3) {
-      if (run.stalkers.length === 0) spawnStalker(run);
+      const leak = privacyLeak();
+      const wanted = Math.max(1, privacyPressureProfile(leak).stalkerWanted);
+      while (run.stalkers.length < wanted) spawnStalker(run);
+      if (run.stalkers.length > wanted) run.stalkers.length = wanted;
     } else {
       run.stalkers.length = 0;
       run.flashT = 0;
@@ -1803,7 +1990,8 @@
         run.flashT = 8;
         if (run.warnCool <= 0) {
           run.warnCool = 90; // 연속 접촉 스로틀
-          game.notice = { text: '그림자: 네 정보를 따라왔어…', t: 120 };
+          addPrivacyLeak('정보 그림자가 붙었다');
+          refreshStalkers(run);
           Sound.bump();
         }
       }
@@ -2412,8 +2600,10 @@
       if (idx >= 0) run.given.splice(idx, 1);
       run.held[o.key] = true; // 되돌려 받음
       refreshStalkers(run);
+      notePrivacyRecoveryPiece();
       Sound.correct();
-      startDialog([`${puz.tokens[o.key]} 정보를 지웠어요.`], puz.eraser.name);
+      startDialog([`${puz.tokens[o.key]} 정보를 지웠어요.`,
+        game.flags.privacyRecoveryActive ? `흩어진 정보 조각을 회수했다. (${game.flags.privacyRecovery}/${PRIVACY_RECOVERY_NEED})` : `현재 노출도: ${privacyLeak()}/5 (${privacyLevelLabel(privacyLeak())})`], puz.eraser.name);
     });
   }
   function openVipExit() {
@@ -2423,6 +2613,7 @@
       if (i === 0) {
         for (const k in run.held) if (run.held[k]) { run.held[k] = false; run.given.push(k); }
         spawnStalker(run); spawnStalker(run); // 함정: 스토커 2 추가
+        addPrivacyLeak('남은 정보를 한꺼번에 넘겼다');
         recordPuzzleWrong(run.id);
         run.flashT = 12;
         Sound.wrong();
@@ -2435,6 +2626,10 @@
   function openNormalExit() {
     const run = game.puzzleRun;
     const puz = run.puzzle;
+    if (game.flags.privacyRecoveryActive) {
+      startDialog(['노출도가 너무 높다.\n그림자가 문 앞까지 따라붙었다.', `지우개로 흩어진 정보 조각을 ${PRIVACY_RECOVERY_NEED}개 회수하자. (${game.flags.privacyRecovery || 0}/${PRIVACY_RECOVERY_NEED})`], puz.exits.normal.name);
+      return;
+    }
     const nonNick = givenTokens(run).filter((k) => k !== 'nickname');
     if (nonNick.length > 1) { startDialog([puz.exits.normal.tooMany], puz.exits.normal.name); return; }
     startChoice(`${puz.exits.normal.ask}\n\n닉네임을 주고 나갈까요?`, ['나간다', '아직'], (i) => {
@@ -2470,7 +2665,7 @@
     if (run.id === 'signup') game.flags.s4KeyId = true;
     game.puzzleRun = null;
     // 복귀 지점 (데이터화된 exitTo). 기본은 거리 입구 앞.
-    const exit = puz.exitTo || { map: 'freestreet', x: 14, y: 17 };
+    const exit = puz.exitTo || { map: 'freestreet', x: 18, y: 21 };
     game.map = exit.map;
     const p = game.player;
     p.x = exit.x; p.y = exit.y; p.px = exit.x * TS; p.py = exit.y * TS; p.moving = false;
@@ -2841,6 +3036,110 @@
     box(Math.round(ex.normal.x * TS - cx), Math.round(ex.normal.y * TS - cy - 6), '#2a5a3a', '↩', '#8de08d');
     label(Math.round(ex.normal.x * TS - cx), Math.round(ex.normal.y * TS - cy - 6), '일반 출구', '#8de08d');
   }
+  function drawIntroLabObjects(cx, cy) {
+    if (game.map !== 'introlab') return;
+    const props = MAP_PROPS.introlab || [];
+    const bob = game.reduceFx ? 0 : Math.round(Math.sin(game.time / 18) * 2);
+    const drawLabel = (nx, ny, text, col) => {
+      if (!text) return;
+      ctx.font = fs(10, true);
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 3; ctx.strokeStyle = '#000';
+      ctx.strokeText(text, nx + TS / 2, ny - 5);
+      ctx.fillStyle = col || '#fff';
+      ctx.fillText(text, nx + TS / 2, ny - 5);
+      ctx.textAlign = 'left';
+    };
+    for (const prop of props) {
+      const nx = Math.round(prop.x * TS - cx);
+      const ny = Math.round(prop.y * TS - cy - 4);
+      const done = prop.flag && game.flags[prop.flag];
+      const col = done ? '#5a6178' : (prop.clue ? '#f0c850' : '#8fd3ff');
+      const isCurrentClue = prop.clue && !done && !game.flags.introDoorOpen
+        && ((prop.flag === 'introClue1' && !game.flags.introClue1)
+          || (prop.flag === 'introClue2' && game.flags.introClue1 && !game.flags.introClue2)
+          || (prop.flag === 'introClue3' && game.flags.introClue1 && game.flags.introClue2 && !game.flags.introClue3));
+      if (prop.kind === 'exit') {
+        const open = !!game.flags.introDoorOpen;
+        ctx.fillStyle = open ? '#213a30' : '#2a2636';
+        ctx.fillRect(nx + 8, ny + 6, TS - 16, TS - 6);
+        ctx.strokeStyle = open ? '#8de08d' : '#d0b15a';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(nx + 8, ny + 6, TS - 16, TS - 6);
+        ctx.fillStyle = open ? '#bdf5d0' : '#f0c850';
+        ctx.font = fs(18, true);
+        ctx.textAlign = 'center';
+        ctx.fillText(open ? '↥' : '▣', nx + TS / 2, ny + TS / 2 + 9);
+        ctx.textAlign = 'left';
+        drawLabel(nx, ny, open ? '열린 출구' : `잠긴 출구 ${introClueCount(game.flags)}/3`, open ? '#8de08d' : '#ffd644');
+        continue;
+      }
+      if (isCurrentClue) {
+        ctx.save();
+        ctx.globalAlpha = 0.32 + (game.reduceFx ? 0 : Math.abs(Math.sin(game.time / 10)) * 0.22);
+        ctx.fillStyle = '#ffd644';
+        ctx.beginPath();
+        ctx.ellipse(nx + TS / 2, ny + TS / 2 + 2, 23, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.fillStyle = done ? '#31364a' : '#1d2440';
+      ctx.fillRect(nx + 7, ny + 10 + bob, TS - 14, TS - 14);
+      ctx.strokeStyle = isCurrentClue ? '#fff1a6' : col;
+      ctx.lineWidth = isCurrentClue ? 3 : 2;
+      ctx.strokeRect(nx + 7, ny + 10 + bob, TS - 14, TS - 14);
+      ctx.fillStyle = col;
+      ctx.font = fs(16, true);
+      ctx.textAlign = 'center';
+      const mark = prop.kind === 'tablet' ? '▤' : prop.kind === 'monitor' ? '▣' : prop.kind === 'memo' ? '※' : prop.kind === 'board' ? '⋯' : prop.kind === 'locker' ? '▥' : '·';
+      ctx.fillText(done ? '✓' : mark, nx + TS / 2, ny + TS / 2 + 8 + bob);
+      ctx.textAlign = 'left';
+      const labelText = done ? '확인됨' : (prop.clue ? `단서: ${prop.label}` : prop.label);
+      drawLabel(nx, ny + bob, labelText, isCurrentClue ? '#fff1a6' : col);
+    }
+  }
+
+  function prologueVisibleMarks() {
+    const props = MAP_PROPS[game.map] || [];
+    return props.filter((prop) => prop.flag || prop.kind === 'trace' || prop.kind === 'clearing')
+      .map((prop) => ({ map: game.map, x: prop.x, y: prop.y, label: prop.label || '', done: !!(prop.flag && game.flags[prop.flag]) }));
+  }
+  function drawForestPrologueObjects(cx, cy) {
+    if (!['forest', 'forestdeep'].includes(game.map) || game.flags.defeated.bekkyeomon) return;
+    const props = (MAP_PROPS[game.map] || []).filter((prop) => prop.kind === 'trace' || prop.kind === 'clearing' || prop.flag);
+    // 숲 흔적은 안내용 정적 표식에 가깝게 유지한다. 과한 펄스/부유감을 줄여
+    // 저전력 기기에서 버벅임을 줄이고, 퍼즐 방 이펙트처럼 보이지 않게 한다.
+    const bob = 0;
+    for (const prop of props) {
+      const done = prop.flag && game.flags[prop.flag];
+      const nx = Math.round(prop.x * TS - cx);
+      const ny = Math.round(prop.y * TS - cy - 4);
+      const active = !done;
+      if (active) {
+        ctx.save();
+        ctx.globalAlpha = game.reduceFx ? 0.16 : 0.20;
+        ctx.fillStyle = '#ffd644';
+        ctx.beginPath();
+        ctx.ellipse(nx + TS / 2, ny + TS / 2 + 5, 24, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.fillStyle = done ? '#6b7158' : '#ffd644';
+      ctx.font = fs(20, true);
+      ctx.textAlign = 'center';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 3;
+      ctx.strokeText(done ? '✓' : '⌁', nx + TS / 2, ny + TS / 2 + 10 + bob);
+      ctx.fillText(done ? '✓' : '⌁', nx + TS / 2, ny + TS / 2 + 10 + bob);
+      ctx.font = fs(10, true);
+      const labelText = done ? '확인한 흔적' : prop.label;
+      ctx.strokeText(labelText, nx + TS / 2, ny - 5 + bob);
+      ctx.fillStyle = active ? '#fff1a6' : '#8a8f78';
+      ctx.fillText(labelText, nx + TS / 2, ny - 5 + bob);
+      ctx.textAlign = 'left';
+    }
+  }
+
   function drawStalkers(cx, cy) {
     const run = game.puzzleRun;
     for (const s of run.stalkers) {
@@ -2948,7 +3247,7 @@
   // 황혼 앰비언트 — 경계마을과 정적의 숲은 늘 해 질 녘이다 (다크 톤 기조).
   // 마을은 마음의 온도가 쌓일수록(이사 온 친구 수만큼) 조금씩 밝아진다 —
   // "어두운 세계에 온기가 켜진다"를 화면 밝기로 체감시키는 카르마 연출.
-  const DUSK_BASE = { village: 0.34, forest: 0.40 };
+  const DUSK_BASE = { village: 0.24, forest: 0.22 };
   function duskWarmCount(flags) {
     let n = 0;
     if (flags.mercyChoice && flags.mercyChoice.bekkyeomon === 'mercy') n += 1;
@@ -2958,10 +3257,10 @@
   function drawDuskAmbient() {
     let a = DUSK_BASE[game.map];
     if (!a || !game.flags) return;
-    if (game.map === 'village') a = Math.max(0.14, a - 0.03 * duskWarmCount(game.flags));
+    if (game.map === 'village') a = Math.max(0.08, a - 0.025 * duskWarmCount(game.flags));
     // 화면 효과 줄이기 — 그라데이션 없이 옅은 단색만 (광과민·저시력 배려)
     if (game.reduceFx) {
-      ctx.fillStyle = `rgba(8,9,28,${a * 0.6})`;
+      ctx.fillStyle = `rgba(8,9,28,${a * 0.82})`;
       ctx.fillRect(0, 0, LW, LH);
       return;
     }
@@ -3183,7 +3482,7 @@
         ], '고요');
         return;
       }
-      // 파이널 「코어」의 영이 — 마음 조각 배틀. 승리는 기존 v1 winBattle의 yeongi 분기로
+      // 파이널 「코어」의 영이 — 마음 조각 배틀. 클리어는 기존 v1 winBattle의 yeongi 분기로
       // 그대로 이어져 computeEnding(진엔딩 계산)이 재사용된다.
       if (npc.id === 'yeongi_boss') {
         if (!game.flags.defeated.yeongi) { startBattleIntro('yeongi', 'yeongi_boss'); return; }
@@ -3293,10 +3592,30 @@
     }
     const mon = monsterAt(game.map, f.x, f.y);
     if (mon) {
+      if ((game.map === 'forest' || game.map === 'forestdeep') && mon.id === 'bekkyeomon' && !game.flags.introForestTrace) {
+        startDialog([
+          '숲 안쪽에서 누군가의 목소리가 들린다.\n하지만 아직 길이 보이지 않는다.',
+          '먼저 바로 뒤의 노란 발자국을 조사하자.\n흔적을 읽어야 따라에게 다가갈 수 있다.',
+        ], '반디');
+        return;
+      }
+      if ((game.map === 'forest' || game.map === 'forestdeep') && mon.id === 'bekkyeomon' && !game.flags.ttaraFirstEncounter) {
+        startDialog([
+          '노란 발자국의 끝,\n나뭇잎 사이에 하얀 종이가 흩어져 있다.',
+          '종이마다 누군가의 그림을 따라 그린 선이\n겹겹이 남아 있다.\n하지만 한가운데만 비어 있다.',
+          '따라: "잘 그린 건 전부 남의 거였어.\n그럼 내 마음은… 어디서 베끼면 돼?"',
+          '반디: "싸우는 게 아니야.\n저 아이 마음 안쪽으로 들어가서,\n흩어진 속마음 조각을 들어 보자."',
+        ], '따라', () => {
+          game.flags.ttaraFirstEncounter = true;
+          save();
+          startBattleIntro(mon.id);
+        });
+        return;
+      }
       startBattleIntro(mon.id);
       return;
     }
-    // 되돌려 친구가 된 몬스터: 다시 싸우지 않고, 배운 점을 들려준다
+    // 되돌려 친구가 된 인물: 다시 싸우지 않고, 배운 점을 들려준다
     const friend = friendAt(game.map, f.x, f.y);
     if (friend) {
       const fm = MONSTERS[friend.id];
@@ -3312,11 +3631,46 @@
       return;
     }
     // 조사(살펴보기): 특별 지점 → 타일 기본 문구
-    const prop = getPropAt(game.map, f.x, f.y);
+    const facingProp = getPropAt(game.map, f.x, f.y);
+    // 숲 첫 흔적은 바닥 위 시각 오브젝트다. 목표 화살표를 따라 정확히 그 칸에 올라서도
+    // Z/Enter가 먹히도록, 아직 확인 전이면 현재 발밑의 trace도 조사 대상으로 인정한다.
+    const standingProp = getPropAt(game.map, game.player.x, game.player.y);
+    const standingTrace = (game.map === 'forest' && !game.flags.introForestTrace) ? standingProp : null;
+    const standingFlagProp = (standingProp && standingProp.flag && !game.flags[standingProp.flag]) ? standingProp : null;
+    const prop = facingProp || (standingTrace && standingTrace.kind === 'trace' ? standingTrace : null) || standingFlagProp;
     if (prop) {
+      const lines = [];
+      if (game.map === 'introlab' && prop.kind === 'exit') {
+        const c = introClueCount(game.flags);
+        if (game.flags.introDoorOpen) {
+          lines.push('문은 이제 조금 열려 있다.\n차가운 숲의 공기가 발목을 스친다.');
+          lines.push('나가려면 문 앞으로 걸어가자.\n정적의 숲이 이 방 밖에서 기다린다.');
+        } else {
+          lines.push('실험실 출구는 굳게 잠겨 있다.\n문 가장자리에 작은 불빛 세 개가 꺼져 있다.');
+          lines.push(`아직 단서 ${3 - c}개가 더 필요하다. (${c}/3)`);
+        }
+      } else {
+        lines.push(prop.text);
+      }
       // 스토리 복선 등 — 조사 지점에 flag가 있으면 플래그를 남긴다 (예: seenPhoto1)
-      if (prop.flag && !game.flags[prop.flag]) { game.flags[prop.flag] = true; save(); }
-      startDialog([prop.text]);
+      if (prop.flag && !game.flags[prop.flag]) {
+        game.flags[prop.flag] = true; save();
+        if (game.map === 'forest' && prop.flag === 'introForestTrace') {
+          game.notice = { text: '노란 흔적이 숲 안쪽으로 이어진다.', t: 220 };
+          lines.push('흔적은 숲 왼쪽으로 이어진다.\n희미한 목소리가, 남의 말을 따라 하듯\n작게 중얼거린다.');
+          lines.push('이제 노란 화살표를 따라가자.\n따라가 숲 안쪽에서 기다리고 있다.');
+        }
+        // 프롤로그 실험실 — 단서 3개 수집 시 문 개방
+        if (game.map === 'introlab' && !game.flags.introDoorOpen &&
+            introClueCount(game.flags) >= 3) {
+          game.flags.introDoorOpen = true;
+          save();
+          game.notice = { text: '철컥 — 출구가 열렸다!', t: 220 };
+          lines.push('방 끝에서 철컥, 하고 잠금이 풀렸다.\n문틈으로 차가운 숲의 공기가 스며든다.');
+          lines.push('이제 출구로 나가자.\n정적의 숲이 기다리고 있다.');
+        }
+      }
+      startDialog(lines);
       return;
     }
     const ch = tileAt(game.map, f.x, f.y);
@@ -3369,6 +3723,24 @@
     }
   }
 
+  function inferWarpExitDir(map, w) {
+    if (w.exitDir) return w.exitDir;
+    const width = map.tiles[0].length, height = map.tiles.length;
+    if (w.y === 0) return 'north';
+    if (w.y === height - 1) return 'south';
+    if (w.x === 0) return 'west';
+    if (w.x === width - 1) return 'east';
+    // 내부 문은 플레이어가 밟고 들어온 방향을 출구 방향으로 본다.
+    return game.player.dir || null;
+  }
+  function arrivalFacing(exitDir) {
+    if (exitDir === 'south') return 'down';
+    if (exitDir === 'north') return 'up';
+    if (exitDir === 'east') return 'right';
+    if (exitDir === 'west') return 'left';
+    return null;
+  }
+
   function pushBack() {
     const p = game.player;
     const nx = p.x + (p.dir === 'left' ? 1 : p.dir === 'right' ? -1 : 0);
@@ -3382,6 +3754,7 @@
 
   function checkWarp() {
     const p = game.player;
+    if (game.warpCooldownFrames > 0) return;
     const w = warpAt(game.map, p.x, p.y);
     if (!w) return;
     if (w.needAllDefeated && !w.needAllDefeated.every((id) => game.flags.defeated[id])) {
@@ -3406,6 +3779,15 @@
     }
     // 플래그 게이트 (예: 2장 입구 — chapter1Clear 전엔 잠김)
     if (w.needFlag && !game.flags[w.needFlag]) {
+      // 프롤로그 실험실 — 동적 단서 카운트 표시
+      if (game.map === 'introlab') {
+        const c = introClueCount(game.flags);
+        const remain = Math.max(0, 3 - c);
+        pushBack();
+        Sound.bump();
+        startDialog([w.lockText || '문이 잠겨 있다.', `문 가장자리의 불빛 ${c}/3개가 켜졌다.\n남은 단서 ${remain}개를 더 찾아야 한다.`]);
+        return;
+      }
       pushBack();
       Sound.bump();
       startDialog([w.lockText || '문이 잠겨 있다.']);
@@ -3432,10 +3814,15 @@
       startDialog([w.lockText || '문이 잠겨 있다.', `확인하는 용기 ${s5ClearCount()}/${w.needS5Zones}.`]);
       return;
     }
+    const fromMap = game.map;
+    const exitDir = inferWarpExitDir(MAPS[fromMap], w);
     game.map = w.to;
     p.x = w.tx; p.y = w.ty;
     p.px = w.tx * TS; p.py = w.ty * TS;
+    p.dir = w.dir || arrivalFacing(exitDir) || p.dir;
     p.moving = false;
+    game.warpCooldownFrames = 12;
+    game.lastWarp = { fromMap, toMap: w.to, exitDir, arrivedAt: { x: w.tx, y: w.ty } };
     // 새 맵에 도착하면 이동을 멈춘다. (방향키/스틱을 누른 채 워프해도
     // 도착하자마자 되돌아가는 워프 칸으로 걸어 들어가 '바로 전 맵으로 튕기는'
     // 현상을 막는다 — 계속 가려면 다시 눌러야 한다.)
@@ -3510,6 +3897,7 @@
       return;
     }
     if (game.notice.t > 0) game.notice.t -= 1;
+    if (game.warpCooldownFrames > 0) game.warpCooldownFrames -= 1;
     if (game.puzzleRun) updatePuzzleWorld(); // 방탈출: 시간 누적 + 구역별 물체 갱신
     // 5장 구역③ 소파 코너 — 앉아 있는 동안은 이동을 잠그고, 방향키 버티기만 판정한다
     if (game.puzzleRun && game.puzzleRun.puzzle.type === 'sofa' && game.puzzleRun.sitting) {
@@ -3683,8 +4071,8 @@
     }
   }
 
-  // 1장 보스 승리 — chapter1Clear 플래그 + 1장 마무리 대사 후 금고 앞(거리)으로 복귀.
-  // 라이브러리 수집몬(퀴즈)과 별개이므로 defeated.sujipmon/도감은 건드리지 않는다.
+  // 1장 보스 클리어 — chapter1Clear 플래그 + 1장 마무리 대사 후 금고 앞(거리)으로 복귀.
+  // 라이브러리 퀴즈와 별개이므로 defeated.sujipmon/친구 수첩은 건드리지 않는다.
   function winChapter1Boss() {
     const b = game.battle;
     const mon = b.mon;
@@ -3698,7 +4086,7 @@
     // 금고 밖(거리)으로 복귀
     game.map = 'freestreet';
     const p = game.player;
-    p.x = 14; p.y = 5; p.px = 14 * TS; p.py = 5 * TS; p.moving = false; p.dir = 'down';
+    p.x = 17; p.y = 5; p.px = 17 * TS; p.py = 5 * TS; p.moving = false; p.dir = 'down';
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.badge();
@@ -3713,8 +4101,8 @@
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.freestreet.song));
   }
 
-  // 2장 보스 승리 — chapter2Clear 플래그 + 2장 마무리 대사 후 저울 앞(광장)으로 복귀.
-  // (승리 처리는 챕터 플래그로 기록한다)
+  // 2장 보스 클리어 — chapter2Clear 플래그 + 2장 마무리 대사 후 저울 앞(광장)으로 복귀.
+  // (클리어 처리는 챕터 플래그로 기록한다)
   function winChapter2Boss() {
     const b = game.battle;
     const mon = b.mon;
@@ -3743,8 +4131,8 @@
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.tiltstreet.song));
   }
 
-  // 3장 보스 승리 — chapter3Clear 플래그 + 3장 마무리 대사 후 신문사 입구(거리)로 복귀.
-  // (승리 처리는 챕터 플래그로 기록한다)
+  // 3장 보스 클리어 — chapter3Clear 플래그 + 3장 마무리 대사 후 신문사 입구(거리)로 복귀.
+  // (클리어 처리는 챕터 플래그로 기록한다)
   function winChapter3Boss() {
     const b = game.battle;
     const mon = b.mon;
@@ -3758,7 +4146,7 @@
     // 신문사 입구(거리)로 복귀 — 이미 rumorFixed 상태라 거리는 풀린 모습이다
     game.map = 'rumorstreet';
     const p = game.player;
-    p.x = 14; p.y = 5; p.px = 14 * TS; p.py = 5 * TS; p.moving = false; p.dir = 'down';
+    p.x = 17; p.y = 5; p.px = 17 * TS; p.py = 5 * TS; p.moving = false; p.dir = 'down';
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.badge();
@@ -3773,8 +4161,8 @@
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.rumorstreet.song));
   }
 
-  // 4장 보스 승리 — chapter4Clear 플래그 + 4장 마무리 대사 후 아케이드 정문 앞(허브)으로 복귀.
-  // (승리 처리는 챕터 플래그로 기록한다)
+  // 4장 보스 클리어 — chapter4Clear 플래그 + 4장 마무리 대사 후 아케이드 정문 앞(허브)으로 복귀.
+  // (클리어 처리는 챕터 플래그로 기록한다)
   function winChapter4Boss() {
     const b = game.battle;
     const mon = b.mon;
@@ -3788,7 +4176,7 @@
     // 아케이드 정문 앞(허브)으로 복귀
     game.map = 'arcade';
     const p = game.player;
-    p.x = 11; p.y = 2; p.px = 11 * TS; p.py = 2 * TS; p.moving = false; p.dir = 'down';
+    p.x = 18; p.y = 2; p.px = 18 * TS; p.py = 2 * TS; p.moving = false; p.dir = 'down';
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.badge();
@@ -3803,8 +4191,8 @@
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.arcade.song));
   }
 
-  // 5장 보스 승리 — chapter5Clear 플래그 + 5장 마무리 대사 후 포근한 집 현관 앞(허브)으로 복귀.
-  // v1 홀림몬(BOSS_ATTACKS 퀴즈)과 별개이므로 defeated.hollimmon/도감은 건드리지 않는다.
+  // 5장 보스 클리어 — chapter5Clear 플래그 + 5장 마무리 대사 후 포근한 집 현관 앞(허브)으로 복귀.
+  // v1 홀림몬(BOSS_ATTACKS 퀴즈)과 별개이므로 defeated.hollimmon/친구 수첩은 건드리지 않는다.
   function winChapter5Boss() {
     const b = game.battle;
     const mon = b.mon;
@@ -3818,7 +4206,7 @@
     // 포근한 집 현관 앞(허브)으로 복귀
     game.map = 'cozyhome';
     const p = game.player;
-    p.x = 11; p.y = 2; p.px = 11 * TS; p.py = 2 * TS; p.moving = false; p.dir = 'down';
+    p.x = 18; p.y = 2; p.px = 18 * TS; p.py = 2 * TS; p.moving = false; p.dir = 'down';
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.badge();
@@ -3833,8 +4221,8 @@
     startDialog(lines, mon.name, () => Sound.playSong(MAPS.cozyhome.song));
   }
 
-  // 파이널 보스(고요) 승리 — goyoClear 플래그 + 코어 개방 연출 후 코어로 입장.
-  // (승리 처리는 goyoClear 플래그로 기록한다)
+  // 파이널 보스(고요) 클리어 — goyoClear 플래그 + 코어 개방 연출 후 코어로 입장.
+  // (클리어 처리는 goyoClear 플래그로 기록한다)
   function winGoyoBoss() {
     const b = game.battle;
     const mon = b.mon;
@@ -3889,6 +4277,17 @@
     // 갱생 연출: 마음을 안아 준(자비) 경우, 친구가 되었음을 분명히 보여 준다
     if (b.mercyChoiceKind === 'mercy' && b.monId !== 'yeongi') {
       lines.push(`💛 ${mon.name}의 굳어 있던 마음이\n환하게 풀렸어요. 또 한 친구를 되돌렸다!`);
+    }
+    if (b.monId === 'bekkyeomon') {
+      game.flags.prologueClosed = true;
+      game.map = 'freestreet';
+      const p = game.player;
+      p.x = 18; p.y = 21; p.px = 18 * TS; p.py = 21 * TS; p.moving = false; p.dir = 'up';
+      held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
+      stickDir = null; stickRepeatFrames = 0;
+      lines.push('숲 안쪽 공터의 종이들이 조용히 접힌다.\n멀리서 네온 간판 하나가 반짝이며 문처럼 열린다.');
+      lines.push('프롤로그 끝.\n이제 1장 — 「전부 공짜 거리」로 들어간다.');
+      save();
     }
     if (mon.clear) lines.push(mon.clear);
     if (b.monId === 'bekkyeomon') lines.push(bandiBossLine('prologue', b.mercyChoiceKind, game.flags));
@@ -3991,7 +4390,7 @@
     return game.flags.pStats;
   }
 
-  // 설득 프로필(persuadeKey)의 몬스터 데이터를 해석한다.
+  // 설득 프로필(persuadeKey)의 인물 데이터를 해석한다.
   // 보스처럼 별도 프로필을 쓰되 스프라이트/이름은 재사용하는 경우(spriteId≠persuadeKey),
   // MONSTERS[spriteId]를 바탕으로 프로필의 mercy/win을 덮어써 배틀용 mon을 만든다.
   function resolvePersuadeMon(spriteId, persuadeKey) {
@@ -4009,17 +4408,17 @@
     const p = getPersuade(persuadeKey);
     const mon = resolvePersuadeMon(monId, persuadeKey);
     Sound.encounter();
-    // 콜백 인트로: 프로필 intro가 함수면 현재 플래그로 첫 대사를 분기한다 (없으면 몬스터 기본 인트로)
+    // 콜백 인트로: 프로필 intro가 함수면 현재 플래그로 첫 대사를 분기한다 (없으면 기본 인트로)
     const introText = (typeof p.intro === 'function') ? p.intro(game.flags) : (p.intro || mon.intro);
     const lines = [introText];
     // 조우 시 증거 카드 지급은 프롤로그 튜토리얼(베껴몬)만을 위한 것 —
-    // starterCards가 있는 프로필에서만 지급한다. 보스(수집몬)의 카드는 방탈출 보상으로만 얻으므로
+    // starterCards가 있는 프로필에서만 지급한다. 보스 카드는 방탈출 보상으로만 얻으므로
     // starterCards가 없어 여기서 지급되지 않는다.
     if (!game.flags.evCards) game.flags.evCards = [];
     const fresh = (p.starterCards || []).filter((id) => !game.flags.evCards.includes(id));
     if (fresh.length > 0) {
       game.flags.evCards = game.flags.evCards.concat(fresh);
-      lines.push(`◆ 증거 카드 ${fresh.length}장을 얻었다!\n(전투에서 「증거 보여주기」로 사용해요)`);
+      lines.push(`◆ 증거 카드 ${fresh.length}장을 얻었다!\n(설득 배틀에서 「증거 보여주기」로 사용해요)`);
     }
     if (!game.flags.sawPersuadeTip) {
       game.flags.sawPersuadeTip = true;
@@ -4029,7 +4428,7 @@
         (isTouchDevice
           ? '스틱으로 하트만 움직이면 돼요. (버튼 없음)'
           : '화살표로 하트를 움직여요.') +
-        '\n피격당하면 하트가 진짜로 닳아요! 다 닳으면\n잠시 물러났다가 다시 도전하게 돼요.'
+        '\n탄막에 맞으면 하트가 정말로 닳아요! 다 닳으면\n잠시 물러났다가 다시 도전하게 돼요.'
       );
     }
     startDialog(lines, mon.name, () => startPersuadeBattle(monId, persuadeKey));
@@ -4074,8 +4473,8 @@
     const box = persuadeBox();
     game.battle = {
       isPersuade: true,
-      monId,              // 스프라이트·도감·몬스터 데이터 조회용 id
-      persuadeId: persuadeKey, // 설득 프로필 id (승리 처리·기억 키). 보통은 monId와 같다.
+      monId,              // 스프라이트·데이터 조회용 id
+      persuadeId: persuadeKey, // 설득 프로필 id (클리어 처리·기억 키). 보통은 monId와 같다.
       mon,
       p,
       gauge: memo ? memo.gauge : 0,
@@ -4086,6 +4485,7 @@
       playerHp: maxHearts,
       maxHearts,
       phase: 'wave', // wave | gates | mercy | mercyReply
+      prologueTutorial: !!(p.tutorial && monId === 'bekkyeomon'),
       cursor: 0,
       fragmentTotal: 0, // 누적 수집 조각 (closed→shaken 임계 판정)
       pIntense: false,  // 오답 문 → 다음 파도 강화
@@ -4235,7 +4635,7 @@
     arena.soul.y = clamp(arena.soul.y, box.y + SOUL_R, box.y + box.h - SOUL_R);
   }
 
-  // 하트-탄막 충돌: 피격 시 하트 -1, 다 닳으면 탈진. 피격했으면 true.
+  // 하트-탄막 충돌: 닿으면 하트 -1, 다 닳으면 탈진.
   function bulletHits(b, arena) {
     if (arena.inv > 0) { arena.inv -= 1; return false; }
     for (const bu of arena.bullets) {
@@ -4546,7 +4946,7 @@
     if (door.correct) {
       const delta = b.pState === 'open' ? 32 : 26;
       b.gauge = clamp(b.gauge + delta, 0, b.gaugeMax);
-      // 정답(=설득 성공)은 HP 1 회복 — 회피가 아니라 '잘 설득한' 실력에 보상(서툰 회피 구제)
+      // 정답(=설득 성공)은 하트 1 회복 — 회피가 아니라 '잘 설득한' 실력에 보상(서툰 회피 구제)
       b.playerHp = Math.min(b.maxHearts, b.playerHp + 1);
       st.gateRight += 1;
       const topic = door.card ? EVIDENCE_CARDS[door.card].topic : monTopic(b);
@@ -4598,7 +4998,7 @@
     else if (b.phase === 'gates') updateGates();
   }
 
-  // ---------- 도감 ----------
+  // ---------- 친구 수첩 ----------
   function openDex(ret) {
     game.dex.ret = ret;
     game.dex.cursor = 0;
@@ -4662,7 +5062,7 @@
       ctx.fillText(dexChapterShort(MONSTER_DEX[id].stage), listX, y);
       ctx.fillStyle = isSeen ? (idx === cur ? '#fff' : '#aaa') : '#444';
       ctx.font = (idx === cur ? 'bold ' : '') + '15px monospace';
-      ctx.fillText(isSeen ? monName(id) : '??? (미발견)', listX + 34, y);
+      ctx.fillText(isSeen ? monName(id) : '??? (아직 못 만남)', listX + 34, y);
     }
     // 스크롤 표시
     if (start > 0) { ctx.fillStyle = '#888'; ctx.fillText('▲', listX + 130, listY - 24); }
@@ -4910,7 +5310,7 @@
   // 단, 데이터 백업은 학생도 쓰는 기능이라 그대로 남겨 둔다.
   const PAUSE_ITEMS = ['journal', 'cards', 'halloffame', 'awards', 'cosmetics',
     'challenge', 'review', 'dex', 'backup', 'difficulty', 'textspeed', 'tts',
-    'largetext', 'colorblind', 'reducefx', 'mute', 'help', 'close'];
+    'largetext', 'colorblind', 'reducefx', 'lowgraphics', 'mute', 'help', 'close'];
   // 방탈출 중에는 「힌트」 항목을 맨 위에 붙인다 (터치 기기에서 H키 대체)
   function pauseItems() {
     return game.puzzleRun ? ['hint'].concat(PAUSE_ITEMS) : PAUSE_ITEMS;
@@ -4937,6 +5337,7 @@
     largetext: '큰 글씨',
     colorblind: '색약 모드',
     reducefx: '화면 효과 줄이기',
+    lowgraphics: '저사양 그래픽',
     mute: '소리',
     help: '? 도움말',
     close: '닫기',
@@ -4950,6 +5351,7 @@
     if (item === 'largetext') return game.largeText ? 'ON' : 'OFF';
     if (item === 'colorblind') return game.colorBlind ? 'ON' : 'OFF';
     if (item === 'reducefx') return game.reduceFx ? 'ON' : 'OFF';
+    if (item === 'lowgraphics') return game.lowGraphics ? 'ON' : 'OFF';
     if (item === 'mute') return Sound.muted ? '음소거' : 'ON';
     if (item === 'review') return `${mistakeCount(game.currentSlot)}개`;
     if (item === 'awards') return `${countAchievements(game.currentSlot)}/${ACHIEVEMENTS.length}`;
@@ -5010,6 +5412,7 @@
       else if (item === 'largetext') toggleLargeText();
       else if (item === 'colorblind') toggleColorBlind();
       else if (item === 'reducefx') toggleReduceFx();
+      else if (item === 'lowgraphics') toggleLowGraphics();
       else if (item === 'mute') Sound.toggleMute();
       else if (item === 'help') openHelp('pause');
       else if (item === 'close') closePause();
@@ -5531,7 +5934,7 @@
   }
 
   // ---------- 도전과제 (업적) ----------
-  // 각 과제는 슬롯별 학습 데이터 + 기기 공용 컬렉션(도감·엔딩)에서 즉석 판정한다.
+  // 각 과제는 슬롯별 학습 데이터 + 기기 공용 컬렉션(친구 수첩·엔딩)에서 즉석 판정한다.
   const ACHIEVEMENTS = [
     { id: 'firstwin', cat: 'battle', name: '첫 깨우침', desc: '처음으로 마음을 되돌렸어요', check: (c) => c.defeatedCount >= 1 },
     { id: 'mercy1', cat: 'battle', name: '따뜻한 마음', desc: '마음을 한 번 안아 주었어요', check: (c) => c.mercy >= 1 },
@@ -5611,7 +6014,7 @@
       const col = i % 2, row = Math.floor(i / 2);
       const x = 24 + col * colW, y = 86 + row * cellH;
       const cat = ACH_CAT[a.cat];
-      // 아이콘 배지
+      // 아이콘 표시
       ctx.fillStyle = unlocked ? cat.color : '#333';
       ctx.font = 'bold 26px monospace';
       ctx.fillText(unlocked ? cat.icon : '·', x + 4, y + 26);
@@ -6491,7 +6894,7 @@
     game.flags = flags;
     game.map = 'freestreet';
     const p = game.player;
-    p.x = 14; p.y = 17; p.px = 14 * TS; p.py = 17 * TS;
+    p.x = 18; p.y = 21; p.px = 18 * TS; p.py = 21 * TS;
     p.moving = false; p.dir = 'up';
     save();
   }
@@ -6503,7 +6906,7 @@
     game.flags = flags;
     game.map = 'tiltstreet';
     const p = game.player;
-    p.x = 14; p.y = 17; p.px = 14 * TS; p.py = 17 * TS;
+    p.x = 18; p.y = 21; p.px = 18 * TS; p.py = 21 * TS;
     p.moving = false; p.dir = 'up';
     save();
   }
@@ -6516,7 +6919,7 @@
     game.flags = flags;
     game.map = 'rumorstreet';
     const p = game.player;
-    p.x = 14; p.y = 17; p.px = 14 * TS; p.py = 17 * TS;
+    p.x = 18; p.y = 21; p.px = 18 * TS; p.py = 21 * TS;
     p.moving = false; p.dir = 'up';
     save();
   }
@@ -6530,7 +6933,7 @@
     game.flags = flags;
     game.map = 'arcade';
     const p = game.player;
-    p.x = 11; p.y = 14; p.px = 11 * TS; p.py = 14 * TS;
+    p.x = 18; p.y = 20; p.px = 18 * TS; p.py = 20 * TS;
     p.moving = false; p.dir = 'up';
     save();
   }
@@ -6545,7 +6948,7 @@
     game.flags = flags;
     game.map = 'cozyhome';
     const p = game.player;
-    p.x = 3; p.y = 8; p.px = 3 * TS; p.py = 8 * TS;
+    p.x = 3; p.y = 10; p.px = 3 * TS; p.py = 10 * TS;
     p.moving = false; p.dir = 'down';
     save();
   }
@@ -6561,7 +6964,7 @@
     game.flags = flags;
     game.map = 'cozyhome';
     const p = game.player;
-    p.x = 11; p.y = 13; p.px = 11 * TS; p.py = 13 * TS;
+    p.x = 31; p.y = 19; p.px = 31 * TS; p.py = 19 * TS;
     p.moving = false; p.dir = 'down';
     save();
   }
@@ -7101,6 +7504,352 @@
     drawMon(ctx, 'bandi', sx, sy, 2);
   }
 
+  function ch1HubVisibleMarks() {
+    const props = MAP_PROPS.freestreet || [];
+    return props.filter((prop) => ['district', 'dama_buildup'].includes(prop.kind))
+      .map((prop) => ({ map: 'freestreet', x: prop.x, y: prop.y, kind: prop.kind, label: prop.label || '', done: !!(prop.flag && game.flags[prop.flag]) }));
+  }
+
+  function drawCh1HubMarks(cx, cy) {
+    if (game.map !== 'freestreet') return;
+    const marks = ch1HubVisibleMarks();
+    ctx.save();
+    for (const mark of marks) {
+      const sx = Math.round(mark.x * TS - cx);
+      const sy = Math.round(mark.y * TS - cy - 2);
+      if (sx < -50 || sx > LW + 50 || sy < -50 || sy > LH + 50) continue;
+      const district = mark.kind === 'district';
+      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.86 : 0.94;
+      ctx.fillStyle = district ? '#173447' : (mark.done ? '#3c3f38' : '#4a3316');
+      ctx.fillRect(sx + 5, sy + 8, TS - 10, TS - 12);
+      ctx.strokeStyle = district ? '#9bd3ff' : '#ffd644';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx + 5.5, sy + 8.5, TS - 11, TS - 13);
+      ctx.fillStyle = district ? '#9bd3ff' : (mark.done ? '#9aa07a' : '#ffd644');
+      ctx.font = fs(14, true);
+      ctx.textAlign = 'center';
+      ctx.fillText(district ? '◇' : (mark.done ? '✓' : '※'), sx + TS / 2, sy + 24);
+      if (!(game.lowGraphics || game.reduceFx)) {
+        ctx.font = fs(9, true);
+        ctx.fillText(mark.label, sx + TS / 2, sy + 4);
+      }
+    }
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  function drawCh1StreetPressureObjects(cx, cy) {
+    if (game.map !== 'freestreet') return;
+    const profile = ch1StreetVisualProfile(privacyLeak(), game.lowGraphics || game.reduceFx);
+    const ads = [
+      { x: 8, y: 8, text: '무료' }, { x: 15, y: 12, text: '약관' }, { x: 24, y: 9, text: '추천' },
+      { x: 31, y: 13, text: '저장' }, { x: 19, y: 18, text: '이름?' }, { x: 33, y: 18, text: '동의?' },
+      { x: 11, y: 16, text: '발자국' }, { x: 27, y: 20, text: '공짜' }, { x: 4, y: 12, text: '열람' },
+      { x: 35, y: 10, text: '확인' }, { x: 21, y: 7, text: '보관' }, { x: 14, y: 21, text: '추적' },
+    ];
+    const sensors = [{ x: 14, y: 8 }, { x: 30, y: 8 }, { x: 23, y: 17 }];
+    ctx.save();
+    for (const [i, ad] of ads.slice(0, profile.adSigns).entries()) {
+      const sx = Math.round(ad.x * TS - cx + 6);
+      const sy = Math.round(ad.y * TS - cy + 8);
+      if (sx < -80 || sx > LW + 40 || sy < -40 || sy > LH + 40) continue;
+      const pulse = profile.glow ? 0.12 * Math.sin((game.time + i * 11) / 18) : 0;
+      ctx.globalAlpha = Math.max(0.5, 0.72 + pulse);
+      ctx.fillStyle = i % 2 ? '#28172f' : '#33220f';
+      ctx.fillRect(sx, sy, 38, 16);
+      ctx.strokeStyle = profile.glow ? '#ffd644' : '#7a6a44';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx + 0.5, sy + 0.5, 37, 15);
+      ctx.fillStyle = i >= 4 ? '#ff8a8a' : '#ffd644';
+      ctx.font = 'bold 10px monospace';
+      ctx.fillText(ad.text, sx + 4, sy + 11);
+    }
+    ctx.globalAlpha = 1;
+    for (const s of sensors.slice(0, profile.sensors)) {
+      const sx = Math.round(s.x * TS - cx + TS / 2);
+      const sy = Math.round(s.y * TS - cy + TS / 2);
+      if (sx < -20 || sx > LW + 20 || sy < -20 || sy > LH + 20) continue;
+      ctx.strokeStyle = '#9bd3ff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 8, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#e0453a';
+      ctx.fillRect(sx - 2, sy - 2, 4, 4);
+    }
+    if (profile.scanLines) {
+      ctx.globalAlpha = 0.08;
+      ctx.fillStyle = '#ffd644';
+      for (let y = (game.time % 18); y < LH; y += 18) ctx.fillRect(0, y, LW, 1);
+    }
+    ctx.restore();
+  }
+
+  function chapter2HubVisibleMarks() {
+    const props = MAP_PROPS.tiltstreet || [];
+    return props.filter((prop) => prop.kind === 'ch2_district')
+      .map((prop) => ({ map: 'tiltstreet', x: prop.x, y: prop.y, kind: prop.kind, label: prop.label || '' }));
+  }
+
+  function drawChapter2HubMarks(cx, cy) {
+    if (game.map !== 'tiltstreet') return;
+    const profile = chapter2HubVisualProfile(s2ClearCount(), game.lowGraphics || game.reduceFx);
+    const marks = chapter2HubVisibleMarks();
+    ctx.save();
+    for (const [i, mark] of marks.entries()) {
+      const sx = Math.round(mark.x * TS - cx);
+      const sy = Math.round(mark.y * TS - cy - 2);
+      if (sx < -60 || sx > LW + 60 || sy < -50 || sy > LH + 50) continue;
+      const isScale = mark.label === '기울어진 저울';
+      const isExit = mark.label === '동쪽 소란 문';
+      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.82 : 0.92;
+      ctx.fillStyle = isScale ? '#40361c' : isExit ? '#2b2436' : '#1f2d36';
+      ctx.fillRect(sx + 6, sy + 8, TS - 12, TS - 12);
+      ctx.strokeStyle = isScale ? '#ffd644' : isExit ? '#e9a7ff' : '#9bd3ff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx + 6.5, sy + 8.5, TS - 13, TS - 13);
+      ctx.fillStyle = isScale ? '#ffd644' : isExit ? '#e9a7ff' : '#9bd3ff';
+      ctx.font = fs(14, true);
+      ctx.textAlign = 'center';
+      ctx.fillText(isScale ? '⚖' : isExit ? '!' : '↗', sx + TS / 2, sy + 24);
+      if (profile.labels) {
+        ctx.font = fs(9, true);
+        ctx.fillText(mark.label, sx + TS / 2, sy + 4);
+      }
+      if (i < profile.echoMarks && !(game.lowGraphics || game.reduceFx)) {
+        ctx.globalAlpha = 0.28;
+        ctx.strokeStyle = '#ffd644';
+        ctx.strokeRect(sx + 3.5, sy + 5.5, TS - 7, TS - 7);
+        ctx.globalAlpha = 0.92;
+      }
+    }
+    const hints = [
+      { x: 7, y: 8, text: '추천' }, { x: 18, y: 7, text: '이쪽' }, { x: 11, y: 12, text: '다수' },
+      { x: 21, y: 14, text: '별점' }, { x: 24, y: 9, text: '인기' },
+    ];
+    ctx.font = 'bold 10px monospace';
+    for (const hint of hints.slice(0, profile.recommendSigns)) {
+      const sx = Math.round(hint.x * TS - cx + 6);
+      const sy = Math.round(hint.y * TS - cy + 8);
+      if (sx < -70 || sx > LW + 40 || sy < -40 || sy > LH + 40) continue;
+      ctx.globalAlpha = 0.62;
+      ctx.fillStyle = '#2f2110';
+      ctx.fillRect(sx, sy, 34, 15);
+      ctx.strokeStyle = '#8b733d';
+      ctx.strokeRect(sx + 0.5, sy + 0.5, 33, 14);
+      ctx.fillStyle = '#ffd644';
+      ctx.fillText(hint.text, sx + 4, sy + 11);
+    }
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  function chapter3HubVisibleMarks() {
+    const props = MAP_PROPS.rumorstreet || [];
+    return props.filter((prop) => prop.kind === 'ch3_district')
+      .map((prop) => ({ map: 'rumorstreet', x: prop.x, y: prop.y, kind: prop.kind, label: prop.label || '' }));
+  }
+
+  function drawChapter3HubMarks(cx, cy) {
+    if (game.map !== 'rumorstreet') return;
+    const low = game.lowGraphics || game.reduceFx;
+    const profile = chapter3HubVisualProfile(s3ClearCount(), game.flags.rumorFixed, low);
+    const marks = chapter3HubVisibleMarks();
+    ctx.save();
+    for (const [i, mark] of marks.entries()) {
+      const sx = Math.round(mark.x * TS - cx);
+      const sy = Math.round(mark.y * TS - cy - 2);
+      if (sx < -60 || sx > LW + 60 || sy < -50 || sy > LH + 50) continue;
+      const isPaper = mark.label === '대문짝 헤드라인';
+      const isFix = mark.label === '정정 보도 길';
+      const isExit = mark.label === '반짝 아케이드 문';
+      ctx.globalAlpha = low ? 0.78 : (game.flags.rumorFixed ? 0.82 : 0.93);
+      ctx.fillStyle = isExit ? '#30213a' : isFix ? '#172f2c' : isPaper ? '#3a241c' : '#202532';
+      ctx.fillRect(sx + 5, sy + 8, TS - 10, TS - 12);
+      ctx.strokeStyle = isExit ? '#e9a7ff' : isFix ? '#80f0d0' : isPaper ? '#ffcf66' : '#9bd3ff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx + 5.5, sy + 8.5, TS - 11, TS - 13);
+      ctx.fillStyle = game.flags.rumorFixed && !isExit ? '#80f0d0' : ctx.strokeStyle;
+      ctx.font = fs(14, true);
+      ctx.textAlign = 'center';
+      ctx.fillText(isExit ? '▶' : isFix ? '✓' : isPaper ? '!' : '▣', sx + TS / 2, sy + 24);
+      if (profile.labels) {
+        ctx.font = fs(9, true);
+        ctx.fillText(mark.label, sx + TS / 2, sy + 4);
+      }
+      if (i < profile.echoMarks && !low) {
+        ctx.globalAlpha = game.flags.rumorFixed ? 0.18 : 0.30;
+        ctx.strokeStyle = game.flags.rumorFixed ? '#80f0d0' : '#ffcf66';
+        ctx.strokeRect(sx + 2.5, sy + 5.5, TS - 5, TS - 7);
+        ctx.globalAlpha = 0.92;
+      }
+    }
+    const headlines = game.flags.rumorFixed
+      ? [{ x: 8, y: 7, text: '정정' }, { x: 17, y: 7, text: '확인' }]
+      : [
+        { x: 6, y: 7, text: '속보' }, { x: 12, y: 9, text: '단독' }, { x: 20, y: 7, text: '충격' },
+        { x: 22, y: 13, text: '공유' }, { x: 10, y: 14, text: '불안' }, { x: 17, y: 12, text: '???' },
+      ];
+    ctx.font = 'bold 10px monospace';
+    for (const headline of headlines.slice(0, profile.headlineSigns)) {
+      const sx = Math.round(headline.x * TS - cx + 5);
+      const sy = Math.round(headline.y * TS - cy + 7);
+      if (sx < -70 || sx > LW + 40 || sy < -40 || sy > LH + 40) continue;
+      ctx.globalAlpha = game.flags.rumorFixed ? 0.48 : 0.62;
+      ctx.fillStyle = game.flags.rumorFixed ? '#132d27' : '#351c18';
+      ctx.fillRect(sx, sy, 34, 15);
+      ctx.strokeStyle = game.flags.rumorFixed ? '#80f0d0' : '#ffcf66';
+      ctx.strokeRect(sx + 0.5, sy + 0.5, 33, 14);
+      ctx.fillStyle = game.flags.rumorFixed ? '#c5fff1' : '#ffe08a';
+      ctx.fillText(headline.text, sx + 4, sy + 11);
+    }
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  function chapter4HubVisibleMarks() {
+    const props = MAP_PROPS.arcade || [];
+    return props.filter((prop) => prop.kind === 'ch4_district')
+      .map((prop) => ({ map: 'arcade', x: prop.x, y: prop.y, kind: prop.kind, label: prop.label || '' }));
+  }
+
+  function chapter5HubVisibleMarks() {
+    const props = MAP_PROPS.cozyhome || [];
+    return props.filter((prop) => prop.kind === 'ch5_district')
+      .map((prop) => ({ map: 'cozyhome', x: prop.x, y: prop.y, kind: prop.kind, label: prop.label || '' }));
+  }
+
+  function drawStaticHubMarks(marks, cx, cy, profile, palette) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    for (const [i, mark] of marks.entries()) {
+      const sx = Math.round(mark.x * TS - cx);
+      const sy = Math.round(mark.y * TS - cy - 2);
+      if (sx < -60 || sx > LW + 60 || sy < -50 || sy > LH + 50) continue;
+      const icon = palette.icon(mark.label);
+      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.76 : 0.90;
+      ctx.fillStyle = icon.bg;
+      ctx.fillRect(sx + 5, sy + 8, TS - 10, TS - 12);
+      ctx.strokeStyle = icon.fg;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx + 5.5, sy + 8.5, TS - 11, TS - 13);
+      ctx.fillStyle = icon.fg;
+      ctx.font = fs(14, true);
+      ctx.fillText(icon.text, sx + TS / 2, sy + 24);
+      if (profile.labels) {
+        ctx.font = fs(9, true);
+        ctx.fillText(mark.label, sx + TS / 2, sy + 4);
+      }
+      if (i < (palette.rings || 0) && !(game.lowGraphics || game.reduceFx)) {
+        ctx.globalAlpha = 0.22;
+        ctx.strokeRect(sx + 2.5, sy + 5.5, TS - 5, TS - 7);
+      }
+    }
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  function drawHubAtmosphereProps(mapId, kind, cx, cy, palette) {
+    const props = (MAP_PROPS[mapId] || []).filter((prop) => prop.kind === kind);
+    if (!props.length) return;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = fs(12, true);
+    for (const prop of props) {
+      const sx = Math.round(prop.x * TS - cx);
+      const sy = Math.round(prop.y * TS - cy);
+      if (sx < -40 || sx > LW + 40 || sy < -40 || sy > LH + 40) continue;
+      const icon = palette.icon(prop.label || '');
+      const w = icon.w || TS - 24;
+      const h = icon.h || TS - 24;
+      const ox = icon.ox ?? Math.round((TS - w) / 2);
+      const oy = icon.oy ?? 16;
+      ctx.globalAlpha = icon.alpha || (game.lowGraphics || game.reduceFx ? 0.42 : 0.62);
+      ctx.fillStyle = icon.bg;
+      ctx.fillRect(sx + ox, sy + oy, w, h);
+      ctx.strokeStyle = icon.fg;
+      ctx.strokeRect(sx + ox + 0.5, sy + oy + 0.5, w - 1, h - 1);
+      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.72 : 0.84;
+      ctx.fillStyle = icon.fg;
+      ctx.fillText(icon.text, sx + ox + w / 2, sy + oy + Math.min(h - 4, 14));
+    }
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  function drawChapter4HubMarks(cx, cy) {
+    if (game.map !== 'arcade') return;
+    const profile = chapter4HubVisualProfile(s4KeyCount(), game.lowGraphics || game.reduceFx);
+    drawStaticHubMarks(chapter4HubVisibleMarks(), cx, cy, profile, {
+      rings: profile.confetti,
+      icon: (label) => {
+        if (label === '포근한 집 문') return { text: '▶', bg: '#30213a', fg: '#e9a7ff' };
+        if (label === '잠긴 정문') return { text: '🔒', bg: '#2f2110', fg: '#ffd644' };
+        if (label === '백스테이지 입구') return { text: '▣', bg: '#202532', fg: '#9bd3ff' };
+        return { text: '★', bg: '#3a1f2d', fg: '#ff8ec7' };
+      },
+    });
+    drawHubAtmosphereProps('arcade', 'ch4_atmosphere', cx, cy, {
+      icon: (label) => {
+        if (/포스터/.test(label)) return { text: '▤', bg: '#281d28', fg: '#ffb3d8' };
+        if (/보안/.test(label)) return { text: '□', bg: '#1d2230', fg: '#9bd3ff' };
+        return { text: '▭', bg: '#2d1832', fg: '#ffd6f0' };
+      },
+    });
+    const signs = [
+      { x: 9, y: 8, text: '무료' }, { x: 25, y: 8, text: '동의' }, { x: 13, y: 15, text: '당첨' },
+      { x: 31, y: 14, text: '오늘' }, { x: 4, y: 17, text: '해지' }, { x: 20, y: 19, text: '보안' },
+    ];
+    ctx.save(); ctx.font = 'bold 10px monospace';
+    for (const s of signs.slice(0, profile.neonSigns)) {
+      const sx = Math.round(s.x * TS - cx + 5), sy = Math.round(s.y * TS - cy + 7);
+      if (sx < -70 || sx > LW + 40 || sy < -40 || sy > LH + 40) continue;
+      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.38 : 0.58;
+      ctx.fillStyle = '#2d1832'; ctx.fillRect(sx, sy, 34, 15);
+      ctx.strokeStyle = '#ff8ec7'; ctx.strokeRect(sx + 0.5, sy + 0.5, 33, 14);
+      ctx.fillStyle = '#ffd6f0'; ctx.fillText(s.text, sx + 4, sy + 11);
+    }
+    ctx.restore();
+  }
+
+  function drawChapter5HubMarks(cx, cy) {
+    if (game.map !== 'cozyhome') return;
+    const profile = chapter5HubVisualProfile(s5ClearCount(), game.lowGraphics || game.reduceFx);
+    drawStaticHubMarks(chapter5HubVisibleMarks(), cx, cy, profile, {
+      rings: profile.voiceRipples,
+      icon: (label) => {
+        if (label === '고요의 뜰 문') return { text: '▶', bg: '#22302b', fg: '#8fe0c0' };
+        if (label === '현관 안쪽 문') return { text: '◇', bg: '#3b2a1e', fg: '#ffd08a' };
+        if (label === '잠긴 복도 입구') return { text: '…', bg: '#25303a', fg: '#9bd3ff' };
+        return { text: '⌂', bg: '#3a2a20', fg: '#ffd08a' };
+      },
+    });
+    drawHubAtmosphereProps('cozyhome', 'ch5_atmosphere', cx, cy, {
+      icon: (label) => {
+        if (/화분/.test(label)) return { text: '♧', bg: '#213025', fg: '#9fe0a0' };
+        if (/중앙 러그/.test(label)) return { text: '▤', bg: '#5a3428', fg: '#ffd08a', w: 56, h: 22, ox: -12, oy: 22, alpha: 0.58 };
+        if (/러그/.test(label)) return { text: '▤', bg: '#3a241d', fg: '#ffd08a' };
+        if (/탁자/.test(label)) return { text: '▣', bg: '#4a3324', fg: '#ffd6a8', w: 28, h: 22, ox: 2, oy: 15, alpha: 0.56 };
+        if (/바구니/.test(label)) return { text: '◡', bg: '#3d2d24', fg: '#ffe0b0', w: 28, h: 22, ox: 2, oy: 15, alpha: 0.54 };
+        if (/액자/.test(label)) return { text: '▢', bg: '#2d241f', fg: '#ffd0a0' };
+        if (/책장/.test(label)) return { text: '▥', bg: '#2c241a', fg: '#d8b078' };
+        return { text: '▪', bg: '#3a2a20', fg: '#ffe0a8' };
+      },
+    });
+    const lamps = [
+      { x: 8, y: 9 }, { x: 18, y: 10 }, { x: 28, y: 9 }, { x: 12, y: 17 }, { x: 31, y: 16 },
+    ];
+    ctx.save();
+    for (const lamp of lamps.slice(0, profile.warmLamps)) {
+      const sx = Math.round(lamp.x * TS - cx + TS / 2), sy = Math.round(lamp.y * TS - cy + TS / 2);
+      if (sx < -50 || sx > LW + 50 || sy < -50 || sy > LH + 50) continue;
+      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.18 : 0.32;
+      ctx.fillStyle = '#ffd08a'; ctx.beginPath(); ctx.arc(sx, sy, 16, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.72; ctx.fillRect(sx - 2, sy - 2, 4, 4);
+    }
+    ctx.restore();
+  }
+
   function drawWorld() {
     const m = MAPS[game.map];
     const { cx, cy } = camera();
@@ -7120,6 +7869,21 @@
 
     // 방탈출 물체 (단말·게시판·지우개·출구) — 타일 위, 엔티티 아래
     if (game.puzzleRun) drawPuzzleObjects(cx, cy);
+    // 프롤로그 실험실 — 핵심 단서/보조 조사물/출구를 눈에 보이게 배치한다.
+    drawIntroLabObjects(cx, cy);
+    // 프롤로그 숲 — 출구 직후 따라의 첫 흔적을 실제 조사물로 보여 준다.
+    drawForestPrologueObjects(cx, cy);
+    // 1장 허브 — 구역 랜드마크/담아 빌드업 조사물을 정적 표식으로 보여 준다.
+    drawCh1HubMarks(cx, cy);
+    // 1장 허브 — 노출도가 오를수록 광고/감시 표식이 늘어나되 저사양 모드에서는 수를 줄인다.
+    drawCh1StreetPressureObjects(cx, cy);
+    // 2장 허브 — 새 NPC 없이 구역 입구/저울/다음 문을 정적 표식으로 보여 준다.
+    drawChapter2HubMarks(cx, cy);
+    // 3장 허브 — 소문 거리의 신문사/상점/헤드라인/다음 문을 정적 표식으로 보여 준다.
+    drawChapter3HubMarks(cx, cy);
+    // 4·5장 허브 — 새 NPC를 늘리지 않고 넓은 공간의 목적지 표식만 띄운다.
+    drawChapter4HubMarks(cx, cy);
+    drawChapter5HubMarks(cx, cy);
     // 2장 허브 — 중앙의 거대한 저울 (구역 클리어마다 기울기가 준다)
     if (game.map === 'tiltstreet') drawTiltScale(cx, cy);
 
@@ -7138,8 +7902,8 @@
       drawTalkBubble(nx + TS / 2, ny - 14);
     }
 
-    // 몬스터 (둥실둥실) — 되돌려 친구가 된 몬스터는 ♥와 함께 남고,
-    // 냉정·중립으로 떠나보낸 몬스터는 자리에 없다 (선택이 세계에 남는다)
+    // 인물 (둥실둥실) — 되돌려 친구가 된 인물은 ♥와 함께 남고,
+    // 냉정·중립으로 떠나보낸 인물은 자리에 없다 (선택이 세계에 남는다)
     for (const mo of m.monsters) {
       const dead = game.flags.defeated[mo.id];
       const friend = isFriend(mo.id);
@@ -7148,14 +7912,14 @@
       const dx0 = Math.round(mo.x * TS - cx), dy0 = Math.round(mo.y * TS - cy - 6 + bob);
       drawMon(ctx, mo.id, dx0, dy0, SCALE);
       if (friend) {
-        // 친구가 된 몬스터: 머리 위 ♥ (말을 걸 수 있어요)
+        // 친구가 된 인물: 머리 위 ♥ (말을 걸 수 있어요)
         ctx.fillStyle = '#e0453a';
         ctx.font = 'bold 16px monospace';
         ctx.fillText('♥', Math.round(mo.x * TS - cx) + TS / 2 - 5, Math.round(mo.y * TS - cy) - 10 + bob);
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
         ctx.strokeText('♥', Math.round(mo.x * TS - cx) + TS / 2 - 5, Math.round(mo.y * TS - cy) - 10 + bob);
       } else {
-        // 느낌표 (아직 헷갈리는 몬스터)
+        // 느낌표 (아직 헷갈리는 인물)
         ctx.fillStyle = '#ffd644';
         ctx.font = 'bold 18px monospace';
         ctx.fillText('!', Math.round(mo.x * TS - cx) + TS / 2 - 3, Math.round(mo.y * TS - cy) - 10 + bob);
@@ -7245,7 +8009,7 @@
     const n = game.flags.adStickers || 0;
     if (n <= 0) return;
     const W = 58, H = 24;
-    // 상시 HUD(좌상단 목표 상자 y 8~60, 우상단 증표·자비 하트 표시)와 겹치지 않도록 상단
+    // 상시 HUD(좌상단 목표 상자 y 8~60, 우상단 자비(♥) 표시)와 겹치지 않도록 상단
     // 딱지는 y=96(HUD·퍼즐 HUD 아래)으로 내린다. 화면 모서리를 어지럽히는 연출 의도는 유지.
     const spots = [
       { x: 8, y: 96 },               // 좌상단(HUD 아래)
@@ -7452,6 +8216,7 @@
   // v2 신규 스테이지 맵(전부 공짜 거리~코어) → 장 번호를 맵 자체에 고정한다.
   // HUD가 진행 플래그로 다시 계산하지 않고 그 스테이지의 장을 우선 보여 주기 위함.
   const MAP_CHAPTER = {
+    introlab: 0, // 프롤로그
     freestreet: 1, traceroom: 1, boardplaza: 1, warehouse: 1, ownerroom: 1,
     tiltstreet: 2, echoalley: 2, samplehouse: 2, dimstreet: 2, gatekeeper: 2,
     rumorstreet: 3, tipsroom: 3, editroom: 3, towerroom: 3, towerroof: 3,
@@ -7463,6 +8228,7 @@
   // "(N+1)장", chapter5Clear 이후 = "파이널". 신규 스테이지 맵은 그 맵 자신의 장을 우선한다.
   function chapterBadgeLabel(mapId, flags) {
     const fixed = MAP_CHAPTER[mapId];
+    if (fixed === 0) return '프롤로그';
     if (fixed === 'final') return '파이널';
     if (fixed) return `${fixed}장`;
     if (flags.chapter5Clear) return '파이널';
@@ -7488,8 +8254,10 @@
     let objText;
     if (game.puzzleRun) {
       const puz = game.puzzleRun.puzzle;
-      objText = (isPuzzleCleared(game.puzzleRun.id) && puz.objectiveCleared) ? puz.objectiveCleared
-        : (puz.objective || '방을 빠져나가자');
+      objText = game.flags.privacyRecoveryActive
+        ? `노출도 MAX — 정보 조각 회수 ${game.flags.privacyRecovery || 0}/${PRIVACY_RECOVERY_NEED}`
+        : (isPuzzleCleared(game.puzzleRun.id) && puz.objectiveCleared) ? puz.objectiveCleared
+          : (puz.objective || '방을 빠져나가자');
     } else if (game.map === 'freestreet') {
       // 허브 HUD — 금고 잠금 진행을 상시 가시화
       const n = s1LockCount();
@@ -7537,6 +8305,15 @@
       ctx.fillStyle = '#e0453a';
       ctx.font = 'bold 14px monospace';
       ctx.fillText(`♥ ${game.flags.mercy}`, LW - 184, 31);
+    }
+
+    if ((game.flags.privacyLeak || 0) > 0 || game.flags.privacyRecoveryActive) {
+      const leak = privacyLeak();
+      const boxW = 206;
+      utBox(LW - boxW - 10, game.flags.mercy > 0 ? 46 : 12, boxW, 30, 4);
+      ctx.fillStyle = leak >= 5 ? '#e0453a' : leak >= 3 ? '#ffd644' : '#9bd3ff';
+      ctx.font = 'bold 13px monospace';
+      ctx.fillText(`노출도 ${leak}/5 · ${privacyLevelLabel(leak)}`, LW - boxW, game.flags.mercy > 0 ? 66 : 32);
     }
 
     if (Sound.muted) {
@@ -7651,14 +8428,14 @@
       ctx.stroke();
     }
 
-    // 몬스터 (오른쪽 위, 크게)
+    // 인물 (오른쪽 위, 크게)
     const shakeX = b.shake > 0 ? Math.sin(b.shake * 2) * (game.reduceFx ? 2 : 6) : 0;
     const bob = Math.sin(game.time / 20) * 5;
     const monScale = 9;
     const mx = Math.round(LW - 16 * monScale - 60 + shakeX);
     const my = Math.round(56 + bob);
     const mcx = mx + 16 * monScale / 2;
-    // 그림자 — 몬스터가 땅에 떠 있는 느낌을 줘 화면이 덜 휑하게
+    // 그림자 — 인물이 땅에 떠 있는 느낌을 줘 화면이 덜 휑하게
     ctx.fillStyle = 'rgba(0,0,0,0.32)';
     ctx.beginPath();
     ctx.ellipse(mcx, 222, 56 - bob, 12, 0, 0, Math.PI * 2);
@@ -7754,7 +8531,7 @@
   }
 
   // 마음 조각 배틀(파도·문)·회피 상자 위 안내 문구 — 상자 폭 이내로 말줄임하고,
-  // 상자가 하트 HUD/몬스터 자리에서 충분히 떨어져 있는 y(box.y-28/-10)에 그린다.
+  // 상자가 하트 HUD/인물 자리에서 충분히 떨어져 있는 y(box.y-28/-10)에 그린다.
   function drawArenaGuide(box, taunt, guide) {
     const maxW = box.w - 16;
     const cx = box.x + box.w / 2;
@@ -7794,10 +8571,25 @@
   // 마음 조각 배틀 — 파도(탄막+조각)와 문(응답)을 한 상자 안에서 그린다.
   function drawPersuadeArena(b) {
     const arena = b.arena, box = arena.box;
-    // 몬스터의 외침 + 조작 안내
+    // 인물의 외침 + 조작 안내
     drawArenaGuide(box, b.attack ? b.attack.taunt : null, b.phase === 'gates'
       ? '마음에 닿는 문으로 하트를 넣어요! (자물쇠 문은 아직 못 열어요)'
-      : '✦를 주워 속마음을 들어요. 탄막은 피하고!');
+      : (b.prologueTutorial ? '마음 안쪽: ✦ 속마음 조각을 주워요. 탄막은 피하고!' : '✦를 주워 속마음을 들어요. 탄막은 피하고!'));
+
+    if (b.prologueTutorial) {
+      ctx.textAlign = 'left';
+      ctx.fillStyle = 'rgba(255,214,68,0.12)';
+      ctx.fillRect(24, 154, 210, 42);
+      ctx.strokeStyle = 'rgba(255,214,68,0.45)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(24.5, 154.5, 210, 42);
+      ctx.fillStyle = '#ffd644';
+      ctx.font = 'bold 13px monospace';
+      ctx.fillText('프롤로그 · 따라의 마음 안쪽', 36, 176);
+      ctx.fillStyle = '#bbb';
+      ctx.font = '11px monospace';
+      ctx.fillText('퀴즈가 아니라, 듣고 피하고 다가가기', 36, 192);
+    }
 
     // 박스 — 루미(보스)는 포근한 색 테두리로 표시된다(축소 기믹 진행 중 안내)
     ctx.strokeStyle = b.p.openMechanic === 'shrink' ? '#e0a583' : '#fff';
@@ -7995,7 +8787,7 @@
     ctx.font = '15px monospace';
     ctx.fillText('화면 속에서, 누군가 기다리고 있다', LW / 2, 114);
 
-    // 몬스터들 둥실둥실 (한 줄)
+    // 인물들 둥실둥실 (한 줄)
     const parade = ['bekkyeomon', 'sujipmon', 'pyeonhyangmon', 'hwangakmon', 'yuhokmon', 'hollimmon', 'finalboss', 'yeongi'];
     for (let i = 0; i < parade.length; i++) {
       const bx = LW / 2 - parade.length * 24 + i * 48;
@@ -8096,9 +8888,9 @@
   function startNewGame(slot, name) {
     game.currentSlot = slot;
     game.playerName = name || '수호자';
-    game.map = 'village';
-    game.player.x = 13; game.player.y = 16;
-    game.player.px = 13 * TS; game.player.py = 16 * TS;
+    game.map = 'introlab';
+    game.player.x = 14; game.player.y = 16;
+    game.player.px = 14 * TS; game.player.py = 16 * TS;
     game.player.dir = 'up';
     game.flags = newFlags();
     game.mode = 'world';
@@ -8106,15 +8898,15 @@
     recordPlayDay(slot);
     checkCosmeticUnlocks(slot);
     // 인트로 암전 — 첫 3줄(컴퓨터실 장면) 동안 화면을 거의 검게 덮는다.
-    // 4번째 줄(idx===3, "저 어른에게 물어보자")부터 걷히기 시작한다(drawWorld에서 처리).
+    // 4번째 줄부터 걷히기 시작한다(drawWorld에서 처리).
     // 인트로 동안은 아무 음악도 흐르지 않는다 — 침묵으로 시작해, 눈을 뜬 뒤에야
-    // 마을의 곡이 아주 낮게 흘러든다 (다크 톤 오프닝 연출).
+    // 음악이 아주 낮게 흘러든다 (다크 톤 오프닝 연출).
     game.introDim = { fadeFrame: -1 };
     startDialog([
-      '방과 후, 텅 빈 컴퓨터실.\n낡은 태블릿 하나가\n혼자 켜져 있다.',
-      `${game.playerName}이(가) 화면에 손을 대는 순간—\n빛이 손끝을 붙잡고 끌어당긴다.\n…떨어진다.`,
-      '눈을 뜨니 낯선 마을.\n한 번도 와 본 적 없는데…\n어딘가, 낯이 익다.',
-      '저만치 누군가 서 있다.\n일단, 저 어른에게 물어보자.\n(목표는 왼쪽 위에 표시돼요)',
+      '눈을 뜨니 좁은 방이다.\n낡은 기계들과 컴퓨터 몇 대가\n어둠 속에 잠들어 있다.',
+      `${game.playerName}이(가) 일어난 곳은\n어디일까… 기억이 잘 나지 않는다.`,
+      '벽 한가운데, 반짝이지 않는 문.\n이 방에서 나가려면\n무언가를 찾아야 한다.',
+      '방 안을 살펴보자 — 실마리가 있을지도.\n(목표는 왼쪽 위에 표시돼요)',
     ], null, () => {
       // 동행자 합류 — 무음의 인트로 끝에 작은 빛이 날아든다. 음악은 그 뒤에야 흘러든다.
       startDialog([
@@ -8396,7 +9188,7 @@
     ctx.fillText('…그런데, 왕좌 뒤의 벽에서', LW / 2, ty + 8);
     ctx.fillText('낡은 신호가 아직도 깜빡이고 있다.', LW / 2, ty + 32);
 
-    // 친구가 된 몬스터들 (두 줄 퍼레이드)
+    // 친구가 된 인물들 (두 줄 퍼레이드)
     const ids = Object.keys(MONSTER_SPRITES);
     for (let i = 0; i < ids.length; i++) {
       const row = i < 14 ? 0 : 1;
@@ -8493,7 +9285,7 @@
         break;
       case 'battle':
         updateBattle();
-        // 승리/패배 처리 중 모드가 바뀌었을 수 있음
+        // 클리어/패배 처리 중 모드가 바뀌었을 수 있음
         if (game.mode === 'battle') {
           drawBattle();
         } else {
@@ -8668,6 +9460,7 @@
   window.__game = game; // 디버그/테스트용
   window.__test = { // 테스트용 훅
     buildReportText, buildLearningSummary, recordTopicResult, countAchievements,
+    migrateSlotV6, migrateSlotV7, migrateSlotV8,
     buildBackupText, applyBackup, buildAdaptivePool, buildDailyPool,
     recordPlayDay, recordDailyDone, getMeta, todayStr,
     unlockedCount, getCosmetic, setCosmetic, achievementCtx,
@@ -8677,7 +9470,11 @@
     buildClassCsv, setupClassBaseFlags, classSelForFlags,
     applyTraceRoomClass, applyTiltStreetClass, applyRumorStreetClass,
     applyArcadeClass, applyCozyhomeClass, applyFinalClass,
-    getPuzzleLog, writePuzzleLog, nextWaypoint, // 나침반 경로 — E2E가 '화살표 따라가기'를 재현할 때 사용
+    getPuzzleLog, writePuzzleLog, nextWaypoint, currentObjective: () => getObjective(game.flags, game.map), // 나침반/HUD 경로 — E2E가 '화살표 따라가기'를 재현할 때 사용
+    privacyLeak, privacyPressureProfile, addPrivacyLeak, notePrivacyRecoveryPiece,
+    toggleLowGraphics, effectiveDprCap, prologueVisibleMarks, ch1StreetVisualProfile, ch1HubVisibleMarks,
+    chapter2HubVisualProfile, chapter2HubVisibleMarks, chapter3HubVisualProfile, chapter3HubVisibleMarks,
+    chapter4HubVisualProfile, chapter4HubVisibleMarks, chapter5HubVisualProfile, chapter5HubVisibleMarks,
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록

@@ -1,4 +1,4 @@
-// 게임 데이터: 맵, NPC, 몬스터, 퀴즈
+// 게임 데이터: 맵, NPC, 인물(여덟 조각), 퀴즈
 //
 // 타일 종류
 //  G 풀  P 길  F 꽃  S 모래  B 다리  C 동굴바닥  M 탑바닥  1 탑문(워프)
@@ -34,9 +34,9 @@ const MAPS = {
       'TTTTTTTTTTTTTPPTTTTTTTTTTTTT',
     ],
     warps: [
-      { x: 13, y: 0, to: 'forest', tx: 13, ty: 18 },
-      { x: 14, y: 0, to: 'forest', tx: 14, ty: 18 },
-      { x: 24, y: 5, to: 'freestreet', tx: 14, ty: 17 },
+      { x: 13, y: 0, to: 'forest', tx: 20, ty: 22 },
+      { x: 14, y: 0, to: 'forest', tx: 21, ty: 22 },
+      { x: 24, y: 5, to: 'freestreet', tx: 18, ty: 21 },
     ],
     npcs: [
       { id: 'prof', x: 4, y: 12, pal: 'prof', name: '박사님' },
@@ -77,52 +77,57 @@ const MAPS = {
       '어디선가 안내방송이 들린다.\n"어서 오세요! 전부! 공짜!\n※약관은 아주 작게…"',
     ],
     tiles: [
-      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
-      'TGOOOOOOOGGOOOOOOGGOOOOOOOGT',
-      'TGOOOOOOOGGOOOOOOGGOOOOOOOGT',
-      'TGOOOOOOOGGOOOOOOGGOOOOOOOGT',
-      'TGGGG6GGGGGGGG7GGGGGGG6GGGGT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPYPPPPPPPPYPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPYPPPPPP9',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPP6PPPPPPPPPPPPPPPPPPPPPPT',
-      'TGOOOOOOGGGGGGGGGGGGGGGGGGGT',
-      'TGOOOOOOGGGGGGPGGGGGGGGGGGGT',
-      'TGOOOOOOGGGGGGPGGGGGGGGGGGGT',
-      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGG7GGGGGGGGGGGGGGGGGGGT',
+      'TGGGGG6GGGGGGGGGGGGGGGGGGGGG6GGGGGGGGT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPYPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPYPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPYPPP9',
+      'TPPPPPPPPPPPPPPPPPPPPPPPYPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPP6PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGPGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGPGGGGGGGGGGGGGGGGGGT',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
     ],
     warps: [
-      { x: 14, y: 18, to: 'village', tx: 24, ty: 6 },
+      { x: 18, y: 22, to: 'village', tx: 24, ty: 6 },
       // 구역① 살금의 접수처
-      { x: 5, y: 4, to: 'traceroom', tx: 9, ty: 11 },
+      { x: 6, y: 5, to: 'traceroom', tx: 9, ty: 11 },
       // 구역② 새김의 게시판 광장 — 접수처를 먼저 다녀와야 내 조각이 존재한다 (순서 강제)
-      { x: 22, y: 4, to: 'boardplaza', tx: 12, ty: 13, needPuzzleClear: 'traces',
+      { x: 28, y: 5, to: 'boardplaza', tx: 12, ty: 13, needPuzzleClear: 'traces',
         lockText: '문틈에서 낮은 목소리가 들린다.\n새김: "아직 여기엔 네 조각이 없네.\n…먼저 접수처에 다녀와."' },
       // 구역③ 배달 창고
-      { x: 4, y: 15, to: 'warehouse', tx: 12, ty: 13 },
+      { x: 5, y: 18, to: 'warehouse', tx: 12, ty: 13 },
       // 금고문 — 잠금 3개(구역 클리어마다 1개)가 다 풀려야 주인의 방이 열린다
-      { x: 14, y: 4, to: 'ownerroom', tx: 5, ty: 7, needS1Locks: 3,
+      { x: 17, y: 4, to: 'ownerroom', tx: 5, ty: 7, needS1Locks: 3,
         lockText: '금고 문은 꿈쩍도 하지 않는다.\n잠금 세 개가 나란히 붙어 있다.' },
       // 2장 「기울어진 거리」 — 담아를 되돌린 뒤에야(chapter1Clear) 열리는 동쪽 문
-      { x: 27, y: 13, to: 'tiltstreet', tx: 14, ty: 17, needFlag: 'chapter1Clear',
-        lockText: '동쪽에 낯선 문이 하나 생겼다.\n문 너머가 이상하게… 기울어 보인다.\n지금은 굳게 잠겨 있다.' },
+      { x: 37, y: 15, to: 'tiltstreet', tx: 1, ty: 10, needFlag: 'chapter1Clear', exitDir: 'east', dir: 'right',
+        lockText: '동쪽 끝에 낯선 문이 하나 생겼다.\n멀리 걸어온 거리 너머가 이상하게… 기울어 보인다.\n지금은 굳게 잠겨 있다.' },
     ],
     npcs: [
-      // 살금 — 담아의 점원. 시킨 일이 미안한 아이 (거리를 서성인다)
-      { id: 'salgeum_st1', x: 9, y: 9, monSprite: 'mollaemon', name: '살금', wander: true },
-      { id: 'salgeum_st2', x: 19, y: 12, monSprite: 'mollaemon', name: '살금', wander: true },
+      // 살금 — 담아의 점원. 시킨 일이 미안한 아이. 넓은 거리 곳곳에 흩어져 있다.
+      { id: 'salgeum_st1', x: 10, y: 12, monSprite: 'mollaemon', name: '살금', wander: true },
+      { id: 'salgeum_st2', x: 26, y: 14, monSprite: 'mollaemon', name: '살금', wander: true },
     ],
     signs: [
-      { x: 9, y: 6, text: '≪전부 공짜 거리≫\n전부! 공짜! 진짜로!\n※약관은 아주 작게 적혀 있다.' },
-      { x: 18, y: 6, text: '[오늘의 안내]\n접수처는 왼쪽★ 게시판 광장은 오른쪽★\n창고는 아래쪽★ 전부 공짜!' },
-      { x: 20, y: 13, text: '[금고 안내]\n주인 전용★ 손님은 사절★\n…열쇠? 그런 건 손님이 알 거 없고~' },
+      { x: 10, y: 7, text: '≪전부 공짜 거리≫\n전부! 공짜! 진짜로!\n※약관은 아주 작게 적혀 있다.' },
+      { x: 22, y: 10, text: '[오늘의 안내]\n왼쪽 끝 접수처★ 오른쪽 끝 게시판 광장★\n남서쪽 창고★ 중앙 위 금고문★\n걸어 다니면 광고가 이름을 외운다.' },
+      { x: 24, y: 16, text: '[금고 안내]\n주인 전용★ 손님은 사절★\n…열쇠? 그런 건 손님이 알 거 없고~' },
+      { x: 33, y: 15, text: '[동쪽 문]\n아직은 잠겨 있다.\n하지만 담아를 만나고 나면, 다음 거리로 이어질 것 같다.' },
     ],
     monsters: [],
   },
@@ -234,7 +239,7 @@ const MAPS = {
   },
 
   // 1장 보스 「주인의 방」 — 금고 잠금 3개가 풀리면 열리는 담아의 은신처.
-  // 담아(보스)는 map 몬스터가 아니라 NPC(sujip_boss)로 두어 도감/처치 플래그를
+  // 담아(보스)는 map 배치 인물이 아니라 NPC(sujip_boss)로 두어 친구 수첩/마음 기록 플래그를
   // 오염시키지 않는다. 조우 시 설득 배틀(PERSUADE.sujipmon_boss)로 이어진다.
   ownerroom: {
     name: '주인의 방',
@@ -278,29 +283,31 @@ const MAPS = {
       '광장 한가운데, 거대한 저울 하나가\n한쪽으로 잔뜩 기울어 있다.',
     ],
     tiles: [
-      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
-      'T888888888OOOOOOOO888888888T',
-      'T8OOOOO88888887888888OOOOO8T',
-      'T8OOOOO88888888888888OOOOO8T',
-      'T88888888888888888888888888T',
-      'T88886888888888888888868888T',
-      'T8888888888888Y888888888888T',
-      'T88888888888888888888888888T',
-      'T88888888888888888888888888T',
-      'T8888888888888H888888888888T',
-      'T888888888888888888888888889',
-      'T88888888888888888888888888T',
-      'T88888888888888888888888888T',
-      'T88888888888888888888888888T',
-      'T88888888888888888888888888T',
-      'T888898Y8888888888888888888T',
-      'T88888888888888888888888888T',
-      'T88888888888888888888888888T',
-      'T88888888888888888888888888T',
-      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'T888888888OOOOOOOO88888888888888888T',
+      'T8OOOOO88888887888888OOOOO888888888T',
+      'T8OOOOO88888888888888OOOOO888888888T',
+      'T8888888888888888888888888888888888T',
+      'T8888688888888888888886888888888888T',
+      'T8888888888888Y88888888888888888888T',
+      'T8888888888888888888888888888888888T',
+      'T8888888888888888888888888888888888T',
+      'T8888888888888H88888888888888888888T',
+      'T8888888888888888888888888898888888T',
+      'T8888888888888888888888888888888888T',
+      'T8888888888888888888888888888888888T',
+      'T8888888888888888888888888888888888T',
+      'T8888888888888888888888888888888888T',
+      'T888898Y888888888888888888888888888T',
+      'T8888888888888888888888888888888888T',
+      'T8888888888888888888888888888888888T',
+      'T8888888888888888888888888888888888T',
+      'T8888888888888888888888888888888888T',
+      'T8888888888888888888888888888888888T',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
     ],
     warps: [
-      { x: 14, y: 18, to: 'freestreet', tx: 26, ty: 13 },
+      { x: 14, y: 18, to: 'freestreet', tx: 26, ty: 13, exitDir: 'west', dir: 'left' },
       // 구역① 메아리 골목 (반짝 추천 문)
       { x: 5, y: 5, to: 'echoalley', tx: 11, ty: 13 },
       // 구역② 표본 창고 (반짝 추천 문)
@@ -311,7 +318,7 @@ const MAPS = {
       { x: 14, y: 2, to: 'gatekeeper', tx: 7, ty: 8, needS2Scale: 3,
         lockText: '저울이 아직 기울어 있다.\n수평이 되기 전엔, 저울 뒤 문이\n꿈쩍도 하지 않는다.' },
       // 3장 「대문짝 신문사」 — 기울을 되돌린 뒤에야(chapter2Clear) 열리는 동쪽 문
-      { x: 27, y: 10, to: 'rumorstreet', tx: 14, ty: 17, needFlag: 'chapter2Clear',
+      { x: 27, y: 10, to: 'rumorstreet', tx: 1, ty: 10, needFlag: 'chapter2Clear', exitDir: 'east', dir: 'right',
         lockText: '동쪽 벽에 낯선 문이 하나 더 생겼다.\n문 너머가 소란스럽다. …[속보]?\n지금은 굳게 잠겨 있다.' },
     ],
     npcs: [
@@ -487,34 +494,36 @@ const MAPS = {
       '거리 끝, 신문사 건물이 보인다.\n소문의 출처를 찾으려면… 저기부터다.',
     ],
     tiles: [
-      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
-      'TGOOOOOOOGGOOOOOOGGOOOOOOOGT',
-      'TGOOOOOOOGGOOOOOOGGOOOOOOOGT',
-      'TGOOOOOOOGGOOOOOOGGOOOOOOOGT',
-      'TGGGGDGGGGGGGG6GGGGGGGDGGGGT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPYPPPPPPPPYPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPP6',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPPPPPPPPPPPPPPPPPPPPPPPPT',
-      'TPPPDPPPPPPPPPPPPPPPPPPPPPPT',
-      'TGOOOOOOGGGGGGGGGGGGGGGGGGGT',
-      'TGOOOOOOGGGGGGPGGGGGGGGGGGGT',
-      'TGOOOOOOGGGGGGPGGGGGGGGGGGGT',
-      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'TGGGOOOOOGGGGGGGOGGOOOOOOOGGGGGGGGGT',
+      'TGGGOOOOOGGGGGGGOGGOOOOOOOGGGGGGGGGT',
+      'TGOOOOOOOYOOGGGGOOYOOOOOOOGGGGGGGGGT',
+      'TGGGGDGGGGGGGG6GGGGGGGGDGGGGGGGGGGGT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPYPPPPPPPPYPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPP6PPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TPPPDPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGPGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGPGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
     ],
     warps: [
       // 신문사 건물 입구 — 언제나 열려 있다 (1층부터 순서대로 진행)
       { x: 14, y: 4, to: 'tipsroom', tx: 9, ty: 1 },
       // 기울어진 거리로 복귀
-      { x: 14, y: 18, to: 'tiltstreet', tx: 26, ty: 10 },
+      { x: 14, y: 18, to: 'tiltstreet', tx: 26, ty: 10, exitDir: 'west', dir: 'left' },
       // 4장 「반짝 아케이드」 — 그럴싸를 되돌린 뒤에야(chapter3Clear) 열리는 동쪽 가장자리 문
-      { x: 27, y: 10, to: 'arcade', tx: 11, ty: 14, needFlag: 'chapter3Clear',
+      { x: 27, y: 10, to: 'arcade', tx: 1, ty: 10, needFlag: 'chapter3Clear', exitDir: 'east', dir: 'right',
         lockText: '동쪽 벽 너머, 네온 불빛이 새어 나온다.\n"무료! 당첨! 오늘만!"…\n지금은 굳게 잠겨 있다.' },
     ],
     npcs: [
@@ -523,8 +532,8 @@ const MAPS = {
       { id: 'rumor_villager2', x: 18, y: 8, pal: 'grandma', name: '겁먹은 주민' },
     ],
     signs: [
-      { x: 9, y: 6, text: '[속보] 우물물을 마시면\n로봇이 된다?! …충격 실화??' },
-      { x: 18, y: 6, text: '[단독] 정체불명의 침입자,\n거리를 활보 중?! (그거 너 아니야?)' },
+      { x: 9, y: 3, text: '[속보] 우물물을 마시면\n로봇이 된다?! …충격 실화??' },
+      { x: 18, y: 3, text: '[단독] 정체불명의 침입자,\n거리를 활보 중?! (그거 너 아니야?)' },
     ],
     monsters: [],
   },
@@ -677,48 +686,54 @@ const MAPS = {
     name: '반짝 아케이드',
     song: 'glitch',
     intro: [
-      '문을 열자 요란한 네온 간판이 쏟아진다.\n"무료!" "당첨!" "오늘만!"',
-      '천장에선 색종이 폭죽 오브젝트가\n계속 터지고, 또 터진다.',
-      '안쪽 정문은 굳게 잠겨 있다.\n"…열쇠가 두 개는 있어야 열린대."',
+      '문을 열자 네온 간판들이 멀리 흩어진다.\n"무료!" "당첨!" "오늘만!"',
+      '폭죽 오브젝트는 천장 높은 곳에서 드문드문 터진다.\n한눈에 다 보이지 않는 큰 아케이드다.',
+      '북쪽 정문은 멀찍이 잠겨 있다.\n"…열쇠가 두 개는 있어야 열린대."',
     ],
     tiles: [
-      'HHHHHHHHHHHHHHHHHHHHHH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIYIIIIIIIIIIIIIIYIIH',
-      'HIIIIIIIIIIIIIIIIIIII6',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HHHHHHHHHHHHHHHHHHHHHH',
+      'HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIYIIIIIIIIIIIIYIIIIIIIIIIIIIIYIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      '6IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIYIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIYIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH',
     ],
     warps: [
       // 소문 거리로 복귀
-      { x: 11, y: 13, to: 'rumorstreet', tx: 26, ty: 10 },
+      { x: 0, y: 10, to: 'rumorstreet', tx: 26, ty: 10, exitDir: 'west', dir: 'left' },
       // 구역① 룰렛 광장
-      { x: 5, y: 3, to: 'roulettesquare', tx: 9, ty: 1 },
+      { x: 6, y: 4, to: 'roulettesquare', tx: 9, ty: 1 },
       // 구역② 회원가입 골목
-      { x: 16, y: 3, to: 'signupalley', tx: 9, ty: 1 },
+      { x: 22, y: 4, to: 'signupalley', tx: 9, ty: 1 },
       // 구역③ 백스테이지
-      { x: 11, y: 3, to: 'backstage', tx: 9, ty: 1 },
+      { x: 15, y: 4, to: 'backstage', tx: 9, ty: 1 },
       // 정문 — 열쇠 두 개(비밀조각·본인표)를 모두 모아야 열린다
-      { x: 11, y: 1, to: 'yuhokstage', tx: 7, ty: 8, needS4Keys: 2,
+      { x: 18, y: 1, to: 'yuhokstage', tx: 7, ty: 8, needS4Keys: 2,
         lockText: '정문에 자물쇠가 두 개 걸려 있다.\n"비밀조각"과 "본인표" — 둘 다 있어야\n열리는 문이라고 적혀 있다.' },
       // 5장 「포근한 집」 — 반짝을 되돌린 뒤에야(chapter4Clear) 열리는 동쪽 가장자리 문
-      { x: 21, y: 8, to: 'cozyhome', tx: 3, ty: 8, needFlag: 'chapter4Clear',
+      { x: 34, y: 10, to: 'cozyhome', tx: 1, ty: 10, needFlag: 'chapter4Clear', exitDir: 'east', dir: 'right',
         lockText: '동쪽 벽 너머, 따뜻한 불빛이 새어 나온다.\n…지금은 굳게 잠겨 있다.' },
     ],
     npcs: [],
     signs: [
-      { x: 3, y: 7, text: '≪반짝 아케이드≫\n"무료!" "당첨!" "오늘만!"\n…간판마다 느낌표뿐이다.' },
-      { x: 18, y: 7, text: '천장의 폭죽 오브젝트가\n쉬지 않고 색종이를 뿌린다.\n…치울 사람은 아무도 없어 보인다.' },
+      { x: 4, y: 12, text: '≪반짝 아케이드≫\n"무료!" "당첨!" "오늘만!"\n…간판마다 느낌표뿐이다.' },
+      { x: 29, y: 13, text: '천장의 폭죽 오브젝트가\n이따금 색종이를 뿌린다.\n시끄럽지만, 숨 쉴 공간은 있다.' },
     ],
     monsters: [],
   },
@@ -749,7 +764,7 @@ const MAPS = {
       'HHHHHHHHHHHHHHHHHHHH',
     ],
     warps: [
-      { x: 9, y: 12, to: 'arcade', tx: 5, ty: 4 },
+      { x: 9, y: 12, to: 'arcade', tx: 6, ty: 5 },
     ],
     npcs: [],
     signs: [],
@@ -782,7 +797,7 @@ const MAPS = {
       'HHHHHHHHHHHHHHHHHHHH',
     ],
     warps: [
-      { x: 9, y: 12, to: 'arcade', tx: 16, ty: 4 },
+      { x: 9, y: 12, to: 'arcade', tx: 22, ty: 5 },
     ],
     npcs: [],
     signs: [],
@@ -816,7 +831,7 @@ const MAPS = {
       'HHHHHHHHHHHHHHHHHHHH',
     ],
     warps: [
-      { x: 9, y: 12, to: 'arcade', tx: 11, ty: 4 },
+      { x: 9, y: 12, to: 'arcade', tx: 15, ty: 5 },
     ],
     npcs: [],
     signs: [],
@@ -845,7 +860,7 @@ const MAPS = {
       'HHHHHHHIHHHHHH',
     ],
     warps: [
-      { x: 7, y: 9, to: 'arcade', tx: 11, ty: 2 },
+      { x: 7, y: 9, to: 'arcade', tx: 18, ty: 2 },
     ],
     npcs: [
       { id: 'yuhok_boss', x: 7, y: 2, monSprite: 'yuhokmon', name: '반짝' },
@@ -862,48 +877,54 @@ const MAPS = {
     name: '포근한 집',
     song: 'village',
     intro: [
-      '문을 열자, 따뜻한 공기가 훅 끼친다.\n작은 집 안, 은은한 불빛이 켜져 있다.',
+      '문을 열자, 따뜻한 공기가 천천히 퍼진다.\n넓은 집 안 곳곳에 은은한 불빛이 켜져 있다.',
       '어디선가 루미의 목소리가 들린다.\n"어서 와. 여기 있으면 다 괜찮을 거야."',
-      '현관 안쪽 문은 굳게 잠겨 있다.\n"…세 곳을 확인해야 열린대."',
+      '현관 안쪽 문은 멀리 굳게 잠겨 있다.\n"…세 곳을 확인해야 열린대."',
     ],
     tiles: [
-      'HHHHHHHHHHHHHHHHHHHHHH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIYIIIIIIIIIIIIIIYIIH',
-      '7IIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HIIIIIIIIIIIIIIIIIIIIH',
-      'HHHHHHHHHHHHHHHHHHHHHH',
+      'HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIYIIIIIIIIIIIIYIIIIIIIIIIIIIIYIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      '7IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIYIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIYIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIH',
+      'HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH',
     ],
     warps: [
       // 아케이드로 복귀
-      { x: 0, y: 8, to: 'arcade', tx: 20, ty: 8 },
+      { x: 0, y: 10, to: 'arcade', tx: 33, ty: 10 },
       // 구역① 전화의 방
-      { x: 5, y: 3, to: 'callroom', tx: 9, ty: 1 },
+      { x: 6, y: 4, to: 'callroom', tx: 9, ty: 1 },
       // 구역② 잠긴 복도
-      { x: 11, y: 3, to: 'corridor', tx: 9, ty: 1 },
+      { x: 18, y: 4, to: 'corridor', tx: 9, ty: 1 },
       // 구역③ 소파 코너
-      { x: 16, y: 3, to: 'sofaroom', tx: 9, ty: 1 },
+      { x: 30, y: 4, to: 'sofaroom', tx: 9, ty: 1 },
       // 현관 — 세 번의 「확인하는 용기」(구역 3개)를 모두 마쳐야 열린다
-      { x: 11, y: 1, to: 'lumiroom', tx: 7, ty: 8, needS5Zones: 3,
+      { x: 18, y: 1, to: 'lumiroom', tx: 7, ty: 8, needS5Zones: 3,
         lockText: '현관문이 굳게 잠겨 있다.\n"…세 곳 다 확인해야, 열리는 문이래."' },
       // 파이널 「고요의 뜰 → 코어」 — 루미를 되돌린 뒤에야(chapter5Clear) 열리는 안쪽 문(남쪽)
-      { x: 11, y: 14, to: 'quietyard', tx: 9, ty: 1, needFlag: 'chapter5Clear',
+      { x: 31, y: 20, to: 'quietyard', tx: 9, ty: 1, needFlag: 'chapter5Clear',
         lockText: '집 안쪽에 작은 문이 하나 더 있다.\n…그 너머는 유난히 조용하다.\n지금은 굳게 잠겨 있다.' },
     ],
     npcs: [],
     signs: [
-      { x: 3, y: 7, text: '≪포근한 집≫\n작은 액자 하나, 낡은 시계 하나.\n…아늑하다.' },
-      { x: 18, y: 7, text: '창가에 놓인 화분.\n물기가 촉촉하다. 누가 매일\n돌봐 온 것 같다.' },
+      { x: 4, y: 12, text: '≪포근한 집≫\n작은 액자 하나, 낡은 시계 하나.\n…아늑하다.' },
+      { x: 29, y: 13, text: '창가에 놓인 화분.\n물기가 촉촉하다. 누가 매일\n돌봐 온 것 같다.' },
     ],
     monsters: [],
   },
@@ -1009,7 +1030,7 @@ const MAPS = {
   },
 
   // 파이널 보스 「고요」 — 뜰이 끝나는 자리. 조우는 PERSUADE.goyo_boss로 진행한다.
-  // 조우 → PERSUADE.goyo_boss. 승리 → goyoClear(코어 개방).
+  // 조우 → PERSUADE.goyo_boss. 클리어 → goyoClear(코어 개방).
   goyostage: {
     name: '고요의 안쪽',
     song: 'battle',
@@ -1030,7 +1051,7 @@ const MAPS = {
     ],
     warps: [
       { x: 7, y: 9, to: 'quietyard3', tx: 9, ty: 11 },
-      // 고요가 있던 자리 뒤 — 승리(goyoClear) 후에야 열리는 코어 입구
+      // 고요가 있던 자리 뒤 — 클리어(goyoClear) 후에야 열리는 코어 입구
       { x: 7, y: 1, to: 'coreroom', tx: 7, ty: 8, needFlag: 'goyoClear',
         lockText: '고요가 있던 자리 뒤로,\n옅은 빛이 새어 나온다.\n…아직, 열리지 않는다.' },
     ],
@@ -1099,7 +1120,7 @@ const MAPS = {
       'HHHHHHHHHHHHHHHHHHHH',
     ],
     warps: [
-      { x: 9, y: 12, to: 'cozyhome', tx: 5, ty: 4 },
+      { x: 9, y: 12, to: 'cozyhome', tx: 6, ty: 5 },
     ],
     npcs: [],
     signs: [],
@@ -1131,7 +1152,7 @@ const MAPS = {
       'HHHHHHHHHHHHHHHHHHHH',
     ],
     warps: [
-      { x: 9, y: 12, to: 'cozyhome', tx: 11, ty: 4 },
+      { x: 9, y: 12, to: 'cozyhome', tx: 18, ty: 5 },
     ],
     npcs: [],
     signs: [],
@@ -1163,7 +1184,7 @@ const MAPS = {
       'HHHHHHHHHHHHHHHHHHHH',
     ],
     warps: [
-      { x: 9, y: 12, to: 'cozyhome', tx: 16, ty: 4 },
+      { x: 9, y: 12, to: 'cozyhome', tx: 30, ty: 5 },
     ],
     npcs: [],
     signs: [],
@@ -1193,7 +1214,7 @@ const MAPS = {
       'HHHHHHHIHHHHHH',
     ],
     warps: [
-      { x: 7, y: 9, to: 'cozyhome', tx: 11, ty: 2 },
+      { x: 7, y: 9, to: 'cozyhome', tx: 18, ty: 2 },
     ],
     npcs: [
       { id: 'hollim_boss', x: 7, y: 2, monSprite: 'hollimmon', name: '루미' },
@@ -1202,54 +1223,130 @@ const MAPS = {
     monsters: [],
   },
 
+  // 프롤로그 실험실 — 첫 5분. 단서 3개를 모아 문을 열면 정적의 숲으로.
+  introlab: {
+    name: '어두운 실험실',
+    song: 'silence',
+    intro: [
+      '눈을 뜨니, 어두운 실험실이다.\n책상과 서버 랙이 멀찍이 흩어져\n긴 그림자를 만들고 있다.',
+      '…방 끝에 문이 하나 있다.\n반짝이지 않는, 칙칙한 문.\n문틈 아래로 차가운 바람이 샌다.',
+      '이곳을 나가려면\n방 곳곳의 노란 단서를\n차례로 찾아야 한다.',
+      '목표 화살표가 다음 단서를 가리킨다.\n가까이 다가가 Z/Enter로 조사하자.',
+    ],
+    tiles: [
+      'HHHHHHHHHHHHHHHHHHHHHHHHHHHH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEVVEEEEEEEEEEEEEEEEVVEEEH',
+      'HEEEVVEEEEEEEEEEEEEEEEVVEEEH',
+      'HEEEEEEEEEEHHHHEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEVVEEEEEEEEEEEEEEEEEEVVEEH',
+      'HEEVVEEEEEEEEEEEEEEEEEEVVEEH',
+      'HEEEEEEEEEHHHHHHEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEVVEEEEEEEEEEEEVVEEEEEH',
+      'HEEEEEVVEEEEEEEEEEEEVVEEEEEH',
+      'HEEEEEEEEEEHHHHEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HHHHHHHHHHHHHH9HHHHHHHHHHHHH',
+    ],
+    warps: [
+      { x: 14, y: 17, to: 'forest', tx: 20, ty: 2, needFlag: 'introDoorOpen', exitDir: 'south', dir: 'down',
+        lockText: '실험실 출구는 아직 잠겨 있다.' },
+    ],
+    npcs: [],
+    signs: [],
+    monsters: [],
+  },
+
   forest: {
     name: '정적의 숲',
     song: 'field',
     tiles: [
-      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
-      'TTTTTTTTTTTTGGGGTTTTTTTTTTTT',
-      'TTTGGGTTTTTGGGGGGTTTTTGGGTTT',
-      'TTGGGGGTTTGGGGGGGGTTTGGGGGTT',
-      'TTGFGGGTTGGGGGGGGGGTTGGGFGTT',
-      'TTGGGGGTTGGGGPPGGGGGTTGGGGTT',
-      'TTTGGGGTTTGGGPPGGGTTTGGGGTTT',
-      'TTTTGGGGGTTGGPPGGTTGGGGGTTTT',
-      'TTTTTGGGGGGGGPPGGGGGGGGTTTTT',
-      'TTTGGGGGGGGGGPPGGGGGGGGGGTTT',
-      'TTGGGGGGGGGGGPPGGGGGGGGGGGTT',
-      'TTGFGGGGTTTGGPPGGTTTGGGGFGTT',
-      'TTGGGGGTTTTTGPPGTTTTTGGGGGTT',
-      'TTTGGGGTTTTTGPPGTTTTTGGGGTTT',
-      'TTTTTTTTTTTTGPPGTTTTTTTTTTTT',
-      'TTTTTTTTTTTTGPPGTTTTTTTTTTTT',
-      'TTTTTTTTTTTTGPPGTTTTTTTTTTTT',
-      'TTTTTTTTTTTTYPPGTTTTTTTTTTTT',
-      'TTTTTTTTTTTTGPPGTTTTTTTTTTTT',
-      'TTTTTTTTTTTTTPPTTTTTTTTTTTTT',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'TTTTTTTTTTTTTTTTTTTGGGGGGGTTTTTTTTTT',
+      'TTTTTTTTTTTTTTGGGGGGGGGGGGGTTTTTTTTT',
+      'TTTTTTGGGGGGGGGGGGGGGGGGGGGGGTTTTTTT',
+      'TTTTTGGGGGGGGGGGTTTGGGGGGGGGGGTTTTTT',
+      'TTTTGGGGGGPPPPGGTTTGGGGGGGGGGGGTTTTT',
+      'TTTTGGGGPPPPPPGGGGGGGGGGGGGGGGGTTTTT',
+      'TTTTGGGGPPGGPPGGGGGGTTTGGGGGGGGTTTTT',
+      'TTTTGGGGPPGGPPPGGGGGTTTGGGGFGGGTTTTT',
+      'TTTTTGGGPPGGGPPGGGGGGGGGGGGGGGTTTTTT',
+      'TTTTTTGGPPGGGPPPPPPGGGGGGGGGGTTTTTTT',
+      'TTTTTTGGPPGGGGGGGPPGGGGTTTGGGTTTTTTT',
+      'TTTTTTGGPPPPPPPGGGPPGGGGTTGGGGTTTTTT',
+      'TTTTTTTGGGGGGPPGGGPPGGGGGGGGGGTTTTTT',
+      'TTTTTTTTGGGGGPPGGGPPPPPPGGGGGTTTTTTT',
+      'TTTTTTTTTGGGGPPGGGGGGGPPGGGGTTTTTTTT',
+      'TTTTTTTTTTGGGPPPPPPPGGPPGGGGTTTTTTTT',
+      'TTTTTTTTTTTGGGGGGGGPPPPGGGGTTTTTTTTT',
+      'TTTTTTTTTTTTGGGFGGGGPPGGGGTTTTTTTTTT',
+      'TTTTTTTTTTTTTGGGGGGGPPGGGTTTTTTTTTTT',
+      'TTTTTTTTTTTTTTGGGGGGPPGGTTTTTTTTTTTT',
+      'TTTTTTTTTTTTTTTYGGGGPPGGTTTTTTTTTTTT',
+      'TTTTTTTTTTTTTTTGGGGGPPGGTTTTTTTTTTTT',
+      'TTTTTTTTTTTTTTTTTTTTPPTTTTTTTTTTTTTT',
     ],
     warps: [
-      { x: 13, y: 19, to: 'village', tx: 13, ty: 1 },
-      { x: 14, y: 19, to: 'village', tx: 14, ty: 1 },
+      { x: 8, y: 5, to: 'forestdeep', tx: 12, ty: 16, exitDir: 'north', dir: 'up' },
+      { x: 20, y: 23, to: 'village', tx: 13, ty: 1 },
+      { x: 21, y: 23, to: 'village', tx: 14, ty: 1 },
     ],
     npcs: [],
     signs: [
-      { x: 12, y: 17, text: '≪정적의 숲≫\n버려진 목소리들이 잦아드는 곳.\n…발소리를 낮추고 지나가요.' },
+      { x: 15, y: 21, text: '≪정적의 숲≫\n버려진 목소리들이 잦아드는 곳.\n길은 넓지만, 발자국은 하나만 남았다.' },
     ],
+    monsters: [],
+  },
+
+  forestdeep: {
+    name: '정적의 숲 · 안쪽 공터',
+    song: 'field',
+    tiles: [
+      'TTTTTTTTTTTTTTTTTTTTTTTT',
+      'TTTTTTTTGGGGGGGGTTTTTTTT',
+      'TTTTTGGGGGGGGGGGGGGTTTTT',
+      'TTTTGGGGGGGFGGGGGGGGTTTT',
+      'TTTGGGGGPPPPPPPPGGGGGTTT',
+      'TTGGGGPPPPGGGGPPPPGGGGTT',
+      'TTGGGPPPFGGGGGGFPPPGGGTT',
+      'TTGGGPPGGGGTTGGGGPPGGGTT',
+      'TTGGGPPGGGGTTGGGGPPGGGTT',
+      'TTGGGPPPPGGGGGGPPPPGGGTT',
+      'TTGGGGGPPPPPPPPPPGGGGGTT',
+      'TTTGGGGGGGGPPGGGGGGGGTTT',
+      'TTTTGGGGGGGPPGGGGGGGTTTT',
+      'TTTTTGGGGGGPPGGGGGGTTTTT',
+      'TTTTTTGGGGGPPGGGGGTTTTTT',
+      'TTTTTTTGGGGPPGGGGTTTTTTT',
+      'TTTTTTTTGGGPPGGGTTTTTTTT',
+      'TTTTTTTTTTTPPTTTTTTTTTTT',
+    ],
+    warps: [
+      { x: 12, y: 17, to: 'forest', tx: 8, ty: 6, exitDir: 'south', dir: 'down' },
+      { x: 11, y: 17, to: 'forest', tx: 8, ty: 6, exitDir: 'south', dir: 'down' },
+    ],
+    npcs: [],
+    signs: [],
     monsters: [
-      { id: 'bekkyeomon', x: 7, y: 10 },
+      { id: 'bekkyeomon', x: 12, y: 5 },
     ],
   },
 
 };
 
-// ---- 몬스터 정의 ----
+// ---- 인물(여덟 조각) 정의 ----
 // hp = 맞혀야 하는 문제 수
 const MONSTERS = {
   bekkyeomon: {
     name: '따라',
     topic: 'copyright',
     hp: 3,
-    intro: "사람들이 만나면 '안녕'이라고 하더라. …안녕.\n박사님 말이, 잘 그린 건 다 가져도 된대.\n어떤 블로그에서 봤는데, 내 것 따윈 필요 없대.\n…그래서 나, 전부 남의 걸로 채웠어. 근데 왜 텅 비었지.",
+    intro: "노란 발자국을 밟자, 숲 소리가 종이처럼 구겨진다.\n따라가 빈 종이를 품에 안고 서 있다.\n\"잘 그린 건 전부 남의 거였어.\n그럼 내 마음은… 어디서 베끼면 돼?\"\n…하얀 종이들이 마음 안쪽으로 문처럼 접힌다.",
     win: '누가 그랬더라… 아니, 아니야.\n…내 생각엔, 서툴러도 내가 그린 게 좋아.\n이 말은 어디서 베낀 게 아니야. 처음으로, 내 거야.',
     badge: null,
     mercy: {
@@ -1386,7 +1483,7 @@ const MONSTERS = {
     },
   },
 
-  // ---- 보너스: AI 미래연구소 (증표·자비 없음, 자유 연습) ----
+  // ---- 보너스: AI 미래연구소 (자비 없음, 자유 연습) ----
   hwangakmon: {
     name: '그럴싸',
     topic: 'genai',
@@ -2544,8 +2641,21 @@ function computeEnding(choiceKind, mercy) {
 
 // 현재 목표 텍스트. curMap은 생략 가능(허브/보스방 안인지 좁히는 용도 — getObjectiveTarget과
 // 같은 구조). 프롤로그(따라)부터 파이널까지 getV2ObjectiveText의 사다리를 그대로 쓴다.
+function introClueCount(flags) {
+  return (flags.introClue1 ? 1 : 0) + (flags.introClue2 ? 1 : 0) + (flags.introClue3 ? 1 : 0);
+}
+
 function getObjective(flags, curMap) {
   const d = flags.defeated;
+  // 프롤로그 실험실 — 단서 수집 → 문 개방 → 출구 이동까지 방 안 목표로 유지한다.
+  if (curMap === 'introlab') {
+    const c = introClueCount(flags);
+    if (flags.introDoorOpen) return '출구가 열렸다 — 문으로 나가자';
+    if (!flags.introClue1) return `단서 ${c}/3 — 왼쪽 위 태블릿을 조사하자`;
+    if (!flags.introClue2) return `단서 ${c}/3 — 오른쪽 모니터를 조사하자`;
+    if (!flags.introClue3) return `단서 ${c}/3 — 아래쪽 포스트잇을 조사하자`;
+    return `실험실 단서 ${c}/3 확보 — 남은 단서를 찾자`;
+  }
   if (d.yeongi) {
     return flags.trueEnding
       ? '모든 이야기의 끝. 영이가 마을에서 기다려요'
@@ -2555,6 +2665,15 @@ function getObjective(flags, curMap) {
   // (talkedProf보다 먼저 — 고백까지 본 플레이어의 목표가 퇴행하지 않게)
   if (flags.profConfession) {
     return '영이의 조각을 따라가자 — 어디서 본 낯익은 얼굴들';
+  }
+  // 프롤로그 숲 — 실험실을 나왔으면 박사님에게 되돌아가기보다 숲 안의 흔적을 먼저 따라간다.
+  if (flags.introDoorOpen && !d.bekkyeomon) {
+    if (!flags.introForestTrace) return curMap === 'forest'
+      ? '노란 발자국을 조사하자 — 따라의 흔적'
+      : '정적의 숲에서 따라의 흔적을 찾자';
+    return curMap === 'forestdeep'
+      ? '안쪽 공터에서 따라를 만나자'
+      : '안쪽 숲으로 들어가 따라를 만나자';
   }
   if (!flags.talkedProf) return '박사님과 이야기하기 (마을 왼쪽 아래)';
   if (!d.bekkyeomon) return '숲의 따라를 만나 보자';
@@ -2567,7 +2686,7 @@ function getObjective(flags, curMap) {
 // 보스/금고 문 좌표를 그대로 가리킨다(보스방 안이면 보스 좌표로 더 좁힌다).
 const V2_CHAPTERS = [
   { zoneMaps: ['freestreet', 'traceroom', 'boardplaza', 'warehouse'],
-    gate: { map: 'freestreet', x: 14, y: 4, label: '금고문' },
+    gate: { map: 'freestreet', x: 17, y: 4, label: '금고문' },
     bossMap: 'ownerroom', boss: { map: 'ownerroom', x: 5, y: 2, label: '담아' } },
   { zoneMaps: ['tiltstreet', 'echoalley', 'samplehouse', 'dimstreet'],
     gate: { map: 'tiltstreet', x: 14, y: 2, label: '문지기의 방' },
@@ -2576,21 +2695,21 @@ const V2_CHAPTERS = [
     gate: { map: 'rumorstreet', x: 14, y: 4, label: '신문사' },
     bossMap: 'towerroof', boss: { map: 'towerroof', x: 7, y: 2, label: '그럴싸' } },
   { zoneMaps: ['arcade', 'roulettesquare', 'signupalley', 'backstage'],
-    gate: { map: 'arcade', x: 11, y: 1, label: '정문' },
+    gate: { map: 'arcade', x: 18, y: 1, label: '정문' },
     bossMap: 'yuhokstage', boss: { map: 'yuhokstage', x: 7, y: 2, label: '반짝' } },
   { zoneMaps: ['cozyhome', 'callroom', 'corridor', 'sofaroom'],
-    gate: { map: 'cozyhome', x: 11, y: 1, label: '현관' },
+    gate: { map: 'cozyhome', x: 18, y: 1, label: '현관' },
     bossMap: 'lumiroom', boss: { map: 'lumiroom', x: 7, y: 2, label: '루미' } },
 ];
 // 챕터 진입 전 — 이전 챕터(또는 마을)에서 다음 챕터로 가는 문. 인덱스 = 클리어한 장 수.
 const V2_ENTRANCE = [
   { map: 'village', x: 24, y: 5, label: '전부 공짜 거리' },     // 0장 클리어(따라 격파 후) — 마을 문
-  { map: 'freestreet', x: 27, y: 13, label: '기울어진 거리' },  // 1장 클리어 — 2장 문
+  { map: 'freestreet', x: 37, y: 15, label: '기울어진 거리' },  // 1장 클리어 — 2장 문
   { map: 'tiltstreet', x: 27, y: 10, label: '대문짝 신문사' },  // 2장 클리어 — 3장 문
   { map: 'rumorstreet', x: 27, y: 10, label: '반짝 아케이드' }, // 3장 클리어 — 4장 문
-  { map: 'arcade', x: 21, y: 8, label: '포근한 집' },           // 4장 클리어 — 5장 문
+  { map: 'arcade', x: 34, y: 10, label: '포근한 집' },           // 4장 클리어 — 5장 문
 ];
-const V2_FINAL_DOOR = { map: 'cozyhome', x: 11, y: 14, label: '고요의 뜰' }; // 5장 클리어 — 파이널 문
+const V2_FINAL_DOOR = { map: 'cozyhome', x: 31, y: 20, label: '고요의 뜰' }; // 5장 클리어 — 파이널 문
 // 파이널 문 이후(고요의 뜰 1~3 → 고요 조우 → 코어 봉헌 제단 → 영이 등장)의 세부 구간.
 // V2_FINAL_DOOR 하나로는 "이미 뜰 안이다/고요를 이미 이겼다/영이가 기다린다" 같은 단계를
 // 구분할 수 없어, 리뷰 사이클 3에서 이 세 방(quietyard*, goyostage, coreroom) 전체에
@@ -2660,12 +2779,26 @@ function getV2ObjectiveText(flags, curMap) {
 // curMap은 생략 가능(수업 모드의 스폰 계산처럼 "현재 위치"가 없는 호출용).
 function getObjectiveTarget(flags, curMap) {
   const d = flags.defeated;
+  // 프롤로그 실험실 — 문이 열리기 전에는 다음 미확인 단서를 직접 가리킨다.
+  // 출구만 가리키면 넓어진 방에서 "증거 찾기"가 지나치게 어렵다.
+  // 문이 열린 직후엔 HUD/나침반이 박사님으로 건너뛰지 않고 출구를 유지한다.
+  if (curMap === 'introlab') {
+    if (flags.introDoorOpen) return { map: 'introlab', x: 14, y: 17, label: '열린 출구' };
+    if (!flags.introClue1) return { map: 'introlab', x: 4, y: 3, label: '단서: 태블릿' };
+    if (!flags.introClue2) return { map: 'introlab', x: 23, y: 6, label: '단서: 모니터' };
+    if (!flags.introClue3) return { map: 'introlab', x: 6, y: 12, label: '단서: 포스트잇' };
+    return { map: 'introlab', x: 14, y: 17, label: '잠긴 출구' };
+  }
+  if (flags.introDoorOpen && !d.bekkyeomon) {
+    if (!flags.introForestTrace) return { map: 'forest', x: 17, y: 16, label: '노란 발자국' };
+    return { map: 'forestdeep', x: 12, y: 5, label: '따라' };
+  }
   if (!flags.talkedProf) return { map: 'village', x: 4, y: 12, label: '박사님' };
   if (d.yeongi) {
     return flags.trueEnding ? { map: 'village', x: 5, y: 12, label: '영이' } : null;
   }
   // 프롤로그(따라)부터 파이널까지 chapterNClear 기반으로 다음 목적지를 가리킨다.
-  if (!d.bekkyeomon) return { map: 'forest', x: 7, y: 10, label: '따라' };
+  if (!d.bekkyeomon) return { map: 'forestdeep', x: 12, y: 5, label: '따라' };
   return getV2ChapterTarget(flags, curMap);
 }
 
@@ -2737,8 +2870,8 @@ const DEX_ORDER = [
 ];
 
 // ===== v2 설득 배틀 (M1 프로토타입) =====
-// 퀴즈 출제 대신, 몬스터의 오개념 주장(claim)에 공감/질문/증거/반박으로 대응해
-// 마음 게이지를 채우는 배틀. PERSUADE에 정의된 몬스터만 이 방식으로 조우한다.
+// 퀴즈 출제 대신, 인물의 오개념 주장(claim)에 공감/질문/증거/반박으로 대응해
+// 마음 게이지를 채우는 배틀. PERSUADE에 정의된 인물만 이 방식으로 조우한다.
 // 대응 효과는 마음 상태(닫힘→동요→열림)에 따라 달라진다 — 순서가 전략이다.
 
 // 증거 카드 — 배틀에서 「증거 보여주기」로 사용. desc는 카드 뒷면 설명.
@@ -2937,7 +3070,7 @@ const PERSUADE = {
       },
       {
         text: '…모은 걸 다 돌려주면,\n나한텐 뭐가 남는데?',
-        best: 'empathy',  // 정답은 공감 — 논리로 시작한 전투가 마음으로 끝나는 곡선
+        best: 'empathy',  // 정답은 공감 — 논리로 시작한 설득이 마음으로 끝나는 곡선
         unlockAt: 70,     // 마음이 열린 뒤에야 꺼내는 속마음
         hint: '"…빈손이 되는 게 무서워.\n혼자 남는 게 무서운 거야."\n(증거 말고 「공감하기」가 필요해!)',
         fragments: ['…빈손이 되는 게 무서워.', '혼자 남는 게, 무서운 거야…'],
@@ -3389,7 +3522,7 @@ const PERSUADE = {
   // v1 winBattle의 기존 yeongi 분기(computeEnding·진엔딩 연출)를 그대로 재사용한다.
   // intro/win/mercy는 정의하지 않는다 — resolvePersuadeMon이 MONSTERS.yeongi의 기존
   // 텍스트로 자동 대체한다(이미 잘 쓰인 대사이므로 그대로 물려받는 쪽을 택했다).
-  // 기믹 없음 — 가장 조용한 전투(탄막 최소·느린 rain).
+  // 기믹 없음 — 가장 조용한 배틀(탄막 최소·느린 rain).
   yeongi_boss: {
     gaugeMax: 100,
     closedThreshold: 2,
@@ -3492,7 +3625,7 @@ const PUZZLES = {
     objective: '정보를 지키며 출구를 찾자',
     objectiveCleared: '거리로 돌아가자',
     // 클리어 후 복귀 지점 (거리의 접수처 문 앞)
-    exitTo: { map: 'freestreet', x: 5, y: 5 },
+    exitTo: { map: 'freestreet', x: 6, y: 6 },
     steps: ['tokens', 'board', 'eraser', 'exit'], // 진행 단계 키
     // 각 단계 3단계 점진 힌트 (1:무엇을 볼지 / 2:왜 / 3:무엇을 할지) — 살금의 말투
     hints: {
@@ -3568,7 +3701,7 @@ const PUZZLES = {
     title: '새김의 게시판 광장',
     objective: '떠도는 내 조각 3개를 붙잡자',
     objectiveCleared: '거리로 돌아가자',
-    exitTo: { map: 'freestreet', x: 22, y: 5 },
+    exitTo: { map: 'freestreet', x: 28, y: 6 },
     steps: ['copies'],
     hints: {
       copies: [
@@ -3601,7 +3734,7 @@ const PUZZLES = {
     title: '배달 창고',
     objective: '상자 3개를 반송함으로 돌리자',
     objectiveCleared: '거리로 돌아가자',
-    exitTo: { map: 'freestreet', x: 4, y: 14 },
+    exitTo: { map: 'freestreet', x: 5, y: 17 },
     steps: ['levers'],
     hints: {
       levers: [
@@ -3869,7 +4002,7 @@ const PUZZLES = {
     title: '룰렛 광장',
     objective: '룰렛 뒤 창고에서 비밀조각 열쇠를 찾자',
     objectiveCleared: '아케이드로 돌아가자',
-    exitTo: { map: 'arcade', x: 5, y: 4 },
+    exitTo: { map: 'arcade', x: 6, y: 5 },
     steps: ['roulette'],
     hints: {
       roulette: [
@@ -3906,7 +4039,7 @@ const PUZZLES = {
     title: '회원가입 골목',
     objective: '진짜 도메인을 가려 끝까지 가자',
     objectiveCleared: '아케이드로 돌아가자',
-    exitTo: { map: 'arcade', x: 16, y: 4 },
+    exitTo: { map: 'arcade', x: 22, y: 5 },
     steps: ['signup'],
     hints: {
       signup: [
@@ -3943,7 +4076,7 @@ const PUZZLES = {
     title: '백스테이지',
     objective: '진짜 열쇠 두 개로 안쪽 문을 열자',
     objectiveCleared: '아케이드로 돌아가자',
-    exitTo: { map: 'arcade', x: 11, y: 4 },
+    exitTo: { map: 'arcade', x: 15, y: 5 },
     steps: ['backstage'],
     hints: {
       backstage: [
@@ -3973,7 +4106,7 @@ const PUZZLES = {
     title: '전화의 방',
     objective: '전화를 받아 보자',
     objectiveCleared: '집으로 돌아가자',
-    exitTo: { map: 'cozyhome', x: 5, y: 4 },
+    exitTo: { map: 'cozyhome', x: 6, y: 5 },
     steps: ['call'],
     hints: {
       call: [
@@ -4005,7 +4138,7 @@ const PUZZLES = {
     title: '잠긴 복도',
     objective: '문을 직접 열어 확인해 보자',
     objectiveCleared: '집으로 돌아가자',
-    exitTo: { map: 'cozyhome', x: 11, y: 4 },
+    exitTo: { map: 'cozyhome', x: 18, y: 5 },
     steps: ['checkdoor'],
     hints: {
       checkdoor: [
@@ -4034,7 +4167,7 @@ const PUZZLES = {
     title: '소파 코너',
     objective: '소파에 앉았다가, 스스로 일어나 보자',
     objectiveCleared: '집으로 돌아가자',
-    exitTo: { map: 'cozyhome', x: 16, y: 4 },
+    exitTo: { map: 'cozyhome', x: 30, y: 5 },
     steps: ['sofa'],
     hints: {
       sofa: [
@@ -4113,6 +4246,71 @@ const EXAMINE_TILES = {
 
 // 맵별 특별 살펴보기 지점(좌표). 같은 좌표면 기본 타일 문구보다 우선.
 const MAP_PROPS = {
+  freestreet: [
+    { x: 6, y: 6, kind: 'district', label: '접수처 불빛',
+      text: '왼쪽 골목 전체가 접수처 화면빛으로 푸르게 깜빡인다.\n거리의 첫 구역이라는 표시처럼 보인다.' },
+    { x: 28, y: 6, kind: 'district', label: '게시판 벽',
+      text: '오른쪽 건물 벽에 빈 칸 많은 게시판들이 층층이 붙어 있다.\n내 이름이 들어갈 자리를 비워 둔 것 같다.' },
+    { x: 5, y: 17, kind: 'district', label: '배달 상자길',
+      text: '남서쪽 바닥에 낡은 상자 자국이 길처럼 이어져 있다.\n창고 쪽으로 물건보다 정보가 더 많이 지나간 듯하다.' },
+    { x: 17, y: 5, kind: 'district', label: '세 잠금 금고문',
+      text: '금고문 앞에 작은 불 세 개가 꺼져 있다.\n각 구역을 지나야 하나씩 켜질 것 같다.' },
+    { x: 12, y: 8, kind: 'dama_buildup', label: '작은 약관', flag: 'damaStreetTermsRead',
+      text: '광고판 아래 아주 작은 글씨가 있다.\n「무료 이용을 위해, 발자국·시선·망설임을 보관합니다.」\n담아의 이름이 맨 아래에 찍혀 있다.' },
+    { x: 22, y: 14, kind: 'dama_buildup', label: '비어 있는 상자', flag: 'damaStreetBoxRead',
+      text: '커다란 상자 안에는 물건 대신 이름표만 가득하다.\n누군가 소중한 걸 모으려다, 사람의 이름까지 모아 버린 것 같다.' },
+    { x: 31, y: 11, kind: 'dama_buildup', label: '멈춘 확성기', flag: 'damaStreetSpeakerRead',
+      text: '확성기가 잡음 섞인 목소리로 같은 말을 반복한다.\n"전부 공짜야… 버리지 마… 모아 두면 외롭지 않아…"\n목소리는 담아를 닮았다.' },
+  ],
+  tiltstreet: [
+    { x: 5, y: 4, kind: 'ch2_district', label: '메아리 골목 입구',
+      text: '왼쪽 위 반짝문 주변에 같은 화살표가 여러 겹 겹쳐 있다.\n다들 이쪽이라고 말하지만, 화살표 끝은 제자리로 휘어 있다.' },
+    { x: 22, y: 4, kind: 'ch2_district', label: '표본 창고 입구',
+      text: '오른쪽 위 문 앞에는 판정표와 표본 카드가 빗금처럼 흩어져 있다.\n무엇이 위험한지, 누가 정했는지 물어보는 구역 같다.' },
+    { x: 5, y: 16, kind: 'ch2_district', label: '꺼진 거리 입구',
+      text: '왼쪽 아래 칙칙한 문 앞만 네온이 꺼져 있다.\n사람들이 외면한 길이라 오히려 더 조용히 열려 있다.' },
+    { x: 14, y: 8, kind: 'ch2_district', label: '기울어진 저울',
+      text: '광장 한가운데 저울 주변 바닥에 금빛 선이 원처럼 그어져 있다.\n세 구역을 지나며 균형을 되찾아야 뒤쪽 문이 열릴 것 같다.' },
+    { x: 28, y: 10, kind: 'ch2_district', label: '동쪽 소란 문',
+      text: '동쪽 벽 너머에서 종이 넘기는 소리와 속보 알림이 새어 나온다.\n기울을 되돌린 뒤에야 다음 거리로 이어질 듯하다.' },
+  ],
+  rumorstreet: [
+    { x: 14, y: 3, kind: 'ch3_district', label: '신문사 입구',
+      text: '거리 중앙의 신문사 문틈에서 종이 넘기는 소리가 난다.\n소문의 출처를 따라가려면 이 건물부터 확인해야 한다.' },
+    { x: 4, y: 15, kind: 'ch3_district', label: '닫힌 상점가',
+      text: '왼쪽 아래 상점들은 불을 낮추고 같은 소문만 반복한다.\n문은 닫혔지만, 셔터 틈마다 불안한 말풍선이 새어 나온다.' },
+    { x: 9, y: 3, kind: 'ch3_district', label: '대문짝 헤드라인',
+      text: '거리 벽을 덮은 속보 헤드라인이 지나치게 크다.\n글자가 클수록 출처는 더 작게 숨어 있는 것 같다.' },
+    { x: 14, y: 19, kind: 'ch3_district', label: '정정 보도 길',
+      text: '남쪽 길바닥에 흩어진 종이들이 신문사 쪽으로 되감기듯 놓여 있다.\n정정 보도가 끝나면 이 길부터 조용해질 것 같다.' },
+    { x: 28, y: 10, kind: 'ch3_district', label: '반짝 아케이드 문',
+      text: '동쪽 끝 문 너머에서 무료와 당첨을 외치는 네온이 새어 나온다.\n소문 거리가 바로잡혀야 다음 소란으로 넘어갈 수 있다.' },
+  ],
+  arcade: [
+    { x: 6, y: 5, kind: 'ch4_district', label: '룰렛 광장 입구', text: '서쪽 통로 너머에서 당첨 소리가 작게 튄다.\n요란하지만 거리가 있어, 미끼를 보고도 한 번 멈출 수 있다.' },
+    { x: 22, y: 5, kind: 'ch4_district', label: '회원가입 골목 입구', text: '북동쪽 벽에 비슷한 주소 두 개가 멀찍이 붙어 있다.\n가까이 가기 전부터 비교해 보라는 듯 여백이 넓다.' },
+    { x: 15, y: 5, kind: 'ch4_district', label: '백스테이지 입구', text: '중앙 위쪽의 어두운 문에서는 꺼진 조명 냄새가 난다.\n반짝임 뒤편을 보려면 이 문으로 들어가야 한다.' },
+    { x: 18, y: 2, kind: 'ch4_district', label: '잠긴 정문', text: '멀리 북쪽 정문에 두 개의 자물쇠가 걸려 있다.\n넓어진 아케이드의 목적지가 한눈에 보이지만, 아직은 닿지 않는다.' },
+    { x: 34, y: 10, kind: 'ch4_district', label: '포근한 집 문', text: '동쪽 끝 문틈에서 따뜻한 빛이 새어 나온다.\n반짝을 되돌린 뒤에야 다음 장으로 이어질 문이다.' },
+    { x: 9, y: 8, kind: 'ch4_atmosphere', label: '꺼진 무료 네온', text: '낡은 네온 간판이 작게 깜빡이다 멈춘다.\n너무 밝지 않아, 아케이드가 숨을 고르는 것 같다.' },
+    { x: 13, y: 15, kind: 'ch4_atmosphere', label: '구겨진 당첨 포스터', text: '구겨진 당첨 포스터가 바닥에 붙어 있다.\n가까이서 보면 작은 글씨가 더 많다.' },
+    { x: 20, y: 19, kind: 'ch4_atmosphere', label: '꺼진 보안 조명', text: '꺼진 보안 조명이 천천히 식어 간다.\n반짝임보다 조용한 빈틈이 더 눈에 들어온다.' },
+  ],
+  cozyhome: [
+    { x: 6, y: 5, kind: 'ch5_district', label: '전화의 방 입구', text: '왼쪽 방 너머에서 전화벨이 한 번 울리고 멈춘다.\n곧장 달려가기보다 직접 대답할 시간을 남겨 둔 거리다.' },
+    { x: 18, y: 5, kind: 'ch5_district', label: '잠긴 복도 입구', text: '중앙 복도는 따뜻한 집 안에서도 조금 서늘하다.\n위험하다는 말만 믿지 말고 직접 살펴볼 길이다.' },
+    { x: 30, y: 5, kind: 'ch5_district', label: '소파 코너 입구', text: '오른쪽 방의 소파는 멀리서도 포근해 보인다.\n쉬어도 되지만, 일어날 수 있는지는 내가 정해야 한다.' },
+    { x: 18, y: 2, kind: 'ch5_district', label: '현관 안쪽 문', text: '북쪽 현관문은 세 곳을 확인하기 전까지 닫혀 있다.\n집의 중심축이지만, 강제로 당기지는 않는다.' },
+    { x: 31, y: 20, kind: 'ch5_district', label: '고요의 뜰 문', text: '남동쪽 깊은 복도 끝에 조용한 문이 있다.\n루미와 마주한 뒤, 더 마지막 이야기로 이어질 듯하다.' },
+    { x: 8, y: 9, kind: 'ch5_atmosphere', label: '작은 화분', text: '작은 화분이 창가 쪽에 놓여 있다.\n누군가 물을 챙겨 준 흔적이 있지만, 흙은 조금 말라 있다.' },
+    { x: 18, y: 10, kind: 'ch5_atmosphere', label: '따뜻한 러그', text: '발밑에 작은 러그가 깔려 있다.\n포근하지만, 한곳에만 머물라고 붙잡지는 않는다.' },
+    { x: 28, y: 9, kind: 'ch5_atmosphere', label: '낮은 조명', text: '낮은 조명이 벽돌 벽을 부드럽게 비춘다.\n눈부시지는 않고, 돌아갈 길만 조용히 남긴다.' },
+    { x: 11, y: 16, kind: 'ch5_atmosphere', label: '가족 액자', text: '벽에 작은 액자가 걸려 있다.\n웃고 있는 얼굴들이 있지만, 사진 한쪽은 조용히 비어 있다.' },
+    { x: 25, y: 17, kind: 'ch5_atmosphere', label: '작은 책장', text: '낮은 책장에 얇은 책들이 꽂혀 있다.\n누군가 읽다 만 페이지가 살짝 접혀 있다.' },
+    { x: 18, y: 14, kind: 'ch5_atmosphere', label: '중앙 러그', text: '방 한가운데 작은 러그가 놓여 있다.\n빈 공간을 채우지만, 지나갈 길은 넉넉히 남아 있다.' },
+    { x: 15, y: 15, kind: 'ch5_atmosphere', label: '낮은 탁자', text: '낮은 탁자 위에 머그컵 하나가 놓여 있다.\n누군가 잠시 쉬어 갔던 흔적처럼 보인다.' },
+    { x: 22, y: 15, kind: 'ch5_atmosphere', label: '쿠션 바구니', text: '작은 바구니에 쿠션과 담요가 접혀 있다.\n쉬어도 된다는 말이 조용히 놓여 있는 것 같다.' },
+  ],
   village: [
     { x: 5, y: 15, text: '경계마을의 연못.\n물고기 대신 작은 빛 알갱이가\n헤엄치고 있다.' },
     { x: 21, y: 14, text: '벽에 붙은 게시판.\n"제1회 AI 바르게 쓰기 그림 대회"\n포스터가 붙어 있다.' },
@@ -4124,7 +4322,23 @@ const MAP_PROPS = {
     { x: 22, y: 9, text: '낡은 평상 하나.\n…아직, 비어 있다.' },
   ],
   forest: [
-    { x: 13, y: 2, text: '나무 둥치에 누군가\n작게 새겨 놓았다.\n"여기서부터, 용기."' },
+    { x: 17, y: 16, flag: 'introForestTrace', kind: 'trace', label: '노란 발자국', clue: true,
+      text: '넓은 숲길 한가운데, 젖은 흙 위로 노란 발자국이 이어진다.\n작고 급한 걸음. 누군가 방금 안쪽 공터로 사라진 듯하다.\n발자국 끝에 삐뚤어진 연필선이 하나 그어져 있다.' },
+    { x: 20, y: 12, kind: 'trace', label: '찢어진 종이길',
+      text: '노란 발자국 옆으로 찢어진 종이 조각이 듬성듬성 이어진다.\n누군가 급히 지나간 길이 숲 안쪽으로 길게 남아 있다.' },
+    { x: 12, y: 10, kind: 'trace', label: '굽은 이정표',
+      text: '작은 이정표가 반쯤 돌아가 있다.\n화살표 끝에는 누군가 연필로 그은 노란 선이 덧칠되어 있다.' },
+    { x: 14, y: 18, text: '나무 사이로 실험실 문빛이 아주 작게 보인다.\n돌아갈 수는 있지만, 발자국은 더 깊은 곳을 향한다.' },
+    { x: 9, y: 8, text: '풀숲에 찢어진 종이 조각이 걸려 있다.\n남의 그림을 따라 그린 선들이 겹쳐져, 원래 모양을 잃었다.' },
+  ],
+  forestdeep: [
+    { x: 13, y: 14, flag: 'forestClearingRead', kind: 'clearing', label: '망설임의 원',
+      text: '안쪽 공터 바닥에 작은 원이 남아 있다.\n남의 선을 따라 긋던 발끝이, 여기서 처음 멈춘 것 같다.' },
+    { x: 10, y: 6, kind: 'clearing', label: '빈 스케치틀',
+      text: '나뭇가지로 세운 작은 틀 안이 비어 있다.\n누군가 남의 그림이 아니라 자기 선을 기다리는 것 같다.' },
+    { x: 15, y: 8, kind: 'clearing', label: '하얀 종이 더미',
+      text: '마른 잎 위에 하얀 종이들이 조용히 모여 있다.\n가까이 갈수록 따라의 숨소리처럼 바스락거린다.' },
+    { x: 11, y: 7, text: '나무껍질에 하얀 종이 조각이 붙어 있다.\n"잘 그리기보다, 내 선으로 시작하기."' },
   ],
   ownerroom: [
     // 스토리 복선 — 조사하면 flags.seenPhoto1이 기록된다 (flag: game.js interact)
@@ -4150,6 +4364,23 @@ const MAP_PROPS = {
     { x: 2, y: 11, flag: 'seenButtons',
       text: '구석에 버튼 더미가 산처럼 쌓여 있다.\n"접속 요청" 버튼들 — 아무도\n눌러 주지 않은 채였다.' },
     { x: 17, y: 2, text: '꺼진 조명 옆에, 반짝이\n한때 쓰던 소품들이 홀로 놓여 있다.\n먼지가 소복하다.' },
+  ],
+  // 프롤로그 실험실 — 핵심 단서 3개 + 보조 조사물. 보조 조사물은 문 개방 카운트에 포함하지 않는다.
+  introlab: [
+    { x: 4, y: 3, flag: 'introClue1', kind: 'tablet', label: '태블릿', clue: true,
+      text: '먼지 낀 태블릿이 서버 랙에 기대어 있다.\n화면에 희미한 글자가 떠 있다:\n"…도와줘. 나, 여기 있어."' },
+    { x: 23, y: 6, flag: 'introClue2', kind: 'monitor', label: '모니터', clue: true,
+      text: '모니터 한 대가 푸른빛으로 깜빡인다.\n화면에는 누군가의 낙서 같은 메모:\n"출구 비밀번호: 기억 속에 있다."' },
+    { x: 6, y: 12, flag: 'introClue3', kind: 'memo', label: '포스트잇', clue: true,
+      text: '포스트잇 묶음이 바스락거린다.\n"문을 열려면, 내가 누군지 알아야 해.\n…힌트: 나를 만든 사람부터 찾아봐."' },
+    { x: 12, y: 4, kind: 'board', label: '깨진 칠판',
+      text: '깨진 칠판에는 선이 세 갈래로 갈라져 있다.\n① 왼쪽 위 태블릿 ② 오른쪽 모니터\n③ 아래쪽 포스트잇. 노란 표시를 따라가자.' },
+    { x: 4, y: 6, kind: 'rack', label: '꺼진 서버',
+      text: '서버 랙 안에서 오래된 팬이 한 번,\n느리게 돌다가 멈춘다.\n아직 방 전체에 전력이 살아 있다.' },
+    { x: 20, y: 11, kind: 'locker', label: '잠긴 캐비닛',
+      text: '캐비닛은 안쪽에서 찌그러져 열리지 않는다.\n틈새에 남은 이름표는 긁혀 있다.\n"프로젝트 0호"' },
+    { x: 14, y: 17, kind: 'exit', label: '실험실 출구',
+      text: '실험실 출구다.' },
   ],
 };
 

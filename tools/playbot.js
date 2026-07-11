@@ -77,28 +77,37 @@ function mark(name) {
   markFrames = frames; markTaps = dialogTaps;
 }
 
-// ---- 시나리오: 새 모험 → 프롤로그(따라) → 1장 진입 ----
+// ---- 시나리오: 새 모험 → 실험실 방탈출 → 숲 → 따라 → 마을 → 1장 진입 ----
 step(5);
 tap('z');                       // 슬롯 0 → 이름 입력
-g.nameConfirm = true; step(2);  // 기본 이름 시작 → 인트로(컴퓨터실) + 반디 합류
+g.nameConfirm = true; step(2);  // 기본 이름 시작 → 인트로(실험실) + 반디 합류
 advanceDialog();
-mark('오프닝 (컴퓨터실 낙하 + 반디 합류)');
+mark('오프닝 (실험실에서 눈뜸 + 반디 합류)');
 
-setPos(5, 12, 'left');          // 박사님 (4,12)
-tap('z');
-advanceDialog();
-mark('박사님 첫 대화');
-
-setPos(13, 1, 'up');            // 마을 북쪽 출구로
+// 프롤로그 실험실 — 단서 3개를 모아 문을 연다
+setPos(4, 4, 'up'); tap('z'); advanceDialog();      // 단서① 태블릿
+setPos(22, 6, 'right'); tap('z'); advanceDialog();  // 단서② 모니터
+setPos(6, 13, 'up'); tap('z'); advanceDialog();     // 단서③ 포스트잇
+if (!g.flags.introDoorOpen) throw new Error('실험실 문이 안 열림');
+setPos(14, 16, 'down');
 let warpGuard = 0;
-while (g.map === 'village' && warpGuard++ < 6) hold('ArrowUp', 14); // 숲 워프까지 걷는다
-if (g.map !== 'forest') throw new Error('숲 워프 실패: ' + g.map);
+while (g.map === 'introlab' && warpGuard++ < 6) hold('ArrowDown', 14); // 출구 → 숲
+if (g.map !== 'forest') throw new Error('숲 진입 실패: ' + g.map);
 if (g.mode === 'dialog') advanceDialog();
-setPos(7, 9, 'down');           // 따라 (7,10)
+mark('실험실 방탈출 (단서 3개 → 출구)');
+
+// 정적의 숲 — 흔적을 따라 안쪽 공터로
+setPos(17, 16, 'left'); tap('z'); advanceDialog();  // 노란 발자국(흔적)
+setPos(8, 6, 'up');
+warpGuard = 0;
+while (g.map === 'forest' && warpGuard++ < 6) hold('ArrowUp', 14);   // 안쪽 공터
+if (g.map !== 'forestdeep') throw new Error('안쪽 공터 진입 실패: ' + g.map);
+if (g.mode === 'dialog') advanceDialog();
+setPos(12, 4, 'down');          // 따라 (12,5)
 tap('z');
-advanceDialog();                // 조우 대사 (+ 첫 배틀이면 조작 안내)
+advanceDialog();                // 첫 조우 연출 + 조작 안내 → 배틀
 if (g.mode !== 'battle') throw new Error('따라 배틀 시작 실패: ' + g.mode);
-mark('숲 이동 + 따라 조우 대사 → 첫 배틀 시작');
+mark('숲 추적 + 따라 조우 대사 → 첫 배틀 시작');
 const firstBattleTaps = dialogTaps;
 
 // 마음 조각 배틀 — 서툰 회피(입력 없음)로 파도를 흘려보내고, 문만 정확히 고른다
@@ -134,15 +143,19 @@ crudeWin();
 if (g.mode === 'battle') crudeWin(); // 물러났으면 같은 자리에서 재도전
 mark('따라 마음 조각 배틀 (승리·마무리 대사)');
 
-// 마을로 복귀 → 전부 공짜 거리 입구
-setPos(13, 18, 'down');
-warpGuard = 0;
-while (g.map === 'forest' && warpGuard++ < 6) hold('ArrowDown', 14); // 숲 → 마을
+// 마을로 이동 → 박사 첫 대화 → 전부 공짜 거리 입구
+// (숲 남쪽 출구 경로는 걷기 좌표가 길어 계측 왜곡이 커서, 맵 점프로 대체 — 대화 탭만 계측)
+g.dialog = null; g.mode = 'world'; g.map = 'village';
+setPos(5, 12, 'left');          // 박사님 (4,12)
+tap('z');
+advanceDialog();
+mark('마을 — 박사님 첫 대화');
+
 setPos(24, 6, 'up');
 warpGuard = 0;
 while (g.map === 'village' && warpGuard++ < 6) hold('ArrowUp', 14); // 반짝이는 문 → 전부 공짜 거리
 if (g.mode === 'dialog') advanceDialog();
-mark('마을 복귀 + 1장 「전부 공짜 거리」 진입');
+mark('1장 「전부 공짜 거리」 진입');
 
 // ---- 리포트 ----
 console.log('\n===== 플레이테스트 봇 리포트 (v3 최속 주행) =====');
