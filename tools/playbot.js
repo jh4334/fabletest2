@@ -65,6 +65,25 @@ function advanceDialog(max = 200) {
   for (let i = 0; i < max && g.mode === 'dialog'; i++) { tap('z'); dialogTaps += 1; }
   if (g.mode === 'dialog') throw new Error('대화가 끝나지 않음');
 }
+function pickChoice(idx) {
+  if (g.mode !== 'choice') throw new Error('선택 모드가 아님: ' + g.mode);
+  let guard = 0;
+  while (g.choice.cursor !== idx) { tap('ArrowDown'); if (guard++ > 20) throw new Error('선택 커서 이동 실패'); }
+  tap('z');
+}
+function enterZone(x, y, key, expectMap) {
+  const dirOf = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  setPos(x, y, dirOf[key]);
+  let guard = 0;
+  const from = g.map;
+  while (g.map === from && guard++ < 6) hold(key, 14);
+  if (g.map !== expectMap) {
+    throw new Error(expectMap + ' 진입 실패: map=' + g.map + ' mode=' + g.mode +
+      ' pos=(' + g.player.x + ',' + g.player.y + ')' +
+      (g.dialog ? ' dialog=' + JSON.stringify(g.dialog.lines[0]).slice(0, 60) : ''));
+  }
+  if (g.mode === 'dialog') advanceDialog(); // 첫 방문 인트로 포함 계측
+}
 function setPos(x, y, dir) {
   g.player.x = x; g.player.y = y; g.player.px = x * 48; g.player.py = y * 48;
   g.player.dir = dir || 'down'; g.player.moving = false;
@@ -157,14 +176,87 @@ while (g.map === 'village' && warpGuard++ < 6) hold('ArrowUp', 14); // 반짝이
 if (g.mode === 'dialog') advanceDialog();
 mark('1장 「전부 공짜 거리」 진입');
 
+// ── 1장 구역① 살금의 접수처 — 정보를 하나도 내주지 않고 일반 출구로 (최선 플레이) ──
+enterZone(6, 6, 'ArrowUp', 'traceroom');
+setPos(3, 11, 'up'); tap('z');          // 일반 출구
+pickChoice(0); advanceDialog();          // 닉네임만 주고 나간다 → 클리어
+if (!g.flags.evCards.includes('ev_minimal')) throw new Error('접수처 보상 카드 없음');
+mark('1장 구역① 접수처 (무제공 클리어)');
+
+// ── 1장 구역② 게시판 광장 — 떠도는 사본 3개 회수 ──
+enterZone(28, 6, 'ArrowUp', 'boardplaza');
+for (let i = 0; i < 3; i++) {
+  const c = g.puzzleRun.copies.find((cc) => !cc.got);
+  g.player.px = c.px; g.player.py = c.py;
+  g.player.x = Math.round(c.px / 48); g.player.y = Math.round(c.py / 48);
+  step(1);
+  if (g.mode === 'dialog') advanceDialog();
+}
+if (!g.flags.evCards.includes('ev_footprint')) throw new Error('광장 보상 카드 없음');
+mark('1장 구역② 게시판 광장 (사본 3 회수)');
+
+// ── 1장 구역③ 배달 창고 — 차단 레버 정답 순서 ──
+enterZone(5, 17, 'ArrowDown', 'warehouse');
+setPos(11, 10, 'up'); tap('z'); pickChoice(0); advanceDialog(); // 1호 → 달
+setPos(6, 10, 'up'); tap('z'); pickChoice(0); advanceDialog();  // 2호 → 별
+setPos(16, 10, 'up'); tap('z'); pickChoice(0); advanceDialog(); // 3호 → 나비 → 클리어
+if (!g.flags.evCards.includes('ev_consent')) throw new Error('창고 보상 카드 없음');
+mark('1장 구역③ 배달 창고 (레버 3)');
+
+// ── 금고 개방 → 담아 설득 배틀 ──
+enterZone(17, 5, 'ArrowUp', 'ownerroom');
+setPos(5, 3, 'up'); tap('z');
+advanceDialog();
+if (g.mode !== 'battle') throw new Error('담아 배틀 시작 실패: ' + g.mode);
+crudeWin();
+if (g.mode === 'battle') crudeWin();
+if (!g.flags.chapter1Clear) throw new Error('1장 클리어 실패');
+mark('1장 보스 「담아」 설득 배틀');
+
+// ── 2장 진입 → 구역① 메아리 골목 (다른 목소리 3) ──
+enterZone(36, 15, 'ArrowRight', 'tiltstreet');
+enterZone(5, 6, 'ArrowUp', 'echoalley');
+setPos(5, 4, 'up'); tap('z'); advanceDialog();
+setPos(11, 4, 'up'); tap('z'); advanceDialog();
+setPos(17, 4, 'up'); tap('z'); advanceDialog();   // 3번째 → 클리어
+if (!g.flags.evCards.includes('ev_othervoice')) throw new Error('메아리 골목 보상 없음');
+mark('2장 구역① 메아리 골목 (목소리 3)');
+
+// ── 2장 구역② 표본 창고 (반례 3 + 판독기 3) ──
+enterZone(22, 6, 'ArrowUp', 'samplehouse');
+setPos(4, 4, 'up'); tap('z'); advanceDialog();
+setPos(11, 4, 'up'); tap('z'); advanceDialog();
+setPos(18, 4, 'up'); tap('z'); advanceDialog();
+for (let i = 0; i < 3; i++) { setPos(11, 9, 'up'); tap('z'); pickChoice(0); advanceDialog(); }
+if (!g.flags.evCards.includes('ev_scale')) throw new Error('표본 창고 보상 없음');
+mark('2장 구역② 표본 창고 (반례 3 + 판독 3)');
+
+// ── 2장 구역③ 꺼진 거리 (램프 3) ──
+enterZone(5, 16, 'ArrowUp', 'dimstreet');
+setPos(8, 12, 'up'); tap('z'); advanceDialog();
+setPos(11, 10, 'up'); tap('z'); advanceDialog();
+setPos(14, 12, 'up'); tap('z'); advanceDialog();  // 3번째 → 클리어
+if (!g.flags.evCards.includes('ev_mypath')) throw new Error('꺼진 거리 보상 없음');
+mark('2장 구역③ 꺼진 거리 (램프 3)');
+
+// ── 저울 0/3 → 기울 설득 배틀 ──
+enterZone(14, 3, 'ArrowUp', 'gatekeeper');
+setPos(7, 3, 'up'); tap('z');
+advanceDialog();
+if (g.mode !== 'battle') throw new Error('기울 배틀 시작 실패: ' + g.mode);
+crudeWin();
+if (g.mode === 'battle') crudeWin();
+if (!g.flags.chapter2Clear) throw new Error('2장 클리어 실패');
+mark('2장 보스 「기울」 설득 배틀');
+
 // ---- 리포트 ----
 console.log('\n===== 플레이테스트 봇 리포트 (v3 최속 주행) =====');
 console.table(report);
 console.log(`첫 배틀 시작까지 대화 탭: ${firstBattleTaps}탭 (상자당 2탭 ≈ ${Math.round(firstBattleTaps / 2)}상자)`);
 console.log(`누계: ${frames}프레임 ≈ ${(frames / 60).toFixed(1)}초(최속 하한) · 대화 탭 ${dialogTaps}회`);
-console.log(`도달 상태: map=${g.map}, 따라 되돌림=${g.flags.defeated.bekkyeomon}, 반디 합류=${g.flags.bandiJoined}`);
-if (g.map !== 'freestreet' || !g.flags.defeated.bekkyeomon) {
-  console.error('✘ 봇이 1장 입구까지 도달하지 못했습니다');
+console.log(`도달 상태: map=${g.map}, 1장=${g.flags.chapter1Clear}, 2장=${g.flags.chapter2Clear}, 반디=${g.flags.bandiJoined}`);
+if (!g.flags.chapter1Clear || !g.flags.chapter2Clear) {
+  console.error('✘ 봇이 2장 클리어까지 도달하지 못했습니다');
   process.exit(1);
 }
-console.log('✔ 프롤로그 → 1장 진입 경로 정상');
+console.log('✔ 프롤로그 → 1장 → 2장 클리어 경로 정상');
