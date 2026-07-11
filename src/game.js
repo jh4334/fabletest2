@@ -7813,6 +7813,8 @@
       icon: (label) => {
         if (/화분/.test(label)) return { text: '♧', bg: '#213025', fg: '#9fe0a0' };
         if (/러그/.test(label)) return { text: '▤', bg: '#3a241d', fg: '#ffd08a' };
+        if (/탁자/.test(label)) return { text: '▣', bg: '#3a2a20', fg: '#ffd6a8' };
+        if (/바구니/.test(label)) return { text: '◡', bg: '#2d241f', fg: '#ffe0b0' };
         if (/액자/.test(label)) return { text: '▢', bg: '#2d241f', fg: '#ffd0a0' };
         if (/책장/.test(label)) return { text: '▥', bg: '#2c241a', fg: '#d8b078' };
         return { text: '▪', bg: '#3a2a20', fg: '#ffe0a8' };
