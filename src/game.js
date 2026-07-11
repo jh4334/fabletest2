@@ -7749,14 +7749,18 @@
       const sy = Math.round(prop.y * TS - cy);
       if (sx < -40 || sx > LW + 40 || sy < -40 || sy > LH + 40) continue;
       const icon = palette.icon(prop.label || '');
-      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.42 : 0.62;
+      const w = icon.w || TS - 24;
+      const h = icon.h || TS - 24;
+      const ox = icon.ox ?? Math.round((TS - w) / 2);
+      const oy = icon.oy ?? 16;
+      ctx.globalAlpha = icon.alpha || (game.lowGraphics || game.reduceFx ? 0.42 : 0.62);
       ctx.fillStyle = icon.bg;
-      ctx.fillRect(sx + 12, sy + 16, TS - 24, TS - 24);
+      ctx.fillRect(sx + ox, sy + oy, w, h);
       ctx.strokeStyle = icon.fg;
-      ctx.strokeRect(sx + 12.5, sy + 16.5, TS - 25, TS - 25);
-      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.60 : 0.78;
+      ctx.strokeRect(sx + ox + 0.5, sy + oy + 0.5, w - 1, h - 1);
+      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.72 : 0.84;
       ctx.fillStyle = icon.fg;
-      ctx.fillText(icon.text, sx + TS / 2, sy + 30);
+      ctx.fillText(icon.text, sx + ox + w / 2, sy + oy + Math.min(h - 4, 14));
     }
     ctx.textAlign = 'left';
     ctx.restore();
@@ -7812,9 +7816,10 @@
     drawHubAtmosphereProps('cozyhome', 'ch5_atmosphere', cx, cy, {
       icon: (label) => {
         if (/화분/.test(label)) return { text: '♧', bg: '#213025', fg: '#9fe0a0' };
+        if (/중앙 러그/.test(label)) return { text: '▤', bg: '#5a3428', fg: '#ffd08a', w: 56, h: 22, ox: -12, oy: 22, alpha: 0.58 };
         if (/러그/.test(label)) return { text: '▤', bg: '#3a241d', fg: '#ffd08a' };
-        if (/탁자/.test(label)) return { text: '▣', bg: '#3a2a20', fg: '#ffd6a8' };
-        if (/바구니/.test(label)) return { text: '◡', bg: '#2d241f', fg: '#ffe0b0' };
+        if (/탁자/.test(label)) return { text: '▣', bg: '#4a3324', fg: '#ffd6a8', w: 28, h: 22, ox: 2, oy: 15, alpha: 0.56 };
+        if (/바구니/.test(label)) return { text: '◡', bg: '#3d2d24', fg: '#ffe0b0', w: 28, h: 22, ox: 2, oy: 15, alpha: 0.54 };
         if (/액자/.test(label)) return { text: '▢', bg: '#2d241f', fg: '#ffd0a0' };
         if (/책장/.test(label)) return { text: '▥', bg: '#2c241a', fg: '#d8b078' };
         return { text: '▪', bg: '#3a2a20', fg: '#ffe0a8' };
