@@ -3396,21 +3396,6 @@
   }
 
   // ---------- 월드 ----------
-  function tryMove(dir) {
-    const p = game.player;
-    p.dir = dir;
-    const dx = dir === 'left' ? -1 : dir === 'right' ? 1 : 0;
-    const dy = dir === 'up' ? -1 : dir === 'down' ? 1 : 0;
-    const nx = p.x + dx, ny = p.y + dy;
-    const ch = tileAt(game.map, nx, ny);
-    if (SOLID(ch) || npcAt(game.map, nx, ny) || monsterAt(game.map, nx, ny) || friendAt(game.map, nx, ny) ||
-        (game.puzzleRun && puzzleObjAt(game.map, nx, ny))) {
-      return;
-    }
-    p.x = nx; p.y = ny;
-    p.moving = true;
-  }
-
   function facingTile() {
     const p = game.player;
     const dx = p.dir === 'left' ? -1 : p.dir === 'right' ? 1 : 0;
@@ -3865,7 +3850,40 @@
     save();
   }
 
-  const MOVE_SPEED = TS / 9; // 프레임당 픽셀
+  const MOVE_SPEED = TS / 7; // 프레임당 픽셀 (한 칸 7프레임 — M-1a 속도 상향)
+
+  // M-1a 이동감 — 방향키 신선도(누른 지 몇 프레임째인지)를 기록한다.
+  // 값이 작을수록 최근에 눌린 키: 대각선 조합의 우선축·탭 방향전환 판정에 쓴다.
+  const DIR_KEYS = ['up', 'down', 'left', 'right'];
+  const DIR_DX = { left: -1, right: 1, up: 0, down: 0 };
+  const DIR_DY = { up: -1, down: 1, left: 0, right: 0 };
+  const dirHeldFrames = { up: 0, down: 0, left: 0, right: 0 };
+  const isHorizontalDir = (d) => d === 'left' || d === 'right';
+  function walkableTile(nx, ny) {
+    return !(SOLID(tileAt(game.map, nx, ny)) || npcAt(game.map, nx, ny) ||
+      monsterAt(game.map, nx, ny) || friendAt(game.map, nx, ny) ||
+      (game.puzzleRun && puzzleObjAt(game.map, nx, ny)));
+  }
+  // 대각선 포함 이동 — 주 방향(dir)을 바라보고, 보조 방향(perp)이 있으면 함께 간다.
+  // 대각선이 막히면 열린 축으로 미끄러진다 (벽 슬라이드).
+  function tryMoveCombo(dir, perp) {
+    const p = game.player;
+    p.dir = dir;
+    let dx = DIR_DX[dir] + (perp ? DIR_DX[perp] : 0);
+    let dy = DIR_DY[dir] + (perp ? DIR_DY[perp] : 0);
+    if (dx && dy) {
+      // 대각선: 목적 칸과 양옆 칸이 모두 열려 있어야 한다 (모서리 끼임 방지)
+      if (!(walkableTile(p.x + dx, p.y + dy) && walkableTile(p.x + dx, p.y) && walkableTile(p.x, p.y + dy))) {
+        if (walkableTile(p.x + DIR_DX[dir], p.y + DIR_DY[dir])) { dx = DIR_DX[dir]; dy = DIR_DY[dir]; }
+        else if (perp && walkableTile(p.x + DIR_DX[perp], p.y + DIR_DY[perp])) { dx = DIR_DX[perp]; dy = DIR_DY[perp]; p.dir = perp; }
+        else return;
+      }
+    } else if (!walkableTile(p.x + dx, p.y + dy)) {
+      return;
+    }
+    p.x += dx; p.y += dy;
+    p.moving = true;
+  }
 
   // 박사 고백 이벤트 — chapter3Clear 후 경계마을 진입 시 1회 자동 발생.
   // 프로젝트 0호(영이) 이야기를 고백한다. 복선 플래그(seenPhoto1/2, seenArticle)를
@@ -3924,17 +3942,20 @@
       }
     }
 
-    // 픽셀 보간 이동
+    // 방향키 신선도 갱신 — 최근에 눌린 방향(작은 값)이 우선
+    for (const d of DIR_KEYS) dirHeldFrames[d] = held.has(d) ? dirHeldFrames[d] + 1 : 0;
+
+    // 픽셀 보간 이동 — 도착 프레임에는 아래 입력 처리로 곧장 이어져
+    // 다음 칸 이동/방향 전환이 한 프레임도 끊기지 않는다 (M-1a 입력 버퍼)
     const tx = p.x * TS, ty = p.y * TS;
     if (p.px !== tx || p.py !== ty) {
       p.px += Math.sign(tx - p.px) * Math.min(MOVE_SPEED, Math.abs(tx - p.px));
       p.py += Math.sign(ty - p.py) * Math.min(MOVE_SPEED, Math.abs(ty - p.py));
       p.step += 1;
-      if (p.px === tx && p.py === ty) {
-        p.moving = false;
-        checkWarp();
-      }
-      return;
+      if (p.px !== tx || p.py !== ty) return;
+      p.moving = false;
+      checkWarp();
+      if (game.mode !== 'world' || game.dialog) return;
     }
 
     if (justPressed('menu')) {
@@ -3952,10 +3973,14 @@
       return;
     }
 
-    if (held.has('up')) tryMove('up');
-    else if (held.has('down')) tryMove('down');
-    else if (held.has('left')) tryMove('left');
-    else if (held.has('right')) tryMove('right');
+    const active = DIR_KEYS.filter((d) => held.has(d))
+      .sort((a, b) => dirHeldFrames[a] - dirHeldFrames[b]);
+    if (!active.length) return;
+    const dir = active[0];
+    // 탭 = 제자리 방향 전환: 막 누른 다른 방향은 3프레임 동안 몸만 돌린다
+    if (dir !== p.dir && dirHeldFrames[dir] <= 3 && !p.moving) { p.dir = dir; return; }
+    const perp = active.find((d) => isHorizontalDir(d) !== isHorizontalDir(dir));
+    tryMoveCombo(dir, perp);
   }
 
   // ---------- 배틀 ----------
