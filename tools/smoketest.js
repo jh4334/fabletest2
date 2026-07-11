@@ -2500,7 +2500,7 @@ g.battle.pState = 'open';
 answerClaim(true); // 정답 문 통과(ev_answer 소지) → 다음 파도(open) 진입
 // (advanceReact의 탭이 파도 1프레임을 진행시키므로 30/60에서 1씩 깎인 값으로 확인)
 check('첫 open 파도 — 탄막 예고 1회(darkWarned + darkWarnT)', g.battle.darkWarned === true &&
-  g.battle.wave.darkWarnT === 29 && g.battle.wave.spawnTimer === 59);
+  g.battle.wave.darkWarnT === 29 && g.battle.wave.spawnTimer === 79); // 30+숨고르기20+어둠30-1
 // 게이지 만충 → 마음의 선택 → 자비 → 승리
 g.battle.gauge = g.battle.gaugeMax; step(1); // 게이지 만충 → 내 턴 + spareReady
 check('게이지 만충 → 내 턴 + spareReady', g.battle.phase === 'menu' && g.battle.spareReady === true);
@@ -2884,6 +2884,27 @@ console.log('[116] N-3 조사 플레이버 — 모든 것을 조사할 수 있�
   tap('z'); advanceDialog();
   check('정체 공개 후 — 반디 한마디 없음', !g.notice.text || !/안 비치네/.test(g.notice.text));
   g.flags.bandiRevealed = false;
+}
+
+console.log('[117] N-4 기억의 별 — 조사하면 저장 + 결심 플레이버');
+{
+  g.dialog = null; g.mode = 'world'; g.map = 'village'; g.flags.profConfession = true;
+  const st = MAPS.village.star;
+  check('마을 기억의 별 존재', !!st && typeof st.text === 'string');
+  setPos(st.x, st.y + 1, 'up');
+  tap('z');
+  check('별 조사 — 결심 플레이버 대화', g.mode === 'dialog' && /단단하게 한다/.test(g.dialog.lines[0]));
+  check('별 조사 — 저장 말풍선', !!g.notice && /저장되었다/.test(g.notice.text));
+  advanceDialog();
+  check('허브 6곳 모두 별 보유', ['village','freestreet','tiltstreet','rumorstreet','arcade','cozyhome']
+    .every((m2) => !!MAPS[m2].star));
+}
+
+console.log('[118] N-5 공격 예고 — 프로필 announce가 상대 턴 시작에 흐른다');
+{
+  check('8프로필 모두 announce 보유', ['bekkyeomon','sujipmon_boss','pyeonhyang_boss','hwangak_boss',
+    'yuhok_boss','hollim_boss','goyo_boss','yeongi_boss'].every((k) => PERSUADE[k].announce.length >= 2));
+  check('announce는 * 내레이션 문법', PERSUADE.bekkyeomon.announce.every((a) => /^\* /.test(a)));
 }
 
 console.log('[115] N-2 보스별 전용 테마 — 프로필 song이 실제 SONGS에 존재');

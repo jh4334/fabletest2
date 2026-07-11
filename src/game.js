@@ -3730,6 +3730,15 @@
         return;
       }
     }
+    // 기억의 별 (N-4) — 조사하면 여기까지의 이야기가 마음에 새겨지고, 저장된다
+    const star = MAPS[game.map].star;
+    if (star && star.x === f.x && star.y === f.y) {
+      save();
+      Sound.unlock();
+      game.notice = { text: '✦ 기억의 별이 반짝였다 — 이야기가 저장되었다.', t: 240 };
+      startDialog(['* (따뜻한 빛이 손끝에 닿는다.)\n' + star.text]);
+      return;
+    }
     // N-3 「모든 것을 조사할 수 있다」 — 맵별 조사 플레이버 (한 줄 관찰 + 마른 유머)
     const flavor = (MAPS[game.map].flavors || []).find((v) => v.x === f.x && v.y === f.y);
     if (flavor) {
@@ -4876,6 +4885,11 @@
       // 번갈아 스폰된다. 잡은 [진] 개수(caught)는 파도가 바뀌어도 이어진다(최대 3).
       truth: { obj: null, caught: b.truthCaught || 0, spawnTimer: 60, nextKind: 'real' },
     };
+    // 공격 예고 (N-5) — 상대 턴 시작 플레이버 + 20프레임 숨 고르기
+    if (b.p.announce && b.p.announce.length) {
+      pushFloat(b.p.announce[b.turnCount % b.p.announce.length]);
+    }
+    b.wave.spawnTimer += 20;
     // 고요(보스) open 페이즈 고유 기믹 — 어둠 속, 하트 주변만 보인다. 배틀 전체에서 딱 한 번,
     // 첫 open 파도에서 탄막이 나오기 전 스폰 위치를 잠깐 깜빡여 예고한다(darkWarnT).
     if (b.p.openMechanic === 'dark' && b.pState === 'open' && !b.darkWarned) {
@@ -8065,6 +8079,23 @@
         ctx.font = 'bold 18px monospace';
         ctx.fillText('!', Math.round(mo.x * TS - cx) + TS / 2 - 3, Math.round(mo.y * TS - cy) - 10 + bob);
       }
+    }
+
+    // 기억의 별 (N-4) — 반짝이는 저장 의식 지점
+    if (m.star) {
+      const sx = Math.round(m.star.x * TS - cx) + TS / 2;
+      const sy = Math.round(m.star.y * TS - cy) + TS / 2;
+      const tw = 0.5 + 0.5 * Math.sin(game.time / 14);
+      ctx.textAlign = 'center';
+      if (!game.reduceFx) {
+        ctx.fillStyle = `rgba(255,244,180,${(0.28 * tw).toFixed(2)})`;
+        ctx.font = 'bold 30px monospace';
+        ctx.fillText('✦', sx, sy + 9);
+      }
+      ctx.fillStyle = `rgba(255,214,68,${(0.6 + 0.4 * tw).toFixed(2)})`;
+      ctx.font = 'bold 20px monospace';
+      ctx.fillText('✦', sx, sy + 7);
+      ctx.textAlign = 'left';
     }
 
     // 플레이어
