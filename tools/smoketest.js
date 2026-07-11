@@ -210,36 +210,55 @@ check('마을 북쪽 출구 → 숲 남쪽 입구/위쪽 바라봄', g.lastWarp 
 check('반디의 한 줄 조언 (비차단 말풍선)', g.mode === 'world' && !!g.notice && /반디/.test(g.notice.text));
 check('조언은 맵당 1회 기록', g.flags.bandiSaid.forest === true);
 
-// ---------- v2 「마음 조각 배틀」(행동 설득) 도우미 ----------
-// 테스트에선 하트(soul) 좌표를 직접 설정해 조각/문 접촉을 재현한다.
-function grabFragment() { // 파도에서 속마음 조각 ✦을 하나 줍는다
+// ---------- 「마음 조각 배틀」(M-2 턴제 설득 대화) 도우미 ----------
+// [내 턴 메뉴] ↔ [상대 턴 탄막]을 오간다. 테스트에선 하트(soul) 좌표를 직접 설정해
+// 조각 접촉을 재현하고, 메뉴는 menuIdx/subIdx를 직접 놓고 Z로 고른다.
+function battleMenuPick(idx) { // 내 턴 메뉴 (0말걸기 1증거 2듣기 3안아주기)
   const b = g.battle;
-  if (b.phase !== 'wave') throw new Error('파도 단계가 아님: ' + b.phase);
+  if (b.phase !== 'menu') throw new Error('내 턴(menu)이 아님: ' + b.phase);
+  b.menuIdx = idx;
+  tap('z');
+}
+function advanceReact() { // 상대 반응 대사를 넘긴다 (react → wave 또는 menu)
+  const b = g.battle;
+  if (b.phase !== 'react') throw new Error('react가 아님: ' + b.phase);
+  tap('z');
+}
+function startListen() { // 가만히 듣기 → 상대 턴(속마음 조각 ✦이 있는 wave)
+  battleMenuPick(2);
+  advanceReact();
+  if (g.battle.phase !== 'wave') throw new Error('듣기 턴 진입 실패: ' + g.battle.phase);
+}
+function grabFragment() { // 듣기 턴(wave)에서 속마음 조각 ✦을 하나 줍는다
+  const b = g.battle;
+  if (b.phase !== 'wave') throw new Error('상대 턴(wave)이 아님: ' + b.phase);
   if (!b.wave.fragments.length) throw new Error('주울 조각이 없음');
   const f = b.wave.fragments[0];
   b.arena.bullets.length = 0; b.arena.inv = 0; // 피격 방지
   b.arena.soul.x = f.x; b.arena.soul.y = f.y;
   step(1);
 }
-function forceGates() { // 파도를 시간 만료로 끝내 문(gates)으로 (무피격 보너스는 배제)
+function forceMenu() { // 상대 턴을 시간 만료로 끝내 내 턴(menu)으로 (무피격 보너스 배제)
   const b = g.battle;
-  if (b.phase === 'gates') return;
-  if (b.phase !== 'wave') throw new Error('파도 단계가 아님: ' + b.phase);
-  b.arena.bullets.length = 0; b.wave.fragments.length = 0;
+  if (b.phase === 'menu') return;
+  if (b.phase === 'react') { advanceReact(); if (b.phase === 'menu') return; }
+  if (b.phase !== 'wave') throw new Error('상대 턴(wave)이 아님: ' + b.phase);
+  b.arena.bullets.length = 0; b.wave.fragments.length = 0; b.wave.fragTotal = 0;
   b.wave.hits = 1;               // +6 무피격 보너스 방지 (게이지 예측 유지)
   b.wave.t = b.wave.dur;         // 시간 만료
   step(1);
-  if (b.phase !== 'gates') throw new Error('문 단계 진입 실패: ' + b.phase);
+  if (b.phase !== 'menu') throw new Error('내 턴 진입 실패: ' + b.phase);
 }
-function enterDoor(wantCorrect) { // 원하는(정답/오답) 열린 문으로 하트를 넣는다
+function answerClaim(wantCorrect) { // 말 걸기에서 정답/오답 응답을 고른다 → 상대 턴으로
   const b = g.battle;
-  if (b.phase !== 'gates') throw new Error('문 단계가 아님: ' + b.phase);
-  const d = b.gates.doors.find((x) => !!x.correct === wantCorrect && !x.locked);
-  if (!d) throw new Error('원하는 문을 찾지 못함');
-  b.arena.bullets.length = 0; b.arena.inv = 0;
-  b.arena.soul.x = d.x + d.w / 2; b.arena.soul.y = d.y + d.h / 2;
-  step(1);
-  return d;
+  forceMenu();
+  battleMenuPick(0);
+  if (b.phase !== 'sub') throw new Error('말 걸기 하위 선택 실패(닫힘?): ' + b.phase);
+  const i = b.sub.options.findIndex((o) => !!o.correct === wantCorrect && !o.locked);
+  if (i < 0) throw new Error('원하는 응답이 없음');
+  b.subIdx = i;
+  tap('z');       // 판정 → react (게이지 변화는 이 시점에 적용)
+  advanceReact(); // → wave (게이지 만충이면 menu)
 }
 
 console.log('[5] 마음 조각 배틀 — 조각 수집·닫힘→동요·탈진(기억) (따라=베껴몬)');
@@ -253,8 +272,19 @@ check('마음 조각 배틀 시작', g.mode === 'battle' && g.battle.monId === '
 check('표시 이름은 따라(displayName)', g.battle.mon.name === '따라');
 check('첫 설득 배틀은 프롤로그 튜토리얼 표지 표시', g.battle.prologueTutorial === true);
 check('증거 카드 4장 지급', g.flags.evCards.length === 4);
-check('닫힘·게이지0·파도에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'wave');
+check('닫힘·게이지0·내 턴(menu)에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'menu');
 check('하트 4개(고학년 기본)', g.battle.maxHearts === 4);
+// 닫힘 상태에선 말이 닿지 않는다 — 말 걸기가 반응 대사로 막힌다
+battleMenuPick(0);
+check('닫힘 — 말 걸기가 막힘(react)', g.battle.phase === 'react' && /닫혀/.test(g.battle.react.text));
+advanceReact();
+check('막힌 말 걸기도 상대 턴은 온다(조각 없음)', g.battle.phase === 'wave' && g.battle.wave.fragTotal === 0);
+forceMenu();
+// 가만히 듣기 — 주장 대사(react) 후 조각이 있는 상대 턴
+battleMenuPick(2);
+check('듣기 — 상대의 주장이 반응 대사로 나온다', g.battle.phase === 'react' && /따라:/.test(g.battle.react.text));
+advanceReact();
+check('듣기 턴 — 조각 3개 스폰', g.battle.phase === 'wave' && g.battle.wave.fragTotal === 3);
 grabFragment(); // 조각 1
 check('조각 수집: 게이지 +2 + 플로팅 텍스트', g.battle.gauge === 2 &&
   (g.battle.floatActive !== null || g.battle.floatQ.length > 0));
@@ -273,33 +303,37 @@ check('베껴몬 아직 남아있음', g.flags.defeated.bekkyeomon === false);
 check('상대가 이야기를 절반 기억(게이지 반·동요)', g.flags.persuadeMemory.bekkyeomon.gauge === 2 &&
   g.flags.persuadeMemory.bekkyeomon.state === 'shaken');
 
-console.log('[6] 마음 조각 배틀 — 문 판정(정답/오답/타임아웃)·승리 (따라)');
+console.log('[6] 마음 조각 배틀 — 응답 판정(정답/오답)·안아 주기·승리 (따라)');
 tap('z'); // 같은 자리에서 재도전
 advanceDialog();
 check('재도전 — 지난 이야기를 기억함', g.mode === 'battle' && g.battle.gauge === 2 && g.battle.pState === 'shaken');
-// 정답 문 (동요: +26) — claim0의 정답 카드 ev_maker 소지
-forceGates();
-check('동요에선 문이 열려 있음', g.battle.gates.doors.some((d) => !d.locked));
-g.battle.playerHp = g.battle.maxHearts - 2; // HP 회복 검증용으로 최대치보다 낮춰둔다
-enterDoor(true);
-check('정답 문 통과 (+26)', g.battle.gauge === 28 && g.flags.pStats.gateRight === 1 && g.battle.phase === 'wave');
-check('정답 문 통과 시 HP +1 회복(최대치 이하일 때)', g.battle.playerHp === g.battle.maxHearts - 1);
+check('재도전도 내 턴에서 시작', g.battle.phase === 'menu');
+// 동요 상태 — 말 걸기 하위 선택이 열린다 (claim0 정답 카드 ev_maker 소지 → 잠금 없음)
+battleMenuPick(0);
+check('동요에선 말 걸기가 열림 (선택지 3)', g.battle.phase === 'sub' && g.battle.sub.options.length === 3 &&
+  g.battle.sub.options.some((o) => o.correct && !o.locked));
+{ // 정답 응답 (동요: +26)
+  const b = g.battle;
+  b.playerHp = b.maxHearts - 2; // HP 회복 검증용으로 최대치보다 낮춰둔다
+  b.subIdx = b.sub.options.findIndex((o) => o.correct);
+  tap('z');
+}
+check('정답 응답 → 반응 대사(okLine)', g.battle.phase === 'react');
+check('정답 응답 (+26)', g.battle.gauge === 28 && g.flags.pStats.gateRight === 1);
+check('정답 응답 시 HP +1 회복(최대치 이하일 때)', g.battle.playerHp === g.battle.maxHearts - 1);
 g.battle.playerHp = g.battle.maxHearts; // 이후 흐름에 영향 없도록 원복
-// 오답 문 (-6, 다음 파도 강화)
-forceGates();
-enterDoor(false);
-// 오답 → 게이지 -6 + 다음 파도 강화(pIntense는 이어진 enterWave에서 소비되어 rateMul<1로 반영)
-check('오답 문 (-6·역효과·다음 파도 강화)', g.battle.gauge === 22 && g.flags.pStats.gateWrong === 1 &&
+advanceReact();
+check('반응 대사 후 상대 턴(탄막)', g.battle.phase === 'wave');
+// 오답 응답 (-6, 다음 탄막 턴 강화)
+answerClaim(false);
+// 오답 → 게이지 -6 + 다음 탄막 강화(pIntense는 이어진 enterWave에서 소비되어 rateMul<1로 반영)
+check('오답 응답 (-6·역효과·다음 턴 강화)', g.battle.gauge === 22 && g.flags.pStats.gateWrong === 1 &&
   g.flags.pStats.backfire === 1 && g.battle.arena.rateMul === 0.75);
-// 타임아웃 (변화 없음) — 하트를 문 밖(상자 중앙)에 두고 시간만 흘린다
-forceGates();
-{ const bx = g.battle.arena.box;
-  g.battle.arena.soul.x = bx.x + bx.w / 2; g.battle.arena.soul.y = bx.y + bx.h / 2; }
-g.battle.gates.t = g.battle.gates.timeLimit; step(1);
-check('타임아웃 → 변화 없이 파도 재개', g.battle.gauge === 22 && g.flags.pStats.gateTimeout === 1 && g.battle.phase === 'wave');
-// 게이지 만충 → 자비 → 승리
+// 게이지 만충 → 이름이 노래지고(spareReady) 「마음 안아 주기」로만 끝난다
 g.battle.gauge = g.battle.gaugeMax; step(1);
-check('게이지 만충 → 마음의 선택', g.battle.phase === 'mercy');
+check('게이지 만충 → 상대 턴 종료 + 내 턴 복귀(spareReady)', g.battle.phase === 'menu' && g.battle.spareReady === true);
+battleMenuPick(3); // 마음 안아 주기
+check('안아 주기 → 마음의 선택', g.battle.phase === 'mercy');
 while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답', g.battle.phase === 'mercyReply');
 tap('z');
@@ -311,8 +345,8 @@ check('프롤로그 마무리 컷신 완료 플래그', g.flags.prologueClosed =
 check('프롤로그 마무리 후 1장 거리 입구로 자연 진입', g.map === 'freestreet' && g.player.x === 18 && g.player.y === 21 && g.player.dir === 'up');
 check('1장 목표가 바로 거리 탐험으로 이어짐', windowObj.__test.currentObjective() === '금고문으로 — 구역을 돌자');
 check('기억은 승리 후 지워짐', !g.flags.persuadeMemory.bekkyeomon);
-check('설득 로그 누적(문·조각)', g.flags.pStats.gateRight === 1 && g.flags.pStats.gateWrong === 1 &&
-  g.flags.pStats.gateTimeout === 1 && g.flags.pStats.fragments === 2);
+check('설득 로그 누적(응답·조각)', g.flags.pStats.gateRight === 1 && g.flags.pStats.gateWrong === 1 &&
+  g.flags.pStats.fragments === 2);
 
 console.log('[21] 진엔딩 플래그 → 마을의 영이 등장');
 {
@@ -1394,12 +1428,13 @@ setPos(5, 3, 'up'); tap('z'); // 담아(5,2)에게 말 걸기
 check('보스 조우 대화 시작', g.mode === 'dialog');
 check('콜백 인트로(토큰 3+)가 조우에 반영', /여기 다 있어/.test(g.dialog.lines[0]));
 advanceDialog();
-check('담아(수집몬 보스) 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'wave');
+check('담아(수집몬 보스) 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'menu');
 check('스프라이트/도감 id는 sujipmon', g.battle.monId === 'sujipmon');
 check('설득 프로필 id는 sujipmon_boss', g.battle.persuadeId === 'sujipmon_boss');
 check('표시 이름은 담아(persuadeId 계층)', g.battle.mon.name === '담아');
 check('게이지 최대 110(난이도 곡선 1단계)', g.battle.gaugeMax === 110);
 check('조우 카드 미지급(보상으로만 획득)', (g.flags.evCards || []).length === 0);
+check('프로필 관찰 대사(*)가 내 턴에 표시', /^\* 담아/.test(TH.battleObserve()));
 
 // ── unlockAt: 감정 주장은 게이지 70 이상에서만 순환 풀에 등장 ──
 g.battle.gauge = 60;
@@ -1407,35 +1442,55 @@ check('게이지 70 미만 — 감정 주장 순환 제외', !TH.persuadeAvail()
 g.battle.gauge = 75;
 check('게이지 70 이상 — 감정 주장 순환 등장', TH.persuadeAvail().some((t) => /돌려주면/.test(t)));
 
-// ── closed: 문 전부 잠김 (조각만 수집 가능) ──
+// ── closed: 말이 닿지 않는다 (듣기부터) ──
 g.battle.pState = 'closed'; g.battle.gauge = 0; g.battle.claimIdx = 0;
-forceGates();
-check('닫힘 페이즈 — 문 3개 전부 잠김', g.battle.gates.doors.length === 3 && g.battle.gates.doors.every((d) => d.locked));
-g.battle.gates.t = g.battle.gates.timeLimit; step(1); // 타임아웃으로 파도 복귀
-check('닫힘 문 타임아웃 → 파도 재개', g.battle.phase === 'wave');
+battleMenuPick(0);
+check('닫힘 — 말 걸기가 반응 대사로 막힘', g.battle.phase === 'react' && /닫혀/.test(g.battle.react.text));
+advanceReact();
+check('막힌 뒤에도 상대 턴은 온다', g.battle.phase === 'wave');
 
-// ── best='rebut'(동의 범위 되묻기): 열림 정답 문 +32 ──
+// ── best='rebut'(동의 범위 되묻기): 열림 정답 응답 +32 ──
 g.battle.pState = 'open'; g.battle.gauge = 55; g.battle.claimIdx = 2;
 check('현재 주장 = 동의 범위(best=rebut)', /동의한 거/.test(TH.persuadeAvail()[g.battle.claimIdx % TH.persuadeAvail().length]));
-forceGates();
-enterDoor(true);
-check('열림 정답 문 큰 폭 (+32)', g.battle.gauge === 87 && g.flags.pStats.gateRight === 1);
+answerClaim(true);
+check('열림 정답 응답 큰 폭 (+32)', g.battle.gauge === 87 && g.flags.pStats.gateRight === 1);
 
-// ── best='empathy'(감정 주장): 열림 정답 문 +32 ──
+// ── best='empathy'(감정 주장): 열림 정답 응답 +32 ──
 g.battle.pState = 'open'; g.battle.gauge = 70; g.battle.claimIdx = 3;
 check('현재 주장 = 감정 주장(best=empathy)', /돌려주면/.test(TH.persuadeAvail()[g.battle.claimIdx % TH.persuadeAvail().length]));
-forceGates();
-enterDoor(true);
-check('열림 감정 정답 문 (+32)', g.battle.gauge === 102 && g.flags.pStats.gateRight === 2);
+answerClaim(true);
+check('열림 감정 정답 응답 (+32)', g.battle.gauge === 102 && g.flags.pStats.gateRight === 2);
 
-// ── 미소지 카드 문은 자물쇠 (claim0 = ev_minimal 카드, 보스는 미소지) ──
+// ── best 주장에 증거 카드를 들이밀면 역효과 + 안내(revealNote) ──
+// (claim3은 unlockAt 70 — 게이지 75로 순환에 올린 상태에서 확인)
+g.battle.pState = 'open'; g.battle.gauge = 75; g.battle.claimIdx = 3;
+g.flags.evCards = ['ev_maker'];
+forceMenu();
+battleMenuPick(1);
+check('증거 하위 선택 열림', g.battle.phase === 'sub' && g.battle.sub.kind === 'evidence');
+tap('z'); // 카드 제시 → best 주장이라 역효과
+check('best 주장에 카드 → 역효과 + 공감 안내', g.battle.phase === 'react' && /공감하기/.test(g.battle.react.text) &&
+  g.battle.gauge === 69);
+advanceReact();
+g.flags.evCards = [];
+
+// ── 미소지 카드의 정답 응답은 자물쇠 (claim0 = ev_minimal 카드, 보스는 미소지) ──
 g.battle.pState = 'open'; g.battle.gauge = 60; g.battle.claimIdx = 0;
-forceGates();
-const cardDoor = g.battle.gates.doors.find((d) => d.correct);
-check('미소지 카드의 정답 문은 자물쇠', cardDoor.card === 'ev_minimal' && cardDoor.locked === true);
-check('오답 문은 열림 상태에서 선택 가능', g.battle.gates.doors.some((d) => !d.correct && !d.locked));
-enterDoor(false); // 오답으로 판정 → 파도 복귀
-check('오답 문 판정 → 파도 재개', g.battle.phase === 'wave' && g.flags.pStats.gateWrong === 1);
+forceMenu();
+battleMenuPick(0);
+{
+  const opts = g.battle.sub.options;
+  const cardOpt = opts.find((o) => o.correct);
+  check('미소지 카드의 정답 응답은 자물쇠', cardOpt.lockCard === 'ev_minimal' && cardOpt.locked === true);
+  check('오답 응답은 선택 가능', opts.some((o) => !o.correct && !o.locked));
+  g.battle.subIdx = opts.indexOf(cardOpt);
+  tap('z'); // 잠긴 응답 → 카드 안내 후 내 턴 유지 (턴 소모 없음)
+}
+check('잠긴 응답 → 카드 안내 반응', g.battle.phase === 'react' && /카드를 모아/.test(g.battle.react.text));
+advanceReact();
+check('잠긴 응답은 턴을 소모하지 않음(내 턴 복귀)', g.battle.phase === 'menu');
+answerClaim(false); // 오답으로 판정 → 상대 턴 복귀
+check('오답 응답 판정 → 상대 턴 재개', g.battle.phase === 'wave' && g.flags.pStats.gateWrong === 2);
 
 // ── open 고유 기믹: 담아 「정보 꾸러미」 운반 (+10, 3회면 만충 직전) ──
 g.battle.pState = 'open'; g.battle.gauge = 90;
@@ -1449,8 +1504,10 @@ arena.soul.x = pc.hole.x; arena.soul.y = pc.hole.y; step(1); // 돌려주기 구
 check('배달 3회 → 게이지 +10 및 만충 직전(≥108, gaugeMax 110-2)', pc.deliveries === 3 && g.battle.gauge >= 108);
 
 // ── 승리 → chapter1Clear + 마을 복귀 ──
-g.battle.gauge = g.battle.gaugeMax; step(1); // 게이지 만충 → 마음의 선택
-check('게이지 만충 → 마음의 선택', g.battle.phase === 'mercy');
+g.battle.gauge = g.battle.gaugeMax; step(1); // 게이지 만충 → 내 턴 + spareReady
+check('게이지 만충 → 내 턴 + 이름 노랗게(spareReady)', g.battle.phase === 'menu' && g.battle.spareReady === true);
+battleMenuPick(3); // 마음 안아 주기
+check('안아 주기 → 마음의 선택', g.battle.phase === 'mercy');
 while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); // 자비 선택 → 응답
 check('자비 응답 단계', g.battle.phase === 'mercyReply');
@@ -1461,7 +1518,7 @@ check('1장 클리어 플래그', g.flags.chapter1Clear === true);
 check('보스 승리 후 금고 앞(거리) 복귀', g.map === 'freestreet' && g.player.x === 17 && g.player.y === 5);
 check('라이브러리 수집몬 처치 플래그 오염 없음', g.flags.defeated.sujipmon === false);
 check('보스는 도감 순서에 없음', !DEX_ORDER.includes('sujipmon_boss'));
-check('보스 설득 로그 기록', g.flags.pStats.gateRight === 2 && g.flags.pStats.gateWrong === 1 && g.flags.pStats.gateTimeout === 1);
+check('보스 설득 로그 기록', g.flags.pStats.gateRight === 2 && g.flags.pStats.gateWrong >= 2);
 
 console.log('[70] 수업 모드 — 「1장 — 전부 공짜 거리」 특별 항목');
 g.dialog = null; g.mode = 'world';
@@ -1596,7 +1653,7 @@ setPos(7, 3, 'up'); tap('z');
 check('보스 조우 대화 시작', g.mode === 'dialog');
 check('콜백 인트로(자비)가 조우에 반영', g.dialog.lines.some((l) => /이상한/.test(l)));
 advanceDialog();
-check('기울 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'wave');
+check('기울 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'menu');
 check('스프라이트/도감 id는 pyeonhyangmon', g.battle.monId === 'pyeonhyangmon');
 check('설득 프로필 id는 pyeonhyang_boss', g.battle.persuadeId === 'pyeonhyang_boss');
 check('표시 이름은 기울(persuadeId 계층)', g.battle.mon.name === '기울');
@@ -1605,8 +1662,7 @@ check('게이지 최대 115(난이도 곡선 2단계)', g.battle.gaugeMax === 11
 // 시작 게이지를 40으로 낮춰 둔다 — gaugeMax가 115로 줄어, 옛 55 기준(+32+10×3=117)이면
 // 3회째 배달 전에 이미 만충(≥gaugeMax)에 닿아 조기 승리(persuadeTriumph)가 터진다.
 g.battle.pState = 'open'; g.battle.gauge = 40; g.battle.claimIdx = 0;
-forceGates();
-enterDoor(true);
+answerClaim(true);
 check('열림 정답 문 통과 (+32)', g.battle.gauge === 72 && g.flags.pStats.gateRight >= 1);
 
 // ── open 고유 기믹: 기울 「기울어지는 상자」 — 기울기 드리프트 + 반례 구슬 운반 ──
@@ -1650,8 +1706,10 @@ arenaT.soul.x = tl.plate.x; arenaT.soul.y = tl.plate.y; step(1); // 배달
 check('배달 3회 → drift 0 및 게이지 만충 직전(≥113, gaugeMax 115-2)', tl.deliveries === 3 && tl.drift === 0 && g.battle.gauge >= 113);
 
 // 게이지 만충 → 자비 → 승리
-g.battle.gauge = g.battle.gaugeMax; step(1);
-check('게이지 만충 → 마음의 선택', g.battle.phase === 'mercy');
+g.battle.gauge = g.battle.gaugeMax; step(1); // 게이지 만충 → 내 턴 + spareReady
+check('게이지 만충 → 내 턴 + spareReady', g.battle.phase === 'menu' && g.battle.spareReady === true);
+battleMenuPick(3); // 마음 안아 주기
+check('안아 주기 → 마음의 선택', g.battle.phase === 'mercy');
 while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z');
@@ -1836,16 +1894,15 @@ setPos(7, 3, 'up'); tap('z');
 check('보스 조우 대화 시작', g.mode === 'dialog');
 check('콜백 인트로(자비)가 조우에 반영', g.dialog.lines.some((l) => /확률 밖의 애/.test(l)));
 advanceDialog();
-check('그럴싸 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'wave');
+check('그럴싸 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'menu');
 check('스프라이트/도감 id는 hwangakmon', g.battle.monId === 'hwangakmon');
 check('설득 프로필 id는 hwangak_boss', g.battle.persuadeId === 'hwangak_boss');
 check('표시 이름은 그럴싸(persuadeId 계층)', g.battle.mon.name === '그럴싸');
 check('게이지 최대 120', g.battle.gaugeMax === 120);
-check('닫힘·게이지0·파도에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'wave');
+check('닫힘·게이지0·내 턴에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'menu');
 // 닫힘 상태에선 문이 전부 잠겨 있다 — 동요로 전환 후 문 판정을 확인한다 (전환 메커니즘 자체는 다른 테스트에서 검증됨)
 g.battle.pState = 'shaken'; g.battle.claimIdx = 0;
-forceGates();
-enterDoor(true);
+answerClaim(true);
 check('정답 문 통과 (+26)', g.battle.gauge === 26 && g.flags.pStats.gateRight >= 1 && g.battle.phase === 'wave');
 check('이미 최대 HP면 정답 문 통과해도 초과 회복 없음', g.battle.playerHp === g.battle.maxHearts);
 
@@ -1883,8 +1940,10 @@ g.battle.gauge = 50;
 step(1);
 check('3번째 [진] 접촉 → truthCaught 3 + gaugeMax-2로 보너스', g.battle.truthCaught === 3 && g.battle.gauge === g.battle.gaugeMax - 2);
 
-g.battle.gauge = g.battle.gaugeMax; step(1);
-check('게이지 만충 → 마음의 선택', g.battle.phase === 'mercy');
+g.battle.gauge = g.battle.gaugeMax; step(1); // 게이지 만충 → 내 턴 + spareReady
+check('게이지 만충 → 내 턴 + spareReady', g.battle.phase === 'menu' && g.battle.spareReady === true);
+battleMenuPick(3); // 마음 안아 주기
+check('안아 주기 → 마음의 선택', g.battle.phase === 'mercy');
 while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z');
@@ -2083,12 +2142,12 @@ setPos(7, 3, 'up'); tap('z');
 check('보스 조우 대화 시작', g.mode === 'dialog');
 check('콜백 인트로(자비)가 조우에 반영', g.dialog.lines.some((l) => /이상한 애 출현/.test(l)));
 advanceDialog();
-check('반짝 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'wave');
+check('반짝 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'menu');
 check('스프라이트/도감 id는 yuhokmon', g.battle.monId === 'yuhokmon');
 check('설득 프로필 id는 yuhok_boss', g.battle.persuadeId === 'yuhok_boss');
 check('표시 이름은 반짝(persuadeId 계층)', g.battle.mon.name === '반짝');
 check('게이지 최대 125(난이도 곡선 4단계)', g.battle.gaugeMax === 125);
-check('닫힘·게이지0·파도에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'wave');
+check('닫힘·게이지0·내 턴에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'menu');
 // 반짝 주장 4종 — 텍스트/패턴/카드/best 확인
 check('주장① 텍스트/카드(ev_free)', g.battle.p.claims[0].text.includes('공짜가 세상에서 제일 좋은 거야') &&
   g.battle.p.claims[0].counters.includes('ev_free'));
@@ -2108,6 +2167,8 @@ check('증거 카드 제목이 실제 EVIDENCE_CARDS와 일치', EVIDENCE_CARDS.
 // openMechanic 'tempt' — open 페이즈 중 반짝이는 보상 아이템: 접촉=피해+광고 얼룩(역효과),
 // 240프레임 버티면 소멸+게이지+10+조명 하나 꺼짐(b.temptResisted, 파도-간 영속)
 g.battle.pState = 'open';
+startListen(); // 상대 턴(wave) 진입 — 기믹은 탄막 턴에서만 돈다
+g.battle.wave.fragments.length = 0; g.battle.wave.fragTotal = 0; // 조각 오수집 방지
 step(61); // tempt.spawnTimer(60) 경과 → 아이템 스폰
 check('반짝 아이템 스폰(openMechanic tempt)', !!g.battle.wave.tempt.obj);
 const temptHpBefore = g.battle.playerHp;
@@ -2135,11 +2196,12 @@ check('240프레임 버팀 → 소멸+게이지+10+조명 하나 꺼짐(temptRes
 // (tempt 버팀 보상 +10이 이미 게이지에 반영돼 있으므로, 그 위에 정답 문 통과分 +26이 더해진다)
 const gaugeBeforeGate = g.battle.gauge;
 g.battle.pState = 'shaken'; g.battle.claimIdx = 0;
-forceGates();
-enterDoor(true);
+answerClaim(true);
 check('정답 문 통과 (+26)', g.battle.gauge === gaugeBeforeGate + 26 && g.battle.phase === 'wave');
-g.battle.gauge = g.battle.gaugeMax; step(1);
-check('게이지 만충 → 마음의 선택', g.battle.phase === 'mercy');
+g.battle.gauge = g.battle.gaugeMax; step(1); // 게이지 만충 → 내 턴 + spareReady
+check('게이지 만충 → 내 턴 + spareReady', g.battle.phase === 'menu' && g.battle.spareReady === true);
+battleMenuPick(3); // 마음 안아 주기
+check('안아 주기 → 마음의 선택', g.battle.phase === 'mercy');
 while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z');
@@ -2267,12 +2329,12 @@ setPos(7, 3, 'up'); tap('z');
 check('보스 조우 대화 시작', g.mode === 'dialog');
 check('콜백 인트로(자비)가 조우에 반영', g.dialog.lines.some((l) => /관객이 아니라/.test(l)));
 advanceDialog();
-check('루미 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'wave');
+check('루미 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'menu');
 check('스프라이트/도감 id는 hollimmon', g.battle.monId === 'hollimmon');
 check('설득 프로필 id는 hollim_boss', g.battle.persuadeId === 'hollim_boss');
 check('표시 이름은 루미(persuadeId 계층)', g.battle.mon.name === '루미');
 check('게이지 최대 130(난이도 곡선 5단계)', g.battle.gaugeMax === 130);
-check('닫힘·게이지0·파도에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'wave');
+check('닫힘·게이지0·내 턴에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'menu');
 // 루미 주장 4종 — 텍스트/패턴/카드/best 확인
 check('주장① 텍스트/카드(ev_answer)', g.battle.p.claims[0].text.includes('내가 다 해 줄게') &&
   g.battle.p.claims[0].counters.includes('ev_answer'));
@@ -2293,37 +2355,37 @@ check('증거 카드 제목이 실제 EVIDENCE_CARDS와 일치', EVIDENCE_CARDS.
 // (b.shrinkLevel, 최소 200×120), 정답 문을 통과하면 한 단계 회복된다. 파도 넘어 영속(누적) 확인.
 g.battle.pState = 'open';
 check('초기 상자 크기(320×180, shrinkLevel 0)', g.battle.arena.box.w === 320 && g.battle.arena.box.h === 180);
-forceGates();
-enterDoor(false); // 오답 — 상자 한 단계 축소
+answerClaim(false); // 오답 — 상자 한 단계 축소
 check('오답 1회 → 축소 1단계(296×168)', g.battle.shrinkLevel === 1 &&
   g.battle.arena.box.w === 296 && g.battle.arena.box.h === 168);
-forceGates();
-enterDoor(false); // 오답 — 상자 한 단계 더 축소(파도 넘어 영속 확인)
+answerClaim(false); // 오답 — 상자 한 단계 더 축소(파도 넘어 영속 확인)
 check('오답 2회 누적 → 축소 2단계(272×156)', g.battle.shrinkLevel === 2 &&
   g.battle.arena.box.w === 272 && g.battle.arena.box.h === 156);
-forceGates();
-enterDoor(true); // 정답 — 한 단계 회복
+answerClaim(true); // 정답 — 한 단계 회복
 check('정답 통과 → 축소 1단계로 회복(296×168)', g.battle.shrinkLevel === 1 &&
   g.battle.arena.box.w === 296 && g.battle.arena.box.h === 168);
 // 최소 하한(200×120, 5단계) 확인 — 오답을 반복해도 더 좁아지지 않는다
-for (let i = 0; i < 6; i++) { forceGates(); enterDoor(false); }
+for (let i = 0; i < 6; i++) { answerClaim(false); }
 check('축소 하한 도달(200×120, 5단계에서 정지)', g.battle.shrinkLevel === 5 &&
   g.battle.arena.box.w === 200 && g.battle.arena.box.h === 120);
-// 문 배치가 줄어든 상자 안에서도 서로 겹치지 않는지 확인
-forceGates();
+// 최소 상자에서도 말 걸기 선택지가 정상 구성되는지 확인 (M-2: 문 지오메트리 대신 메뉴)
+forceMenu();
+battleMenuPick(0);
+check('최소 상자에서도 말 걸기 선택지 3개 구성', g.battle.phase === 'sub' && g.battle.sub.options.length === 3);
 {
-  const doors = g.battle.gates.doors;
-  const overlap = (a, b2) => a.x < b2.x + b2.w && a.x + a.w > b2.x && a.y < b2.y + b2.h && a.y + a.h > b2.y;
-  check('최소 상자에서도 문 3개가 서로 겹치지 않음',
-    !overlap(doors[0], doors[1]) && !overlap(doors[0], doors[2]) && !overlap(doors[1], doors[2]));
+  const b = g.battle;
+  b.subIdx = b.sub.options.findIndex((o) => o.correct && !o.locked);
+  tap('z'); // 정답 응답으로 정리(다음 단계로)
 }
-enterDoor(true); // 정답 문 통과로 정리(다음 단계로)
+advanceReact();
 
 // 자비 경계 설정 문구 확인 + 게이트 통과 → 마음의 선택 → 승리 → chapter5Clear
 check('자비 선택지에 경계 설정 문구 포함', PERSUADE.hollim_boss.mercy.options[0].label.includes('결정은 내가 해'));
 g.battle.pState = 'shaken'; g.battle.claimIdx = 0; g.battle.shrinkLevel = 0;
-g.battle.gauge = g.battle.gaugeMax; step(1);
-check('게이지 만충 → 마음의 선택', g.battle.phase === 'mercy');
+g.battle.gauge = g.battle.gaugeMax; step(1); // 게이지 만충 → 내 턴 + spareReady
+check('게이지 만충 → 내 턴 + spareReady', g.battle.phase === 'menu' && g.battle.spareReady === true);
+battleMenuPick(3); // 마음 안아 주기
+check('안아 주기 → 마음의 선택', g.battle.phase === 'mercy');
 while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z');
@@ -2427,7 +2489,7 @@ check('고요 보스방(어둠 단계 3) 진입', g.map === 'goyostage' && QUIET
 setPos(7, 3, 'up'); tap('z');
 check('보스 조우 대화 시작', g.mode === 'dialog');
 advanceDialog();
-check('고요 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'wave');
+check('고요 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'menu');
 check('스프라이트/도감 id는 finalboss(어둠대왕몬 재사용)', g.battle.monId === 'finalboss');
 check('설득 프로필 id는 goyo_boss', g.battle.persuadeId === 'goyo_boss');
 check('표시 이름은 고요(persuadeId 계층)', g.battle.mon.name === '고요');
@@ -2445,13 +2507,15 @@ check('주장③ "…왜, 아직 있어?" / best=empathy·unlockAt 60', g.battle
 check('openMechanic dark', g.battle.p.openMechanic === 'dark');
 // open 페이즈에서 첫 파도 진입 시, 탄막이 나오기 전 한 번 예고(darkWarned/darkWarnT)
 g.battle.pState = 'open';
-forceGates();
-enterDoor(true); // 정답 문 통과(ev_answer 소지) → 다음 파도(open) 진입
-check('첫 open 파도 — 탄막 예고 1회(darkWarned + darkWarnT 30)', g.battle.darkWarned === true &&
-  g.battle.wave.darkWarnT === 30 && g.battle.wave.spawnTimer === 60);
+answerClaim(true); // 정답 문 통과(ev_answer 소지) → 다음 파도(open) 진입
+// (advanceReact의 탭이 파도 1프레임을 진행시키므로 30/60에서 1씩 깎인 값으로 확인)
+check('첫 open 파도 — 탄막 예고 1회(darkWarned + darkWarnT)', g.battle.darkWarned === true &&
+  g.battle.wave.darkWarnT === 29 && g.battle.wave.spawnTimer === 59);
 // 게이지 만충 → 마음의 선택 → 자비 → 승리
-g.battle.gauge = g.battle.gaugeMax; step(1);
-check('게이지 만충 → 마음의 선택', g.battle.phase === 'mercy');
+g.battle.gauge = g.battle.gaugeMax; step(1); // 게이지 만충 → 내 턴 + spareReady
+check('게이지 만충 → 내 턴 + spareReady', g.battle.phase === 'menu' && g.battle.spareReady === true);
+battleMenuPick(3); // 마음 안아 주기
+check('안아 주기 → 마음의 선택', g.battle.phase === 'mercy');
 while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z');
@@ -2523,8 +2587,10 @@ check('보스는 도감 순서에 없음', !DEX_ORDER.includes('yeongi_boss'));
 
 // 진엔딩(home) 경로 — 자비 20 이상 누적 + 마지막 선택 "함께 돌아가자"(mercy)
 g.flags.mercy = 25;
-g.battle.gauge = g.battle.gaugeMax; step(1);
-check('게이지 만충 → 마음의 선택(영이 기존 mercy 그대로 재사용)', g.battle.phase === 'mercy' &&
+g.battle.gauge = g.battle.gaugeMax; step(1); // 게이지 만충 → 내 턴 + spareReady
+check('게이지 만충 → 내 턴 + spareReady(영이)', g.battle.phase === 'menu' && g.battle.spareReady === true);
+battleMenuPick(3); // 마음 안아 주기
+check('안아 주기 → 마음의 선택(영이 기존 mercy 그대로 재사용)', g.battle.phase === 'mercy' &&
   g.battle.mon.mercy.prompt.includes('이만 사라져야 할까'));
 while (g.battle.cursor !== 0) tap('ArrowDown'); // "함께 돌아가자"(mercy)
 tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');

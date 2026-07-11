@@ -4065,8 +4065,49 @@
     if (b.shake > 0) b.shake -= 1;
     if (b.flash > 0) b.flash -= 1;
 
-    if (b.isPersuade && (b.phase === 'wave' || b.phase === 'gates')) {
+    if (b.isPersuade && b.phase === 'wave') {
       updatePersuadeBattle();
+      return;
+    }
+
+    if (b.phase === 'menu') {
+      updateFloats(b);
+      // 내 턴 중에도 게이지 만충을 감지 (기믹/보정으로 메뉴 중 만충이 될 수 있다)
+      if (b.isPersuade && b.gauge >= b.gaugeMax && !b.spareReady) {
+        b.spareReady = true;
+        pushFloat('* 마음이 활짝 열렸다!\n「마음 안아 주기」로 배틀을 끝내자.');
+      }
+      const n = P_MENU.length;
+      if (justPressed('left') || justPressed('up')) { b.menuIdx = (b.menuIdx + n - 1) % n; Sound.blip(); }
+      if (justPressed('right') || justPressed('down')) { b.menuIdx = (b.menuIdx + 1) % n; Sound.blip(); }
+      if (justPressed('action')) selectBattleMenu(b);
+      return;
+    }
+
+    if (b.phase === 'sub') {
+      updateFloats(b);
+      const opts = b.sub.options;
+      if (justPressed('up')) { b.subIdx = (b.subIdx + opts.length - 1) % opts.length; Sound.blip(); }
+      if (justPressed('down')) { b.subIdx = (b.subIdx + 1) % opts.length; Sound.blip(); }
+      if (justPressed('cancel')) { b.sub = null; b.phase = 'menu'; Sound.select(); return; }
+      if (justPressed('action')) selectBattleSub(b);
+      return;
+    }
+
+    if (b.phase === 'react') {
+      updateFloats(b);
+      if (justPressed('action')) {
+        const after = b.afterReact;
+        b.react = null;
+        Sound.select();
+        if (b.gauge >= b.gaugeMax || after === 'menu') {
+          // 게이지 만충이면 탄막 턴 없이 곧장 내 턴 — 「마음 안아 주기」 마무리로
+          if (after === 'menu' && b.gauge < b.gaugeMax) { b.phase = 'menu'; b.sub = null; }
+          else enterMenuPhase(b);
+        } else {
+          enterWave();
+        }
+      }
       return;
     }
 
@@ -4336,12 +4377,14 @@
     }
   }
 
-  // ---------- v2 「마음 조각 배틀」(행동 설득) ----------
-  // 메뉴·차단형 텍스트 없이, 탄막 상자 안의 공간 행동으로 마음을 되돌린다.
-  //   wave  : 탄막을 피하며 속마음 조각 ✦을 줍는다 (조각 = 비차단 플로팅 + 게이지 +2)
-  //   gates : 타임 슬로우 + 문 3개. 마음에 닿는 문으로 하트가 들어가면 큰 폭 상승.
-  //   mercy/mercyReply : 게이지 만충 → 마음의 선택 (기존 그대로)
-  // 마음 상태: closed(닫힘) → shaken(동요) → open(열림). closed에선 문이 전부 잠긴다.
+  // ---------- 「마음 조각 배틀」(M-2 턴제 설득 대화) ----------
+  // 언더테일 문법: [내 턴 메뉴] ↔ [상대 턴 탄막]을 오가며 대화로 마음을 되돌린다.
+  //   menu  : 말 걸기(주장에 맞는 응답 고르기) / 증거 보여주기 / 가만히 듣기 / 마음 안아 주기
+  //   react : 내 행동에 대한 상대의 반응 대사 (Z로 진행 → 상대 턴)
+  //   wave  : 상대 턴 — 탄막 회피. 「가만히 듣기」 턴에만 속마음 조각 ✦이 나온다 (+2/개)
+  //   mercy/mercyReply : 게이지 만충 후 「마음 안아 주기」 → 마음의 선택 (기존 그대로)
+  // 마음 상태: closed(닫힘) → shaken(동요) → open(열림). closed에선 말이 닿지 않는다(듣기부터).
+  // 게이지 만충 = spareReady — 이름이 노랗게 변하고, 안아 주기로만 배틀이 끝난다.
   const P_STATE_LABEL = { closed: '닫힘', shaken: '동요', open: '열림' };
 
   function ownedCards() {
@@ -4450,8 +4493,9 @@
     if (!game.flags.sawPersuadeTip) {
       game.flags.sawPersuadeTip = true;
       lines.push(
-        '[마음 조각 배틀]\n' + (isTouchDevice ? '스틱' : '화살표') + '로 하트를 움직여 탄막을 피하고,\n✦를 주워 속마음을 들어요.',
-        '문이 열리면 「마음에 닿는 문」으로 하트를 통과!\n(엉뚱한 문은 역효과)\n하트가 다 닳으면 잠시 물러났다 다시 와요.'
+        '[마음 조각 배틀]\n서로 번갈아 이야기해요.\n내 차례엔 「말 걸기·증거·듣기·안아 주기」\n중 하나를 골라요.',
+        '상대 차례엔 ' + (isTouchDevice ? '스틱' : '화살표') + '로 하트를 움직여\n마음의 파도(탄막)를 피해요.\n「가만히 듣기」를 고르면 ✦ 속마음이 떨어져요.',
+        '이름이 노랗게 변하면 —\n「마음 안아 주기」로 배틀이 끝나요.\n하트가 다 닳으면 잠시 물러났다 다시 와요.'
       );
     }
     startDialog(lines, mon.name, () => startPersuadeBattle(monId, persuadeKey));
@@ -4507,7 +4551,17 @@
       claimIdx: 0,
       playerHp: maxHearts,
       maxHearts,
-      phase: 'wave', // wave | gates | mercy | mercyReply
+      // M-2 턴제 설득 대화: menu(내 턴) → sub(하위 선택) → react(상대 반응 대사)
+      //   → wave(상대 턴: 탄막 회피) → menu … 반복. 마음이 다 열리면 mercy.
+      phase: 'menu', // menu | sub | react | wave | mercy | mercyReply
+      menuIdx: 0,
+      sub: null,        // { kind: 'act'|'evidence', options: [...] }
+      subIdx: 0,
+      react: null,      // { text } — 상대 반응 대사 (Z로 진행)
+      afterReact: 'wave',
+      listenTurn: false, // 「가만히 듣기」를 고른 턴에만 속마음 조각 ✦이 나온다
+      turnCount: 0,
+      spareReady: false, // 게이지 만충 — 「마음 안아 주기」로 마무리 가능 (이름이 노래진다)
       prologueTutorial: !!(p.tutorial && monId === 'bekkyeomon'),
       cursor: 0,
       fragmentTotal: 0, // 누적 수집 조각 (closed→shaken 임계 판정)
@@ -4520,13 +4574,147 @@
       floatActive: null, // 화면 위 비차단 플로팅 (동시 1줄)
       floatQ: [],
       wave: null,
-      gates: null,
       shake: 0,
       flash: 0,
       attack: null,
     };
     game.flags.battleCount += 1;
-    enterWave();
+    enterMenuPhase(game.battle);
+    if (game.battle.prologueTutorial) {
+      pushFloat('* 먼저 「가만히 듣기」로\n속마음 조각 ✦을 주워 보자.');
+    }
+  }
+
+  // ── M-2 내 턴(메뉴): 말 걸기 / 증거 보여주기 / 가만히 듣기 / 마음 안아 주기 ──
+  const P_MENU = ['말 걸기', '증거 보여주기', '가만히 듣기', '마음 안아 주기'];
+  function enterMenuPhase(b) {
+    b.phase = 'menu';
+    b.sub = null;
+    b.turnCount += 1;
+    if (b.gauge >= b.gaugeMax && !b.spareReady) {
+      b.spareReady = true;
+      pushFloat('* 마음이 활짝 열렸다!\n「마음 안아 주기」로 배틀을 끝내자.');
+    }
+  }
+  // 턴 시작 관찰 한 줄 (* 플레이버) — 프로필 observe가 있으면 순환, 없으면 상태 기반
+  function battleObserve(b) {
+    const obs = b.p.observe;
+    if (obs && obs.length) return obs[(b.turnCount - 1) % obs.length];
+    if (b.spareReady) return `* ${b.mon.name}의 마음이 활짝 열렸다.`;
+    if (b.pState === 'open') return `* ${b.mon.name}의 마음이 열리고 있다.`;
+    if (b.pState === 'shaken') return `* ${b.mon.name}의 마음이 흔들리고 있다.`;
+    return `* ${b.mon.name}의 마음이 굳게 닫혀 있다.`;
+  }
+  // 말 걸기 선택지 — 현재 주장에 맞는 말(정답 gateLabel) + 미끼 2개.
+  // 카드형 주장의 정답 말은 그 카드를 모아 와야 잠금이 풀린다 (방탈출 보상 동선 유지).
+  function buildActOptions(b) {
+    const claim = currentClaim();
+    const owned = ownedCards();
+    const cardId = (!claim.best && claim.counters && claim.counters[0]) || null;
+    const correct = {
+      label: claim.gateLabel || '…', correct: true,
+      locked: !!(cardId && !owned.includes(cardId)), lockCard: cardId,
+    };
+    const pool = b.p.claims.map((c) => c.gateLabel).filter((l) => l && l !== correct.label)
+      .concat(b.p.decoys || []);
+    const wrongLabels = shuffled(pool).slice(0, 2);
+    while (wrongLabels.length < 2) wrongLabels.push('글쎄…');
+    return shuffled([correct,
+      { label: wrongLabels[0], correct: false, locked: false },
+      { label: wrongLabels[1], correct: false, locked: false }]);
+  }
+  function setReact(b, text, after) {
+    b.react = { text: String(text) };
+    b.afterReact = after || 'wave';
+    b.phase = 'react';
+    if (game.tts) Speech.speak(b.react.text);
+  }
+  // 응답 판정 — 옛 「응답의 문」 판정과 같은 수치 (+26/32 · -6 역효과)
+  function resolveResponse(b, correct, viaNote) {
+    const claim = currentClaim();
+    const st = pStats();
+    const r = b.p.react;
+    let text;
+    if (correct) {
+      const delta = b.pState === 'open' ? 32 : 26;
+      b.gauge = clamp(b.gauge + delta, 0, b.gaugeMax);
+      // 정답(=설득 성공)은 하트 1 회복 — 회피가 아니라 '잘 설득한' 실력에 보상
+      b.playerHp = Math.min(b.maxHearts, b.playerHp + 1);
+      st.gateRight += 1;
+      const cardId = (!claim.best && claim.counters && claim.counters[0]) || null;
+      const topic = cardId ? EVIDENCE_CARDS[cardId].topic : monTopic(b);
+      recordTopicResult(game.currentSlot, topic, true);
+      text = claim.okLine || r.evidenceRight || '…그랬구나.';
+      b.shake = 14; Sound.correct();
+      b.claimIdx += 1; // 다음 주장으로
+      if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.max(0, (b.shrinkLevel || 0) - 1);
+    } else {
+      b.gauge = clamp(b.gauge - 6, 0, b.gaugeMax);
+      st.gateWrong += 1; st.backfire += 1;
+      recordTopicResult(game.currentSlot, monTopic(b), false);
+      text = claim.onWrong || '…아니야. 그런 게 아니야.';
+      if (viaNote) text += '\n' + viaNote;
+      b.pIntense = true; // 다음 탄막 턴 강화
+      b.flash = 14; Sound.wrong();
+      if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.min(SHRINK_MAX_LEVEL, (b.shrinkLevel || 0) + 1);
+    }
+    persuadeGaugeSync(b);
+    setReact(b, text, 'wave');
+  }
+  function selectBattleMenu(b) {
+    const idx = b.menuIdx;
+    if (idx === 0) { // 말 걸기
+      if (b.pState === 'closed') {
+        Sound.select();
+        setReact(b, '* 마음이 굳게 닫혀 있어\n어떤 말도 닿지 않는다.\n(먼저 「가만히 듣기」로 속마음을 듣자)', 'wave');
+        return;
+      }
+      b.sub = { kind: 'act', options: buildActOptions(b) };
+      b.subIdx = 0; b.phase = 'sub'; Sound.select();
+      return;
+    }
+    if (idx === 1) { // 증거 보여주기
+      const owned = ownedCards();
+      if (!owned.length) { setReact(b, '* 보여 줄 증거 카드가 아직 없다.\n(방탈출 구역에서 카드를 모으자)', 'menu'); return; }
+      b.sub = { kind: 'evidence', options: owned.map((id) => ({ id, label: EVIDENCE_CARDS[id].title })) };
+      b.subIdx = 0; b.phase = 'sub'; Sound.select();
+      return;
+    }
+    if (idx === 2) { // 가만히 듣기
+      b.listenTurn = true;
+      Sound.select();
+      const claim = currentClaim();
+      setReact(b, `${b.mon.name}: "${claim.text}"\n\n* 숨을 죽이고 귀를 기울였다 —\n(✦ 속마음 조각을 주울 수 있다!)`, 'wave');
+      return;
+    }
+    // 마음 안아 주기
+    if (b.gauge >= b.gaugeMax) { persuadeTriumph(); return; }
+    if (b.pState === 'open') {
+      setReact(b, '* 마음이 열리고 있다.\n…조금만 더 이야기를 나누자.', 'wave');
+    } else {
+      setReact(b, '* 아직 마음이 닫혀 있다.\n지금 안기엔… 이르다.', 'wave');
+    }
+  }
+  function selectBattleSub(b) {
+    const opt = b.sub.options[b.subIdx];
+    if (b.sub.kind === 'act') {
+      if (opt.locked) {
+        Sound.bump(); b.flash = 6;
+        const cardName = opt.lockCard && EVIDENCE_CARDS[opt.lockCard] ? EVIDENCE_CARDS[opt.lockCard].title : '증거';
+        setReact(b, `* 「${opt.label}」…\n말이 목에 걸린다.\n(「${cardName}」 카드를 모아 와야 할 것 같다)`, 'menu');
+        return;
+      }
+      resolveResponse(b, opt.correct);
+      return;
+    }
+    // evidence
+    const claim = currentClaim();
+    if (claim.best) {
+      resolveResponse(b, false, claim.revealNote || '(카드로는 안 통하는 이야기 같다…)');
+      return;
+    }
+    const ok = (claim.counters || []).includes(opt.id);
+    resolveResponse(b, ok);
   }
 
   // 지금 순환 풀에 올라온 주장들 — unlockAt이 걸린 주장은 게이지가 그 값 이상일 때만 등장한다.
@@ -4604,7 +4792,9 @@
     if (b.pIntense) { sf *= 1.3; rateMul *= 0.75; b.pIntense = false; }
     b.arena.sf = sf; b.arena.rateMul = rateMul; b.arena.bullets = []; b.arena.spiralA = 0; b.arena.inv = 0;
     b.arena.carrying = false;
-    const n = b.p.fragmentsPerWave || 3;
+    // 속마음 조각 ✦은 「가만히 듣기」를 고른 턴에만 나온다 (M-2 턴제)
+    const n = b.listenTurn ? (b.p.fragmentsPerWave || 3) : 0;
+    b.listenTurn = false;
     const frags = [];
     for (let i = 0; i < n; i++) frags.push(spawnFragment(null, box, claim, i));
     b.wave = {
@@ -4732,14 +4922,14 @@
     // [낚]=게이지-4+화면 얼룩(피해 없음)
     if (b.p.openMechanic === 'truth' && b.pState === 'open') updateTruth(b);
 
-    if (b.gauge >= b.gaugeMax) { persuadeTriumph(); return; }
+    // 게이지 만충 — 탄막 턴을 바로 끝내고 내 턴으로 (「마음 안아 주기」 마무리)
+    if (b.gauge >= b.gaugeMax) { enterMenuPhase(b); return; }
 
-    // 파도 종료: 조각 다 모으거나 시간 만료 → 문(gates)으로
-    if (w.collected >= w.fragTotal || w.t >= w.dur) {
+    // 탄막 턴 종료: (듣기 턴) 조각을 다 모으거나 / 시간 만료 → 내 턴(메뉴)으로
+    if ((w.fragTotal > 0 && w.collected >= w.fragTotal) || w.t >= w.dur) {
       if (w.hits === 0) { b.gauge = clamp(b.gauge + 6, 0, b.gaugeMax); pStats().perfectWaves += 1;
         pushFloat('(끝까지 봐 줬다… 마음 +6)'); persuadeGaugeSync(b); }
-      if (b.gauge >= b.gaugeMax) { persuadeTriumph(); return; }
-      enterGates();
+      enterMenuPhase(b);
     }
   }
   function updateParcel(b) {
@@ -4883,118 +5073,6 @@
     }
   }
 
-  // ── 응답의 문(gates): 타임 슬로우 + 문 3개 ──
-  const GATE_SLOTS = ['tl', 'tr', 'bc'];
-  // 문 폭 66→78(+12) — 「서툴러도 내 것」처럼 긴 gateLabel이 문 폭을 넘던 문제 수정.
-  // 최소 상자(SHRINK_MIN.w=200)에서도 tl·tr 사이 32px 여유가 남아 문끼리 겹치지 않는다.
-  const DOOR_W = 78, DOOR_H = 46;
-  function doorRect(box, slot) {
-    if (slot === 'tl') return { x: box.x + 6, y: box.y + 6, w: DOOR_W, h: DOOR_H };
-    if (slot === 'tr') return { x: box.x + box.w - 6 - DOOR_W, y: box.y + 6, w: DOOR_W, h: DOOR_H };
-    return { x: box.x + box.w / 2 - DOOR_W / 2, y: box.y + box.h - 6 - DOOR_H, w: DOOR_W, h: DOOR_H }; // bc
-  }
-  function buildGates(b) {
-    const box = b.arena.box;
-    const claim = currentClaim();
-    const owned = ownedCards();
-    // 정답 문: 카드형 주장이면 그 카드에 대응(소지해야 활성), best형이면 말(카드 불필요)
-    const cardId = (!claim.best && claim.counters && claim.counters[0]) || null;
-    const closedLock = b.pState === 'closed';
-    const correct = {
-      label: claim.gateLabel || '…', correct: true, card: cardId,
-      locked: closedLock || (cardId && !owned.includes(cardId)),
-    };
-    // 오답 문 2개: 다른 주장의 gateLabel + 프로필 미끼 말에서 뽑는다
-    const pool = b.p.claims.map((c) => c.gateLabel).filter((l) => l && l !== correct.label)
-      .concat(b.p.decoys || []);
-    const wrongLabels = shuffled(pool).slice(0, 2);
-    while (wrongLabels.length < 2) wrongLabels.push('글쎄…');
-    const doors = [correct,
-      { label: wrongLabels[0], correct: false, card: null, locked: closedLock },
-      { label: wrongLabels[1], correct: false, card: null, locked: closedLock }];
-    // 슬롯 무작위 배치
-    const slots = shuffled(GATE_SLOTS.slice());
-    for (let i = 0; i < doors.length; i++) {
-      const r = doorRect(box, slots[i]);
-      Object.assign(doors[i], { slot: slots[i], x: r.x, y: r.y, w: r.w, h: r.h });
-    }
-    return doors;
-  }
-  function enterGates() {
-    const b = game.battle;
-    b.phase = 'gates';
-    b.gates = { t: 0, timeLimit: 240, doors: buildGates(b), resolved: false, lockCd: 0 };
-    Sound.select();
-  }
-
-  function updateGates() {
-    const b = game.battle, gt = b.gates, arena = b.arena, box = arena.box;
-    if (b.shake > 0) b.shake -= 1;
-    if (b.flash > 0) b.flash -= 1;
-    gt.t += 1;
-    if (gt.lockCd > 0) gt.lockCd -= 1;
-    updateFloats(b);
-
-    moveSoul(arena, box, 1);
-    // 타임 슬로우 — 탄막은 아주 느리게 흐르고, 새로 생기지 않는다 (×0.15)
-    for (const bu of arena.bullets) { bu.x += bu.vx * 0.15; bu.y += bu.vy * 0.15; }
-    arena.bullets = arena.bullets.filter((bu) =>
-      bu.x > box.x - 24 && bu.x < box.x + box.w + 24 && bu.y > box.y - 24 && bu.y < box.y + box.h + 24);
-    if (bulletHits(b, arena) && b.playerHp <= 0) { persuadeExhaust(); return; }
-
-    // 하트가 문 영역에 들어가면 판정
-    const s = arena.soul;
-    for (const d of gt.doors) {
-      if (s.x >= d.x && s.x <= d.x + d.w && s.y >= d.y && s.y <= d.y + d.h) {
-        if (d.locked) {
-          if (gt.lockCd <= 0) { Sound.bump(); b.flash = 6; gt.lockCd = 24; }
-        } else if (!gt.resolved) {
-          gt.resolved = true; gateResolve(b, d); return;
-        }
-      }
-    }
-
-    // 시간 초과 — 변화 없이 파도 재개 (타임아웃 기록). 루미(보스)는 상자가 한 단계 더 좁아진다
-    if (gt.t >= gt.timeLimit) {
-      pStats().gateTimeout += 1;
-      if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.min(SHRINK_MAX_LEVEL, (b.shrinkLevel || 0) + 1);
-      enterWave(); // 같은 주장으로 파도 재개
-    }
-  }
-
-  function gateResolve(b, door) {
-    const claim = currentClaim();
-    const st = pStats();
-    const r = b.p.react;
-    if (door.correct) {
-      const delta = b.pState === 'open' ? 32 : 26;
-      b.gauge = clamp(b.gauge + delta, 0, b.gaugeMax);
-      // 정답(=설득 성공)은 하트 1 회복 — 회피가 아니라 '잘 설득한' 실력에 보상(서툰 회피 구제)
-      b.playerHp = Math.min(b.maxHearts, b.playerHp + 1);
-      st.gateRight += 1;
-      const topic = door.card ? EVIDENCE_CARDS[door.card].topic : monTopic(b);
-      recordTopicResult(game.currentSlot, topic, true);
-      pushFloat(claim.okLine || r.evidenceRight || '…그랬구나.');
-      b.shake = 14; Sound.correct();
-      b.claimIdx += 1; // 다음 주장으로
-      // 루미(보스) — open 페이즈에서 정답 문을 통과하면 좁아졌던 상자가 한 단계 회복된다
-      if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.max(0, (b.shrinkLevel || 0) - 1);
-    } else {
-      b.gauge = clamp(b.gauge - 6, 0, b.gaugeMax);
-      st.gateWrong += 1; st.backfire += 1;
-      recordTopicResult(game.currentSlot, monTopic(b), false);
-      pushFloat(claim.onWrong);
-      b.pIntense = true; // 다음 파도 강화
-      b.flash = 14; Sound.wrong();
-      // 루미(보스) — open 페이즈에서 오답이면 상자가 한 단계 더 좁아진다
-      if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.min(SHRINK_MAX_LEVEL, (b.shrinkLevel || 0) + 1);
-      // 같은 주장 재시도 (claimIdx 유지)
-    }
-    persuadeGaugeSync(b);
-    if (b.gauge >= b.gaugeMax) { persuadeTriumph(); return; }
-    enterWave();
-  }
-
   // 하트가 다 닳으면 물러난다 — 단, 상대는 이야기를 절반쯤 기억한다
   function persuadeExhaust() {
     const b = game.battle;
@@ -5016,9 +5094,7 @@
 
   function updatePersuadeBattle() {
     const b = game.battle;
-    if (b.gauge >= b.gaugeMax) { persuadeTriumph(); return; }
     if (b.phase === 'wave') updateWave();
-    else if (b.phase === 'gates') updateGates();
   }
 
   // ---------- 친구 수첩 ----------
@@ -8464,9 +8540,9 @@
     ctx.ellipse(mcx, 222, 56 - bob, 12, 0, 0, Math.PI * 2);
     ctx.fill();
     drawMon(ctx, b.monId, mx, my, monScale);
-    // 인물 이름 + 마음 게이지·상태
+    // 인물 이름 + 마음 게이지·상태 — 마음이 활짝 열리면 이름이 노래진다 (안아 줄 수 있다는 신호)
     utBox(24, 24, 240, 64, 6);
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = b.spareReady ? '#ffd644' : '#fff';
     ctx.font = 'bold 17px monospace';
     ctx.fillText(b.mon.name, 40, 50);
     if (b.isPersuade) {
@@ -8497,8 +8573,8 @@
       ctx.fillRect(0, 0, LW, LH);
     }
 
-    // 마음 조각 배틀 — 파도/문 (공간 행동)
-    if (b.isPersuade && (b.phase === 'wave' || b.phase === 'gates')) { drawPersuadeArena(b); return; }
+    // 마음 조각 배틀 — 탄막 턴 (공간 행동)
+    if (b.isPersuade && b.phase === 'wave') { drawPersuadeArena(b); return; }
 
     ctx.font = fs(16);
     let boxH = game.largeText ? 280 : 238;
@@ -8507,7 +8583,66 @@
     const hintY = boxY + boxH - 18;
     utBox(12, boxY, LW - 24, boxH, 8);
 
-    if (false) { // (v3) 퀴즈 배틀 폐지 — question/feedback 단계 없음
+    if (b.phase === 'menu') {
+      // 내 턴 — 관찰 한 줄(*) + 행동 메뉴 2×2
+      ctx.fillStyle = '#ccc';
+      ctx.font = fs(16);
+      const obsLines = battleObserve(b).split('\n');
+      let oy = boxY + 36;
+      for (const part of obsLines) { ctx.fillText(part, 34, oy); oy += lh(24); }
+      const colW = Math.floor((LW - 24) / 2);
+      const rowY0 = boxY + boxH - (game.largeText ? 150 : 128);
+      const rowH = game.largeText ? 62 : 52;
+      for (let i = 0; i < P_MENU.length; i++) {
+        const cx = 38 + (i % 2) * colW;
+        const cy = rowY0 + Math.floor(i / 2) * rowH;
+        const isSpare = i === 3;
+        let label = P_MENU[i];
+        const selected = i === b.menuIdx;
+        ctx.font = fs(17, selected);
+        if (selected) {
+          ctx.fillStyle = '#ffd644';
+          ctx.fillText('♥', cx - 4, cy);
+        }
+        ctx.fillStyle = isSpare && (b.spareReady || b.pState === 'open')
+          ? '#ffd644' : selected ? '#fff' : '#aaa';
+        ctx.fillText(label, cx + 22, cy);
+      }
+      if (b.spareReady && Math.floor(game.time / 20) % 2 === 0) {
+        ctx.fillStyle = '#ffd644';
+        ctx.font = fs(13);
+        ctx.fillText('마음이 활짝 열렸다 — 안아 주자!', 34, boxY + boxH - 16);
+      }
+    } else if (b.phase === 'sub') {
+      // 하위 선택 — 말 걸기(응답 고르기) / 증거 카드 고르기
+      ctx.fillStyle = '#ccc';
+      ctx.font = fs(16);
+      ctx.fillText(b.sub.kind === 'act' ? '* 무슨 말을 건넬까?' : '* 어떤 증거를 보여 줄까?', 34, boxY + 34);
+      let ty = boxY + 70;
+      const stepS = game.largeText ? 40 : 34;
+      for (let i = 0; i < b.sub.options.length; i++) {
+        const opt = b.sub.options[i];
+        const label = opt.locked ? `${opt.label} 🔒` : opt.label;
+        drawChoiceLine(label, 38, ty, i === b.subIdx);
+        ty += stepS;
+      }
+      ctx.fillStyle = '#666';
+      ctx.font = fs(13);
+      ctx.fillText(isTouchDevice ? 'B: 뒤로' : 'X: 뒤로', LW - 110, boxY + boxH - 16);
+    } else if (b.phase === 'react') {
+      // 상대 반응 대사 — Z로 진행하면 상대 턴(탄막)으로
+      ctx.fillStyle = '#fff';
+      ctx.font = fs(16);
+      let ty = boxY + 40;
+      for (const part of b.react.text.split('\n')) {
+        ctx.fillText(part, 34, ty);
+        ty += lh(24);
+      }
+      if (Math.floor(game.time / 20) % 2 === 0) {
+        ctx.fillStyle = '#ffd644';
+        ctx.font = fs(16);
+        ctx.fillText('▼ (Z/스페이스)', LW - 150, hintY);
+      }
     } else if (b.phase === 'mercy') {
       // 마음의 선택
       ctx.fillStyle = '#e0453a';
@@ -8591,13 +8726,15 @@
     ctx.fillRect(0, 0, LW, LH);
   }
 
-  // 마음 조각 배틀 — 파도(탄막+조각)와 문(응답)을 한 상자 안에서 그린다.
+  // 마음 조각 배틀 — 상대 턴(탄막 회피 + 듣기 턴의 조각 줍기)을 한 상자 안에서 그린다.
   function drawPersuadeArena(b) {
     const arena = b.arena, box = arena.box;
     // 인물의 외침 + 조작 안내
-    drawArenaGuide(box, b.attack ? b.attack.taunt : null, b.phase === 'gates'
-      ? '마음에 닿는 문으로 하트를 넣어요! (자물쇠 문은 아직 못 열어요)'
-      : (b.prologueTutorial ? '마음 안쪽: ✦ 속마음 조각을 주워요. 탄막은 피하고!' : '✦를 주워 속마음을 들어요. 탄막은 피하고!'));
+    const listening = b.wave && b.wave.fragTotal > 0;
+    drawArenaGuide(box, b.attack ? b.attack.taunt : null,
+      listening
+        ? (b.prologueTutorial ? '마음 안쪽: ✦ 속마음 조각을 주워요. 탄막은 피하고!' : '✦를 주워 속마음을 들어요. 탄막은 피하고!')
+        : '탄막을 피하며 버텨요 — 곧 내 차례가 온다!');
 
     if (b.prologueTutorial) {
       ctx.textAlign = 'left';
@@ -8735,33 +8872,6 @@
         ctx.fillText(`포근함 ${lvl}/${SHRINK_MAX_LEVEL}`, box.x + box.w / 2, box.y + box.h + 34);
         ctx.textAlign = 'left';
       }
-    } else if (b.phase === 'gates') {
-      // 문 3개
-      for (const d of b.gates.doors) {
-        ctx.fillStyle = d.locked ? 'rgba(80,80,90,0.5)' : 'rgba(60,120,180,0.35)';
-        ctx.fillRect(d.x, d.y, d.w, d.h);
-        ctx.strokeStyle = d.locked ? '#556' : '#8ecbff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(d.x + 0.5, d.y + 0.5, d.w, d.h);
-        ctx.textAlign = 'center';
-        ctx.fillStyle = d.locked ? '#889' : '#fff';
-        ctx.font = 'bold 11px monospace';
-        const cx = d.x + d.w / 2;
-        if (d.locked) { ctx.fillText('🔒', cx, d.y + 18); }
-        // 라벨 (두 줄까지 접기)
-        const words = d.label.split(' ');
-        let line = '', ly = d.y + (d.locked ? 34 : 20);
-        for (const w of words) {
-          if (line && (line + ' ' + w).length > 8) { ctx.fillText(line, cx, ly); ly += 13; line = w; }
-          else line = line ? line + ' ' + w : w;
-        }
-        if (line) ctx.fillText(line, cx, ly);
-      }
-      ctx.textAlign = 'left';
-      // 남은 응답 시간 바
-      const frac = Math.max(0, 1 - b.gates.t / b.gates.timeLimit);
-      ctx.fillStyle = '#333'; ctx.fillRect(box.x, box.y + box.h + 12, box.w, 6);
-      ctx.fillStyle = '#8ecbff'; ctx.fillRect(box.x, box.y + box.h + 12, box.w * frac, 6);
     }
 
     // 하트(소울) — 무적 시간 동안 깜빡임
@@ -8777,7 +8887,7 @@
     if (b.floatActive) {
       const fa = b.floatActive;
       const alpha = fa.t < 20 ? fa.t / 20 : fa.t > fa.dur - 30 ? (fa.dur - fa.t) / 30 : 1;
-      const fy = box.y - 46 - fa.t * 0.12;
+      const fy = box.y - 70 - fa.t * 0.12; // 외침(-28)·안내(-10)와 겹치지 않게 그 위에서 시작
       ctx.textAlign = 'center';
       ctx.font = 'bold 14px monospace';
       const parts = String(fa.text).split('\n');
@@ -9503,6 +9613,7 @@
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록
     persuadeAvail: () => (game.battle ? availableClaims(game.battle).map((c) => c.text) : []),
+    battleObserve: () => (game.battle ? battleObserve(game.battle) : ''),
     // 파이널 「고요의 뜰」 — 맵별 어둠 단계 확인용
     QUIET_DIM_LEVEL,
   };
