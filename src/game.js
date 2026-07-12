@@ -4695,7 +4695,7 @@
       if (opt.locked) {
         Sound.bump(); b.flash = 6;
         const cardName = opt.lockCard && EVIDENCE_CARDS[opt.lockCard] ? EVIDENCE_CARDS[opt.lockCard].title : '증거';
-        setReact(b, `* 「${opt.label}」…\n말이 목에 걸린다.\n(「${cardName}」 카드를 모아 와야 할 것 같다)`, 'menu');
+        setReact(b, `* 「${opt.label}」…\n말이 목에 걸린다.\n(「${cardName}」 증거 카드가 필요하다 —\n이 거리의 방탈출 구역에서 얻을 수 있다)`, 'menu');
         return;
       }
       resolveResponse(b, opt.correct);
@@ -4779,7 +4779,8 @@
     b.arena.sf = sf; b.arena.rateMul = rateMul; b.arena.bullets = []; b.arena.spiralA = 0; b.arena.inv = 0;
     b.arena.carrying = false;
     b.wave = {
-      t: 0, dur: b.p.waveDur || 300, spawnTimer: 30,
+      // 저학년(easy)은 탄막 턴을 20% 짧게 — 속도(dodgeSpeedFactor)에 더해 시간 부담도 줄인다
+      t: 0, dur: Math.round((b.p.waveDur || 300) * (game.difficulty === 'easy' ? 0.8 : 1)), spawnTimer: 30,
       // fragments는 폐지(듣기 즉시 공개) — 기믹·테스트 호환을 위해 빈 배열 유지
       fragments: [], fragTotal: 0, collected: 0, hits: 0,
       // 담아(보스) open 페이즈 고유 기믹 — 「정보 꾸러미」 운반
