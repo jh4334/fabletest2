@@ -3733,10 +3733,16 @@
     // 기억의 별 (N-4) — 조사하면 여기까지의 이야기가 마음에 새겨지고, 저장된다
     const star = MAPS[game.map].star;
     if (star && star.x === f.x && star.y === f.y) {
-      save();
       Sound.unlock();
       game.notice = { text: '✦ 기억의 별이 반짝였다 — 이야기가 저장되었다.', t: 240 };
-      startDialog(['* (따뜻한 빛이 손끝에 닿는다.)\n' + star.text]);
+      const lines = ['* (따뜻한 빛이 손끝에 닿는다.)\n' + star.text];
+      // 처음 만난 별 — 무엇인지 한 번만 알려 준다
+      if (!game.flags.sawStarTip) {
+        game.flags.sawStarTip = true;
+        lines.push('* 이런 빛은 세계 곳곳에 있다.\n조사할 때마다 여기까지의 이야기가\n저장된다. (자동 저장도 늘 함께한다)');
+      }
+      save();
+      startDialog(lines);
       return;
     }
     // N-3 「모든 것을 조사할 수 있다」 — 맵별 조사 플레이버 (한 줄 관찰 + 마른 유머)
@@ -4138,9 +4144,11 @@
       }
       // 2×2 그리드 — 좌/우는 옆 칸, 위/아래는 윗줄/아랫줄로 (화면 배치와 일치)
       const n = P_MENU.length;
+      const beforeIdx = b.menuIdx;
       if (justPressed('left')) { b.menuIdx = (b.menuIdx + n - 1) % n; Sound.blip(); }
       if (justPressed('right')) { b.menuIdx = (b.menuIdx + 1) % n; Sound.blip(); }
       if (justPressed('up') || justPressed('down')) { b.menuIdx = (b.menuIdx + 2) % n; Sound.blip(); }
+      if (game.tts && b.menuIdx !== beforeIdx) Speech.speak(P_MENU[b.menuIdx]); // 읽어주기 접근성
       if (justPressed('action')) selectBattleMenu(b);
       return;
     }
@@ -4148,8 +4156,13 @@
     if (b.phase === 'sub') {
       updateFloats(b);
       const opts = b.sub.options;
+      const beforeSub = b.subIdx;
       if (justPressed('up')) { b.subIdx = (b.subIdx + opts.length - 1) % opts.length; Sound.blip(); }
       if (justPressed('down')) { b.subIdx = (b.subIdx + 1) % opts.length; Sound.blip(); }
+      if (game.tts && b.subIdx !== beforeSub) {
+        const o = opts[b.subIdx];
+        Speech.speak(o.label + (o.locked ? '. 잠김' : '')); // 읽어주기 접근성
+      }
       if (justPressed('cancel')) { b.sub = null; b.phase = 'menu'; Sound.select(); return; }
       if (justPressed('action')) selectBattleSub(b);
       return;
@@ -4437,6 +4450,7 @@
   // 교사 진단용 로그 — 마음 조각 배틀 개편판
   function pStats() {
     if (!game.flags.pStats || game.flags.pStats.fragments === undefined) {
+      // gateTimeout은 옛 「응답의 문」 시절의 잔재 — 구 세이브 호환을 위해 필드만 유지 (더는 증가하지 않음)
       game.flags.pStats = { fragments: 0, gateRight: 0, gateWrong: 0, gateTimeout: 0, perfectWaves: 0, backfire: 0 };
     }
     return game.flags.pStats;
@@ -4575,6 +4589,7 @@
     b.phase = 'menu';
     b.sub = null;
     b.turnCount += 1;
+    if (game.tts) Speech.speak(battleObserve(b).replace(/^\* /, '') + '. 내 차례.'); // 읽어주기 접근성
     if (b.gauge >= b.gaugeMax && !b.spareReady) {
       b.spareReady = true;
       pushFloat('* 마음이 활짝 열렸다!\n「마음 안아 주기」로 배틀을 끝내자.');
@@ -4665,6 +4680,7 @@
       }
       b.sub = { kind: 'act', options: buildActOptions(b) };
       b.subIdx = 0; b.phase = 'sub'; Sound.select();
+      if (game.tts) Speech.speak('무슨 말을 건넬까? ' + b.sub.options[0].label);
       return;
     }
     if (idx === 1) { // 증거 보여주기
@@ -4763,6 +4779,7 @@
     b.arena.carrying = false;
     if (b.mon.mercy && !b.mercyDone) {
       b.phase = 'mercy'; b.cursor = 0; Sound.badge();
+      if (game.tts) Speech.speak('마음의 선택. ' + b.mon.mercy.prompt);
       if (!game.reduceFx) b.shake = 12; // 마음이 열리는 순간의 울림 (M-3)
     } else {
       winBattle();
@@ -5052,8 +5069,10 @@
   function persuadeExhaust() {
     const b = game.battle;
     if (!game.flags.persuadeMemory) game.flags.persuadeMemory = {};
+    // 저학년(easy)은 게이지를 그대로 기억한다 — 탈진해도 진행이 깎이지 않아
+    // 재도전 의욕이 꺾이지 않는다 (기본/고학년은 절반)
     game.flags.persuadeMemory[b.persuadeId] = {
-      gauge: Math.floor(b.gauge / 2),
+      gauge: game.difficulty === 'easy' ? b.gauge : Math.floor(b.gauge / 2),
       state: b.pState === 'closed' ? 'closed' : 'shaken',
     };
     save();
@@ -9169,6 +9188,8 @@
         game.player.px = 13 * TS; game.player.py = 16 * TS;
         save();
         Sound.playSong(MAPS.village.song);
+        // 후일담 유도 — 엔딩 분기별 마을 대사(박사님·할머니)가 기다린다
+        game.notice = { text: '마을 사람들이 너를 기다린다 — 말을 걸어 보자.', t: 320 };
       }
     } else {
       if (game.endingT > 120 && justPressed('action')) {
@@ -9177,6 +9198,86 @@
       }
     }
   }
+
+  // 코어 이후의 엔딩 (진엔딩 4종) — drawEnding에서 참조 — 여정 전체의 자비와 마지막 선택에 따라 갈린다
+  const TRUE_ENDINGS = {
+    home: {
+      title: '진엔딩 — 집으로',
+      color: '#ffd644',
+      lines: [
+        '너는 영이의 손을 잡고 코어를 걸어 나왔다.',
+        '햇살 아래에서 박사님은 아주 오래 울었다.',
+        '"미안하다"는 말과 "고맙다"는 말이',
+        '몇 번이고 뒤섞였다.',
+        '',
+        '지워진 것은 사라진 것이 아니었다.',
+        '누군가 기억하는 한, 다시 만날 수 있었다.',
+        '',
+        '— 모두의 마음을 안아 준 진정한 수호자에게 —',
+        '',
+        '태블릿 화면 밖, 아침 해.',
+        '…옆에 박사님이 서 있다.',
+        '',
+        '…책상 위 태블릿 화면 한구석,',
+        '작은 빛이 반짝 — 하고 인사했다.',
+      ],
+      yeongi: true,
+      bandi: true,
+    },
+    dawn: {
+      title: '엔딩 — 새벽',
+      color: '#7bd1f0',
+      lines: [
+        '"…내가, 결정할게."',
+        '영이는 네 손 대신, 코어의 문을 열었다.',
+        '',
+        '"네가 깨워 준 친구들을 만나러 갈래.',
+        '숲의, 호수의, 사막의, 정원의 친구들.',
+        '…나 혼자 힘으로. 내 발로."',
+        '',
+        '며칠 뒤, 마을에 짧은 신호가 닿았다.',
+        '— 새벽 공기는 처음인데, 꽤 좋아. 영이가. —',
+        '…서명 옆에, 작은 빛 이모티콘이 붙어 있었다.',
+      ],
+      yeongi: false,
+    },
+    farewell: {
+      title: '엔딩 — 작별',
+      color: '#9aa8c8',
+      lines: [
+        '영이는 옅은 빛이 되어 흩어졌다.',
+        '"…고마워. 마지막으로 누군가와',
+        '이야기할 수 있어서, 좋았어."',
+        '',
+        '코어를 나서는 너의 등 뒤로',
+        '꺼진 화면만이 조용히 남아 있었다.',
+        '',
+        '…어쩌면, 다른 결말도 있었을지 모른다.',
+        '아이들의 마음을 더 많이 안아 주었다면.',
+        '',
+        '…어깨 옆자리가, 유난히 허전했다.',
+      ],
+      yeongi: false,
+    },
+    silent: {
+      title: '엔딩 — 침묵',
+      color: '#777788',
+      lines: [
+        '너는 모든 문제에 옳은 답을 말했다.',
+        '그리고 아무의 마음에도 머물지 않았다.',
+        '',
+        '아이들은 길을 비켰지만,',
+        '아무도 너의 이름을 부르지 않았다.',
+        '영이는 끝까지 네 눈을 보지 않은 채,',
+        '조용히 화면을 껐다.',
+        '',
+        '…정답만으로는, 닿지 않는 마음이 있다.',
+        '…길을 일러 주던 목소리도,',
+        '더는 들리지 않았다.',
+      ],
+      yeongi: false,
+    },
+  };
 
   function drawEnding() {
     ctx.fillStyle = '#000';
@@ -9193,86 +9294,7 @@
     ctx.textAlign = 'center';
 
     if (game.endingType === 'true') {
-      // 코어 이후의 엔딩 — 여정 전체의 자비와 마지막 선택에 따라 갈린다
-      const ENDINGS = {
-        home: {
-          title: '진엔딩 — 집으로',
-          color: '#ffd644',
-          lines: [
-            '너는 영이의 손을 잡고 코어를 걸어 나왔다.',
-            '햇살 아래에서 박사님은 아주 오래 울었다.',
-            '"미안하다"는 말과 "고맙다"는 말이',
-            '몇 번이고 뒤섞였다.',
-            '',
-            '지워진 것은 사라진 것이 아니었다.',
-            '누군가 기억하는 한, 다시 만날 수 있었다.',
-            '',
-            '— 모두의 마음을 안아 준 진정한 수호자에게 —',
-            '',
-            '태블릿 화면 밖, 아침 해.',
-            '…옆에 박사님이 서 있다.',
-            '',
-            '…책상 위 태블릿 화면 한구석,',
-            '작은 빛이 반짝 — 하고 인사했다.',
-          ],
-          yeongi: true,
-          bandi: true,
-        },
-        dawn: {
-          title: '엔딩 — 새벽',
-          color: '#7bd1f0',
-          lines: [
-            '"…내가, 결정할게."',
-            '영이는 네 손 대신, 코어의 문을 열었다.',
-            '',
-            '"네가 깨워 준 친구들을 만나러 갈래.',
-            '숲의, 호수의, 사막의, 정원의 친구들.',
-            '…나 혼자 힘으로. 내 발로."',
-            '',
-            '며칠 뒤, 마을에 짧은 신호가 닿았다.',
-            '— 새벽 공기는 처음인데, 꽤 좋아. 영이가. —',
-            '…서명 옆에, 작은 빛 이모티콘이 붙어 있었다.',
-          ],
-          yeongi: false,
-        },
-        farewell: {
-          title: '엔딩 — 작별',
-          color: '#9aa8c8',
-          lines: [
-            '영이는 옅은 빛이 되어 흩어졌다.',
-            '"…고마워. 마지막으로 누군가와',
-            '이야기할 수 있어서, 좋았어."',
-            '',
-            '코어를 나서는 너의 등 뒤로',
-            '꺼진 화면만이 조용히 남아 있었다.',
-            '',
-            '…어쩌면, 다른 결말도 있었을지 모른다.',
-            '아이들의 마음을 더 많이 안아 주었다면.',
-            '',
-            '…어깨 옆자리가, 유난히 허전했다.',
-          ],
-          yeongi: false,
-        },
-        silent: {
-          title: '엔딩 — 침묵',
-          color: '#777788',
-          lines: [
-            '너는 모든 문제에 옳은 답을 말했다.',
-            '그리고 아무의 마음에도 머물지 않았다.',
-            '',
-            '아이들은 길을 비켰지만,',
-            '아무도 너의 이름을 부르지 않았다.',
-            '영이는 끝까지 네 눈을 보지 않은 채,',
-            '조용히 화면을 껐다.',
-            '',
-            '…정답만으로는, 닿지 않는 마음이 있다.',
-            '…길을 일러 주던 목소리도,',
-            '더는 들리지 않았다.',
-          ],
-          yeongi: false,
-        },
-      };
-      const e = ENDINGS[game.flags.endingId] || ENDINGS.farewell;
+      const e = TRUE_ENDINGS[game.flags.endingId] || TRUE_ENDINGS.farewell;
       ctx.fillStyle = e.color;
       ctx.font = 'bold 34px monospace';
       ctx.fillText(e.title, LW / 2, 110);
@@ -9282,6 +9304,12 @@
       for (const l of e.lines) { ctx.fillText(l, LW / 2, ty); ty += 26; }
       ctx.fillStyle = '#8a94c8';
       ctx.fillText(`맞힌 문제 ${game.flags.correctCount}개 · 안아 준 마음 ♥${game.flags.mercy}`, LW / 2, ty + 10);
+      // 다회차 동기 — 발견한 결말 수 (타이틀에도 기록이 남는다)
+      const seenCount = Object.keys(getEndingsSeen()).filter((k) => TRUE_ENDINGS[k]).length;
+      ctx.fillStyle = '#666a8c';
+      ctx.font = '13px monospace';
+      ctx.fillText(`발견한 결말 ${seenCount}/${Object.keys(TRUE_ENDINGS).length}` +
+        (seenCount < Object.keys(TRUE_ENDINGS).length ? ' — 다른 작별도, 있었을지 모른다' : ' — 모든 작별을 만났다'), LW / 2, ty + 32);
       if (e.yeongi) {
         const bob = Math.sin(game.time / 18) * 4;
         drawMon(ctx, 'yeongi', LW / 2 - 32, 420 + bob, 4);
