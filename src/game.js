@@ -4593,6 +4593,9 @@
   // 카드형 주장의 정답 말은 그 카드를 모아 와야 잠금이 풀린다 (방탈출 보상 동선 유지).
   function buildActOptions(b) {
     const claim = currentClaim();
+    // 같은 주장 동안에는 선택지 배치를 고정한다 — 열 때마다 위치가 뒤섞이면
+    // 아이가 방금 읽은 선택지를 다시 찾아야 한다 (주장이 바뀌면 재생성)
+    if (b.actCache && b.actCache.claim === claim) return b.actCache.options;
     const owned = ownedCards();
     const cardId = (!claim.best && claim.counters && claim.counters[0]) || null;
     const correct = {
@@ -4603,9 +4606,11 @@
       .concat(b.p.decoys || []);
     const wrongLabels = shuffled(pool).slice(0, 2);
     while (wrongLabels.length < 2) wrongLabels.push('글쎄…');
-    return shuffled([correct,
+    const options = shuffled([correct,
       { label: wrongLabels[0], correct: false, locked: false },
       { label: wrongLabels[1], correct: false, locked: false }]);
+    b.actCache = { claim, options };
+    return options;
   }
   function setReact(b, text, after) {
     b.react = { text: String(text), chars: 0 }; // 타자기 효과 (M-3)
