@@ -398,6 +398,21 @@ if (process.argv.includes('--print')) {
   }
 })();
 
+// 개인정보 보증 린트 — 게임 코드에 외부 네트워크 호출이 없어야 한다.
+// (docs/개인정보-안내.md의 '어떤 정보도 외부로 전송하지 않는다'는 약속을 CI로 강제)
+{
+  const NET = /\b(fetch|XMLHttpRequest|sendBeacon|WebSocket|EventSource)\s*\(/;
+  for (const f of ['src/data.js', 'src/game.js', 'src/sprites.js', 'src/audio.js', 'index.html']) {
+    const raw = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    const stripped = raw
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/(^|[^:'"`])\/\/[^\n]*/g, (m, p1) => p1 + ' ');
+    if (NET.test(stripped)) {
+      err(`개인정보 린트 ${f} — 외부 네트워크 호출 감지. 오프라인·무전송 원칙 위반 (개인정보-안내.md)`);
+    }
+  }
+}
+
 // 반디 조언 커버리지 린트 — 키가 실제 맵 id여야 한다 (오타 차단)
 {
   const CL = vm.runInContext('COMPANION_LINES', ctx);
