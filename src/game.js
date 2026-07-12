@@ -947,6 +947,7 @@
     if (e.key === 'h' || e.key === 'H') {
       if (game.mode === 'hint') { advanceHint(); return; }
       if (game.mode === 'world' && game.puzzleRun) { openHint(); return; }
+      if (game.mode === 'battle' && game.battle && game.battle.phase === 'menu') { battleHint(); return; }
       return;
     }
     if (e.key === 'v' || e.key === 'V') {
@@ -1146,7 +1147,11 @@
     }
     const hintBtn = document.getElementById('t-hint');
     if (hintBtn) {
-      const onHint = (e) => { e.preventDefault(); Sound.resume(); if (game.mode === 'world' && game.puzzleRun) openHint(); };
+      const onHint = (e) => {
+        e.preventDefault(); Sound.resume();
+        if (game.mode === 'world' && game.puzzleRun) { openHint(); return; }
+        if (game.mode === 'battle' && game.battle && game.battle.phase === 'menu') battleHint();
+      };
       hintBtn.addEventListener('touchstart', onHint);
     }
   }
@@ -4581,6 +4586,28 @@
     if (game.battle.prologueTutorial) {
       pushFloat('* 먼저 「가만히 듣기」로\n속마음을 들어 보자.');
     }
+  }
+
+  // 배틀 힌트(H/터치 힌트 버튼) — 지금 마음 상태에 맞는 다음 행동을 말풍선으로
+  function battleHint() {
+    const b = game.battle;
+    let tip;
+    if (b.gauge >= b.gaugeMax) tip = '힌트: 이름이 노랗다 — 「마음 안아 주기」로 끝내자.';
+    else if (b.pState === 'closed') tip = '힌트: 마음이 닫혀 있다 — 「가만히 듣기」부터.';
+    else {
+      const claim = currentClaim();
+      const cardId = (!claim.best && claim.counters && claim.counters[0]) || null;
+      if (cardId && !ownedCards().includes(cardId)) {
+        tip = '힌트: 맞는 증거 카드가 아직 없다 — 거리의 방탈출 구역을 돌자.';
+      } else if (claim.best) {
+        tip = '힌트: 카드보다 「말 걸기」 — 마음에 닿는 말을 고르자.';
+      } else {
+        tip = '힌트: 「증거 보여주기」나 「말 걸기」로 대답해 보자.';
+      }
+    }
+    game.notice = { text: tip, t: 260 };
+    if (game.tts) Speech.speak(tip);
+    Sound.blip();
   }
 
   // ── M-2 내 턴(메뉴): 말 걸기 / 증거 보여주기 / 가만히 듣기 / 마음 안아 주기 ──
@@ -9547,7 +9574,8 @@
 
       // 방탈출 중에는 터치 기기에도 힌트 버튼을 보여 준다 (H키의 터치 대응).
       // (배틀 중 50:50 힌트는 v3에서 퀴즈 배틀과 함께 폐지됨)
-      const showHintBtn = game.mode === 'world' && !!game.puzzleRun;
+      const showHintBtn = (game.mode === 'world' && !!game.puzzleRun) ||
+        (game.mode === 'battle' && !!game.battle && game.battle.phase === 'menu');
       document.body.classList.toggle('battle-hint', showHintBtn);
       // 터치 기기는 키보드 T가 없어 「선생님 방」에 못 들어간다 — 타이틀(슬롯 화면)일 때만
       // 작은 DOM 버튼을 보여 준다(battle-hint와 같은 body class 토글 패턴).
