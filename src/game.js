@@ -4138,9 +4138,11 @@
       }
       // 2×2 그리드 — 좌/우는 옆 칸, 위/아래는 윗줄/아랫줄로 (화면 배치와 일치)
       const n = P_MENU.length;
+      const beforeIdx = b.menuIdx;
       if (justPressed('left')) { b.menuIdx = (b.menuIdx + n - 1) % n; Sound.blip(); }
       if (justPressed('right')) { b.menuIdx = (b.menuIdx + 1) % n; Sound.blip(); }
       if (justPressed('up') || justPressed('down')) { b.menuIdx = (b.menuIdx + 2) % n; Sound.blip(); }
+      if (game.tts && b.menuIdx !== beforeIdx) Speech.speak(P_MENU[b.menuIdx]); // 읽어주기 접근성
       if (justPressed('action')) selectBattleMenu(b);
       return;
     }
@@ -4148,8 +4150,13 @@
     if (b.phase === 'sub') {
       updateFloats(b);
       const opts = b.sub.options;
+      const beforeSub = b.subIdx;
       if (justPressed('up')) { b.subIdx = (b.subIdx + opts.length - 1) % opts.length; Sound.blip(); }
       if (justPressed('down')) { b.subIdx = (b.subIdx + 1) % opts.length; Sound.blip(); }
+      if (game.tts && b.subIdx !== beforeSub) {
+        const o = opts[b.subIdx];
+        Speech.speak(o.label + (o.locked ? '. 잠김' : '')); // 읽어주기 접근성
+      }
       if (justPressed('cancel')) { b.sub = null; b.phase = 'menu'; Sound.select(); return; }
       if (justPressed('action')) selectBattleSub(b);
       return;
@@ -4575,6 +4582,7 @@
     b.phase = 'menu';
     b.sub = null;
     b.turnCount += 1;
+    if (game.tts) Speech.speak(battleObserve(b).replace(/^\* /, '') + '. 내 차례.'); // 읽어주기 접근성
     if (b.gauge >= b.gaugeMax && !b.spareReady) {
       b.spareReady = true;
       pushFloat('* 마음이 활짝 열렸다!\n「마음 안아 주기」로 배틀을 끝내자.');
@@ -4665,6 +4673,7 @@
       }
       b.sub = { kind: 'act', options: buildActOptions(b) };
       b.subIdx = 0; b.phase = 'sub'; Sound.select();
+      if (game.tts) Speech.speak('무슨 말을 건넬까? ' + b.sub.options[0].label);
       return;
     }
     if (idx === 1) { // 증거 보여주기
@@ -4763,6 +4772,7 @@
     b.arena.carrying = false;
     if (b.mon.mercy && !b.mercyDone) {
       b.phase = 'mercy'; b.cursor = 0; Sound.badge();
+      if (game.tts) Speech.speak('마음의 선택. ' + b.mon.mercy.prompt);
       if (!game.reduceFx) b.shake = 12; // 마음이 열리는 순간의 울림 (M-3)
     } else {
       winBattle();
