@@ -4444,6 +4444,7 @@
   // 교사 진단용 로그 — 마음 조각 배틀 개편판
   function pStats() {
     if (!game.flags.pStats || game.flags.pStats.fragments === undefined) {
+      // gateTimeout은 옛 「응답의 문」 시절의 잔재 — 구 세이브 호환을 위해 필드만 유지 (더는 증가하지 않음)
       game.flags.pStats = { fragments: 0, gateRight: 0, gateWrong: 0, gateTimeout: 0, perfectWaves: 0, backfire: 0 };
     }
     return game.flags.pStats;
@@ -5062,8 +5063,10 @@
   function persuadeExhaust() {
     const b = game.battle;
     if (!game.flags.persuadeMemory) game.flags.persuadeMemory = {};
+    // 저학년(easy)은 게이지를 그대로 기억한다 — 탈진해도 진행이 깎이지 않아
+    // 재도전 의욕이 꺾이지 않는다 (기본/고학년은 절반)
     game.flags.persuadeMemory[b.persuadeId] = {
-      gauge: Math.floor(b.gauge / 2),
+      gauge: game.difficulty === 'easy' ? b.gauge : Math.floor(b.gauge / 2),
       state: b.pState === 'closed' ? 'closed' : 'shaken',
     };
     save();
