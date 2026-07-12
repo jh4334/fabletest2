@@ -9188,6 +9188,8 @@
         game.player.px = 13 * TS; game.player.py = 16 * TS;
         save();
         Sound.playSong(MAPS.village.song);
+        // 후일담 유도 — 엔딩 분기별 마을 대사(박사님·할머니)가 기다린다
+        game.notice = { text: '마을 사람들이 너를 기다린다 — 말을 걸어 보자.', t: 320 };
       }
     } else {
       if (game.endingT > 120 && justPressed('action')) {
