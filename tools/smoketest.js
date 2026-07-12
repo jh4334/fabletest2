@@ -2896,8 +2896,8 @@ console.log('[117] N-4 기억의 별 — 조사하면 저장 + 결심 플레이�
   check('별 조사 — 결심 플레이버 대화', g.mode === 'dialog' && /단단하게 한다/.test(g.dialog.lines[0]));
   check('별 조사 — 저장 말풍선', !!g.notice && /저장되었다/.test(g.notice.text));
   advanceDialog();
-  check('허브 6곳 모두 별 보유', ['village','freestreet','tiltstreet','rumorstreet','arcade','cozyhome']
-    .every((m2) => !!MAPS[m2].star));
+  check('허브 6곳 + 파이널 2곳 모두 별 보유', ['village','freestreet','tiltstreet','rumorstreet','arcade',
+    'cozyhome','quietyard','coreroom'].every((m2) => !!MAPS[m2].star));
 }
 
 console.log('[118] N-5 공격 예고 — 프로필 announce가 상대 턴 시작에 흐른다');
