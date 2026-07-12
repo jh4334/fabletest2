@@ -67,6 +67,25 @@ for (const [id, m] of Object.entries(MAPS)) {
     const t = m.tiles[s.y][s.x];
     if (t !== 'Y') err(`${id} 표지판 (${s.x},${s.y}) 타일이 '${t}' (Y 아님)`);
   }
+  // 조사 플레이버(N-3) — 맵 범위 안 + 워프 칸과 겹치지 않아야 한다
+  const inBounds = (x, y) => y >= 0 && y < m.tiles.length && x >= 0 && x < m.tiles[0].length;
+  for (const fl of (m.flavors || [])) {
+    if (!inBounds(fl.x, fl.y)) { err(`${id} 플레이버 (${fl.x},${fl.y}) 맵 밖`); continue; }
+    if ((m.warps || []).some((w) => w.x === fl.x && w.y === fl.y)) {
+      err(`${id} 플레이버 (${fl.x},${fl.y})가 워프 칸과 겹침 (조사 불가)`);
+    }
+    if (!fl.text || fl.text.length < 4) err(`${id} 플레이버 (${fl.x},${fl.y}) 텍스트가 비었거나 너무 짧음`);
+  }
+  // 기억의 별(N-4) — 걸어갈 수 있는 칸 + 워프 칸 금지 (조사하려면 인접해야 한다)
+  if (m.star) {
+    const st = m.star;
+    if (!inBounds(st.x, st.y)) err(`${id} 기억의 별 (${st.x},${st.y}) 맵 밖`);
+    else if (!WALKABLE.has(m.tiles[st.y][st.x])) err(`${id} 기억의 별 (${st.x},${st.y}) 이동 불가 타일 위`);
+    if ((m.warps || []).some((w) => w.x === st.x && w.y === st.y)) {
+      err(`${id} 기억의 별 (${st.x},${st.y})가 워프 칸과 겹침`);
+    }
+    if (!st.text) err(`${id} 기억의 별 텍스트 없음`);
+  }
 }
 
 // 4. 도달 가능성 (BFS, 배지 게이트 무시)

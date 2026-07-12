@@ -4136,9 +4136,11 @@
         b.spareReady = true;
         pushFloat('* 마음이 활짝 열렸다!\n「마음 안아 주기」로 배틀을 끝내자.');
       }
+      // 2×2 그리드 — 좌/우는 옆 칸, 위/아래는 윗줄/아랫줄로 (화면 배치와 일치)
       const n = P_MENU.length;
-      if (justPressed('left') || justPressed('up')) { b.menuIdx = (b.menuIdx + n - 1) % n; Sound.blip(); }
-      if (justPressed('right') || justPressed('down')) { b.menuIdx = (b.menuIdx + 1) % n; Sound.blip(); }
+      if (justPressed('left')) { b.menuIdx = (b.menuIdx + n - 1) % n; Sound.blip(); }
+      if (justPressed('right')) { b.menuIdx = (b.menuIdx + 1) % n; Sound.blip(); }
+      if (justPressed('up') || justPressed('down')) { b.menuIdx = (b.menuIdx + 2) % n; Sound.blip(); }
       if (justPressed('action')) selectBattleMenu(b);
       return;
     }
@@ -4591,6 +4593,9 @@
   // 카드형 주장의 정답 말은 그 카드를 모아 와야 잠금이 풀린다 (방탈출 보상 동선 유지).
   function buildActOptions(b) {
     const claim = currentClaim();
+    // 같은 주장 동안에는 선택지 배치를 고정한다 — 열 때마다 위치가 뒤섞이면
+    // 아이가 방금 읽은 선택지를 다시 찾아야 한다 (주장이 바뀌면 재생성)
+    if (b.actCache && b.actCache.claim === claim) return b.actCache.options;
     const owned = ownedCards();
     const cardId = (!claim.best && claim.counters && claim.counters[0]) || null;
     const correct = {
@@ -4601,9 +4606,11 @@
       .concat(b.p.decoys || []);
     const wrongLabels = shuffled(pool).slice(0, 2);
     while (wrongLabels.length < 2) wrongLabels.push('글쎄…');
-    return shuffled([correct,
+    const options = shuffled([correct,
       { label: wrongLabels[0], correct: false, locked: false },
       { label: wrongLabels[1], correct: false, locked: false }]);
+    b.actCache = { claim, options };
+    return options;
   }
   function setReact(b, text, after) {
     b.react = { text: String(text), chars: 0 }; // 타자기 효과 (M-3)
@@ -4841,9 +4848,8 @@
   function updateWave() {
     const b = game.battle, w = b.wave, arena = b.arena, box = arena.box;
     // 히트스톱 (M-3) — 피격 순간 몇 프레임 멈춰 타격감을 준다 (탄막 턴에서만)
+    // shake/flash 감산은 updateBattle 상단에서 공통 처리 — 여기서 또 하면 2배속이 된다
     if (b.hitstop > 0) { b.hitstop -= 1; return; }
-    if (b.shake > 0) b.shake -= 1;
-    if (b.flash > 0) b.flash -= 1;
     w.t += 1;
     updateFloats(b);
     // 고요(보스) — 첫 open 파도의 탄막 예고 깜빡임 카운트다운
