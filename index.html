@@ -148,7 +148,8 @@
     display: flex;
     right: calc(14px + env(safe-area-inset-right));
     bottom: calc(14px + env(safe-area-inset-bottom));
-    --b: clamp(34px, 7vmin, 42px);
+    /* 최소 44px 터치 타깃 보장 (접근성) — 시각적으로는 여전히 작고 흐릿하게 유지 */
+    --b: clamp(44px, 8vmin, 52px);
     font-size: clamp(10px, 2.2vmin, 12px);
     border-radius: 10px;
     background: rgba(28,30,46,.4);
@@ -210,6 +211,20 @@
     padding: 12px 28px; cursor: pointer;
   }
 
+  /* ---- 초기 로딩 표시 (스크립트 파싱·초기화 동안) — __game 준비되면 JS가 숨긴다 ---- */
+  #loading {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #12101c; color: #fff; gap: 10px;
+  }
+  #loading .load-title { font-size: 26px; font-weight: bold; letter-spacing: 2px; }
+  #loading .load-sub {
+    font-size: 14px; color: #9a93b0;
+    animation: loadpulse 1.4s ease-in-out infinite;
+  }
+  @keyframes loadpulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { #loading .load-sub { animation: none; } }
+
   /* ---- 첫 로딩 실패 안내 (스크립트가 안 받아졌을 때) ---- */
   #boot-error {
     display: none;
@@ -230,6 +245,18 @@
 </style>
 </head>
 <body>
+<noscript>
+  <div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#12101c;color:#fff;font-family:sans-serif;text-align:center;padding:24px;z-index:9999;">
+    <div>
+      <div style="font-size:20px;font-weight:bold;margin-bottom:12px;">자바스크립트가 꺼져 있어요</div>
+      <div style="color:#cfc8e0;font-size:15px;line-height:1.7;">「마음의 문」은 브라우저에서 자바스크립트로 동작해요.<br>브라우저 설정에서 자바스크립트를 켠 뒤 새로고침해 주세요.</div>
+    </div>
+  </div>
+</noscript>
+<div id="loading">
+  <div class="load-title">마음의 문</div>
+  <div class="load-sub">불러오는 중…</div>
+</div>
 <div id="wrap">
   <canvas id="game" width="720" height="528" tabindex="0" role="application" aria-label="마음의 문 게임 화면. 방향키로 이동, Z 또는 스페이스로 결정합니다."></canvas>
 </div>
@@ -282,10 +309,14 @@
         if (el) el.style.display = 'flex';
       }
     });
-    // 정상 시작되면 감시 해제
+    // 정상 시작되면 감시 해제 + 로딩 표시 제거
     var iv = setInterval(function () {
-      if (window.__game) { clearTimeout(t); clearInterval(iv); }
-    }, 200);
+      if (window.__game) {
+        clearTimeout(t); clearInterval(iv);
+        var ld = document.getElementById('loading');
+        if (ld && ld.parentNode) ld.parentNode.removeChild(ld);
+      }
+    }, 100);
   })();
 
   // 오프라인 설치(PWA) — file:// 로 직접 열었을 때는 등록하지 않는다

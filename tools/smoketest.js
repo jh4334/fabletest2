@@ -805,6 +805,30 @@ deleteSlotViaGame(1);
 check('슬롯 1 삭제 시 통계도 삭제', !storage.get('ai-ethics-adventure-stats-1'));
 check('슬롯 1 삭제 시 퍼즐 로그도 삭제(스토리지)', !storage.get('ai-ethics-adventure-puzzle-1'));
 check('슬롯 1 삭제 시 퍼즐 로그 메모이즈도 무효화(빈 객체 반환)', Object.keys(getPuzzleLogT(1)).length === 0);
+// C9: 삭제한 세이브 되살리기 — 방금 지운 슬롯 복구 (공용 태블릿 실수 방지)
+{
+  const Tu = vm.runInContext('window.__test', sandbox);
+  // 실제 세이브 + 통계를 갖춘 슬롯 1을 만든 뒤 삭제 → 되살리기
+  storage.set('ai-ethics-adventure-slot-1', JSON.stringify({ v: 8, name: '되살이', flags: {} }));
+  storage.set('ai-ethics-adventure-stats-1', '{"privacy":{"correct":3,"total":3}}');
+  deleteSlotViaGame(1);
+  check('삭제 후 세이브 없음', !storage.get('ai-ethics-adventure-slot-1'));
+  check('삭제 직후 되살리기 가능 표시', Tu.hasDeletedSlot() === true);
+  const un = Tu.undoDeleteSlot();
+  check('되살리기 성공 + 슬롯 번호 반환', un.ok === true && un.slot === 1);
+  check('세이브 복구됨', storage.get('ai-ethics-adventure-slot-1') === JSON.stringify({ v: 8, name: '되살이', flags: {} }));
+  check('통계도 복구됨', !!storage.get('ai-ethics-adventure-stats-1'));
+  check('되살리기 소진 후 스냅샷 없음', Tu.hasDeletedSlot() === false);
+  // R 키 경로도 확인
+  g.mode = 'title'; g.titleScreen = 'delete'; g.slotCursor = 1; tap('z'); // 다시 삭제
+  g.mode = 'title'; g.titleScreen = 'slots';
+  dispatch('keydown', { key: 'r' }); step(2); dispatch('keyup', { key: 'r' });
+  check('R 키로 되살리기 → 세이브 복구', !!storage.get('ai-ethics-adventure-slot-1') &&
+    /되살렸/.test(g.notice.text));
+  // 정리
+  storage.delete('ai-ethics-adventure-slot-1');
+  storage.delete('ai-ethics-adventure-stats-1');
+}
 function deleteSlotViaGame(slot) {
   g.mode = 'title'; g.titleScreen = 'delete'; g.slotCursor = slot;
   tap('z'); // 삭제 확정
@@ -833,6 +857,22 @@ check('통계가 복원됨', storage.get('ai-ethics-adventure-stats-0') === good
 check('퍼즐 로그도 복원됨', storage.get('ai-ethics-adventure-puzzle-0') === goodPuzzle);
 check('잘못된 데이터는 거부', T.applyBackup('{"app":"other"}').ok === false);
 check('깨진 JSON은 거부', T.applyBackup('not json').ok === false);
+// C3: 식별자는 맞지만 인식 가능한 데이터가 없는 백업 → empty (완료 오표시 방지)
+check('빈 백업은 empty 오류로 거부', T.applyBackup('{"app":"ai-ethics-adventure","data":{}}').error === 'empty');
+check('알 수 없는 키만 있는 백업도 거부',
+  T.applyBackup('{"app":"ai-ethics-adventure","data":{"random-key":"x"}}').error === 'empty');
+// C3: 복원 되돌리기 — 복원 직전 스냅샷으로 1회 취소
+storage.set('ai-ethics-adventure-stats-0', '{"privacy":{"correct":9,"total":9}}');
+const beforeRestore = storage.get('ai-ethics-adventure-stats-0');
+T.applyBackup(backupText); // 스냅샷 저장 + 덮어쓰기
+check('복원 후 되돌리기 가능 표시', T.hasRestoreUndo() === true);
+const undo = T.undoRestore();
+check('되돌리기 성공', undo.ok === true);
+check('되돌리기로 복원 직전 값 복구', storage.get('ai-ethics-adventure-stats-0') === beforeRestore);
+check('되돌리기 소진 후 스냅샷 없음', T.hasRestoreUndo() === false);
+// 원상 복구 (뒤 테스트 영향 방지)
+storage.set('ai-ethics-adventure-stats-0', goodStats);
+storage.set('ai-ethics-adventure-puzzle-0', goodPuzzle);
 
 console.log('[36b] 교사용 반 현황 CSV 내보내기');
 const csv = T.buildClassCsv();
@@ -842,6 +882,13 @@ check('CSV 헤더 행 존재', csvLines[0].startsWith('슬롯,이름,'));
 check('CSV 헤더 15개 열', csvLines[0].split(',').length === 15);
 check('CSV 헤더에 연구용 지표 3열 포함', csvLines[0].includes('개념별 성취') &&
   csvLines[0].includes('자비 선택') && csvLines[0].includes('엔딩'));
+// C4: CSV 수식 주입 방어 — 위험 문자로 시작하는 셀은 '로 고정
+check('=로 시작하는 값은 앞에 \' 부착', T.csvCell('=cmd()') === "'=cmd()");
+check('+로 시작하는 값도 방어', T.csvCell('+1+1') === "'+1+1");
+check('@로 시작하는 값도 방어', T.csvCell('@x') === "'@x");
+check('수식+쉼표 값은 \' 부착 후 따옴표', T.csvCell('=a,b') === '"\'=a,b"');
+check('일반 값은 그대로', T.csvCell('수호자') === '수호자');
+check('쉼표 포함 값은 따옴표로만(수식 아님)', T.csvCell('가,나') === '"가,나"');
 check('CSV 행 = 헤더 + 슬롯 3개', csvLines.length === 4);
 check('CSV 슬롯1 행이 슬롯 번호로 시작', csvLines[1].startsWith('1,'));
 check('CSV 슬롯1(데이터 있음) 15개 열', csvLines[1].split(',').length === 15);

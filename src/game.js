@@ -272,9 +272,35 @@
     catch (e) { noteStorageFail(); }
   }
 
+  const SLOT_UNDO_KEY = 'ai-ethics-adventure-deleted-slot';
+  function slotAllKeys(i) {
+    return [slotKey(i), statsKey(i), mistakesKey(i), metaKey(i), puzzleKey(i)];
+  }
   function deleteSlot(i) {
+    // 되살리기 안전망 — 지우기 직전 이 슬롯의 모든 데이터를 스냅샷해 둔다.
+    // 공용 태블릿에서 다른 학생의 세이브를 실수로 지워도 1회 복구할 수 있다.
+    try {
+      const snap = { slot: i };
+      for (const k of slotAllKeys(i)) { const v = localStorage.getItem(k); if (v != null) snap[k] = v; }
+      localStorage.setItem(SLOT_UNDO_KEY, JSON.stringify(snap));
+    } catch (e) { /* 용량 부족 등이면 그냥 진행 */ }
     try { localStorage.removeItem(slotKey(i)); } catch (e) { /* 무시 */ }
     clearSlotLearning(i); // 학생을 지우면 학습 기록(일지·복습·도전과제)도 함께 지운다
+  }
+  function undoDeleteSlot() {
+    let snap;
+    try { snap = JSON.parse(localStorage.getItem(SLOT_UNDO_KEY)); } catch (e) { return { ok: false }; }
+    if (!snap || typeof snap.slot !== 'number') return { ok: false };
+    let n = 0;
+    for (const k of slotAllKeys(snap.slot)) {
+      if (snap[k] != null) { try { localStorage.setItem(k, snap[k]); n++; } catch (e) { /* 무시 */ } }
+    }
+    if (puzzleLogCache && puzzleLogCache.slot === snap.slot) puzzleLogCache = null;
+    try { localStorage.removeItem(SLOT_UNDO_KEY); } catch (e) { /* 무시 */ }
+    return { ok: n > 0, slot: snap.slot };
+  }
+  function hasDeletedSlot() {
+    try { return !!localStorage.getItem(SLOT_UNDO_KEY); } catch (e) { return false; }
   }
 
   // 기존 단일 세이브를 슬롯 0으로 1회 이전한다.
@@ -876,17 +902,34 @@
     }
     return JSON.stringify({ app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(), data });
   }
+  const BACKUP_UNDO_KEY = 'ai-ethics-adventure-restore-undo';
   function applyBackup(text) {
     let obj;
     try { obj = JSON.parse(text); } catch (e) { return { ok: false, error: 'parse' }; }
     if (!obj || obj.app !== 'ai-ethics-adventure' || !obj.data) return { ok: false, error: 'format' };
     const valid = new Set(allBackupKeys());
+    const incoming = Object.keys(obj.data).filter((k) => valid.has(k));
+    // 인식 가능한 데이터가 하나도 없으면 덮어쓰지 않는다 — 잘못된/빈 파일에 '완료' 오표시 방지
+    if (incoming.length === 0) return { ok: false, error: 'empty' };
+    // 되돌리기 안전망 — 덮어쓰기 직전 현재 상태를 스냅샷해 둔다 (실수 복원 1회 취소용)
+    try { localStorage.setItem(BACKUP_UNDO_KEY, buildBackupText()); } catch (e) { /* 용량 부족 등이면 그냥 진행 */ }
     let count = 0;
-    for (const k of Object.keys(obj.data)) {
-      if (!valid.has(k)) continue;
+    for (const k of incoming) {
       try { localStorage.setItem(k, String(obj.data[k])); count++; } catch (e) { /* 무시 */ }
     }
     return { ok: true, count };
+  }
+  // 직전 복원을 취소한다 (되돌리기 스냅샷이 있을 때만).
+  function undoRestore() {
+    let snap;
+    try { snap = localStorage.getItem(BACKUP_UNDO_KEY); } catch (e) { return { ok: false }; }
+    if (!snap) return { ok: false };
+    const res = applyBackup(snap); // 스냅샷을 다시 적용 (이때 또 undo 스냅샷이 갱신됨)
+    try { localStorage.removeItem(BACKUP_UNDO_KEY); } catch (e) { /* 무시 */ }
+    return res;
+  }
+  function hasRestoreUndo() {
+    try { return !!localStorage.getItem(BACKUP_UNDO_KEY); } catch (e) { return false; }
   }
   // 텍스트를 클립보드에 복사 (가능한 환경에서). 성공 여부 반환.
   function copyTextToClipboard(text) {
@@ -977,6 +1020,16 @@
       if (game.mode === 'world') { openAwards('world'); return; }
       if (game.mode === 'title' && game.titleScreen === 'slots') { openAwards('title'); return; }
       if (game.mode === 'awards') { closeAwards(); return; }
+      return;
+    }
+    if (e.key === 'r' || e.key === 'R') {
+      // 방금 지운 세이브 되살리기 (슬롯 화면에서만, 스냅샷이 있을 때만)
+      if (game.mode === 'title' && game.titleScreen === 'slots' && hasDeletedSlot()) {
+        const res = undoDeleteSlot();
+        game.notice = { text: res.ok ? '↩ 지운 세이브를 되살렸어요.' : '되살릴 세이브가 없어요.', t: 260 };
+        if (res.ok && typeof res.slot === 'number') game.slotCursor = res.slot;
+        Sound.badge();
+      }
       return;
     }
     if (e.key === 'i' || e.key === 'I') {
@@ -6688,11 +6741,14 @@
   }
 
   // ---------- 데이터 백업 · 복원 화면 ----------
-  const BACKUP_ITEMS = ['exportClip', 'exportFile', 'importFile', 'close'];
+  // 되돌리기 항목은 직전 복원 스냅샷이 있을 때만 목록에 낀다 (openBackup에서 갱신)
+  const BACKUP_ITEMS_BASE = ['exportClip', 'exportFile', 'importFile', 'close'];
+  let BACKUP_ITEMS = BACKUP_ITEMS_BASE.slice();
   const BACKUP_LABELS = {
     exportClip: '내보내기 — 클립보드 복사',
     exportFile: '내보내기 — 파일로 저장(.json)',
     importFile: '가져오기 — 파일에서 복원',
+    undoRestore: '↩ 방금 복원 되돌리기',
     close: '닫기',
   };
   function openBackup(ret) {
@@ -6700,6 +6756,10 @@
     game.backup.cursor = 0;
     game.backup.toast = 0;
     game.backup.confirm = false;
+    // 직전 복원이 있으면 '되돌리기'를 닫기 앞에 끼운다
+    BACKUP_ITEMS = hasRestoreUndo()
+      ? ['exportClip', 'exportFile', 'importFile', 'undoRestore', 'close']
+      : BACKUP_ITEMS_BASE.slice();
     game.mode = 'backup';
     Sound.select();
   }
@@ -6731,7 +6791,8 @@
         const reader = new FileReader();
         reader.onload = () => {
           const res = applyBackup(String(reader.result));
-          game.backup.toast = res.ok ? 200 : -200;
+          // 인식 가능한 데이터가 없으면(잘못된/빈 파일) 별도 안내 — '완료' 오표시 방지
+          game.backup.toast = res.ok ? 200 : (res.error === 'empty' ? -300 : -200);
           if (res.ok) {
             Object.assign(game, loadSettings());
             Sound.setVolume(VOLUME_LEVELS[game.volume] || 1);
@@ -6769,6 +6830,18 @@
       if (item === 'exportClip') { b.toast = copyTextToClipboard(buildBackupText()) ? 200 : -200; Sound.badge(); }
       else if (item === 'exportFile') { b.toast = downloadBackup() ? 200 : -200; Sound.badge(); }
       else if (item === 'importFile') { b.confirm = true; Sound.blip(); } // 덮어쓰기 전 한 번 더 확인
+      else if (item === 'undoRestore') {
+        const res = undoRestore();
+        if (res.ok) {
+          Object.assign(game, loadSettings());
+          Sound.setVolume(VOLUME_LEVELS[game.volume] || 1);
+          b.toast = 200;
+          BACKUP_ITEMS = BACKUP_ITEMS_BASE.slice(); // 되돌리기 소진
+          if (b.cursor >= BACKUP_ITEMS.length) b.cursor = BACKUP_ITEMS.length - 1;
+          game.mode = 'title'; game.titleScreen = 'slots';
+        } else { b.toast = -200; }
+        Sound.badge();
+      }
       else if (item === 'close') { closeBackup(); }
     }
   }
@@ -6807,7 +6880,10 @@
       ctx.textAlign = 'center';
       ctx.fillStyle = b.toast > 0 ? okColor() : badColor();
       ctx.font = 'bold 15px monospace';
-      ctx.fillText(b.toast > 0 ? '✓ 완료했어요!' : '이 환경에서는 할 수 없어요 (브라우저에서 시도해 주세요)', LW / 2, 470);
+      const msg = b.toast > 0 ? '✓ 완료했어요!'
+        : b.toast === -300 ? '이 파일에는 불러올 기록이 없어요 (다른 백업 파일을 골라 주세요)'
+        : '이 환경에서는 할 수 없어요 (브라우저에서 시도해 주세요)';
+      ctx.fillText(msg, LW / 2, 470);
       ctx.textAlign = 'left';
     }
     ctx.fillStyle = '#777';
@@ -6820,7 +6896,10 @@
   // ---------- 교사용 대시보드 (모든 학생 한눈에) ----------
   // CSV 한 칸을 안전하게 감싼다(쉼표·따옴표·줄바꿈 포함 시 큰따옴표 처리).
   function csvCell(v) {
-    const s = String(v == null ? '' : v);
+    let s = String(v == null ? '' : v);
+    // CSV 수식 주입 방어 — 학생이 정한 이름/칭호가 =,+,-,@,탭,CR로 시작하면
+    // 교사가 엑셀·시트로 열 때 수식으로 실행될 수 있다. 앞에 '를 붙여 문자로 고정.
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
     return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   }
   // 세 학생(슬롯)의 학습 현황을 스프레드시트로 열 수 있는 CSV로 만든다.
@@ -7559,30 +7638,42 @@
     return parts;
   }
 
-  // 텍스트 줄바꿈 그리기. 그린 줄 수를 반환.
-  function wrapText(text, x, y, maxW, lineH) {
+  // 줄바꿈 레이아웃 메모이즈 — 대화 텍스트·폰트·폭이 프레임 간 고정이므로
+  // 타자기 효과로 매 프레임 measureText를 반복하던 비용을 없앤다 (저사양 태블릿 체감).
+  const _wrapCache = new Map();
+  const WRAP_CACHE_MAX = 240;
+  function layoutLine(text, maxW) {
+    const key = ctx.font + '|' + maxW + '|' + text;
+    const hit = _wrapCache.get(key);
+    if (hit) return hit;
     const words = text.split(' ');
-    let line = '', ly = y, lines = 0;
+    const out = [];
+    let line = '';
     for (const w of words) {
       if (ctx.measureText(w).width > maxW) {
-        if (line) { ctx.fillText(line, x, ly); ly += lineH; lines++; line = ''; }
+        if (line) { out.push(line); line = ''; }
         const parts = charBreak(w, maxW);
         for (let i = 0; i < parts.length; i++) {
-          if (i < parts.length - 1) { ctx.fillText(parts[i], x, ly); ly += lineH; lines++; }
+          if (i < parts.length - 1) out.push(parts[i]);
           else line = parts[i];
         }
         continue;
       }
       const test = line ? line + ' ' + w : w;
-      if (ctx.measureText(test).width > maxW && line) {
-        ctx.fillText(line, x, ly); ly += lineH; lines++;
-        line = w;
-      } else {
-        line = test;
-      }
+      if (ctx.measureText(test).width > maxW && line) { out.push(line); line = w; }
+      else line = test;
     }
-    if (line) { ctx.fillText(line, x, ly); lines++; }
-    return lines;
+    if (line) out.push(line);
+    if (_wrapCache.size >= WRAP_CACHE_MAX) _wrapCache.delete(_wrapCache.keys().next().value);
+    _wrapCache.set(key, out);
+    return out;
+  }
+
+  // 텍스트 줄바꿈 그리기. 그린 줄 수를 반환.
+  function wrapText(text, x, y, maxW, lineH) {
+    const lines = layoutLine(text, maxW);
+    for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], x, y + i * lineH);
+    return lines.length;
   }
 
   // wrapText와 같은 규칙으로 줄 수만 센다(그리지 않음). 박스 높이를 미리 잡을 때 쓴다.
@@ -7590,23 +7681,7 @@
   function measureWrap(text, maxW) {
     let total = 0;
     for (const part of String(text == null ? '' : text).split('\n')) {
-      const words = part.split(' ');
-      let line = '', n = 0;
-      for (const w of words) {
-        if (ctx.measureText(w).width > maxW) {
-          if (line) { n++; line = ''; }
-          const parts = charBreak(w, maxW);
-          for (let i = 0; i < parts.length; i++) {
-            if (i < parts.length - 1) n++;
-            else line = parts[i];
-          }
-          continue;
-        }
-        const test = line ? line + ' ' + w : w;
-        if (ctx.measureText(test).width > maxW && line) { n++; line = w; }
-        else line = test;
-      }
-      total += Math.max(1, n + (line ? 1 : 0));
+      total += Math.max(1, layoutLine(part, maxW).length);
     }
     return total;
   }
@@ -9056,7 +9131,7 @@
       ctx.fillText(`F 명예의전당 · U 백업 · I 도움말 · M 음악 · 난이도(${DIFF_LABEL[game.difficulty]})`, LW / 2, 472);
       ctx.fillStyle = '#555';
       ctx.font = '11px monospace';
-      ctx.fillText('t: 선생님 방', LW / 2, 488);
+      ctx.fillText('t: 선생님 방' + (hasDeletedSlot() ? '   ·   R: 방금 지운 세이브 되살리기' : ''), LW / 2, 488);
       ctx.fillStyle = '#777';
     }
 
@@ -9088,10 +9163,12 @@
       ctx.fillText(`슬롯 ${game.slotCursor + 1} "${sum ? sum.name : ''}"`, LW / 2, 240);
       ctx.font = '15px monospace';
       ctx.fillStyle = '#e0453a';
-      ctx.fillText('정말 삭제할까요? (되돌릴 수 없어요)', LW / 2, 270);
+      ctx.fillText('정말 삭제할까요?', LW / 2, 270);
       ctx.fillStyle = '#888';
+      ctx.font = '13px monospace';
+      ctx.fillText('실수로 지웠다면 슬롯 화면에서 R로 한 번 되살릴 수 있어요.', LW / 2, 292);
       ctx.font = '14px monospace';
-      ctx.fillText('Z: 삭제   ·   X: 취소', LW / 2, 304);
+      ctx.fillText('Z: 삭제   ·   X: 취소', LW / 2, 316);
     }
     ctx.textAlign = 'left';
   }
@@ -9630,6 +9707,19 @@
   window.addEventListener('touchstart', startTitleMusic);
   window.addEventListener('mousedown', startTitleMusic);
 
+  // 전역 오류 안전망 — 프레임 루프 밖(입력 핸들러·서비스워커 콜백 등)에서 던져진
+  // 예외는 frame()의 try/catch가 못 잡아 게임이 조용히 멈출 수 있다. 여기서 받아
+  // 복구 화면(drawCrash)으로 유도한다. 진행은 이미 save()로 디스크에 있으므로 안전.
+  if (typeof window.addEventListener === 'function') {
+    const toCrash = (label, detail) => {
+      if (crashed) return;
+      crashed = true;
+      try { console.error('[AI윤리어드벤처] ' + label + ':', detail); } catch (e) { /* 무시 */ }
+    };
+    window.addEventListener('error', (e) => toCrash('전역 오류', e && e.error));
+    window.addEventListener('unhandledrejection', (e) => toCrash('처리되지 않은 거부', e && e.reason));
+  }
+
   // 탭/앱을 백그라운드로 보내면 BGM·읽어주기를 멈춰 배터리와 오디오 드리프트를 막고,
   // 다시 돌아오면 오디오를 재개한 뒤 직전 곡을 복원한다.
   let bgmBeforeHide = null;
@@ -9690,13 +9780,14 @@
   window.__test = { // 테스트용 훅
     buildReportText, buildLearningSummary, recordTopicResult, countAchievements,
     migrateSlotV6, migrateSlotV7, migrateSlotV8,
-    buildBackupText, applyBackup, buildAdaptivePool, buildDailyPool,
+    buildBackupText, applyBackup, undoRestore, hasRestoreUndo,
+    deleteSlot, undoDeleteSlot, hasDeletedSlot, buildAdaptivePool, buildDailyPool,
     recordPlayDay, recordDailyDone, getMeta, todayStr,
     unlockedCount, getCosmetic, setCosmetic, achievementCtx,
     getCustomQuizzes, importCustomQuizzes, clearCustomQuizzes, customQuizTemplate, challengeTopics,
     collectedCards, cardUnlocked, buildCertText, LEARN_CARDS, HOF_CATS,
     sanitizeName, probeStorage, getStorageOk: () => storageOk,
-    buildClassCsv, setupClassBaseFlags, classSelForFlags,
+    buildClassCsv, csvCell, setupClassBaseFlags, classSelForFlags,
     applyTraceRoomClass, applyTiltStreetClass, applyRumorStreetClass,
     applyArcadeClass, applyCozyhomeClass, applyFinalClass,
     getPuzzleLog, writePuzzleLog, nextWaypoint, currentObjective: () => getObjective(game.flags, game.map), // 나침반/HUD 경로 — E2E가 '화살표 따라가기'를 재현할 때 사용
