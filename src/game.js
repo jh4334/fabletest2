@@ -4843,9 +4843,8 @@
   function updateWave() {
     const b = game.battle, w = b.wave, arena = b.arena, box = arena.box;
     // 히트스톱 (M-3) — 피격 순간 몇 프레임 멈춰 타격감을 준다 (탄막 턴에서만)
+    // shake/flash 감산은 updateBattle 상단에서 공통 처리 — 여기서 또 하면 2배속이 된다
     if (b.hitstop > 0) { b.hitstop -= 1; return; }
-    if (b.shake > 0) b.shake -= 1;
-    if (b.flash > 0) b.flash -= 1;
     w.t += 1;
     updateFloats(b);
     // 고요(보스) — 첫 open 파도의 탄막 예고 깜빡임 카운트다운
