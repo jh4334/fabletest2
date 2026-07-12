@@ -7602,30 +7602,42 @@
     return parts;
   }
 
-  // 텍스트 줄바꿈 그리기. 그린 줄 수를 반환.
-  function wrapText(text, x, y, maxW, lineH) {
+  // 줄바꿈 레이아웃 메모이즈 — 대화 텍스트·폰트·폭이 프레임 간 고정이므로
+  // 타자기 효과로 매 프레임 measureText를 반복하던 비용을 없앤다 (저사양 태블릿 체감).
+  const _wrapCache = new Map();
+  const WRAP_CACHE_MAX = 240;
+  function layoutLine(text, maxW) {
+    const key = ctx.font + '|' + maxW + '|' + text;
+    const hit = _wrapCache.get(key);
+    if (hit) return hit;
     const words = text.split(' ');
-    let line = '', ly = y, lines = 0;
+    const out = [];
+    let line = '';
     for (const w of words) {
       if (ctx.measureText(w).width > maxW) {
-        if (line) { ctx.fillText(line, x, ly); ly += lineH; lines++; line = ''; }
+        if (line) { out.push(line); line = ''; }
         const parts = charBreak(w, maxW);
         for (let i = 0; i < parts.length; i++) {
-          if (i < parts.length - 1) { ctx.fillText(parts[i], x, ly); ly += lineH; lines++; }
+          if (i < parts.length - 1) out.push(parts[i]);
           else line = parts[i];
         }
         continue;
       }
       const test = line ? line + ' ' + w : w;
-      if (ctx.measureText(test).width > maxW && line) {
-        ctx.fillText(line, x, ly); ly += lineH; lines++;
-        line = w;
-      } else {
-        line = test;
-      }
+      if (ctx.measureText(test).width > maxW && line) { out.push(line); line = w; }
+      else line = test;
     }
-    if (line) { ctx.fillText(line, x, ly); lines++; }
-    return lines;
+    if (line) out.push(line);
+    if (_wrapCache.size >= WRAP_CACHE_MAX) _wrapCache.delete(_wrapCache.keys().next().value);
+    _wrapCache.set(key, out);
+    return out;
+  }
+
+  // 텍스트 줄바꿈 그리기. 그린 줄 수를 반환.
+  function wrapText(text, x, y, maxW, lineH) {
+    const lines = layoutLine(text, maxW);
+    for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], x, y + i * lineH);
+    return lines.length;
   }
 
   // wrapText와 같은 규칙으로 줄 수만 센다(그리지 않음). 박스 높이를 미리 잡을 때 쓴다.
@@ -7633,23 +7645,7 @@
   function measureWrap(text, maxW) {
     let total = 0;
     for (const part of String(text == null ? '' : text).split('\n')) {
-      const words = part.split(' ');
-      let line = '', n = 0;
-      for (const w of words) {
-        if (ctx.measureText(w).width > maxW) {
-          if (line) { n++; line = ''; }
-          const parts = charBreak(w, maxW);
-          for (let i = 0; i < parts.length; i++) {
-            if (i < parts.length - 1) n++;
-            else line = parts[i];
-          }
-          continue;
-        }
-        const test = line ? line + ' ' + w : w;
-        if (ctx.measureText(test).width > maxW && line) { n++; line = w; }
-        else line = test;
-      }
-      total += Math.max(1, n + (line ? 1 : 0));
+      total += Math.max(1, layoutLine(part, maxW).length);
     }
     return total;
   }
