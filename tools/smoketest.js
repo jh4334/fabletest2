@@ -1477,7 +1477,7 @@ battleMenuPick(0);
   g.battle.subIdx = opts.indexOf(cardOpt);
   tap('z'); // 잠긴 응답 → 카드 안내 후 내 턴 유지 (턴 소모 없음)
 }
-check('잠긴 응답 → 카드 안내 반응', g.battle.phase === 'react' && /카드를 모아/.test(g.battle.react.text));
+check('잠긴 응답 → 카드 안내 반응', g.battle.phase === 'react' && /증거 카드가 필요하다/.test(g.battle.react.text));
 advanceReact();
 check('잠긴 응답은 턴을 소모하지 않음(내 턴 복귀)', g.battle.phase === 'menu');
 answerClaim(false); // 오답으로 판정 → 상대 턴 복귀

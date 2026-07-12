@@ -4207,152 +4207,64 @@
 
   // 1장 보스 클리어 — chapter1Clear 플래그 + 1장 마무리 대사 후 금고 앞(거리)으로 복귀.
   // 라이브러리 퀴즈와 별개이므로 defeated.sujipmon/친구 수첩은 건드리지 않는다.
-  function winChapter1Boss() {
+  // 1~5장 보스 클리어 공통 처리 — 챕터 플래그 + 허브 복귀 + 마무리 대사.
+  // 장별로 다른 것은 복귀 지점과 대사뿐이라 설정 테이블로 통합했다.
+  const CHAPTER_WIN = {
+    1: {
+      map: 'freestreet', x: 17, y: 5, dir: 'down',
+      mercyLine: '💛 담아의 굳어 있던 마음이\n환하게 풀렸어요. 또 한 친구를 되돌렸다!',
+      clearLine: '☆ 1장 클리어! ☆\n「전부 공짜 거리」의 네온이\n조용히 잦아들었다.',
+      afterLine: '담아가 상자마다 붙은\n「친구가 준 것」 라벨을\n하나씩 떼어 내기 시작했다.',
+    },
+    2: {
+      map: 'tiltstreet', x: 14, y: 10, dir: 'up',
+      mercyLine: '💛 기울의 한쪽으로 굳었던 마음이\n반대쪽으로도 천천히 열렸어요. 또 한 친구를 되돌렸다!',
+      clearLine: '☆ 2장 클리어! ☆\n광장의 거대한 저울이,\n천천히 수평으로 내려앉았다.',
+      afterLine: '기울이 한쪽 접시의 짐을\n반대쪽에도 하나씩 옮겨 담기 시작했다.',
+    },
+    3: {
+      map: 'rumorstreet', x: 17, y: 5, dir: 'down',
+      mercyLine: '💛 그럴싸의 [속보] 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!',
+      clearLine: '☆ 3장 클리어! ☆\n거리의 헤드라인 벽보가\n하나둘 [정정] 딱지로 바뀌었다.',
+      afterLine: '상점 문들이 활짝 열리고,\n주민들의 얼굴에 웃음이 돌아왔다.',
+    },
+    4: {
+      map: 'arcade', x: 18, y: 2, dir: 'down',
+      mercyLine: '💛 반짝의 반짝임 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!',
+      clearLine: '☆ 4장 클리어! ☆\n무대의 네온사인이\n하나둘 차분한 빛으로 바뀌었다.',
+      afterLine: '반짝이 남은 광고 딱지들을\n하나씩 떼어 내기 시작했다.',
+    },
+    5: {
+      map: 'cozyhome', x: 18, y: 2, dir: 'down',
+      mercyLine: '💛 루미의 붙잡던 손 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!',
+      clearLine: '☆ 5장 클리어! ☆\n집 안의 공기가\n한결 가벼워졌다.',
+      afterLine: '루미가 현관문을\n스스로 열어 두었다.',
+    },
+  };
+  function winChapterBoss(n) {
     const b = game.battle;
     const mon = b.mon;
-    game.flags.chapter1Clear = true;
-    game.flags.chapter1Mercy = (b.mercyChoiceKind === 'mercy'); // 2장 콜백 인트로용
+    const cfg = CHAPTER_WIN[n];
+    game.flags['chapter' + n + 'Clear'] = true;
+    game.flags['chapter' + n + 'Mercy'] = (b.mercyChoiceKind === 'mercy'); // 다음 장 콜백 인트로용
     if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
     save();
     checkCosmeticUnlocks(game.currentSlot);
     game.battle = null;
     game.mode = 'world';
-    // 금고 밖(거리)으로 복귀
-    game.map = 'freestreet';
+    game.map = cfg.map; // 허브 복귀
     const p = game.player;
-    p.x = 17; p.y = 5; p.px = 17 * TS; p.py = 5 * TS; p.moving = false; p.dir = 'down';
+    p.x = cfg.x; p.y = cfg.y; p.px = cfg.x * TS; p.py = cfg.y * TS; p.moving = false; p.dir = cfg.dir;
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.badge();
-    Sound.playSong(MAPS.freestreet.song);
+    Sound.playSong(MAPS[cfg.map].song);
     const lines = [mon.win];
-    if (b.mercyChoiceKind === 'mercy') {
-      lines.push('💛 담아의 굳어 있던 마음이\n환하게 풀렸어요. 또 한 친구를 되돌렸다!');
-    }
-    lines.push('☆ 1장 클리어! ☆\n「전부 공짜 거리」의 네온이\n조용히 잦아들었다.');
-    lines.push('담아가 상자마다 붙은\n「친구가 준 것」 라벨을\n하나씩 떼어 내기 시작했다.');
-    lines.push(bandiBossLine('ch1', b.mercyChoiceKind, game.flags));
-    startDialog(lines, mon.name, () => Sound.playSong(MAPS.freestreet.song));
-  }
-
-  // 2장 보스 클리어 — chapter2Clear 플래그 + 2장 마무리 대사 후 저울 앞(광장)으로 복귀.
-  // (클리어 처리는 챕터 플래그로 기록한다)
-  function winChapter2Boss() {
-    const b = game.battle;
-    const mon = b.mon;
-    game.flags.chapter2Clear = true;
-    game.flags.chapter2Mercy = (b.mercyChoiceKind === 'mercy'); // 3장 콜백 인트로용
-    if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
-    save();
-    checkCosmeticUnlocks(game.currentSlot);
-    game.battle = null;
-    game.mode = 'world';
-    // 저울 앞(광장)으로 복귀
-    game.map = 'tiltstreet';
-    const p = game.player;
-    p.x = 14; p.y = 10; p.px = 14 * TS; p.py = 10 * TS; p.moving = false; p.dir = 'up';
-    held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
-    stickDir = null; stickRepeatFrames = 0;
-    Sound.badge();
-    Sound.playSong(MAPS.tiltstreet.song);
-    const lines = [mon.win];
-    if (b.mercyChoiceKind === 'mercy') {
-      lines.push('💛 기울의 한쪽으로 굳었던 마음이\n반대쪽으로도 천천히 열렸어요. 또 한 친구를 되돌렸다!');
-    }
-    lines.push('☆ 2장 클리어! ☆\n광장의 거대한 저울이,\n천천히 수평으로 내려앉았다.');
-    lines.push('기울이 한쪽 접시의 짐을\n반대쪽에도 하나씩 옮겨 담기 시작했다.');
-    lines.push(bandiBossLine('ch2', b.mercyChoiceKind, game.flags));
-    startDialog(lines, mon.name, () => Sound.playSong(MAPS.tiltstreet.song));
-  }
-
-  // 3장 보스 클리어 — chapter3Clear 플래그 + 3장 마무리 대사 후 신문사 입구(거리)로 복귀.
-  // (클리어 처리는 챕터 플래그로 기록한다)
-  function winChapter3Boss() {
-    const b = game.battle;
-    const mon = b.mon;
-    game.flags.chapter3Clear = true;
-    game.flags.chapter3Mercy = (b.mercyChoiceKind === 'mercy');
-    if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
-    save();
-    checkCosmeticUnlocks(game.currentSlot);
-    game.battle = null;
-    game.mode = 'world';
-    // 신문사 입구(거리)로 복귀 — 이미 rumorFixed 상태라 거리는 풀린 모습이다
-    game.map = 'rumorstreet';
-    const p = game.player;
-    p.x = 17; p.y = 5; p.px = 17 * TS; p.py = 5 * TS; p.moving = false; p.dir = 'down';
-    held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
-    stickDir = null; stickRepeatFrames = 0;
-    Sound.badge();
-    Sound.playSong(MAPS.rumorstreet.song);
-    const lines = [mon.win];
-    if (b.mercyChoiceKind === 'mercy') {
-      lines.push('💛 그럴싸의 [속보] 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!');
-    }
-    lines.push('☆ 3장 클리어! ☆\n거리의 헤드라인 벽보가\n하나둘 [정정] 딱지로 바뀌었다.');
-    lines.push('상점 문들이 활짝 열리고,\n주민들의 얼굴에 웃음이 돌아왔다.');
-    lines.push(bandiBossLine('ch3', b.mercyChoiceKind, game.flags));
-    startDialog(lines, mon.name, () => Sound.playSong(MAPS.rumorstreet.song));
-  }
-
-  // 4장 보스 클리어 — chapter4Clear 플래그 + 4장 마무리 대사 후 아케이드 정문 앞(허브)으로 복귀.
-  // (클리어 처리는 챕터 플래그로 기록한다)
-  function winChapter4Boss() {
-    const b = game.battle;
-    const mon = b.mon;
-    game.flags.chapter4Clear = true;
-    game.flags.chapter4Mercy = (b.mercyChoiceKind === 'mercy'); // 다음 장 콜백 인트로용
-    if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
-    save();
-    checkCosmeticUnlocks(game.currentSlot);
-    game.battle = null;
-    game.mode = 'world';
-    // 아케이드 정문 앞(허브)으로 복귀
-    game.map = 'arcade';
-    const p = game.player;
-    p.x = 18; p.y = 2; p.px = 18 * TS; p.py = 2 * TS; p.moving = false; p.dir = 'down';
-    held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
-    stickDir = null; stickRepeatFrames = 0;
-    Sound.badge();
-    Sound.playSong(MAPS.arcade.song);
-    const lines = [mon.win];
-    if (b.mercyChoiceKind === 'mercy') {
-      lines.push('💛 반짝의 반짝임 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!');
-    }
-    lines.push('☆ 4장 클리어! ☆\n무대의 네온사인이\n하나둘 차분한 빛으로 바뀌었다.');
-    lines.push('반짝이 남은 광고 딱지들을\n하나씩 떼어 내기 시작했다.');
-    lines.push(bandiBossLine('ch4', b.mercyChoiceKind, game.flags));
-    startDialog(lines, mon.name, () => Sound.playSong(MAPS.arcade.song));
-  }
-
-  // 5장 보스 클리어 — chapter5Clear 플래그 + 5장 마무리 대사 후 포근한 집 현관 앞(허브)으로 복귀.
-  // v1 홀림몬(BOSS_ATTACKS 퀴즈)과 별개이므로 defeated.hollimmon/친구 수첩은 건드리지 않는다.
-  function winChapter5Boss() {
-    const b = game.battle;
-    const mon = b.mon;
-    game.flags.chapter5Clear = true;
-    game.flags.chapter5Mercy = (b.mercyChoiceKind === 'mercy'); // 다음 장 콜백 인트로용
-    if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
-    save();
-    checkCosmeticUnlocks(game.currentSlot);
-    game.battle = null;
-    game.mode = 'world';
-    // 포근한 집 현관 앞(허브)으로 복귀
-    game.map = 'cozyhome';
-    const p = game.player;
-    p.x = 18; p.y = 2; p.px = 18 * TS; p.py = 2 * TS; p.moving = false; p.dir = 'down';
-    held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
-    stickDir = null; stickRepeatFrames = 0;
-    Sound.badge();
-    Sound.playSong(MAPS.cozyhome.song);
-    const lines = [mon.win];
-    if (b.mercyChoiceKind === 'mercy') {
-      lines.push('💛 루미의 붙잡던 손 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!');
-    }
-    lines.push('☆ 5장 클리어! ☆\n집 안의 공기가\n한결 가벼워졌다.');
-    lines.push('루미가 현관문을\n스스로 열어 두었다.');
-    lines.push(bandiBossLine('ch5', b.mercyChoiceKind, game.flags));
-    startDialog(lines, mon.name, () => Sound.playSong(MAPS.cozyhome.song));
+    if (b.mercyChoiceKind === 'mercy') lines.push(cfg.mercyLine);
+    lines.push(cfg.clearLine);
+    lines.push(cfg.afterLine);
+    lines.push(bandiBossLine('ch' + n, b.mercyChoiceKind, game.flags));
+    startDialog(lines, mon.name, () => Sound.playSong(MAPS[cfg.map].song));
   }
 
   // 파이널 보스(고요) 클리어 — goyoClear 플래그 + 코어 개방 연출 후 코어로 입장.
@@ -4388,11 +4300,11 @@
     const b = game.battle;
     const mon = b.mon;
     // 챕터 보스 — 별도 진행 플래그(chapterNClear)로 처리한다
-    if (b.persuadeId === 'sujipmon_boss') { winChapter1Boss(); return; }
-    if (b.persuadeId === 'pyeonhyang_boss') { winChapter2Boss(); return; }
-    if (b.persuadeId === 'hwangak_boss') { winChapter3Boss(); return; }
-    if (b.persuadeId === 'yuhok_boss') { winChapter4Boss(); return; }
-    if (b.persuadeId === 'hollim_boss') { winChapter5Boss(); return; }
+    if (b.persuadeId === 'sujipmon_boss') { winChapterBoss(1); return; }
+    if (b.persuadeId === 'pyeonhyang_boss') { winChapterBoss(2); return; }
+    if (b.persuadeId === 'hwangak_boss') { winChapterBoss(3); return; }
+    if (b.persuadeId === 'yuhok_boss') { winChapterBoss(4); return; }
+    if (b.persuadeId === 'hollim_boss') { winChapterBoss(5); return; }
     if (b.persuadeId === 'goyo_boss') { winGoyoBoss(); return; }
     // 영이(yeongi_boss) — 별도 조기 반환 없음. monId가 'yeongi'이므로 아래 일반 경로를 거쳐
     // 기존 v1 yeongi 분기(진엔딩 계산)로 자연스럽게 이어진다.
@@ -4783,7 +4695,7 @@
       if (opt.locked) {
         Sound.bump(); b.flash = 6;
         const cardName = opt.lockCard && EVIDENCE_CARDS[opt.lockCard] ? EVIDENCE_CARDS[opt.lockCard].title : '증거';
-        setReact(b, `* 「${opt.label}」…\n말이 목에 걸린다.\n(「${cardName}」 카드를 모아 와야 할 것 같다)`, 'menu');
+        setReact(b, `* 「${opt.label}」…\n말이 목에 걸린다.\n(「${cardName}」 증거 카드가 필요하다 —\n이 거리의 방탈출 구역에서 얻을 수 있다)`, 'menu');
         return;
       }
       resolveResponse(b, opt.correct);
@@ -4867,7 +4779,8 @@
     b.arena.sf = sf; b.arena.rateMul = rateMul; b.arena.bullets = []; b.arena.spiralA = 0; b.arena.inv = 0;
     b.arena.carrying = false;
     b.wave = {
-      t: 0, dur: b.p.waveDur || 300, spawnTimer: 30,
+      // 저학년(easy)은 탄막 턴을 20% 짧게 — 속도(dodgeSpeedFactor)에 더해 시간 부담도 줄인다
+      t: 0, dur: Math.round((b.p.waveDur || 300) * (game.difficulty === 'easy' ? 0.8 : 1)), spawnTimer: 30,
       // fragments는 폐지(듣기 즉시 공개) — 기믹·테스트 호환을 위해 빈 배열 유지
       fragments: [], fragTotal: 0, collected: 0, hits: 0,
       // 담아(보스) open 페이즈 고유 기믹 — 「정보 꾸러미」 운반
@@ -8696,18 +8609,25 @@
         ctx.fillText('마음이 활짝 열렸다 — 안아 주자!', 34, boxY + boxH - 16);
       }
     } else if (b.phase === 'sub') {
-      // 하위 선택 — 말 걸기(응답 고르기) / 증거 카드 고르기
+      // 하위 선택 — 말 걸기(응답 고르기) / 증거 카드 고르기.
+      // 증거 카드는 후반에 10장을 넘으므로 커서를 따라가는 스크롤 창으로 그린다.
       ctx.fillStyle = '#ccc';
       ctx.font = fs(16);
       ctx.fillText(b.sub.kind === 'act' ? '* 무슨 말을 건넬까?' : '* 어떤 증거를 보여 줄까?', 34, boxY + 34);
-      let ty = boxY + 70;
+      const opts = b.sub.options;
       const stepS = game.largeText ? 40 : 34;
-      for (let i = 0; i < b.sub.options.length; i++) {
-        const opt = b.sub.options[i];
+      const maxRows = game.largeText ? 4 : 5;
+      const start = clamp(b.subIdx - Math.floor(maxRows / 2), 0, Math.max(0, opts.length - maxRows));
+      const end = Math.min(opts.length, start + maxRows);
+      let ty = boxY + 70;
+      if (start > 0) { ctx.fillStyle = '#888'; ctx.font = fs(13); ctx.fillText('▲ 위에 더 있음', 38, ty - 14); }
+      for (let i = start; i < end; i++) {
+        const opt = opts[i];
         const label = opt.locked ? `${opt.label} 🔒` : opt.label;
         drawChoiceLine(label, 38, ty, i === b.subIdx);
         ty += stepS;
       }
+      if (end < opts.length) { ctx.fillStyle = '#888'; ctx.font = fs(13); ctx.fillText('▼ 아래에 더 있음', 38, ty - 8); }
       ctx.fillStyle = '#666';
       ctx.font = fs(13);
       ctx.fillText(isTouchDevice ? 'B: 뒤로' : 'X: 뒤로', LW - 110, boxY + boxH - 16);
