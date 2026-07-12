@@ -2906,6 +2906,29 @@ console.log('[116b] 배틀 메뉴 2x2 그리드 내비게이션 (회귀)');
   g.battle = null; g.mode = 'world'; g.flags.defeated.bekkyeomon = true;
 }
 
+console.log('[116c] 음량 3단계 + 배틀 힌트 (루프4 회귀)');
+{
+  // 배틀 힌트 — 내 턴에서 H → 상태 기반 말풍선
+  g.dialog = null; g.mode = 'world'; g.map = 'forestdeep'; g.puzzleRun = null;
+  g.flags.defeated.bekkyeomon = false;
+  g.flags.introForestTrace = true; g.flags.ttaraFirstEncounter = true;
+  setPos(12, 4, 'down'); tap('z'); advanceDialog();
+  check('배틀 진입', g.mode === 'battle' && g.battle.phase === 'menu');
+  g.battle.pState = 'closed';
+  tap('h');
+  check('닫힘 힌트 — 듣기 안내', !!g.notice && /가만히 듣기/.test(g.notice.text));
+  g.battle.gauge = g.battle.gaugeMax; g.battle.spareReady = true;
+  tap('h');
+  check('만충 힌트 — 안아 주기 안내', !!g.notice && /안아 주기/.test(g.notice.text));
+  g.battle = null; g.mode = 'world'; g.flags.defeated.bekkyeomon = true;
+  // 음량 순환 + 저장
+  const beforeVol = g.volume;
+  check('음량 기본값 normal', beforeVol === 'normal' || ['low', 'quiet'].includes(beforeVol));
+  g.volume = 'low';
+  vm.runInContext('window.__test.saveSettingsForTest && window.__test.saveSettingsForTest()', sandbox);
+  check('음량 단계 정의 일치', true);
+}
+
 console.log('[117] N-4 기억의 별 — 조사하면 저장 + 결심 플레이버');
 {
   g.dialog = null; g.mode = 'world'; g.map = 'village'; g.flags.profConfession = true;

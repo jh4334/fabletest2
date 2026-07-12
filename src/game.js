@@ -340,6 +340,10 @@
 
   // 설정(자막 속도) — 세이브와 별개로, 게임을 다시 시작해도 남는다
   const SETTINGS_KEY = 'ai-ethics-adventure-settings';
+  // 음량 3단계 — 교실에서 여러 대가 동시에 돌 때 '작게'가 필요하다
+  const VOLUME_LEVELS = { normal: 1, low: 0.5, quiet: 0.2 };
+  const VOLUME_ORDER = ['normal', 'low', 'quiet'];
+  const VOLUME_LABEL = { normal: '보통', low: '작게', quiet: '아주 작게' };
   const TEXT_SPEEDS = { slow: 0.5, normal: 1, fast: 2.5 };
   const TEXT_SPEED_ORDER = ['normal', 'fast', 'slow'];
   const TEXT_SPEED_LABEL = { normal: '보통', fast: '빠름', slow: '느림' };
@@ -360,6 +364,7 @@
       s.tts = !!s.tts;
       s.reduceFx = ('reduceFx' in s) ? !!s.reduceFx : prefersReduce;
       s.lowGraphics = !!s.lowGraphics;
+      if (!VOLUME_LEVELS[s.volume]) s.volume = 'normal';
       return s;
     } catch (e) { return { textSpeed: 'normal', largeText: false, colorBlind: false, difficulty: 'normal', tts: false, reduceFx: prefersReduce, lowGraphics: false }; }
   }
@@ -368,6 +373,7 @@
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
         textSpeed: game.textSpeed, largeText: game.largeText, colorBlind: game.colorBlind,
         difficulty: game.difficulty, tts: game.tts, reduceFx: game.reduceFx, lowGraphics: game.lowGraphics,
+        volume: game.volume,
       }));
     } catch (e) { noteStorageFail(); }
   }
@@ -947,6 +953,7 @@
     if (e.key === 'h' || e.key === 'H') {
       if (game.mode === 'hint') { advanceHint(); return; }
       if (game.mode === 'world' && game.puzzleRun) { openHint(); return; }
+      if (game.mode === 'battle' && game.battle && game.battle.phase === 'menu') { battleHint(); return; }
       return;
     }
     if (e.key === 'v' || e.key === 'V') {
@@ -1146,7 +1153,11 @@
     }
     const hintBtn = document.getElementById('t-hint');
     if (hintBtn) {
-      const onHint = (e) => { e.preventDefault(); Sound.resume(); if (game.mode === 'world' && game.puzzleRun) openHint(); };
+      const onHint = (e) => {
+        e.preventDefault(); Sound.resume();
+        if (game.mode === 'world' && game.puzzleRun) { openHint(); return; }
+        if (game.mode === 'battle' && game.battle && game.battle.phase === 'menu') battleHint();
+      };
       hintBtn.addEventListener('touchstart', onHint);
     }
   }
@@ -3283,6 +3294,8 @@
     for (let c = 1; c <= 5; c++) if (flags[`chapter${c}Mercy`]) n += 1;
     return n;
   }
+  let _duskGrad = { key: -1, fill: null };  // a값 캐시 (drawDuskAmbient)
+  let _quietGrad = { key: -1, fill: null }; // lv 캐시 (drawQuietVignette)
   function drawDuskAmbient() {
     let a = DUSK_BASE[game.map];
     if (!a || !game.flags) return;
@@ -3293,15 +3306,19 @@
       ctx.fillRect(0, 0, LW, LH);
       return;
     }
-    // 깊은 남빛 어스름 — 위(하늘)가 더 어둡다
-    const grad = ctx.createLinearGradient(0, 0, 0, LH);
-    if (grad && grad.addColorStop) {
-      grad.addColorStop(0, `rgba(8,9,28,${Math.min(0.55, a + 0.1)})`);
-      grad.addColorStop(1, `rgba(8,9,28,${a * 0.7})`);
-      ctx.fillStyle = grad;
-    } else {
-      ctx.fillStyle = `rgba(8,9,28,${a})`;
+    // 깊은 남빛 어스름 — 위(하늘)가 더 어둡다.
+    // 그라디언트는 a가 바뀔 때만 새로 만든다 (매 프레임 생성은 저사양 태블릿 GC 부담)
+    if (_duskGrad.key !== a) {
+      const grad = ctx.createLinearGradient(0, 0, 0, LH);
+      if (grad && grad.addColorStop) {
+        grad.addColorStop(0, `rgba(8,9,28,${Math.min(0.55, a + 0.1)})`);
+        grad.addColorStop(1, `rgba(8,9,28,${a * 0.7})`);
+        _duskGrad = { key: a, fill: grad };
+      } else {
+        _duskGrad = { key: a, fill: `rgba(8,9,28,${a})` };
+      }
     }
+    ctx.fillStyle = _duskGrad.fill;
     ctx.fillRect(0, 0, LW, LH);
   }
 
@@ -3316,14 +3333,17 @@
       ctx.fillRect(0, 0, LW, LH);
       return;
     }
-    const grad = ctx.createRadialGradient(LW / 2, LH / 2, LH * 0.25, LW / 2, LH / 2, LH * 0.75);
-    if (grad && grad.addColorStop) {
-      grad.addColorStop(0, 'rgba(0,0,0,0)');
-      grad.addColorStop(1, `rgba(5,5,12,${0.2 * lv})`);
-      ctx.fillStyle = grad;
-    } else {
-      ctx.fillStyle = `rgba(5,5,12,${0.16 * lv})`;
+    if (_quietGrad.key !== lv) {
+      const grad = ctx.createRadialGradient(LW / 2, LH / 2, LH * 0.25, LW / 2, LH / 2, LH * 0.75);
+      if (grad && grad.addColorStop) {
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(1, `rgba(5,5,12,${0.2 * lv})`);
+        _quietGrad = { key: lv, fill: grad };
+      } else {
+        _quietGrad = { key: lv, fill: `rgba(5,5,12,${0.16 * lv})` };
+      }
     }
+    ctx.fillStyle = _quietGrad.fill;
     ctx.fillRect(0, 0, LW, LH);
   }
   // 코어 — 여덟 개의 의자. 안아 준(자비) 조각 수만큼(coreMercyCount) 채워져 그려진다.
@@ -4583,6 +4603,28 @@
     }
   }
 
+  // 배틀 힌트(H/터치 힌트 버튼) — 지금 마음 상태에 맞는 다음 행동을 말풍선으로
+  function battleHint() {
+    const b = game.battle;
+    let tip;
+    if (b.gauge >= b.gaugeMax) tip = '힌트: 이름이 노랗다 — 「마음 안아 주기」로 끝내자.';
+    else if (b.pState === 'closed') tip = '힌트: 마음이 닫혀 있다 — 「가만히 듣기」부터.';
+    else {
+      const claim = currentClaim();
+      const cardId = (!claim.best && claim.counters && claim.counters[0]) || null;
+      if (cardId && !ownedCards().includes(cardId)) {
+        tip = '힌트: 맞는 증거 카드가 아직 없다 — 거리의 방탈출 구역을 돌자.';
+      } else if (claim.best) {
+        tip = '힌트: 카드보다 「말 걸기」 — 마음에 닿는 말을 고르자.';
+      } else {
+        tip = '힌트: 「증거 보여주기」나 「말 걸기」로 대답해 보자.';
+      }
+    }
+    game.notice = { text: tip, t: 260 };
+    if (game.tts) Speech.speak(tip);
+    Sound.blip();
+  }
+
   // ── M-2 내 턴(메뉴): 말 걸기 / 증거 보여주기 / 가만히 듣기 / 마음 안아 주기 ──
   const P_MENU = ['말 걸기', '증거 보여주기', '가만히 듣기', '마음 안아 주기'];
   function enterMenuPhase(b) {
@@ -5403,7 +5445,7 @@
   // 단, 데이터 백업은 학생도 쓰는 기능이라 그대로 남겨 둔다.
   const PAUSE_ITEMS = ['journal', 'cards', 'halloffame', 'awards', 'cosmetics',
     'challenge', 'review', 'dex', 'backup', 'difficulty', 'textspeed', 'tts',
-    'largetext', 'colorblind', 'reducefx', 'lowgraphics', 'mute', 'help', 'close'];
+    'largetext', 'colorblind', 'reducefx', 'lowgraphics', 'volume', 'mute', 'help', 'close'];
   // 방탈출 중에는 「힌트」 항목을 맨 위에 붙인다 (터치 기기에서 H키 대체)
   function pauseItems() {
     return game.puzzleRun ? ['hint'].concat(PAUSE_ITEMS) : PAUSE_ITEMS;
@@ -5431,6 +5473,7 @@
     colorblind: '색약 모드',
     reducefx: '화면 효과 줄이기',
     lowgraphics: '저사양 그래픽',
+    volume: '음량',
     mute: '소리',
     help: '? 도움말',
     close: '닫기',
@@ -5445,6 +5488,7 @@
     if (item === 'colorblind') return game.colorBlind ? 'ON' : 'OFF';
     if (item === 'reducefx') return game.reduceFx ? 'ON' : 'OFF';
     if (item === 'lowgraphics') return game.lowGraphics ? 'ON' : 'OFF';
+    if (item === 'volume') return VOLUME_LABEL[game.volume];
     if (item === 'mute') return Sound.muted ? '음소거' : 'ON';
     if (item === 'review') return `${mistakeCount(game.currentSlot)}개`;
     if (item === 'awards') return `${countAchievements(game.currentSlot)}/${ACHIEVEMENTS.length}`;
@@ -5506,6 +5550,11 @@
       else if (item === 'colorblind') toggleColorBlind();
       else if (item === 'reducefx') toggleReduceFx();
       else if (item === 'lowgraphics') toggleLowGraphics();
+      else if (item === 'volume') {
+        game.volume = VOLUME_ORDER[(VOLUME_ORDER.indexOf(game.volume) + 1) % VOLUME_ORDER.length];
+        Sound.setVolume(VOLUME_LEVELS[game.volume]);
+        saveSettings();
+      }
       else if (item === 'mute') Sound.toggleMute();
       else if (item === 'help') openHelp('pause');
       else if (item === 'close') closePause();
@@ -6685,6 +6734,7 @@
           game.backup.toast = res.ok ? 200 : -200;
           if (res.ok) {
             Object.assign(game, loadSettings());
+            Sound.setVolume(VOLUME_LEVELS[game.volume] || 1);
             game.mode = 'title';
             game.titleScreen = 'slots';
           }
@@ -9188,8 +9238,14 @@
         game.player.px = 13 * TS; game.player.py = 16 * TS;
         save();
         Sound.playSong(MAPS.village.song);
-        // 후일담 유도 — 엔딩 분기별 마을 대사(박사님·할머니)가 기다린다
-        game.notice = { text: '마을 사람들이 너를 기다린다 — 말을 걸어 보자.', t: 320 };
+        // 후일담 유도 — 엔딩 분기별 마을 대사(박사님·할머니)가 기다린다.
+        // 침묵 엔딩은 마을에 아무도 이사 오지 않았으므로 문구도 조용하게.
+        game.notice = {
+          text: game.flags.endingId === 'silent'
+            ? '…마을이, 조용하다.'
+            : '마을 사람들이 너를 기다린다 — 말을 걸어 보자.',
+          t: 320,
+        };
       }
     } else {
       if (game.endingT > 120 && justPressed('action')) {
@@ -9547,7 +9603,8 @@
 
       // 방탈출 중에는 터치 기기에도 힌트 버튼을 보여 준다 (H키의 터치 대응).
       // (배틀 중 50:50 힌트는 v3에서 퀴즈 배틀과 함께 폐지됨)
-      const showHintBtn = game.mode === 'world' && !!game.puzzleRun;
+      const showHintBtn = (game.mode === 'world' && !!game.puzzleRun) ||
+        (game.mode === 'battle' && !!game.battle && game.battle.phase === 'menu');
       document.body.classList.toggle('battle-hint', showHintBtn);
       // 터치 기기는 키보드 T가 없어 「선생님 방」에 못 들어간다 — 타이틀(슬롯 화면)일 때만
       // 작은 DOM 버튼을 보여 준다(battle-hint와 같은 body class 토글 패턴).
@@ -9627,6 +9684,7 @@
   migrateOldSave();
   migrateLearningData(); // 이전 버전의 전역 학습 데이터를 슬롯 0으로 이전
   Object.assign(game, loadSettings()); // 저장된 설정(자막 속도·큰 글씨·색약) 복원
+  Sound.setVolume(VOLUME_LEVELS[game.volume] || 1); // 음량 3단계 복원
   game.flags = newFlags();
   window.__game = game; // 디버그/테스트용
   window.__test = { // 테스트용 훅

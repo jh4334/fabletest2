@@ -398,5 +398,28 @@ if (process.argv.includes('--print')) {
   }
 })();
 
+// 반디 조언 커버리지 린트 — 키가 실제 맵 id여야 한다 (오타 차단)
+{
+  const CL = vm.runInContext('COMPANION_LINES', ctx);
+  for (const k of Object.keys(CL)) {
+    if (!MAPS[k]) err(`COMPANION_LINES '${k}'는 존재하지 않는 맵`);
+    if (!/^반디: /.test(CL[k])) err(`COMPANION_LINES '${k}' 형식 오류 — '반디: '로 시작해야 함`);
+  }
+}
+
+// N-2/N-5 설득 프로필 데이터 린트 — 전용 곡 존재, 관찰/예고 문법
+{
+  const P = vm.runInContext('PERSUADE', ctx);
+  for (const [k, p] of Object.entries(P)) {
+    if (p.song && !SONGS[p.song]) err(`PERSUADE ${k}: song '${p.song}'이 SONGS에 없음`);
+    for (const o of (p.observe || [])) {
+      if (!/^\* /.test(o)) err(`PERSUADE ${k}: observe가 '* '로 시작하지 않음 — ${o.slice(0, 20)}`);
+    }
+    for (const a of (p.announce || [])) {
+      if (!/^\* /.test(a)) err(`PERSUADE ${k}: announce가 '* '로 시작하지 않음 — ${a.slice(0, 20)}`);
+    }
+  }
+}
+
 if (errors === 0) console.log('✔ 모든 검사 통과');
 else { console.error(`✘ 오류 ${errors}개`); process.exit(1); }
