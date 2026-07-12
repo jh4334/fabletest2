@@ -6860,7 +6860,10 @@
   // ---------- 교사용 대시보드 (모든 학생 한눈에) ----------
   // CSV 한 칸을 안전하게 감싼다(쉼표·따옴표·줄바꿈 포함 시 큰따옴표 처리).
   function csvCell(v) {
-    const s = String(v == null ? '' : v);
+    let s = String(v == null ? '' : v);
+    // CSV 수식 주입 방어 — 학생이 정한 이름/칭호가 =,+,-,@,탭,CR로 시작하면
+    // 교사가 엑셀·시트로 열 때 수식으로 실행될 수 있다. 앞에 '를 붙여 문자로 고정.
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
     return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   }
   // 세 학생(슬롯)의 학습 현황을 스프레드시트로 열 수 있는 CSV로 만든다.
@@ -9749,7 +9752,7 @@
     getCustomQuizzes, importCustomQuizzes, clearCustomQuizzes, customQuizTemplate, challengeTopics,
     collectedCards, cardUnlocked, buildCertText, LEARN_CARDS, HOF_CATS,
     sanitizeName, probeStorage, getStorageOk: () => storageOk,
-    buildClassCsv, setupClassBaseFlags, classSelForFlags,
+    buildClassCsv, csvCell, setupClassBaseFlags, classSelForFlags,
     applyTraceRoomClass, applyTiltStreetClass, applyRumorStreetClass,
     applyArcadeClass, applyCozyhomeClass, applyFinalClass,
     getPuzzleLog, writePuzzleLog, nextWaypoint, currentObjective: () => getObjective(game.flags, game.map), // 나침반/HUD 경로 — E2E가 '화살표 따라가기'를 재현할 때 사용

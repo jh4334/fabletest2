@@ -858,6 +858,13 @@ check('CSV 헤더 행 존재', csvLines[0].startsWith('슬롯,이름,'));
 check('CSV 헤더 15개 열', csvLines[0].split(',').length === 15);
 check('CSV 헤더에 연구용 지표 3열 포함', csvLines[0].includes('개념별 성취') &&
   csvLines[0].includes('자비 선택') && csvLines[0].includes('엔딩'));
+// C4: CSV 수식 주입 방어 — 위험 문자로 시작하는 셀은 '로 고정
+check('=로 시작하는 값은 앞에 \' 부착', T.csvCell('=cmd()') === "'=cmd()");
+check('+로 시작하는 값도 방어', T.csvCell('+1+1') === "'+1+1");
+check('@로 시작하는 값도 방어', T.csvCell('@x') === "'@x");
+check('수식+쉼표 값은 \' 부착 후 따옴표', T.csvCell('=a,b') === '"\'=a,b"');
+check('일반 값은 그대로', T.csvCell('수호자') === '수호자');
+check('쉼표 포함 값은 따옴표로만(수식 아님)', T.csvCell('가,나') === '"가,나"');
 check('CSV 행 = 헤더 + 슬롯 3개', csvLines.length === 4);
 check('CSV 슬롯1 행이 슬롯 번호로 시작', csvLines[1].startsWith('1,'));
 check('CSV 슬롯1(데이터 있음) 15개 열', csvLines[1].split(',').length === 15);
