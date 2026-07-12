@@ -9630,6 +9630,19 @@
   window.addEventListener('touchstart', startTitleMusic);
   window.addEventListener('mousedown', startTitleMusic);
 
+  // 전역 오류 안전망 — 프레임 루프 밖(입력 핸들러·서비스워커 콜백 등)에서 던져진
+  // 예외는 frame()의 try/catch가 못 잡아 게임이 조용히 멈출 수 있다. 여기서 받아
+  // 복구 화면(drawCrash)으로 유도한다. 진행은 이미 save()로 디스크에 있으므로 안전.
+  if (typeof window.addEventListener === 'function') {
+    const toCrash = (label, detail) => {
+      if (crashed) return;
+      crashed = true;
+      try { console.error('[AI윤리어드벤처] ' + label + ':', detail); } catch (e) { /* 무시 */ }
+    };
+    window.addEventListener('error', (e) => toCrash('전역 오류', e && e.error));
+    window.addEventListener('unhandledrejection', (e) => toCrash('처리되지 않은 거부', e && e.reason));
+  }
+
   // 탭/앱을 백그라운드로 보내면 BGM·읽어주기를 멈춰 배터리와 오디오 드리프트를 막고,
   // 다시 돌아오면 오디오를 재개한 뒤 직전 곡을 복원한다.
   let bgmBeforeHide = null;
