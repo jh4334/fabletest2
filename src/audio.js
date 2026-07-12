@@ -372,6 +372,7 @@ const SONGS = {
 const Sound = {
   ctx: null,
   master: null,
+  volume: 1, // 음량 3단계 (1 / 0.5 / 0.2) — setVolume으로 설정
   muted: false,
   songName: null,
   _timers: [],
@@ -398,9 +399,13 @@ const Sound = {
     }
   },
 
+  setVolume(v) {
+    this.volume = v;
+    if (this.master) this.master.gain.value = this.muted ? 0 : v;
+  },
   toggleMute() {
     this.muted = !this.muted;
-    if (this.master) this.master.gain.value = this.muted ? 0 : 1;
+    if (this.master) this.master.gain.value = this.muted ? 0 : (this.volume || 1);
   },
 
   _freq(midi) {

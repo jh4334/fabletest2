@@ -340,6 +340,10 @@
 
   // 설정(자막 속도) — 세이브와 별개로, 게임을 다시 시작해도 남는다
   const SETTINGS_KEY = 'ai-ethics-adventure-settings';
+  // 음량 3단계 — 교실에서 여러 대가 동시에 돌 때 '작게'가 필요하다
+  const VOLUME_LEVELS = { normal: 1, low: 0.5, quiet: 0.2 };
+  const VOLUME_ORDER = ['normal', 'low', 'quiet'];
+  const VOLUME_LABEL = { normal: '보통', low: '작게', quiet: '아주 작게' };
   const TEXT_SPEEDS = { slow: 0.5, normal: 1, fast: 2.5 };
   const TEXT_SPEED_ORDER = ['normal', 'fast', 'slow'];
   const TEXT_SPEED_LABEL = { normal: '보통', fast: '빠름', slow: '느림' };
@@ -360,6 +364,7 @@
       s.tts = !!s.tts;
       s.reduceFx = ('reduceFx' in s) ? !!s.reduceFx : prefersReduce;
       s.lowGraphics = !!s.lowGraphics;
+      if (!VOLUME_LEVELS[s.volume]) s.volume = 'normal';
       return s;
     } catch (e) { return { textSpeed: 'normal', largeText: false, colorBlind: false, difficulty: 'normal', tts: false, reduceFx: prefersReduce, lowGraphics: false }; }
   }
@@ -368,6 +373,7 @@
       localStorage.setItem(SETTINGS_KEY, JSON.stringify({
         textSpeed: game.textSpeed, largeText: game.largeText, colorBlind: game.colorBlind,
         difficulty: game.difficulty, tts: game.tts, reduceFx: game.reduceFx, lowGraphics: game.lowGraphics,
+        volume: game.volume,
       }));
     } catch (e) { noteStorageFail(); }
   }
@@ -5439,7 +5445,7 @@
   // 단, 데이터 백업은 학생도 쓰는 기능이라 그대로 남겨 둔다.
   const PAUSE_ITEMS = ['journal', 'cards', 'halloffame', 'awards', 'cosmetics',
     'challenge', 'review', 'dex', 'backup', 'difficulty', 'textspeed', 'tts',
-    'largetext', 'colorblind', 'reducefx', 'lowgraphics', 'mute', 'help', 'close'];
+    'largetext', 'colorblind', 'reducefx', 'lowgraphics', 'volume', 'mute', 'help', 'close'];
   // 방탈출 중에는 「힌트」 항목을 맨 위에 붙인다 (터치 기기에서 H키 대체)
   function pauseItems() {
     return game.puzzleRun ? ['hint'].concat(PAUSE_ITEMS) : PAUSE_ITEMS;
@@ -5467,6 +5473,7 @@
     colorblind: '색약 모드',
     reducefx: '화면 효과 줄이기',
     lowgraphics: '저사양 그래픽',
+    volume: '음량',
     mute: '소리',
     help: '? 도움말',
     close: '닫기',
@@ -5481,6 +5488,7 @@
     if (item === 'colorblind') return game.colorBlind ? 'ON' : 'OFF';
     if (item === 'reducefx') return game.reduceFx ? 'ON' : 'OFF';
     if (item === 'lowgraphics') return game.lowGraphics ? 'ON' : 'OFF';
+    if (item === 'volume') return VOLUME_LABEL[game.volume];
     if (item === 'mute') return Sound.muted ? '음소거' : 'ON';
     if (item === 'review') return `${mistakeCount(game.currentSlot)}개`;
     if (item === 'awards') return `${countAchievements(game.currentSlot)}/${ACHIEVEMENTS.length}`;
@@ -5542,6 +5550,11 @@
       else if (item === 'colorblind') toggleColorBlind();
       else if (item === 'reducefx') toggleReduceFx();
       else if (item === 'lowgraphics') toggleLowGraphics();
+      else if (item === 'volume') {
+        game.volume = VOLUME_ORDER[(VOLUME_ORDER.indexOf(game.volume) + 1) % VOLUME_ORDER.length];
+        Sound.setVolume(VOLUME_LEVELS[game.volume]);
+        saveSettings();
+      }
       else if (item === 'mute') Sound.toggleMute();
       else if (item === 'help') openHelp('pause');
       else if (item === 'close') closePause();
@@ -6721,6 +6734,7 @@
           game.backup.toast = res.ok ? 200 : -200;
           if (res.ok) {
             Object.assign(game, loadSettings());
+            Sound.setVolume(VOLUME_LEVELS[game.volume] || 1);
             game.mode = 'title';
             game.titleScreen = 'slots';
           }
@@ -9670,6 +9684,7 @@
   migrateOldSave();
   migrateLearningData(); // 이전 버전의 전역 학습 데이터를 슬롯 0으로 이전
   Object.assign(game, loadSettings()); // 저장된 설정(자막 속도·큰 글씨·색약) 복원
+  Sound.setVolume(VOLUME_LEVELS[game.volume] || 1); // 음량 3단계 복원
   game.flags = newFlags();
   window.__game = game; // 디버그/테스트용
   window.__test = { // 테스트용 훅
