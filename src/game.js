@@ -876,17 +876,34 @@
     }
     return JSON.stringify({ app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(), data });
   }
+  const BACKUP_UNDO_KEY = 'ai-ethics-adventure-restore-undo';
   function applyBackup(text) {
     let obj;
     try { obj = JSON.parse(text); } catch (e) { return { ok: false, error: 'parse' }; }
     if (!obj || obj.app !== 'ai-ethics-adventure' || !obj.data) return { ok: false, error: 'format' };
     const valid = new Set(allBackupKeys());
+    const incoming = Object.keys(obj.data).filter((k) => valid.has(k));
+    // 인식 가능한 데이터가 하나도 없으면 덮어쓰지 않는다 — 잘못된/빈 파일에 '완료' 오표시 방지
+    if (incoming.length === 0) return { ok: false, error: 'empty' };
+    // 되돌리기 안전망 — 덮어쓰기 직전 현재 상태를 스냅샷해 둔다 (실수 복원 1회 취소용)
+    try { localStorage.setItem(BACKUP_UNDO_KEY, buildBackupText()); } catch (e) { /* 용량 부족 등이면 그냥 진행 */ }
     let count = 0;
-    for (const k of Object.keys(obj.data)) {
-      if (!valid.has(k)) continue;
+    for (const k of incoming) {
       try { localStorage.setItem(k, String(obj.data[k])); count++; } catch (e) { /* 무시 */ }
     }
     return { ok: true, count };
+  }
+  // 직전 복원을 취소한다 (되돌리기 스냅샷이 있을 때만).
+  function undoRestore() {
+    let snap;
+    try { snap = localStorage.getItem(BACKUP_UNDO_KEY); } catch (e) { return { ok: false }; }
+    if (!snap) return { ok: false };
+    const res = applyBackup(snap); // 스냅샷을 다시 적용 (이때 또 undo 스냅샷이 갱신됨)
+    try { localStorage.removeItem(BACKUP_UNDO_KEY); } catch (e) { /* 무시 */ }
+    return res;
+  }
+  function hasRestoreUndo() {
+    try { return !!localStorage.getItem(BACKUP_UNDO_KEY); } catch (e) { return false; }
   }
   // 텍스트를 클립보드에 복사 (가능한 환경에서). 성공 여부 반환.
   function copyTextToClipboard(text) {
@@ -6688,11 +6705,14 @@
   }
 
   // ---------- 데이터 백업 · 복원 화면 ----------
-  const BACKUP_ITEMS = ['exportClip', 'exportFile', 'importFile', 'close'];
+  // 되돌리기 항목은 직전 복원 스냅샷이 있을 때만 목록에 낀다 (openBackup에서 갱신)
+  const BACKUP_ITEMS_BASE = ['exportClip', 'exportFile', 'importFile', 'close'];
+  let BACKUP_ITEMS = BACKUP_ITEMS_BASE.slice();
   const BACKUP_LABELS = {
     exportClip: '내보내기 — 클립보드 복사',
     exportFile: '내보내기 — 파일로 저장(.json)',
     importFile: '가져오기 — 파일에서 복원',
+    undoRestore: '↩ 방금 복원 되돌리기',
     close: '닫기',
   };
   function openBackup(ret) {
@@ -6700,6 +6720,10 @@
     game.backup.cursor = 0;
     game.backup.toast = 0;
     game.backup.confirm = false;
+    // 직전 복원이 있으면 '되돌리기'를 닫기 앞에 끼운다
+    BACKUP_ITEMS = hasRestoreUndo()
+      ? ['exportClip', 'exportFile', 'importFile', 'undoRestore', 'close']
+      : BACKUP_ITEMS_BASE.slice();
     game.mode = 'backup';
     Sound.select();
   }
@@ -6731,7 +6755,8 @@
         const reader = new FileReader();
         reader.onload = () => {
           const res = applyBackup(String(reader.result));
-          game.backup.toast = res.ok ? 200 : -200;
+          // 인식 가능한 데이터가 없으면(잘못된/빈 파일) 별도 안내 — '완료' 오표시 방지
+          game.backup.toast = res.ok ? 200 : (res.error === 'empty' ? -300 : -200);
           if (res.ok) {
             Object.assign(game, loadSettings());
             Sound.setVolume(VOLUME_LEVELS[game.volume] || 1);
@@ -6769,6 +6794,18 @@
       if (item === 'exportClip') { b.toast = copyTextToClipboard(buildBackupText()) ? 200 : -200; Sound.badge(); }
       else if (item === 'exportFile') { b.toast = downloadBackup() ? 200 : -200; Sound.badge(); }
       else if (item === 'importFile') { b.confirm = true; Sound.blip(); } // 덮어쓰기 전 한 번 더 확인
+      else if (item === 'undoRestore') {
+        const res = undoRestore();
+        if (res.ok) {
+          Object.assign(game, loadSettings());
+          Sound.setVolume(VOLUME_LEVELS[game.volume] || 1);
+          b.toast = 200;
+          BACKUP_ITEMS = BACKUP_ITEMS_BASE.slice(); // 되돌리기 소진
+          if (b.cursor >= BACKUP_ITEMS.length) b.cursor = BACKUP_ITEMS.length - 1;
+          game.mode = 'title'; game.titleScreen = 'slots';
+        } else { b.toast = -200; }
+        Sound.badge();
+      }
       else if (item === 'close') { closeBackup(); }
     }
   }
@@ -6807,7 +6844,10 @@
       ctx.textAlign = 'center';
       ctx.fillStyle = b.toast > 0 ? okColor() : badColor();
       ctx.font = 'bold 15px monospace';
-      ctx.fillText(b.toast > 0 ? '✓ 완료했어요!' : '이 환경에서는 할 수 없어요 (브라우저에서 시도해 주세요)', LW / 2, 470);
+      const msg = b.toast > 0 ? '✓ 완료했어요!'
+        : b.toast === -300 ? '이 파일에는 불러올 기록이 없어요 (다른 백업 파일을 골라 주세요)'
+        : '이 환경에서는 할 수 없어요 (브라우저에서 시도해 주세요)';
+      ctx.fillText(msg, LW / 2, 470);
       ctx.textAlign = 'left';
     }
     ctx.fillStyle = '#777';
@@ -9703,7 +9743,7 @@
   window.__test = { // 테스트용 훅
     buildReportText, buildLearningSummary, recordTopicResult, countAchievements,
     migrateSlotV6, migrateSlotV7, migrateSlotV8,
-    buildBackupText, applyBackup, buildAdaptivePool, buildDailyPool,
+    buildBackupText, applyBackup, undoRestore, hasRestoreUndo, buildAdaptivePool, buildDailyPool,
     recordPlayDay, recordDailyDone, getMeta, todayStr,
     unlockedCount, getCosmetic, setCosmetic, achievementCtx,
     getCustomQuizzes, importCustomQuizzes, clearCustomQuizzes, customQuizTemplate, challengeTopics,

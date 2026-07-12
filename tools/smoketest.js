@@ -833,6 +833,22 @@ check('통계가 복원됨', storage.get('ai-ethics-adventure-stats-0') === good
 check('퍼즐 로그도 복원됨', storage.get('ai-ethics-adventure-puzzle-0') === goodPuzzle);
 check('잘못된 데이터는 거부', T.applyBackup('{"app":"other"}').ok === false);
 check('깨진 JSON은 거부', T.applyBackup('not json').ok === false);
+// C3: 식별자는 맞지만 인식 가능한 데이터가 없는 백업 → empty (완료 오표시 방지)
+check('빈 백업은 empty 오류로 거부', T.applyBackup('{"app":"ai-ethics-adventure","data":{}}').error === 'empty');
+check('알 수 없는 키만 있는 백업도 거부',
+  T.applyBackup('{"app":"ai-ethics-adventure","data":{"random-key":"x"}}').error === 'empty');
+// C3: 복원 되돌리기 — 복원 직전 스냅샷으로 1회 취소
+storage.set('ai-ethics-adventure-stats-0', '{"privacy":{"correct":9,"total":9}}');
+const beforeRestore = storage.get('ai-ethics-adventure-stats-0');
+T.applyBackup(backupText); // 스냅샷 저장 + 덮어쓰기
+check('복원 후 되돌리기 가능 표시', T.hasRestoreUndo() === true);
+const undo = T.undoRestore();
+check('되돌리기 성공', undo.ok === true);
+check('되돌리기로 복원 직전 값 복구', storage.get('ai-ethics-adventure-stats-0') === beforeRestore);
+check('되돌리기 소진 후 스냅샷 없음', T.hasRestoreUndo() === false);
+// 원상 복구 (뒤 테스트 영향 방지)
+storage.set('ai-ethics-adventure-stats-0', goodStats);
+storage.set('ai-ethics-adventure-puzzle-0', goodPuzzle);
 
 console.log('[36b] 교사용 반 현황 CSV 내보내기');
 const csv = T.buildClassCsv();
