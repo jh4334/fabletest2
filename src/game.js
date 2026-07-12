@@ -3733,10 +3733,16 @@
     // 기억의 별 (N-4) — 조사하면 여기까지의 이야기가 마음에 새겨지고, 저장된다
     const star = MAPS[game.map].star;
     if (star && star.x === f.x && star.y === f.y) {
-      save();
       Sound.unlock();
       game.notice = { text: '✦ 기억의 별이 반짝였다 — 이야기가 저장되었다.', t: 240 };
-      startDialog(['* (따뜻한 빛이 손끝에 닿는다.)\n' + star.text]);
+      const lines = ['* (따뜻한 빛이 손끝에 닿는다.)\n' + star.text];
+      // 처음 만난 별 — 무엇인지 한 번만 알려 준다
+      if (!game.flags.sawStarTip) {
+        game.flags.sawStarTip = true;
+        lines.push('* 이런 빛은 세계 곳곳에 있다.\n조사할 때마다 여기까지의 이야기가\n저장된다. (자동 저장도 늘 함께한다)');
+      }
+      save();
+      startDialog(lines);
       return;
     }
     // N-3 「모든 것을 조사할 수 있다」 — 맵별 조사 플레이버 (한 줄 관찰 + 마른 유머)

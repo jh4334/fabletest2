@@ -2886,6 +2886,26 @@ console.log('[116] N-3 조사 플레이버 — 모든 것을 조사할 수 있�
   g.flags.bandiRevealed = false;
 }
 
+console.log('[116b] 배틀 메뉴 2x2 그리드 내비게이션 (회귀)');
+{
+  g.dialog = null; g.mode = 'world'; g.map = 'forestdeep'; g.puzzleRun = null;
+  g.flags.defeated.bekkyeomon = false;
+  g.flags.introForestTrace = true; g.flags.ttaraFirstEncounter = true; // 첫 조우 가드 통과
+  setPos(12, 4, 'down'); tap('z'); advanceDialog();
+  check('배틀 진입(메뉴 턴)', g.mode === 'battle' && g.battle.phase === 'menu');
+  g.battle.menuIdx = 0;
+  tap('ArrowRight');
+  check('오른쪽 → 옆 칸(0→1)', g.battle.menuIdx === 1);
+  tap('ArrowDown');
+  check('아래 → 아랫줄(1→3)', g.battle.menuIdx === 3);
+  tap('ArrowUp');
+  check('위 → 윗줄(3→1)', g.battle.menuIdx === 1);
+  tap('ArrowLeft');
+  check('왼쪽 → 옆 칸(1→0)', g.battle.menuIdx === 0);
+  // 정리 — 배틀 탈출
+  g.battle = null; g.mode = 'world'; g.flags.defeated.bekkyeomon = true;
+}
+
 console.log('[117] N-4 기억의 별 — 조사하면 저장 + 결심 플레이버');
 {
   g.dialog = null; g.mode = 'world'; g.map = 'village'; g.flags.profConfession = true;
