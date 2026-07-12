@@ -4136,9 +4136,11 @@
         b.spareReady = true;
         pushFloat('* 마음이 활짝 열렸다!\n「마음 안아 주기」로 배틀을 끝내자.');
       }
+      // 2×2 그리드 — 좌/우는 옆 칸, 위/아래는 윗줄/아랫줄로 (화면 배치와 일치)
       const n = P_MENU.length;
-      if (justPressed('left') || justPressed('up')) { b.menuIdx = (b.menuIdx + n - 1) % n; Sound.blip(); }
-      if (justPressed('right') || justPressed('down')) { b.menuIdx = (b.menuIdx + 1) % n; Sound.blip(); }
+      if (justPressed('left')) { b.menuIdx = (b.menuIdx + n - 1) % n; Sound.blip(); }
+      if (justPressed('right')) { b.menuIdx = (b.menuIdx + 1) % n; Sound.blip(); }
+      if (justPressed('up') || justPressed('down')) { b.menuIdx = (b.menuIdx + 2) % n; Sound.blip(); }
       if (justPressed('action')) selectBattleMenu(b);
       return;
     }
