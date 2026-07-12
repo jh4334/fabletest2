@@ -8696,18 +8696,25 @@
         ctx.fillText('마음이 활짝 열렸다 — 안아 주자!', 34, boxY + boxH - 16);
       }
     } else if (b.phase === 'sub') {
-      // 하위 선택 — 말 걸기(응답 고르기) / 증거 카드 고르기
+      // 하위 선택 — 말 걸기(응답 고르기) / 증거 카드 고르기.
+      // 증거 카드는 후반에 10장을 넘으므로 커서를 따라가는 스크롤 창으로 그린다.
       ctx.fillStyle = '#ccc';
       ctx.font = fs(16);
       ctx.fillText(b.sub.kind === 'act' ? '* 무슨 말을 건넬까?' : '* 어떤 증거를 보여 줄까?', 34, boxY + 34);
-      let ty = boxY + 70;
+      const opts = b.sub.options;
       const stepS = game.largeText ? 40 : 34;
-      for (let i = 0; i < b.sub.options.length; i++) {
-        const opt = b.sub.options[i];
+      const maxRows = game.largeText ? 4 : 5;
+      const start = clamp(b.subIdx - Math.floor(maxRows / 2), 0, Math.max(0, opts.length - maxRows));
+      const end = Math.min(opts.length, start + maxRows);
+      let ty = boxY + 70;
+      if (start > 0) { ctx.fillStyle = '#888'; ctx.font = fs(13); ctx.fillText('▲ 위에 더 있음', 38, ty - 14); }
+      for (let i = start; i < end; i++) {
+        const opt = opts[i];
         const label = opt.locked ? `${opt.label} 🔒` : opt.label;
         drawChoiceLine(label, 38, ty, i === b.subIdx);
         ty += stepS;
       }
+      if (end < opts.length) { ctx.fillStyle = '#888'; ctx.font = fs(13); ctx.fillText('▼ 아래에 더 있음', 38, ty - 8); }
       ctx.fillStyle = '#666';
       ctx.font = fs(13);
       ctx.fillText(isTouchDevice ? 'B: 뒤로' : 'X: 뒤로', LW - 110, boxY + boxH - 16);
