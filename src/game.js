@@ -3288,6 +3288,8 @@
     for (let c = 1; c <= 5; c++) if (flags[`chapter${c}Mercy`]) n += 1;
     return n;
   }
+  let _duskGrad = { key: -1, fill: null };  // a값 캐시 (drawDuskAmbient)
+  let _quietGrad = { key: -1, fill: null }; // lv 캐시 (drawQuietVignette)
   function drawDuskAmbient() {
     let a = DUSK_BASE[game.map];
     if (!a || !game.flags) return;
@@ -3298,15 +3300,19 @@
       ctx.fillRect(0, 0, LW, LH);
       return;
     }
-    // 깊은 남빛 어스름 — 위(하늘)가 더 어둡다
-    const grad = ctx.createLinearGradient(0, 0, 0, LH);
-    if (grad && grad.addColorStop) {
-      grad.addColorStop(0, `rgba(8,9,28,${Math.min(0.55, a + 0.1)})`);
-      grad.addColorStop(1, `rgba(8,9,28,${a * 0.7})`);
-      ctx.fillStyle = grad;
-    } else {
-      ctx.fillStyle = `rgba(8,9,28,${a})`;
+    // 깊은 남빛 어스름 — 위(하늘)가 더 어둡다.
+    // 그라디언트는 a가 바뀔 때만 새로 만든다 (매 프레임 생성은 저사양 태블릿 GC 부담)
+    if (_duskGrad.key !== a) {
+      const grad = ctx.createLinearGradient(0, 0, 0, LH);
+      if (grad && grad.addColorStop) {
+        grad.addColorStop(0, `rgba(8,9,28,${Math.min(0.55, a + 0.1)})`);
+        grad.addColorStop(1, `rgba(8,9,28,${a * 0.7})`);
+        _duskGrad = { key: a, fill: grad };
+      } else {
+        _duskGrad = { key: a, fill: `rgba(8,9,28,${a})` };
+      }
     }
+    ctx.fillStyle = _duskGrad.fill;
     ctx.fillRect(0, 0, LW, LH);
   }
 
@@ -3321,14 +3327,17 @@
       ctx.fillRect(0, 0, LW, LH);
       return;
     }
-    const grad = ctx.createRadialGradient(LW / 2, LH / 2, LH * 0.25, LW / 2, LH / 2, LH * 0.75);
-    if (grad && grad.addColorStop) {
-      grad.addColorStop(0, 'rgba(0,0,0,0)');
-      grad.addColorStop(1, `rgba(5,5,12,${0.2 * lv})`);
-      ctx.fillStyle = grad;
-    } else {
-      ctx.fillStyle = `rgba(5,5,12,${0.16 * lv})`;
+    if (_quietGrad.key !== lv) {
+      const grad = ctx.createRadialGradient(LW / 2, LH / 2, LH * 0.25, LW / 2, LH / 2, LH * 0.75);
+      if (grad && grad.addColorStop) {
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(1, `rgba(5,5,12,${0.2 * lv})`);
+        _quietGrad = { key: lv, fill: grad };
+      } else {
+        _quietGrad = { key: lv, fill: `rgba(5,5,12,${0.16 * lv})` };
+      }
     }
+    ctx.fillStyle = _quietGrad.fill;
     ctx.fillRect(0, 0, LW, LH);
   }
   // 코어 — 여덟 개의 의자. 안아 준(자비) 조각 수만큼(coreMercyCount) 채워져 그려진다.
@@ -9215,8 +9224,14 @@
         game.player.px = 13 * TS; game.player.py = 16 * TS;
         save();
         Sound.playSong(MAPS.village.song);
-        // 후일담 유도 — 엔딩 분기별 마을 대사(박사님·할머니)가 기다린다
-        game.notice = { text: '마을 사람들이 너를 기다린다 — 말을 걸어 보자.', t: 320 };
+        // 후일담 유도 — 엔딩 분기별 마을 대사(박사님·할머니)가 기다린다.
+        // 침묵 엔딩은 마을에 아무도 이사 오지 않았으므로 문구도 조용하게.
+        game.notice = {
+          text: game.flags.endingId === 'silent'
+            ? '…마을이, 조용하다.'
+            : '마을 사람들이 너를 기다린다 — 말을 걸어 보자.',
+          t: 320,
+        };
       }
     } else {
       if (game.endingT > 120 && justPressed('action')) {
