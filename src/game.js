@@ -272,9 +272,35 @@
     catch (e) { noteStorageFail(); }
   }
 
+  const SLOT_UNDO_KEY = 'ai-ethics-adventure-deleted-slot';
+  function slotAllKeys(i) {
+    return [slotKey(i), statsKey(i), mistakesKey(i), metaKey(i), puzzleKey(i)];
+  }
   function deleteSlot(i) {
+    // 되살리기 안전망 — 지우기 직전 이 슬롯의 모든 데이터를 스냅샷해 둔다.
+    // 공용 태블릿에서 다른 학생의 세이브를 실수로 지워도 1회 복구할 수 있다.
+    try {
+      const snap = { slot: i };
+      for (const k of slotAllKeys(i)) { const v = localStorage.getItem(k); if (v != null) snap[k] = v; }
+      localStorage.setItem(SLOT_UNDO_KEY, JSON.stringify(snap));
+    } catch (e) { /* 용량 부족 등이면 그냥 진행 */ }
     try { localStorage.removeItem(slotKey(i)); } catch (e) { /* 무시 */ }
     clearSlotLearning(i); // 학생을 지우면 학습 기록(일지·복습·도전과제)도 함께 지운다
+  }
+  function undoDeleteSlot() {
+    let snap;
+    try { snap = JSON.parse(localStorage.getItem(SLOT_UNDO_KEY)); } catch (e) { return { ok: false }; }
+    if (!snap || typeof snap.slot !== 'number') return { ok: false };
+    let n = 0;
+    for (const k of slotAllKeys(snap.slot)) {
+      if (snap[k] != null) { try { localStorage.setItem(k, snap[k]); n++; } catch (e) { /* 무시 */ } }
+    }
+    if (puzzleLogCache && puzzleLogCache.slot === snap.slot) puzzleLogCache = null;
+    try { localStorage.removeItem(SLOT_UNDO_KEY); } catch (e) { /* 무시 */ }
+    return { ok: n > 0, slot: snap.slot };
+  }
+  function hasDeletedSlot() {
+    try { return !!localStorage.getItem(SLOT_UNDO_KEY); } catch (e) { return false; }
   }
 
   // 기존 단일 세이브를 슬롯 0으로 1회 이전한다.
@@ -994,6 +1020,16 @@
       if (game.mode === 'world') { openAwards('world'); return; }
       if (game.mode === 'title' && game.titleScreen === 'slots') { openAwards('title'); return; }
       if (game.mode === 'awards') { closeAwards(); return; }
+      return;
+    }
+    if (e.key === 'r' || e.key === 'R') {
+      // 방금 지운 세이브 되살리기 (슬롯 화면에서만, 스냅샷이 있을 때만)
+      if (game.mode === 'title' && game.titleScreen === 'slots' && hasDeletedSlot()) {
+        const res = undoDeleteSlot();
+        game.notice = { text: res.ok ? '↩ 지운 세이브를 되살렸어요.' : '되살릴 세이브가 없어요.', t: 260 };
+        if (res.ok && typeof res.slot === 'number') game.slotCursor = res.slot;
+        Sound.badge();
+      }
       return;
     }
     if (e.key === 'i' || e.key === 'I') {
@@ -9095,7 +9131,7 @@
       ctx.fillText(`F 명예의전당 · U 백업 · I 도움말 · M 음악 · 난이도(${DIFF_LABEL[game.difficulty]})`, LW / 2, 472);
       ctx.fillStyle = '#555';
       ctx.font = '11px monospace';
-      ctx.fillText('t: 선생님 방', LW / 2, 488);
+      ctx.fillText('t: 선생님 방' + (hasDeletedSlot() ? '   ·   R: 방금 지운 세이브 되살리기' : ''), LW / 2, 488);
       ctx.fillStyle = '#777';
     }
 
@@ -9127,10 +9163,12 @@
       ctx.fillText(`슬롯 ${game.slotCursor + 1} "${sum ? sum.name : ''}"`, LW / 2, 240);
       ctx.font = '15px monospace';
       ctx.fillStyle = '#e0453a';
-      ctx.fillText('정말 삭제할까요? (되돌릴 수 없어요)', LW / 2, 270);
+      ctx.fillText('정말 삭제할까요?', LW / 2, 270);
       ctx.fillStyle = '#888';
+      ctx.font = '13px monospace';
+      ctx.fillText('실수로 지웠다면 슬롯 화면에서 R로 한 번 되살릴 수 있어요.', LW / 2, 292);
       ctx.font = '14px monospace';
-      ctx.fillText('Z: 삭제   ·   X: 취소', LW / 2, 304);
+      ctx.fillText('Z: 삭제   ·   X: 취소', LW / 2, 316);
     }
     ctx.textAlign = 'left';
   }
@@ -9742,7 +9780,8 @@
   window.__test = { // 테스트용 훅
     buildReportText, buildLearningSummary, recordTopicResult, countAchievements,
     migrateSlotV6, migrateSlotV7, migrateSlotV8,
-    buildBackupText, applyBackup, undoRestore, hasRestoreUndo, buildAdaptivePool, buildDailyPool,
+    buildBackupText, applyBackup, undoRestore, hasRestoreUndo,
+    deleteSlot, undoDeleteSlot, hasDeletedSlot, buildAdaptivePool, buildDailyPool,
     recordPlayDay, recordDailyDone, getMeta, todayStr,
     unlockedCount, getCosmetic, setCosmetic, achievementCtx,
     getCustomQuizzes, importCustomQuizzes, clearCustomQuizzes, customQuizTemplate, challengeTopics,

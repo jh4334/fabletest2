@@ -805,6 +805,30 @@ deleteSlotViaGame(1);
 check('슬롯 1 삭제 시 통계도 삭제', !storage.get('ai-ethics-adventure-stats-1'));
 check('슬롯 1 삭제 시 퍼즐 로그도 삭제(스토리지)', !storage.get('ai-ethics-adventure-puzzle-1'));
 check('슬롯 1 삭제 시 퍼즐 로그 메모이즈도 무효화(빈 객체 반환)', Object.keys(getPuzzleLogT(1)).length === 0);
+// C9: 삭제한 세이브 되살리기 — 방금 지운 슬롯 복구 (공용 태블릿 실수 방지)
+{
+  const Tu = vm.runInContext('window.__test', sandbox);
+  // 실제 세이브 + 통계를 갖춘 슬롯 1을 만든 뒤 삭제 → 되살리기
+  storage.set('ai-ethics-adventure-slot-1', JSON.stringify({ v: 8, name: '되살이', flags: {} }));
+  storage.set('ai-ethics-adventure-stats-1', '{"privacy":{"correct":3,"total":3}}');
+  deleteSlotViaGame(1);
+  check('삭제 후 세이브 없음', !storage.get('ai-ethics-adventure-slot-1'));
+  check('삭제 직후 되살리기 가능 표시', Tu.hasDeletedSlot() === true);
+  const un = Tu.undoDeleteSlot();
+  check('되살리기 성공 + 슬롯 번호 반환', un.ok === true && un.slot === 1);
+  check('세이브 복구됨', storage.get('ai-ethics-adventure-slot-1') === JSON.stringify({ v: 8, name: '되살이', flags: {} }));
+  check('통계도 복구됨', !!storage.get('ai-ethics-adventure-stats-1'));
+  check('되살리기 소진 후 스냅샷 없음', Tu.hasDeletedSlot() === false);
+  // R 키 경로도 확인
+  g.mode = 'title'; g.titleScreen = 'delete'; g.slotCursor = 1; tap('z'); // 다시 삭제
+  g.mode = 'title'; g.titleScreen = 'slots';
+  dispatch('keydown', { key: 'r' }); step(2); dispatch('keyup', { key: 'r' });
+  check('R 키로 되살리기 → 세이브 복구', !!storage.get('ai-ethics-adventure-slot-1') &&
+    /되살렸/.test(g.notice.text));
+  // 정리
+  storage.delete('ai-ethics-adventure-slot-1');
+  storage.delete('ai-ethics-adventure-stats-1');
+}
 function deleteSlotViaGame(slot) {
   g.mode = 'title'; g.titleScreen = 'delete'; g.slotCursor = slot;
   tap('z'); // 삭제 확정
