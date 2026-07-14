@@ -1380,6 +1380,9 @@ function grabCopy() {
   step(1);
   check('벽 끝 인접 타일에서도 사본 회수', g.puzzleRun.collected === before + 1 && c.got === true);
 }
+// stalkers 없는 불완전 puzzleRun 이어도 drawStalkers 가 죽지 않는지(소스 방어)
+check('drawStalkers 방어 — stalkers 배열 가정 주석',
+  /!Array\.isArray\(run\.stalkers\)/.test(fs.readFileSync(require('path').join(__dirname, '../src/game.js'), 'utf8')));
 grabCopy();
 check('사본 2개 회수', g.puzzleRun.collected === 2 && g.map === 'boardplaza');
 grabCopy();
@@ -2718,7 +2721,8 @@ check('내부 키(DEX_ORDER 등)는 그대로', Array.isArray(DEX_ORDER) && DEX_
   const gameSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
   check('친구 수첩 화면 헤더로 교체', gameSrc.includes("'♥ 친구 수첩'"));
   check('"친구 N/M" 카운트 표기로 교체', gameSrc.includes('친구 ${dexSeenCount()} / ${DEX_ORDER.length}'));
-  check('타이틀 하단 단축키 안내도 친구수첩으로 교체', gameSrc.includes('C 친구수첩'));
+  // 타이틀은 단축키 벽 대신 핵심 조작만 노출 (I 도움말 / 메뉴에 나머지)
+  check('타이틀 하단 단축키 다이어트', gameSrc.includes('I 도움말') && gameSrc.includes('T 선생님 방') && gameSrc.includes('GAME_VERSION'));
   check('옛 "몬스터 도감" 문구는 남아있지 않음', !gameSrc.includes('몬스터 도감'));
 }
 g.mode = 'world';

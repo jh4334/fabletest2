@@ -2,6 +2,9 @@
 (() => {
   'use strict';
 
+  // 타이틀에 표시 · SW 캐시로 옛 빌드가 남았는지 구분용 (package.json 과 맞출 것)
+  const GAME_VERSION = '1.0.1';
+
   const TILE = 16;
   const SCALE = 3;
   const TS = TILE * SCALE; // 48px
@@ -2069,6 +2072,7 @@
     if (run.puzzle.type === 'call' || run.puzzle.type === 'checkdoor' || run.puzzle.type === 'sofa') return;
     // ── traces: 스토커 추격(반 속도, walkable 체크) + 접촉 처리 ──
     if (boardCount(run) > run.maxBoard) run.maxBoard = boardCount(run); // 최고치 추적
+    if (!Array.isArray(run.stalkers)) return;
     const p = game.player;
     const spd = MOVE_SPEED * 0.5;
     for (const s of run.stalkers) {
@@ -3260,6 +3264,8 @@
 
   function drawStalkers(cx, cy) {
     const run = game.puzzleRun;
+    // traces 외 퍼즐·불완전 run 에서도 프레임이 죽지 않게 방어
+    if (!run || !Array.isArray(run.stalkers) || run.stalkers.length === 0) return;
     for (const s of run.stalkers) {
       const bob = Math.round(Math.sin(game.time / 10) * 2);
       drawSprite(ctx, STALKER_SPRITE, Math.round(s.px - cx), Math.round(s.py - cy - 6 + bob), SCALE);
@@ -3795,11 +3801,11 @@
       const tilt = 3 - s2ClearCount();
       if (tilt <= 0) {
         startDialog([
-          '거대한 저울이 수평이 되었다.\n저울 뒤로 문이 열려 있다.\n(위로 걸어 들어가 보자)',
+          '【열림】 거대한 저울이 수평이다.\n저울 뒤 문이 활짝 열려 있다!\n→ 위로 걸어 들어가면 들어간다.',
         ], '거대한 저울');
       } else {
         startDialog([
-          `거대한 저울이 한쪽으로\n크게 기울어 있다. (기울기 ${tilt}/3)`,
+          `【잠김】 거대한 저울이 한쪽으로\n크게 기울어 있다. (기울기 ${tilt}/3)`,
           '한쪽 접시에만 무언가가\n잔뜩 쌓여 있다. 반대쪽은 텅 비었다.',
         ], '거대한 저울');
       }
@@ -3809,11 +3815,13 @@
     if (game.map === 'freestreet' && ch === '7') {
       const n = s1LockCount();
       if (n >= 3) {
-        startDialog(['금고 문이 열려 있다.\n…안에서 서랍 여닫는 소리가 난다.\n(위로 걸어 들어가 보자)'], '금고');
+        startDialog([
+          '【열림】 금고 문이 활짝 열려 있다!\n→ 위로 걸어 들어가면 주인의 방이다.\n(Z가 아니라, 그냥 걸어 들어가자)',
+        ], '금고');
       } else {
         startDialog([
-          `육중한 금고 문.\n잠금 ${3 - n}개가 아직 잠겨 있다. (${n}/3 해제)`,
-          '작은 글씨: "주인 전용★\n※출입 조건은 각 매장에서 확인"',
+          `【잠김】 육중한 금고 문.\n잠금 ${3 - n}개가 아직 잠겨 있다. (${n}/3 해제)`,
+          '작은 글씨: "주인 전용★\n※구역을 클리어하면 잠금이 풀려요"',
         ], '금고');
       }
       return;
@@ -6283,6 +6291,7 @@
     ['', '방 곳곳을 살펴보고, 만지고, 실마리를 이어 봐요.'],
     ['', isTouchDevice ? '막히면 [메뉴] 버튼 → 힌트! 누를수록 더 자세히 알려줘요.'
                        : '막히면 H로 힌트! 누를수록 더 자세히 알려줘요(최대 3단계).'],
+    ['', '【잠김】 문은 Z로 조사 · 【열림】 문은 그냥 걸어 들어가요.'],
     ['', ''],
     ['head', '◆ 기억을 모아요'],
     ['', (isTouchDevice ? '📚 기억 조각' : '📚 기억 조각 (L)') + ' — 배운 순간이 카드로 쌓여요.'],
@@ -6291,7 +6300,9 @@
     ['', (isTouchDevice ? '▶ 도전 극장' : '▶ 도전 극장 (Q)') + ' — 짧은 퀴즈로 실력을 확인해요.'],
     ['', ''],
     ['head', '◆ 그 외'],
-    ['', '음악 켜고 끄기(M) · 눈이 부시면 메뉴의 「화면 효과 줄이기」'],
+    ['', isTouchDevice
+      ? '음악·백업·설정은 [메뉴] · 선생님은 오른쪽 아래 버튼'
+      : 'J 일지 · B 도전과제 · K 꾸미기 · U 백업 · F 명전 · T 선생님 방 · M 음악'],
   ];
   // 한 화면(528px)에 다 들어가지 않아 2장으로 나눈다. (← → 로 넘김)
   const HELP_PAGES = [
@@ -9144,22 +9155,24 @@
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#777';
-    // 터치 기기엔 키보드가 없으므로 단축키 벽 대신 핵심 조작만 + "메뉴에서 더 보기"
+    // 단축키는 핵심만 — 나머지는 I 도움말(또는 메뉴). 벽 같은 키 나열은 초등 첫인상을 해친다.
     if (isTouchDevice) {
       ctx.font = '14px monospace';
-      ctx.fillText('스틱으로 슬롯 선택 · Ⓐ로 시작', LW / 2, 462);
+      ctx.fillText('스틱으로 슬롯 선택 · Ⓐ로 시작', LW / 2, 456);
       ctx.fillStyle = '#9aa8c8';
       ctx.font = '13px monospace';
-      ctx.fillText('친구수첩·챌린지·백업 등 모든 기능은 [메뉴] 버튼에', LW / 2, 484);
+      ctx.fillText('친구수첩·백업 등 → [메뉴]   ·   선생님 → 오른쪽 아래', LW / 2, 476);
     } else {
+      ctx.font = '13px monospace';
+      ctx.fillText('↑↓ 선택  ·  Z 시작  ·  X 삭제  ·  I 도움말', LW / 2, 456);
+      ctx.fillStyle = '#666';
       ctx.font = '12px monospace';
-      ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 친구수첩 · Q 도전극장 · J 일지 · B 도전과제 · K 꾸미기 · L 기억조각`, LW / 2, 456);
-      ctx.fillText(`F 명예의전당 · U 백업 · I 도움말 · M 음악 · 난이도(${DIFF_LABEL[game.difficulty]})`, LW / 2, 472);
-      ctx.fillStyle = '#555';
-      ctx.font = '11px monospace';
-      ctx.fillText('t: 선생님 방' + (hasDeletedSlot() ? '   ·   R: 방금 지운 세이브 되살리기' : ''), LW / 2, 488);
-      ctx.fillStyle = '#777';
+      ctx.fillText('T 선생님 방' + (hasDeletedSlot() ? '  ·  R 지운 세이브 되살리기' : '') + '  ·  M 음악', LW / 2, 476);
     }
+    // 빌드 버전 — SW 캐시로 옛 빌드가 남았는지 구분용
+    ctx.fillStyle = '#444';
+    ctx.font = '11px monospace';
+    ctx.fillText(`v${GAME_VERSION}`, LW - 36, 18);
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
     const seen = getEndingsSeen();
@@ -9169,7 +9182,7 @@
       .map((k) => (seen[k] ? names[k] : '???')).join(' · ');
     ctx.fillStyle = '#e0453a';
     ctx.font = '13px monospace';
-    ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   친구 ${dexSeenCount()}/${DEX_ORDER.length}`, LW / 2, 500);
+    ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   친구 ${dexSeenCount()}/${DEX_ORDER.length}`, LW / 2, 498);
 
     // 저장 불가 환경 경고 (비공개 모드·저장공간 가득 등)
     if (!storageOk) {
@@ -9216,16 +9229,14 @@
     // 인트로 동안은 아무 음악도 흐르지 않는다 — 침묵으로 시작해, 눈을 뜬 뒤에야
     // 음악이 아주 낮게 흘러든다 (다크 톤 오프닝 연출).
     game.introDim = { fadeFrame: -1 };
+    // 첫 배틀까지 읽기 부담을 줄이기 위해 오프닝 상자를 압축한다.
     startDialog([
-      '눈을 뜨니 좁은 방이다.\n낡은 기계들과 컴퓨터 몇 대가\n어둠 속에 잠들어 있다.',
-      `여기가 어디인지,\n${game.playerName}은(는) 기억나지 않는다.\n벽 한가운데 — 반짝이지 않는 문.`,
-      '나가려면, 무언가 찾아야 한다.\n방 안을 살펴보자.\n(목표는 왼쪽 위에 표시돼요)',
+      '눈을 뜨니 좁은 방.\n낡은 기계들, 그리고\n반짝이지 않는 문 하나.',
+      '나가려면 방 안의 노란 단서를 찾자.\n(목표·화살표는 왼쪽 위 · Z로 조사)',
     ], null, () => {
       // 동행자 합류 — 무음의 인트로 끝에 작은 빛이 날아든다. 음악은 그 뒤에야 흘러든다.
       startDialog([
-        '(작은 빛 하나가 포르르 날아와\n어깨 옆에 멈춘다.)',
-        '안녕! 나는 반디.\n이 세계의 안내 도우미… 랄까.',
-        '길 잃은 아이는 오랜만이라.\n…내가 옆에 있어 줄게.\n어디든, 끝까지.',
+        '(작은 빛 하나가 포르르 날아와\n어깨 옆에 멈춘다.)\n반디: 안녕! 길 잃은 아이?\n…옆에 있어 줄게. 어디든.',
       ], '반디', () => {
         game.flags.bandiJoined = true;
         save();
