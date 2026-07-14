@@ -2789,7 +2789,7 @@
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.warp();
-    Sound.playSong(MAPS[exit.map].song);
+    Sound.playMapBgm(MAPS[exit.map].song); // 이전 구역 BGM 완전 종료 후 복귀 맵 곡만
     const lines = (puz.clearLines || ['방을 빠져나왔다.']).slice();
     // 보상 카드와 잠금/진행 안내를 한 상자로 묶는다 — 클리어 꼬리 상자 다이어트
     const tail = fresh.map((id) => `◆ 증거 카드 「${EVIDENCE_CARDS[id].title}」 획득!`);
@@ -3971,7 +3971,8 @@
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.warp();
-    Sound.playSong(MAPS[w.to].song);
+    // 맵 나갈 때마다 전 BGM hard-stop → 현 맵 BGM만 (같은 song 키여도 스케줄 중첩 방지)
+    Sound.playMapBgm(MAPS[w.to].song);
     syncPuzzleRun(); // 방탈출 방 입장/퇴장에 맞춰 런타임 상태 초기화/해제
     // 5장 허브 「포근한 집」 — 루미의 목소리 안내(도착할 때마다 순서대로 한 마디씩)
     if (w.to === 'cozyhome') advanceLumiVoice();
@@ -4371,13 +4372,13 @@
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.badge();
-    Sound.playSong(MAPS[cfg.map].song);
+    Sound.playMapBgm(MAPS[cfg.map].song);
     const lines = [mon.win];
     if (b.mercyChoiceKind === 'mercy') lines.push(cfg.mercyLine);
     lines.push(cfg.clearLine);
     lines.push(cfg.afterLine);
     lines.push(bandiBossLine('ch' + n, b.mercyChoiceKind, game.flags));
-    startDialog(lines, mon.name, () => Sound.playSong(MAPS[cfg.map].song));
+    startDialog(lines, mon.name, () => Sound.playMapBgm(MAPS[cfg.map].song));
   }
 
   // 파이널 보스(고요) 클리어 — goyoClear 플래그 + 코어 개방 연출 후 코어로 입장.
@@ -4399,14 +4400,14 @@
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.badge();
-    Sound.playSong(MAPS.coreroom.song);
+    Sound.playMapBgm(MAPS.coreroom.song);
     const lines = [mon.win];
     if (b.mercyChoiceKind === 'mercy') {
       lines.push('💛 고요의 침묵 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!');
     }
     lines.push('☆ 가장 깊은 곳의 문이 열렸다 ☆\n…고요를 지나, 코어로 들어선다.');
     lines.push(bandiBossLine('goyo', b.mercyChoiceKind, game.flags));
-    startDialog(lines, mon.name, () => Sound.playSong(MAPS.coreroom.song));
+    startDialog(lines, mon.name, () => Sound.playMapBgm(MAPS.coreroom.song));
   }
 
   function winBattle() {
@@ -4461,11 +4462,11 @@
         game.mode = 'ending';
         game.endingType = 'true';
         game.endingT = 0;
-        Sound.playSong('ending');
+        Sound.playMapBgm('ending');
       });
     } else {
       startDialog(lines, mon.name, () => {
-        Sound.playSong(MAPS[game.map].song);
+        Sound.playMapBgm(MAPS[game.map].song);
       });
     }
   }
@@ -4627,7 +4628,7 @@
     const p = getPersuade(persuadeKey);
     const mon = resolvePersuadeMon(monId, persuadeKey);
     game.mode = 'battle';
-    Sound.playSong(p.song || mon.song || 'battle'); // 보스별 전용 테마 (N-2)
+    Sound.playMapBgm(p.song || mon.song || 'battle'); // 보스별 전용 테마 (N-2)
     // 물러났던 상대는 이야기를 절반쯤 기억한다 (재도전은 더 짧게). 기억은 프로필별로 구분한다.
     const memo = (game.flags.persuadeMemory || {})[persuadeKey];
     const maxHearts = 4 + (game.difficulty === 'easy' ? 1 : 0);
@@ -5199,7 +5200,7 @@
     const nm = b.mon.name;
     game.battle = null;
     game.mode = 'world';
-    Sound.playSong(MAPS[game.map].song);
+    Sound.playMapBgm(MAPS[game.map].song);
     startDialog([
       '마음이 지쳐서, 한 발 물러났다…',
       `괜찮아. ${nm}는 네 이야기를\n조금은 기억하고 있을 거야.\n숨을 고르고 다시 가 보자.`,
@@ -9228,7 +9229,7 @@
       ], '반디', () => {
         game.flags.bandiJoined = true;
         save();
-        Sound.playSong(MAPS[game.map].song);
+        Sound.playMapBgm(MAPS[game.map].song);
       });
     });
   }
@@ -9275,7 +9276,7 @@
     syncPuzzleRun(); // 방탈출 방 안에서 저장된 세이브면 퍼즐을 새로 시작
     recordPlayDay(slot);
     checkCosmeticUnlocks(slot);
-    Sound.playSong(MAPS[game.map].song);
+    Sound.playMapBgm(MAPS[game.map].song);
   }
 
   function updateTitle() {
@@ -9339,7 +9340,7 @@
         game.player.x = 13; game.player.y = 16;
         game.player.px = 13 * TS; game.player.py = 16 * TS;
         save();
-        Sound.playSong(MAPS.village.song);
+        Sound.playMapBgm(MAPS.village.song);
         // 후일담 유도 — 엔딩 분기별 마을 대사(박사님·할머니)가 기다린다.
         // 침묵 엔딩은 마을에 아무도 이사 오지 않았으므로 문구도 조용하게.
         game.notice = {
@@ -9352,7 +9353,7 @@
     } else {
       if (game.endingT > 120 && justPressed('action')) {
         game.mode = 'world';
-        Sound.playSong(MAPS[game.map].song);
+        Sound.playMapBgm(MAPS[game.map].song);
       }
     }
   }
@@ -9575,11 +9576,11 @@
           game.battle = null; game.dialog = null;
           game.mode = game.flags ? 'world' : 'title';
           if (game.mode === 'title') game.titleScreen = 'slots';
-          else { try { Sound.playSong(MAPS[game.map] ? MAPS[game.map].song : 'village'); } catch (e) {} }
+          else { try { Sound.playMapBgm(MAPS[game.map] ? MAPS[game.map].song : 'village'); } catch (e) {} }
         } else if (justPressed('cancel')) {
           crashed = false;
           game.mode = 'title'; game.titleScreen = 'slots';
-          try { Sound.playSong('title'); } catch (e) {}
+          try { Sound.playMapBgm('title'); } catch (e) {}
         }
       }
       if (crashed) { drawCrash(); return; }
@@ -9723,7 +9724,7 @@
   // 타이틀 BGM은 첫 입력 후 시작 (브라우저 자동재생 정책)
   const startTitleMusic = () => {
     Sound.resume();
-    if (game.mode === 'title') Sound.playSong('title');
+    if (game.mode === 'title') Sound.playMapBgm('title');
     window.removeEventListener('keydown', startTitleMusic);
     window.removeEventListener('touchstart', startTitleMusic);
     window.removeEventListener('mousedown', startTitleMusic);
@@ -9757,7 +9758,7 @@
           Speech.stop();
         } else {
           Sound.resume();
-          if (bgmBeforeHide) { Sound.playSong(bgmBeforeHide); bgmBeforeHide = null; }
+          if (bgmBeforeHide) { Sound.playMapBgm(bgmBeforeHide); bgmBeforeHide = null; }
         }
       } catch (e) { /* 무시 */ }
     });
@@ -9776,7 +9777,7 @@
             Speech.stop();
           } else if (bgmBeforeRotate) {
             Sound.resume();
-            Sound.playSong(bgmBeforeRotate);
+            Sound.playMapBgm(bgmBeforeRotate);
             bgmBeforeRotate = null;
           }
         } catch (e) { /* 무시 */ }
