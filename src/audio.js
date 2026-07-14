@@ -372,10 +372,12 @@ const SONGS = {
 const Sound = {
   ctx: null,
   master: null,
+  bgmGain: null, // BGM 전용 버스 — 맵 전환 시 즉시 끊어 이전 곡 잔향이 겹치지 않게 한다
   volume: 1, // 음량 3단계 (1 / 0.5 / 0.2) — setVolume으로 설정
   muted: false,
   songName: null,
   _timers: [],
+  _songGen: 0, // stop/play 세대 — 끊긴 루프의 setTimeout이 다시 스케줄하지 못하게
 
   init() {
     if (this.ctx) return;
@@ -417,9 +419,36 @@ const Sound = {
     this._timers = [];
   },
 
+  // 이미 AudioContext에 예약된 BGM 오실레이터를 즉시 죽인다.
+  // (setTimeout만 지워서는 현재 재생 중인 노트·루프가 남아 맵 전환 시 두 곡이 겹친다.)
+  _killBgmBus() {
+    if (!this.bgmGain || !this.ctx) {
+      this.bgmGain = null;
+      return;
+    }
+    const now = this.ctx.currentTime;
+    try {
+      this.bgmGain.gain.cancelScheduledValues(now);
+      this.bgmGain.gain.setValueAtTime(0, now);
+      this.bgmGain.disconnect();
+    } catch (e) {}
+    this.bgmGain = null;
+  },
+
+  _ensureBgmBus() {
+    if (!this.ctx || !this.master) return null;
+    if (this.bgmGain) return this.bgmGain;
+    this.bgmGain = this.ctx.createGain();
+    this.bgmGain.gain.value = 1;
+    this.bgmGain.connect(this.master);
+    return this.bgmGain;
+  },
+
   stopSong() {
     this.songName = null;
+    this._songGen = (this._songGen || 0) + 1;
     this._clearTimers();
+    this._killBgmBus();
   },
 
   playSong(name) {
@@ -428,13 +457,17 @@ const Sound = {
     if (!this.ctx) return;
     this.stopSong();
     this.songName = name;
-    this._scheduleLoop(name);
+    const gen = this._songGen;
+    this._ensureBgmBus();
+    this._scheduleLoop(name, gen);
   },
 
-  _scheduleLoop(name) {
-    if (this.songName !== name || !this.ctx) return;
+  _scheduleLoop(name, gen) {
+    if (this.songName !== name || !this.ctx || gen !== this._songGen) return;
     const song = SONGS[name];
     if (!song) return;
+    const bus = this._ensureBgmBus();
+    if (!bus) return;
     const beat = 60 / song.bpm;
     const t0 = this.ctx.currentTime + 0.06;
     let loopLen = 0;
@@ -442,16 +475,17 @@ const Sound = {
       let t = t0;
       for (const [midi, dur] of track.notes) {
         const d = dur * beat;
-        if (midi > 0) this._tone(track.wave, this._freq(midi), t, d * 0.92, track.vol);
+        if (midi > 0) this._tone(track.wave, this._freq(midi), t, d * 0.92, track.vol, bus);
         t += d;
       }
       loopLen = Math.max(loopLen, t - t0);
     }
-    const timer = setTimeout(() => this._scheduleLoop(name), (loopLen - 0.05) * 1000);
+    const timer = setTimeout(() => this._scheduleLoop(name, gen), (loopLen - 0.05) * 1000);
     this._timers = [timer];
   },
 
-  _tone(wave, freq, t, dur, vol) {
+  // dest: BGM은 bgmGain, SFX는 master(기본). 맵 전환 시 BGM 버스만 끊어도 SFX는 남는다.
+  _tone(wave, freq, t, dur, vol, dest) {
     const osc = this.ctx.createOscillator();
     const g = this.ctx.createGain();
     osc.type = wave;
@@ -461,7 +495,7 @@ const Sound = {
     g.gain.setValueAtTime(vol, t + Math.max(0.01, dur - 0.04));
     g.gain.linearRampToValueAtTime(0, t + dur);
     osc.connect(g);
-    g.connect(this.master);
+    g.connect(dest || this.master);
     osc.start(t);
     osc.stop(t + dur + 0.02);
     osc.onended = () => { try { osc.disconnect(); g.disconnect(); } catch (e) {} };

@@ -1369,7 +1369,18 @@ function grabCopy() {
   g.player.x = Math.round(c.px / 48); g.player.y = Math.round(c.py / 48);
   step(1);
 }
-grabCopy(); grabCopy();
+// 벽 끝 코너에 몰린 조각 — 중심이 겹치지 않아도(인접) 회수되어야 한다
+{
+  const c = g.puzzleRun.copies.find((cc) => !cc.got);
+  // 맵 모서리 타일(1,1 근처 워크 가능 칸)에 조각을 고정하고, 한 타일 옆에서 접근
+  c.px = 1 * 48; c.py = 1 * 48;
+  g.player.px = 2 * 48; g.player.py = 1 * 48;
+  g.player.x = 2; g.player.y = 1;
+  const before = g.puzzleRun.collected;
+  step(1);
+  check('벽 끝 인접 타일에서도 사본 회수', g.puzzleRun.collected === before + 1 && c.got === true);
+}
+grabCopy();
 check('사본 2개 회수', g.puzzleRun.collected === 2 && g.map === 'boardplaza');
 grabCopy();
 check('3개 회수 → 클리어 대화', g.mode === 'dialog');

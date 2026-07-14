@@ -2091,31 +2091,56 @@
   }
   // 구역②: 떠도는 사본 — 플레이어를 피해 도망(0.7배속, 스토커 이동 로직 재활용).
   // 붙잡으면(접촉) 회수. 3개를 모두 회수하면 클리어.
+  //
+  // 벽 끝/모서리에 몰리면 도망 축이 SOLID에 막혀 제자리인데, 예전 포획 반경
+  // (0.7×TS)은 타일 중심 거의 겹침을 요구해 플레이어가 벽 쪽에서 따라잡아도
+  // 닿지 못하는 버그가 있었다. 포획을 먼저 판정하고 반경을 키우며, 막히면
+  // 벽 따라 미끄러지거나 중앙 쪽으로 밀어 코너에 끼지 않게 한다.
+  function copyTileWalkable(px, py) {
+    return !SOLID(tileAt(game.map, Math.round(px / TS), Math.round(py / TS)));
+  }
+  function tryMoveCopy(c, sx, sy) {
+    // 축 분리 슬라이드 — 대각 도망이 벽에 막혀도 열린 축으로 미끄러진다
+    let moved = false;
+    if (sx && copyTileWalkable(c.px + sx, c.py)) { c.px += sx; moved = true; }
+    if (sy && copyTileWalkable(c.px, c.py + sy)) { c.py += sy; moved = true; }
+    return moved;
+  }
   function updateCopies(run) {
     const p = game.player;
+    // 인접 타일에서도 잡히게 (벽 쪽 접근 시 히트박스 때문에 중심 겹침이 어렵다)
+    const CAPTURE_R = TS * 1.2;
     for (const c of run.copies) {
       if (c.got) continue;
       const dx = c.px - p.px, dy = c.py - p.py;
       const dist = Math.hypot(dx, dy) || 1;
-      if (dist < TS * 7) {
-        // 가까우면 도망 (플레이어 이동의 0.7배속 — 결국 따라잡힌다)
-        const spd = MOVE_SPEED * 0.7;
-        const sx = dx / dist * spd, sy = dy / dist * spd;
-        if (!SOLID(tileAt(game.map, Math.round((c.px + sx) / TS), Math.round(c.py / TS)))) c.px += sx;
-        if (!SOLID(tileAt(game.map, Math.round(c.px / TS), Math.round((c.py + sy) / TS)))) c.py += sy;
-      } else {
-        // 멀면 종이처럼 하늘하늘 떠다닌다
-        const sx = Math.sin((game.time + c.seed) / 40) * 0.6;
-        const sy = Math.cos((game.time + c.seed) / 52) * 0.6;
-        if (!SOLID(tileAt(game.map, Math.round((c.px + sx) / TS), Math.round(c.py / TS)))) c.px += sx;
-        if (!SOLID(tileAt(game.map, Math.round(c.px / TS), Math.round((c.py + sy) / TS)))) c.py += sy;
-      }
-      if (Math.hypot(p.px - c.px, p.py - c.py) < TS * 0.7) {
+      // 포획을 이동보다 먼저 — 코너에 몰린 조각도 닿는 즉시 회수
+      if (dist < CAPTURE_R) {
         c.got = true;
         run.collected += 1;
         Sound.correct();
         game.notice = { text: `내 조각을 되찾았다! (${run.collected}/3)`, t: 120 };
         if (run.collected >= 3) { clearPuzzle(run); return; }
+        continue;
+      }
+      if (dist < TS * 7) {
+        // 가까우면 도망 (플레이어 이동의 0.7배속 — 열린 공간에선 결국 따라잡힌다)
+        const spd = MOVE_SPEED * 0.7;
+        const sx = dx / dist * spd, sy = dy / dist * spd;
+        if (!tryMoveCopy(c, sx, sy)) {
+          // 완전 막힘(벽 끝) — 맵 중앙 쪽으로 살짝 밀어 끼임 해제
+          const map = MAPS[game.map];
+          const midX = ((map.tiles[0].length - 1) / 2) * TS;
+          const midY = ((map.tiles.length - 1) / 2) * TS;
+          const tdx = midX - c.px, tdy = midY - c.py;
+          const td = Math.hypot(tdx, tdy) || 1;
+          tryMoveCopy(c, (tdx / td) * spd, (tdy / td) * spd);
+        }
+      } else {
+        // 멀면 종이처럼 하늘하늘 떠다닌다
+        const sx = Math.sin((game.time + c.seed) / 40) * 0.6;
+        const sy = Math.cos((game.time + c.seed) / 52) * 0.6;
+        tryMoveCopy(c, sx, sy);
       }
     }
   }
