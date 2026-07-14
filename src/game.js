@@ -2,6 +2,9 @@
 (() => {
   'use strict';
 
+  // 타이틀에 표시 · SW 캐시로 옛 빌드가 남았는지 구분용 (package.json 과 맞출 것)
+  const GAME_VERSION = '1.0.1';
+
   const TILE = 16;
   const SCALE = 3;
   const TS = TILE * SCALE; // 48px
@@ -2069,6 +2072,7 @@
     if (run.puzzle.type === 'call' || run.puzzle.type === 'checkdoor' || run.puzzle.type === 'sofa') return;
     // ── traces: 스토커 추격(반 속도, walkable 체크) + 접촉 처리 ──
     if (boardCount(run) > run.maxBoard) run.maxBoard = boardCount(run); // 최고치 추적
+    if (!Array.isArray(run.stalkers)) return;
     const p = game.player;
     const spd = MOVE_SPEED * 0.5;
     for (const s of run.stalkers) {
@@ -2091,31 +2095,56 @@
   }
   // 구역②: 떠도는 사본 — 플레이어를 피해 도망(0.7배속, 스토커 이동 로직 재활용).
   // 붙잡으면(접촉) 회수. 3개를 모두 회수하면 클리어.
+  //
+  // 벽 끝/모서리에 몰리면 도망 축이 SOLID에 막혀 제자리인데, 예전 포획 반경
+  // (0.7×TS)은 타일 중심 거의 겹침을 요구해 플레이어가 벽 쪽에서 따라잡아도
+  // 닿지 못하는 버그가 있었다. 포획을 먼저 판정하고 반경을 키우며, 막히면
+  // 벽 따라 미끄러지거나 중앙 쪽으로 밀어 코너에 끼지 않게 한다.
+  function copyTileWalkable(px, py) {
+    return !SOLID(tileAt(game.map, Math.round(px / TS), Math.round(py / TS)));
+  }
+  function tryMoveCopy(c, sx, sy) {
+    // 축 분리 슬라이드 — 대각 도망이 벽에 막혀도 열린 축으로 미끄러진다
+    let moved = false;
+    if (sx && copyTileWalkable(c.px + sx, c.py)) { c.px += sx; moved = true; }
+    if (sy && copyTileWalkable(c.px, c.py + sy)) { c.py += sy; moved = true; }
+    return moved;
+  }
   function updateCopies(run) {
     const p = game.player;
+    // 인접 타일에서도 잡히게 (벽 쪽 접근 시 히트박스 때문에 중심 겹침이 어렵다)
+    const CAPTURE_R = TS * 1.2;
     for (const c of run.copies) {
       if (c.got) continue;
       const dx = c.px - p.px, dy = c.py - p.py;
       const dist = Math.hypot(dx, dy) || 1;
-      if (dist < TS * 7) {
-        // 가까우면 도망 (플레이어 이동의 0.7배속 — 결국 따라잡힌다)
-        const spd = MOVE_SPEED * 0.7;
-        const sx = dx / dist * spd, sy = dy / dist * spd;
-        if (!SOLID(tileAt(game.map, Math.round((c.px + sx) / TS), Math.round(c.py / TS)))) c.px += sx;
-        if (!SOLID(tileAt(game.map, Math.round(c.px / TS), Math.round((c.py + sy) / TS)))) c.py += sy;
-      } else {
-        // 멀면 종이처럼 하늘하늘 떠다닌다
-        const sx = Math.sin((game.time + c.seed) / 40) * 0.6;
-        const sy = Math.cos((game.time + c.seed) / 52) * 0.6;
-        if (!SOLID(tileAt(game.map, Math.round((c.px + sx) / TS), Math.round(c.py / TS)))) c.px += sx;
-        if (!SOLID(tileAt(game.map, Math.round(c.px / TS), Math.round((c.py + sy) / TS)))) c.py += sy;
-      }
-      if (Math.hypot(p.px - c.px, p.py - c.py) < TS * 0.7) {
+      // 포획을 이동보다 먼저 — 코너에 몰린 조각도 닿는 즉시 회수
+      if (dist < CAPTURE_R) {
         c.got = true;
         run.collected += 1;
         Sound.correct();
         game.notice = { text: `내 조각을 되찾았다! (${run.collected}/3)`, t: 120 };
         if (run.collected >= 3) { clearPuzzle(run); return; }
+        continue;
+      }
+      if (dist < TS * 7) {
+        // 가까우면 도망 (플레이어 이동의 0.7배속 — 열린 공간에선 결국 따라잡힌다)
+        const spd = MOVE_SPEED * 0.7;
+        const sx = dx / dist * spd, sy = dy / dist * spd;
+        if (!tryMoveCopy(c, sx, sy)) {
+          // 완전 막힘(벽 끝) — 맵 중앙 쪽으로 살짝 밀어 끼임 해제
+          const map = MAPS[game.map];
+          const midX = ((map.tiles[0].length - 1) / 2) * TS;
+          const midY = ((map.tiles.length - 1) / 2) * TS;
+          const tdx = midX - c.px, tdy = midY - c.py;
+          const td = Math.hypot(tdx, tdy) || 1;
+          tryMoveCopy(c, (tdx / td) * spd, (tdy / td) * spd);
+        }
+      } else {
+        // 멀면 종이처럼 하늘하늘 떠다닌다
+        const sx = Math.sin((game.time + c.seed) / 40) * 0.6;
+        const sy = Math.cos((game.time + c.seed) / 52) * 0.6;
+        tryMoveCopy(c, sx, sy);
       }
     }
   }
@@ -2764,7 +2793,7 @@
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.warp();
-    Sound.playSong(MAPS[exit.map].song);
+    Sound.playMapBgm(MAPS[exit.map].song); // 이전 구역 BGM 완전 종료 후 복귀 맵 곡만
     const lines = (puz.clearLines || ['방을 빠져나왔다.']).slice();
     // 보상 카드와 잠금/진행 안내를 한 상자로 묶는다 — 클리어 꼬리 상자 다이어트
     const tail = fresh.map((id) => `◆ 증거 카드 「${EVIDENCE_CARDS[id].title}」 획득!`);
@@ -3235,6 +3264,8 @@
 
   function drawStalkers(cx, cy) {
     const run = game.puzzleRun;
+    // traces 외 퍼즐·불완전 run 에서도 프레임이 죽지 않게 방어
+    if (!run || !Array.isArray(run.stalkers) || run.stalkers.length === 0) return;
     for (const s of run.stalkers) {
       const bob = Math.round(Math.sin(game.time / 10) * 2);
       drawSprite(ctx, STALKER_SPRITE, Math.round(s.px - cx), Math.round(s.py - cy - 6 + bob), SCALE);
@@ -3770,11 +3801,11 @@
       const tilt = 3 - s2ClearCount();
       if (tilt <= 0) {
         startDialog([
-          '거대한 저울이 수평이 되었다.\n저울 뒤로 문이 열려 있다.\n(위로 걸어 들어가 보자)',
+          '【열림】 거대한 저울이 수평이다.\n저울 뒤 문이 활짝 열려 있다!\n→ 위로 걸어 들어가면 들어간다.',
         ], '거대한 저울');
       } else {
         startDialog([
-          `거대한 저울이 한쪽으로\n크게 기울어 있다. (기울기 ${tilt}/3)`,
+          `【잠김】 거대한 저울이 한쪽으로\n크게 기울어 있다. (기울기 ${tilt}/3)`,
           '한쪽 접시에만 무언가가\n잔뜩 쌓여 있다. 반대쪽은 텅 비었다.',
         ], '거대한 저울');
       }
@@ -3784,11 +3815,13 @@
     if (game.map === 'freestreet' && ch === '7') {
       const n = s1LockCount();
       if (n >= 3) {
-        startDialog(['금고 문이 열려 있다.\n…안에서 서랍 여닫는 소리가 난다.\n(위로 걸어 들어가 보자)'], '금고');
+        startDialog([
+          '【열림】 금고 문이 활짝 열려 있다!\n→ 위로 걸어 들어가면 주인의 방이다.\n(Z가 아니라, 그냥 걸어 들어가자)',
+        ], '금고');
       } else {
         startDialog([
-          `육중한 금고 문.\n잠금 ${3 - n}개가 아직 잠겨 있다. (${n}/3 해제)`,
-          '작은 글씨: "주인 전용★\n※출입 조건은 각 매장에서 확인"',
+          `【잠김】 육중한 금고 문.\n잠금 ${3 - n}개가 아직 잠겨 있다. (${n}/3 해제)`,
+          '작은 글씨: "주인 전용★\n※구역을 클리어하면 잠금이 풀려요"',
         ], '금고');
       }
       return;
@@ -3946,7 +3979,8 @@
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.warp();
-    Sound.playSong(MAPS[w.to].song);
+    // 맵 나갈 때마다 전 BGM hard-stop → 현 맵 BGM만 (같은 song 키여도 스케줄 중첩 방지)
+    Sound.playMapBgm(MAPS[w.to].song);
     syncPuzzleRun(); // 방탈출 방 입장/퇴장에 맞춰 런타임 상태 초기화/해제
     // 5장 허브 「포근한 집」 — 루미의 목소리 안내(도착할 때마다 순서대로 한 마디씩)
     if (w.to === 'cozyhome') advanceLumiVoice();
@@ -4346,13 +4380,13 @@
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.badge();
-    Sound.playSong(MAPS[cfg.map].song);
+    Sound.playMapBgm(MAPS[cfg.map].song);
     const lines = [mon.win];
     if (b.mercyChoiceKind === 'mercy') lines.push(cfg.mercyLine);
     lines.push(cfg.clearLine);
     lines.push(cfg.afterLine);
     lines.push(bandiBossLine('ch' + n, b.mercyChoiceKind, game.flags));
-    startDialog(lines, mon.name, () => Sound.playSong(MAPS[cfg.map].song));
+    startDialog(lines, mon.name, () => Sound.playMapBgm(MAPS[cfg.map].song));
   }
 
   // 파이널 보스(고요) 클리어 — goyoClear 플래그 + 코어 개방 연출 후 코어로 입장.
@@ -4374,14 +4408,14 @@
     held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
     stickDir = null; stickRepeatFrames = 0;
     Sound.badge();
-    Sound.playSong(MAPS.coreroom.song);
+    Sound.playMapBgm(MAPS.coreroom.song);
     const lines = [mon.win];
     if (b.mercyChoiceKind === 'mercy') {
       lines.push('💛 고요의 침묵 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!');
     }
     lines.push('☆ 가장 깊은 곳의 문이 열렸다 ☆\n…고요를 지나, 코어로 들어선다.');
     lines.push(bandiBossLine('goyo', b.mercyChoiceKind, game.flags));
-    startDialog(lines, mon.name, () => Sound.playSong(MAPS.coreroom.song));
+    startDialog(lines, mon.name, () => Sound.playMapBgm(MAPS.coreroom.song));
   }
 
   function winBattle() {
@@ -4436,11 +4470,11 @@
         game.mode = 'ending';
         game.endingType = 'true';
         game.endingT = 0;
-        Sound.playSong('ending');
+        Sound.playMapBgm('ending');
       });
     } else {
       startDialog(lines, mon.name, () => {
-        Sound.playSong(MAPS[game.map].song);
+        Sound.playMapBgm(MAPS[game.map].song);
       });
     }
   }
@@ -4602,7 +4636,7 @@
     const p = getPersuade(persuadeKey);
     const mon = resolvePersuadeMon(monId, persuadeKey);
     game.mode = 'battle';
-    Sound.playSong(p.song || mon.song || 'battle'); // 보스별 전용 테마 (N-2)
+    Sound.playMapBgm(p.song || mon.song || 'battle'); // 보스별 전용 테마 (N-2)
     // 물러났던 상대는 이야기를 절반쯤 기억한다 (재도전은 더 짧게). 기억은 프로필별로 구분한다.
     const memo = (game.flags.persuadeMemory || {})[persuadeKey];
     const maxHearts = 4 + (game.difficulty === 'easy' ? 1 : 0);
@@ -5174,7 +5208,7 @@
     const nm = b.mon.name;
     game.battle = null;
     game.mode = 'world';
-    Sound.playSong(MAPS[game.map].song);
+    Sound.playMapBgm(MAPS[game.map].song);
     startDialog([
       '마음이 지쳐서, 한 발 물러났다…',
       `괜찮아. ${nm}는 네 이야기를\n조금은 기억하고 있을 거야.\n숨을 고르고 다시 가 보자.`,
@@ -6257,6 +6291,7 @@
     ['', '방 곳곳을 살펴보고, 만지고, 실마리를 이어 봐요.'],
     ['', isTouchDevice ? '막히면 [메뉴] 버튼 → 힌트! 누를수록 더 자세히 알려줘요.'
                        : '막히면 H로 힌트! 누를수록 더 자세히 알려줘요(최대 3단계).'],
+    ['', '【잠김】 문은 Z로 조사 · 【열림】 문은 그냥 걸어 들어가요.'],
     ['', ''],
     ['head', '◆ 기억을 모아요'],
     ['', (isTouchDevice ? '📚 기억 조각' : '📚 기억 조각 (L)') + ' — 배운 순간이 카드로 쌓여요.'],
@@ -6265,7 +6300,9 @@
     ['', (isTouchDevice ? '▶ 도전 극장' : '▶ 도전 극장 (Q)') + ' — 짧은 퀴즈로 실력을 확인해요.'],
     ['', ''],
     ['head', '◆ 그 외'],
-    ['', '음악 켜고 끄기(M) · 눈이 부시면 메뉴의 「화면 효과 줄이기」'],
+    ['', isTouchDevice
+      ? '음악·백업·설정은 [메뉴] · 선생님은 오른쪽 아래 버튼'
+      : 'J 일지 · B 도전과제 · K 꾸미기 · U 백업 · F 명전 · T 선생님 방 · M 음악'],
   ];
   // 한 화면(528px)에 다 들어가지 않아 2장으로 나눈다. (← → 로 넘김)
   const HELP_PAGES = [
@@ -9118,22 +9155,24 @@
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#777';
-    // 터치 기기엔 키보드가 없으므로 단축키 벽 대신 핵심 조작만 + "메뉴에서 더 보기"
+    // 단축키는 핵심만 — 나머지는 I 도움말(또는 메뉴). 벽 같은 키 나열은 초등 첫인상을 해친다.
     if (isTouchDevice) {
       ctx.font = '14px monospace';
-      ctx.fillText('스틱으로 슬롯 선택 · Ⓐ로 시작', LW / 2, 462);
+      ctx.fillText('스틱으로 슬롯 선택 · Ⓐ로 시작', LW / 2, 456);
       ctx.fillStyle = '#9aa8c8';
       ctx.font = '13px monospace';
-      ctx.fillText('친구수첩·챌린지·백업 등 모든 기능은 [메뉴] 버튼에', LW / 2, 484);
+      ctx.fillText('친구수첩·백업 등 → [메뉴]   ·   선생님 → 오른쪽 아래', LW / 2, 476);
     } else {
+      ctx.font = '13px monospace';
+      ctx.fillText('↑↓ 선택  ·  Z 시작  ·  X 삭제  ·  I 도움말', LW / 2, 456);
+      ctx.fillStyle = '#666';
       ctx.font = '12px monospace';
-      ctx.fillText(`↑↓ 선택 · Z 시작 · X 삭제 · C 친구수첩 · Q 도전극장 · J 일지 · B 도전과제 · K 꾸미기 · L 기억조각`, LW / 2, 456);
-      ctx.fillText(`F 명예의전당 · U 백업 · I 도움말 · M 음악 · 난이도(${DIFF_LABEL[game.difficulty]})`, LW / 2, 472);
-      ctx.fillStyle = '#555';
-      ctx.font = '11px monospace';
-      ctx.fillText('t: 선생님 방' + (hasDeletedSlot() ? '   ·   R: 방금 지운 세이브 되살리기' : ''), LW / 2, 488);
-      ctx.fillStyle = '#777';
+      ctx.fillText('T 선생님 방' + (hasDeletedSlot() ? '  ·  R 지운 세이브 되살리기' : '') + '  ·  M 음악', LW / 2, 476);
     }
+    // 빌드 버전 — SW 캐시로 옛 빌드가 남았는지 구분용
+    ctx.fillStyle = '#444';
+    ctx.font = '11px monospace';
+    ctx.fillText(`v${GAME_VERSION}`, LW - 36, 18);
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
     const seen = getEndingsSeen();
@@ -9143,7 +9182,7 @@
       .map((k) => (seen[k] ? names[k] : '???')).join(' · ');
     ctx.fillStyle = '#e0453a';
     ctx.font = '13px monospace';
-    ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   친구 ${dexSeenCount()}/${DEX_ORDER.length}`, LW / 2, 500);
+    ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   친구 ${dexSeenCount()}/${DEX_ORDER.length}`, LW / 2, 498);
 
     // 저장 불가 환경 경고 (비공개 모드·저장공간 가득 등)
     if (!storageOk) {
@@ -9190,20 +9229,18 @@
     // 인트로 동안은 아무 음악도 흐르지 않는다 — 침묵으로 시작해, 눈을 뜬 뒤에야
     // 음악이 아주 낮게 흘러든다 (다크 톤 오프닝 연출).
     game.introDim = { fadeFrame: -1 };
+    // 첫 배틀까지 읽기 부담을 줄이기 위해 오프닝 상자를 압축한다.
     startDialog([
-      '눈을 뜨니 좁은 방이다.\n낡은 기계들과 컴퓨터 몇 대가\n어둠 속에 잠들어 있다.',
-      `여기가 어디인지,\n${game.playerName}은(는) 기억나지 않는다.\n벽 한가운데 — 반짝이지 않는 문.`,
-      '나가려면, 무언가 찾아야 한다.\n방 안을 살펴보자.\n(목표는 왼쪽 위에 표시돼요)',
+      '눈을 뜨니 좁은 방.\n낡은 기계들, 그리고\n반짝이지 않는 문 하나.',
+      '나가려면 방 안의 노란 단서를 찾자.\n(목표·화살표는 왼쪽 위 · Z로 조사)',
     ], null, () => {
       // 동행자 합류 — 무음의 인트로 끝에 작은 빛이 날아든다. 음악은 그 뒤에야 흘러든다.
       startDialog([
-        '(작은 빛 하나가 포르르 날아와\n어깨 옆에 멈춘다.)',
-        '안녕! 나는 반디.\n이 세계의 안내 도우미… 랄까.',
-        '길 잃은 아이는 오랜만이라.\n…내가 옆에 있어 줄게.\n어디든, 끝까지.',
+        '(작은 빛 하나가 포르르 날아와\n어깨 옆에 멈춘다.)\n반디: 안녕! 길 잃은 아이?\n…옆에 있어 줄게. 어디든.',
       ], '반디', () => {
         game.flags.bandiJoined = true;
         save();
-        Sound.playSong(MAPS[game.map].song);
+        Sound.playMapBgm(MAPS[game.map].song);
       });
     });
   }
@@ -9250,7 +9287,7 @@
     syncPuzzleRun(); // 방탈출 방 안에서 저장된 세이브면 퍼즐을 새로 시작
     recordPlayDay(slot);
     checkCosmeticUnlocks(slot);
-    Sound.playSong(MAPS[game.map].song);
+    Sound.playMapBgm(MAPS[game.map].song);
   }
 
   function updateTitle() {
@@ -9314,7 +9351,7 @@
         game.player.x = 13; game.player.y = 16;
         game.player.px = 13 * TS; game.player.py = 16 * TS;
         save();
-        Sound.playSong(MAPS.village.song);
+        Sound.playMapBgm(MAPS.village.song);
         // 후일담 유도 — 엔딩 분기별 마을 대사(박사님·할머니)가 기다린다.
         // 침묵 엔딩은 마을에 아무도 이사 오지 않았으므로 문구도 조용하게.
         game.notice = {
@@ -9327,7 +9364,7 @@
     } else {
       if (game.endingT > 120 && justPressed('action')) {
         game.mode = 'world';
-        Sound.playSong(MAPS[game.map].song);
+        Sound.playMapBgm(MAPS[game.map].song);
       }
     }
   }
@@ -9550,11 +9587,11 @@
           game.battle = null; game.dialog = null;
           game.mode = game.flags ? 'world' : 'title';
           if (game.mode === 'title') game.titleScreen = 'slots';
-          else { try { Sound.playSong(MAPS[game.map] ? MAPS[game.map].song : 'village'); } catch (e) {} }
+          else { try { Sound.playMapBgm(MAPS[game.map] ? MAPS[game.map].song : 'village'); } catch (e) {} }
         } else if (justPressed('cancel')) {
           crashed = false;
           game.mode = 'title'; game.titleScreen = 'slots';
-          try { Sound.playSong('title'); } catch (e) {}
+          try { Sound.playMapBgm('title'); } catch (e) {}
         }
       }
       if (crashed) { drawCrash(); return; }
@@ -9698,7 +9735,7 @@
   // 타이틀 BGM은 첫 입력 후 시작 (브라우저 자동재생 정책)
   const startTitleMusic = () => {
     Sound.resume();
-    if (game.mode === 'title') Sound.playSong('title');
+    if (game.mode === 'title') Sound.playMapBgm('title');
     window.removeEventListener('keydown', startTitleMusic);
     window.removeEventListener('touchstart', startTitleMusic);
     window.removeEventListener('mousedown', startTitleMusic);
@@ -9732,7 +9769,7 @@
           Speech.stop();
         } else {
           Sound.resume();
-          if (bgmBeforeHide) { Sound.playSong(bgmBeforeHide); bgmBeforeHide = null; }
+          if (bgmBeforeHide) { Sound.playMapBgm(bgmBeforeHide); bgmBeforeHide = null; }
         }
       } catch (e) { /* 무시 */ }
     });
@@ -9751,7 +9788,7 @@
             Speech.stop();
           } else if (bgmBeforeRotate) {
             Sound.resume();
-            Sound.playSong(bgmBeforeRotate);
+            Sound.playMapBgm(bgmBeforeRotate);
             bgmBeforeRotate = null;
           }
         } catch (e) { /* 무시 */ }

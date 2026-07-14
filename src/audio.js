@@ -88,6 +88,26 @@ const SONGS = {
       ]},
     ],
   },
+  // 1장 허브 「전부 공짜 거리」 전용 — 네온 광고 느낌. 구역 곡(lab/cave/glitch)과 분리.
+  // 트랙 길이는 validate 규칙상 동일해야 한다 (합계 박자).
+  street: {
+    bpm: 118,
+    tracks: [
+      { wave: 'square', vol: 0.09, notes: [
+        [72,0.5],[76,0.5],[79,1],[76,0.5],[72,0.5],[71,1],[0,0.5],[74,0.5],[76,1], // 6
+        [72,0.5],[76,0.5],[81,1],[79,0.5],[76,0.5],[74,1],[0,0.5],[71,0.5],[72,1], // 6
+        [69,0.5],[72,0.5],[76,1],[74,0.5],[71,0.5],[69,1],[0,1],[67,1],[69,1],     // 7
+        [72,1],[76,1],[74,1],[71,1],[72,2],[0,2],                                   // 8 → 합 27
+      ]},
+      { wave: 'triangle', vol: 0.14, notes: [
+        [45,1],[57,0.5],[45,0.5],[48,1],[60,0.5],[48,0.5], // 4
+        [43,1],[55,0.5],[43,0.5],[47,1],[59,0.5],[47,0.5], // 4
+        [45,1],[57,0.5],[45,0.5],[48,1],[60,0.5],[48,0.5], // 4
+        [40,1],[52,0.5],[40,0.5],[45,1],[0,1],[43,1],[45,2],[0,1], // 8 → 합 20 아직 부족
+        [48,1],[52,1],[55,1],[52,1],[48,1],[45,1],[43,1], // 7 → 합 27
+      ]},
+    ],
+  },
   // ── 보스 전용 테마 (N-2) — 캐릭터 = 음악. 각 보스의 성격을 리듬·음계로 그린다 ──
   // 따라(프롤로그): 서툰 왈츠 — 3박인데 자꾸 반 박자 늦고, 같은 악구를 베끼듯 반복한다
   boss_ttara: {
@@ -372,10 +392,13 @@ const SONGS = {
 const Sound = {
   ctx: null,
   master: null,
+  bgmGain: null, // BGM 전용 버스 (SFX와 분리)
   volume: 1, // 음량 3단계 (1 / 0.5 / 0.2) — setVolume으로 설정
   muted: false,
   songName: null,
   _timers: [],
+  _songGen: 0, // stop 세대 — 끊긴 루프의 setTimeout이 다시 스케줄하지 못하게
+  _bgmNodes: [], // 활성 BGM osc/gain — stop 시 전부 즉시 osc.stop()
 
   init() {
     if (this.ctx) return;
@@ -417,40 +440,124 @@ const Sound = {
     this._timers = [];
   },
 
-  stopSong() {
-    this.songName = null;
+  // 예약·재생 중인 BGM 오실레이터를 전부 즉시 종료한다.
+  // gain disconnect만으로는 브라우저에 따라 잔향이 남을 수 있어 osc.stop()까지 한다.
+  _hardStopBgm() {
     this._clearTimers();
+    this._songGen = (this._songGen || 0) + 1;
+    const now = this.ctx ? this.ctx.currentTime : 0;
+    for (const node of this._bgmNodes) {
+      try {
+        node.g.gain.cancelScheduledValues(now);
+        node.g.gain.setValueAtTime(0, now);
+        node.osc.stop(now);
+      } catch (e) {}
+      try { node.osc.disconnect(); } catch (e) {}
+      try { node.g.disconnect(); } catch (e) {}
+    }
+    this._bgmNodes = [];
+    if (this.bgmGain) {
+      try {
+        this.bgmGain.gain.cancelScheduledValues(now);
+        this.bgmGain.gain.setValueAtTime(0, now);
+        this.bgmGain.disconnect();
+      } catch (e) {}
+      this.bgmGain = null;
+    }
+    this.songName = null;
   },
 
-  playSong(name) {
-    if (this.songName === name) return;
+  _ensureBgmBus() {
+    if (!this.ctx || !this.master) return null;
+    if (this.bgmGain) return this.bgmGain;
+    this.bgmGain = this.ctx.createGain();
+    this.bgmGain.gain.value = 1;
+    this.bgmGain.connect(this.master);
+    return this.bgmGain;
+  },
+
+  stopSong() {
+    this._hardStopBgm();
+  },
+
+  // 맵 전환용 — 이전 BGM을 항상 끄고 현재 맵 곡만 튼다 (같은 song 키여도 재시작).
+  playMapBgm(name) {
     this.init();
     if (!this.ctx) return;
-    this.stopSong();
+    if (!name || !SONGS[name]) name = 'village';
+    this._hardStopBgm();
     this.songName = name;
-    this._scheduleLoop(name);
+    const gen = this._songGen;
+    this._ensureBgmBus();
+    this._scheduleLoop(name, gen);
   },
 
-  _scheduleLoop(name) {
-    if (this.songName !== name || !this.ctx) return;
+  // 일반 재생 — 이미 같은 곡이면 유지(배틀 후 맵 복귀 등). 다른 곡이면 hard stop 후 교체.
+  playSong(name) {
+    if (!name || !SONGS[name]) name = 'village';
+    if (this.songName === name && this._timers.length > 0) return;
+    this.playMapBgm(name);
+  },
+
+  _scheduleLoop(name, gen) {
+    if (this.songName !== name || !this.ctx || gen !== this._songGen) return;
     const song = SONGS[name];
     if (!song) return;
+    const bus = this._ensureBgmBus();
+    if (!bus) return;
     const beat = 60 / song.bpm;
-    const t0 = this.ctx.currentTime + 0.06;
+    // 루프 경계에서 이전 루프 노트와 겹치지 않도록 약간 여유를 둔다
+    const t0 = this.ctx.currentTime + 0.03;
     let loopLen = 0;
     for (const track of song.tracks) {
       let t = t0;
       for (const [midi, dur] of track.notes) {
         const d = dur * beat;
-        if (midi > 0) this._tone(track.wave, this._freq(midi), t, d * 0.92, track.vol);
+        if (midi > 0) this._bgmTone(track.wave, this._freq(midi), t, d * 0.92, track.vol, bus, gen);
         t += d;
       }
       loopLen = Math.max(loopLen, t - t0);
     }
-    const timer = setTimeout(() => this._scheduleLoop(name), (loopLen - 0.05) * 1000);
-    this._timers = [timer];
+    // 다음 루프는 현재 루프가 끝난 뒤에만 (겹침 방지: -0.05 대신 +0.02)
+    const delayMs = Math.max(50, (loopLen + 0.02) * 1000);
+    const timer = setTimeout(() => {
+      if (gen !== this._songGen || this.songName !== name) return;
+      // 루프 재진입 전, 끝난 노드 목록만 정리(재생 중 노드는 이미 stop 예약됨)
+      this._bgmNodes = this._bgmNodes.filter((n) => n.gen === gen);
+      this._scheduleLoop(name, gen);
+    }, delayMs);
+    this._timers.push(timer);
   },
 
+  _bgmTone(wave, freq, t, dur, vol, bus, gen) {
+    if (!this.ctx || !bus || gen !== this._songGen) return;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = wave;
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.01);
+    g.gain.setValueAtTime(vol, t + Math.max(0.01, dur - 0.04));
+    g.gain.linearRampToValueAtTime(0, t + dur);
+    osc.connect(g);
+    g.connect(bus);
+    const node = { osc, g, gen };
+    this._bgmNodes.push(node);
+    try {
+      osc.start(t);
+      osc.stop(t + dur + 0.02);
+    } catch (e) {
+      try { osc.disconnect(); g.disconnect(); } catch (e2) {}
+      return;
+    }
+    osc.onended = () => {
+      try { osc.disconnect(); g.disconnect(); } catch (e) {}
+      const i = this._bgmNodes.indexOf(node);
+      if (i >= 0) this._bgmNodes.splice(i, 1);
+    };
+  },
+
+  // SFX 전용 — master로 직결 (BGM hard stop의 영향을 받지 않음)
   _tone(wave, freq, t, dur, vol) {
     const osc = this.ctx.createOscillator();
     const g = this.ctx.createGain();

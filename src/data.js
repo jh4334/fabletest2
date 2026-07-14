@@ -86,7 +86,8 @@ const MAPS = {
   // 금고 잠금 3개는 구역을 하나 클리어할 때마다 풀린다 (needS1Locks — game.js).
   freestreet: {
     name: '전부 공짜 거리',
-    song: 'battle',
+    // 허브 거리 전용 곡 — 구역(lab/cave/glitch)과 겹치지 않게 분리
+    song: 'street',
     star: { x: 18, y: 18, text: '네온 불빛 사이의 골목 어귀.\n공짜가 아닌 것들 — 이를테면 지금 이 결심이,\n너를 단단하게 한다.' },
     // N-3 조사 플레이버
     flavors: [
@@ -140,7 +141,7 @@ const MAPS = {
       { x: 5, y: 18, to: 'warehouse', tx: 12, ty: 13 },
       // 금고문 — 잠금 3개(구역 클리어마다 1개)가 다 풀려야 주인의 방이 열린다
       { x: 17, y: 4, to: 'ownerroom', tx: 5, ty: 7, needS1Locks: 3,
-        lockText: '금고 문은 꿈쩍도 하지 않는다.\n잠금 세 개가 나란히 붙어 있다.' },
+        lockText: '【잠김】 금고 문은 꿈쩍도 하지 않는다.\n잠금 세 개가 나란히 붙어 있다.\n(구역을 클리어하면 풀려요)' },
       // 2장 「기울어진 거리」 — 담아를 되돌린 뒤에야(chapter1Clear) 열리는 동쪽 문
       { x: 37, y: 15, to: 'tiltstreet', tx: 1, ty: 10, needFlag: 'chapter1Clear', exitDir: 'east', dir: 'right',
         lockText: '동쪽 끝에 낯선 문이 하나 생겼다.\n멀리 걸어온 거리 너머가 이상하게… 기울어 보인다.\n지금은 굳게 잠겨 있다.' },
@@ -163,7 +164,7 @@ const MAPS = {
   // 상호작용 물체(단말·게시판·지우개·출구)는 타일이 아니라 PUZZLES.traces 좌표로 배치된다.
   traceroom: {
     name: '살금의 접수처',
-    song: 'battle',
+    song: 'lab',
     intro: [
       '≪살금의 접수처≫\n반짝이는 화면과 경품이 가득하다.',
       '담아(안내방송): "어서 와! 전부 공짜야.\n…아주 작은 정보만 주면 돼."',
@@ -1296,12 +1297,10 @@ const MAPS = {
   // 프롤로그 실험실 — 첫 5분. 단서 3개를 모아 문을 열면 정적의 숲으로.
   introlab: {
     name: '어두운 실험실',
-    song: 'silence',
+    song: 'lab',
     intro: [
-      '눈을 뜨니, 어두운 실험실이다.\n책상과 서버 랙이 멀찍이 흩어져\n긴 그림자를 만들고 있다.',
-      '…방 끝에 문이 하나 있다.\n반짝이지 않는, 칙칙한 문.\n문틈 아래로 차가운 바람이 샌다.',
-      '이곳을 나가려면\n방 곳곳의 노란 단서를\n차례로 찾아야 한다.',
-      '목표 화살표가 다음 단서를 가리킨다.\n가까이 다가가 Z/Enter로 조사하자.',
+      '어두운 실험실. 문 밖으로 찬 바람이 샌다.',
+      '노란 단서를 찾아 문을 열자.\n(화살표가 다음 단서를 가리킨다 · Z로 조사)',
     ],
     tiles: [
       'HHHHHHHHHHHHHHHHHHHHHHHHHHHH',
