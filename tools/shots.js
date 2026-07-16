@@ -1,5 +1,7 @@
 // 스크린샷 생성기 — node-canvas로 실제 게임 화면을 렌더해 PNG로 저장한다.
 // 사용법: node tools/shots.js
+// v3: 마음 조각 배틀은 상태를 손으로 조립하지 않고, 키 입력을 흉내 내
+// 실제 배틀(따라 조우)을 구동해 찍는다 — 화면이 항상 실제 게임과 일치한다.
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -11,7 +13,6 @@ fs.mkdirSync(OUT, { recursive: true });
 
 // ---- DOM/환경 스텁 (node-canvas 백엔드) ----
 const mainCanvas = createCanvas(720, 528);
-// game.js가 캔버스에 이벤트 리스너·포커스를 거는데, node-canvas엔 없으므로 스텁을 단다.
 mainCanvas.addEventListener = () => {};
 mainCanvas.removeEventListener = () => {};
 mainCanvas.focus = () => {};
@@ -26,31 +27,34 @@ const listeners = {};
 let rafCb = null;
 const storage = new Map();
 
-// 타이틀/도감을 보기 좋게 채워 둔다 (스크립트 로드 전에 심어야 함)
-const seedFlags = {
-  talkedProf: true,
-  badges: { forest: true, lake: true, cave: true },
-  defeated: { hondonmon: true, meotdaeromon: true, tteonemgimon: true,
-    bekkyeomon: true, mollaemon: true, jungdokmon: true, geojitmon: true, pyeonhyangmon: true,
-    akpeulmon: true, gatimmon: true, pungpungmon: true, kkamkkammon: true },
-  mercy: 14, visited: {}, trueEnding: false, correctCount: 52, battleCount: 16,
-  endingId: null,
-};
+// ---- 타이틀/수첩을 보기 좋게 채워 둔다 (스크립트 로드 전에 심어야 함) ----
+function v3Flags(extra) {
+  return Object.assign({
+    talkedProf: true, bandiJoined: true, bandiRevealed: false, bandiSaid: {},
+    defeated: { bekkyeomon: true, sujipmon: true, pyeonhyangmon: true, hwangakmon: false,
+      yuhokmon: false, hollimmon: false, finalboss: false, yeongi: false },
+    mercyChoice: { bekkyeomon: 'mercy' },
+    chapter1Clear: true, chapter1Mercy: true,
+    chapter2Clear: true, chapter2Mercy: false,
+    mercy: 3, visited: {}, trueEnding: false, correctCount: 52, battleCount: 9,
+    evCards: ['ev_maker', 'ev_minimal', 'ev_footprint'], endingId: null,
+  }, extra || {});
+}
 storage.set('ai-ethics-adventure-slot-0', JSON.stringify({
-  name: '도도', map: 'desert', x: 13, y: 8, flags: seedFlags, updatedAt: Date.now(),
+  v: 3, name: '도도', map: 'rumorstreet', x: 14, y: 16, flags: v3Flags(), updatedAt: Date.now(),
 }));
 storage.set('ai-ethics-adventure-slot-1', JSON.stringify({
-  name: '하늘', map: 'village', x: 13, y: 16,
-  flags: { badges: {}, defeated: {}, mercy: 2, visited: {} }, updatedAt: Date.now(),
+  v: 3, name: '하늘', map: 'village', x: 13, y: 16,
+  flags: { talkedProf: true, bandiJoined: true, defeated: {}, mercy: 1, visited: {} }, updatedAt: Date.now(),
 }));
-storage.set('ai-ethics-adventure-endings', JSON.stringify({ farewell: true, silent: true }));
-// 도감 22/28 수집 상태 (로드 전에 심어야 타이틀에도 반영)
-const DEX_SEED_ORDER = ['bekkyeomon', 'mollaemon', 'jungdokmon', 'geojitmon', 'pyeonhyangmon', 'hondonmon',
-  'akpeulmon', 'gatimmon', 'meotdaeromon', 'pungpungmon', 'kkamkkammon', 'tteonemgimon',
-  'sideulmon', 'ppaeatmon', 'hollimmon', 'maearimon', 'geurimjamon', 'finalboss',
-  'tturimmon', 'girokmon', 'sujipmon', 'saseomon'];
-const dexStore = {};
-DEX_SEED_ORDER.forEach((id, i) => { dexStore[id] = { seen: true, mercy: ['mercy', 'neutral', 'harsh'][i % 3] }; });
+storage.set('ai-ethics-adventure-endings', JSON.stringify({ farewell: true }));
+// 친구 수첩 — 여덟 조각 중 넷을 만난 상태
+const dexStore = {
+  bekkyeomon: { seen: true, mercy: 'mercy' },
+  sujipmon: { seen: true, mercy: 'mercy' },
+  pyeonhyangmon: { seen: true, mercy: 'neutral' },
+  hwangakmon: { seen: true, mercy: 'mercy' },
+};
 storage.set('ai-ethics-adventure-dex', JSON.stringify(dexStore));
 
 const windowObj = {
@@ -78,10 +82,12 @@ for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/game.js']
   vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
 }
 const g = windowObj.__game;
-const { QUIZZES, MONSTERS, BOSS_ATTACKS, DEX_ORDER } =
-  vm.runInContext('({QUIZZES,MONSTERS,BOSS_ATTACKS,DEX_ORDER})', sandbox);
+const { QUIZZES } = vm.runInContext('({QUIZZES})', sandbox);
 
 function step(n = 1) { for (let i = 0; i < n; i++) { const cb = rafCb; rafCb = null; cb(); } }
+function dispatch(ev, obj) { for (const fn of (listeners[ev] || []).slice()) fn(Object.assign({ preventDefault() {} }, obj)); }
+function tap(key) { dispatch('keydown', { key }); step(2); dispatch('keyup', { key }); }
+function advanceDialog(max = 100) { for (let i = 0; i < max && g.mode === 'dialog'; i++) tap('z'); }
 function shot(name) {
   step(1);
   fs.writeFileSync(path.join(OUT, name), mainCanvas.toBuffer('image/png'));
@@ -90,85 +96,78 @@ function shot(name) {
 function setPlayer(x, y, dir) {
   g.player.x = x; g.player.y = y; g.player.px = x * 48; g.player.py = y * 48; g.player.dir = dir || 'down';
 }
-function makeBattle(monId, phase) {
-  const mon = MONSTERS[monId];
-  const topics = Array.isArray(mon.topic) ? mon.topic : [mon.topic];
-  const questions = topics.flatMap((t) => QUIZZES[t]);
-  const maxHearts = mon.hp >= 5 ? 4 : 3;
-  return {
-    monId, mon, monHp: Math.max(1, Math.ceil(mon.hp / 2)), monMaxHp: mon.hp,
-    playerHp: maxHearts - 1, maxHearts, questions, qIdx: 0, phase,
-    cursor: 1, feedback: null, shake: 0, flash: 0,
-    attack: BOSS_ATTACKS[monId] || null, dodgeDone: false, dodge: null,
-  };
-}
 
 console.log('스크린샷 생성:');
 
-// 1) 타이틀 (슬롯/수집 채워진 상태)
+// 1) 타이틀 (여덟 조각 퍼레이드 + 슬롯)
 g.time = 40;
 shot('01-title.png');
 
-// 2) 마을 탐험 (HUD: 스테이지/증표/♥)
+// 2) 황혼의 경계마을 — 동행자 반디와 함께 (이사 온 친구·온기 연출 포함)
+g.currentSlot = 0; g.playerName = '도도';
+g.flags = v3Flags();
 g.mode = 'world'; g.map = 'village';
-g.flags.talkedProf = true;
-g.flags.badges = { forest: true, lake: true, cave: true };
-g.flags.mercy = 14;
-g.flags.defeated = Object.assign(g.flags.defeated, { hondonmon: true });
 setPlayer(9, 12, 'down');
 g.time = 30;
 shot('02-world.png');
 
-// 3) NPC 대화
+// 3) 박사님 첫 대화 (v3 오프닝)
 g.mode = 'dialog'; g.map = 'village'; setPlayer(5, 12, 'left');
-g.dialog = { lines: ['오, 드디어 왔구나!\n나는 AI 연구소의 박사란다.\n큰일이야… AI 세상에 "윤리 오류"가\n퍼지고 있어!'], idx: 0, chars: 999, speaker: '박사님', onEnd: null };
+g.dialog = { lines: ['…정말로, 왔구나.\n나는 이 마을의… 박사란다.'], idx: 0, chars: 999, speaker: '박사님', onEnd: null };
 shot('03-dialog.png');
 
-// 4) 퀴즈 배틀 (질문 화면)
-g.mode = 'battle'; g.battle = makeBattle('mollaemon', 'question'); g.battle.cursor = 1;
-g.time = 24;
-shot('04-battle.png');
+// 4~6) 마음 조각 배틀 — 실제 조우(따라)를 키 입력으로 구동해 찍는다
+g.dialog = null; g.mode = 'world'; g.map = 'forestdeep';
+g.flags = v3Flags({
+  defeated: { bekkyeomon: false, sujipmon: false, pyeonhyangmon: false, hwangakmon: false,
+    yuhokmon: false, hollimmon: false, finalboss: false, yeongi: false },
+  chapter1Clear: false, chapter2Clear: false, mercy: 0, evCards: [],
+  sawPersuadeTip: true, // 조작 안내는 스크린샷에서 생략
+  introForestTrace: true, ttaraFirstEncounter: true, // 첫 조우 연출 없이 곧장 배틀로
+});
+setPlayer(12, 4, 'down'); // 따라 (12,5) 위 — 정적의 숲 안쪽 공터
+tap('z');
+advanceDialog(); // 등장 대사 → 배틀 (M-2: 내 턴 메뉴에서 시작)
+if (!g.battle) throw new Error('배틀 스크린샷 실패 — 조우가 시작되지 않음: ' + g.mode);
+step(10);
+shot('04-battle.png'); // 내 턴 — 관찰 한 줄(*) + 행동 메뉴 4종
 
-// 5) 마음의 선택 (자비 시스템)
-g.mode = 'battle'; g.battle = makeBattle('hollimmon', 'mercy'); g.battle.monHp = 0; g.battle.cursor = 0;
+// 5) 상대 턴 — 「가만히 듣기」 → 탄막 + 속마음 조각 ✦
+if (g.battle && g.battle.phase === 'menu') {
+  g.battle.menuIdx = 2; tap('z');                      // 듣기 → 반응 대사
+  if (g.battle.phase === 'react') tap('z');            // → 상대 턴(탄막)
+  step(30); // 탄막·조각이 화면에 깔릴 때까지
+}
+shot('06-dodge.png'); // (README: 탄막 턴 회피 + 조각 줍기)
+
+// 6) 마음의 선택 — 게이지 만충 → spareReady → 마음 안아 주기
+if (g.battle) {
+  g.battle.gauge = g.battle.gaugeMax; step(2);          // 탄막 턴 종료 → 내 턴(spareReady)
+  if (g.battle.phase === 'menu') { g.battle.menuIdx = 3; tap('z'); } // 안아 주기 → 마음의 선택
+  step(2);
+}
 shot('05-mercy.png');
 
-// 6) 회피 미니게임 (보스전)
-g.mode = 'battle'; g.battle = makeBattle('hondonmon', 'dodge');
-g.battle.dodge = {
-  t: 70, dur: 300,
-  box: { x: 210, y: 150, w: 300, h: 170 },
-  soul: { x: 360, y: 250 },
-  bullets: [
-    { x: 250, y: 170, vx: 0, vy: 2.4, r: 6 }, { x: 320, y: 160, vx: 0, vy: 2.6, r: 6 },
-    { x: 400, y: 185, vx: 0, vy: 2.2, r: 6 }, { x: 470, y: 175, vx: 0, vy: 2.5, r: 6 },
-    { x: 290, y: 210, vx: 0, vy: 2.3, r: 6 }, { x: 360, y: 200, vx: 0, vy: 2.1, r: 6 },
-    { x: 430, y: 220, vx: 0, vy: 2.4, r: 6 }, { x: 250, y: 250, vx: 0, vy: 2.6, r: 6 },
-    { x: 470, y: 260, vx: 0, vy: 2.2, r: 6 }, { x: 320, y: 290, vx: 0, vy: 2.3, r: 6 },
-  ],
-  spawnTimer: 30, inv: 0,
-};
-g.time = 12;
-shot('06-dodge.png');
-
-// 7) 몬스터 도감 (22/28 수집 상태는 위에서 시드)
-g.mode = 'dex'; g.dex = { cursor: 1, ret: 'title' }; // mollaemon (수집됨)
+// 7) 친구 수첩
+g.battle = null; g.dialog = null;
+g.flags = v3Flags();
+g.mode = 'dex'; g.dex = { cursor: 1, ret: 'title' }; // 담아
 g.time = 20;
 shot('07-dex.png');
 
-// 8) 진엔딩 — 집으로
+// 8) 진엔딩 — 집으로 (영이와 반디의 마지막 인사)
 g.mode = 'ending'; g.endingType = 'true';
 g.flags.endingId = 'home'; g.flags.trueEnding = true;
-g.flags.correctCount = 84; g.flags.mercy = 24;
+g.flags.correctCount = 84; g.flags.mercy = 8;
 g.endingT = 220; g.time = 60;
 shot('08-ending.png');
 
-// 9) 어두운 지역 — 회로의 동굴 (탐험가 NPC + 편향몬 + 수정)
-g.mode = 'world'; g.map = 'cave';
-g.flags.defeated = {}; // 편향몬이 보이도록
-setPlayer(8, 4, 'right');
+// 9) 기울어진 거리 (2장 허브) — 저울과 기운 거리
+g.mode = 'world'; g.map = 'tiltstreet';
+g.flags = v3Flags({ chapter2Clear: false });
+setPlayer(14, 14, 'up');
 g.time = 18;
-shot('09-cave.png');
+shot('09-street.png');
 
 // 10) 수호자 일지 (주제별 정답률 — 슬롯 0 통계 시드)
 g.currentSlot = 0; g.playerName = '수호자';
@@ -187,7 +186,7 @@ g.mode = 'journal'; g.journal = { ret: 'world', slot: 0, scroll: 0, toast: 0 };
 g.time = 20;
 shot('10-journal.png');
 
-// 11) 자유 퀴즈 챌린지 (진행 중 화면)
+// 11) 도전 극장 (진행 중 화면)
 g.mode = 'challenge';
 {
   const topics = Object.keys(QUIZZES).filter((t) => QUIZZES[t] && QUIZZES[t].length)
@@ -203,8 +202,6 @@ g.time = 16;
 shot('11-challenge.png');
 
 // 12) 도전과제 (업적) — 일부 달성 상태
-g.flags.defeated = Object.assign(g.flags.defeated, { bekkyeomon: true, mollaemon: true, hondonmon: true });
-g.flags.mercy = 11;
 storage.set('ai-ethics-adventure-endings', JSON.stringify({ home: true }));
 g.mode = 'awards'; g.awards = { ret: 'world', slot: 0, scroll: 0 };
 g.time = 20;
@@ -228,14 +225,13 @@ g.backup = { ret: 'world', cursor: 1, toast: 0 };
 g.time = 20;
 shot('15-backup.png');
 
-// 16) 보너스 지역 — AI 미래연구소 (새 몬스터 3종)
-g.mode = 'world'; g.map = 'lab';
-g.flags.defeated.hwangakmon = false;
-g.flags.defeated.hapseongmon = false;
-g.flags.defeated.miraemon = false;
-setPlayer(9, 8, 'up');
+// 16) 고요의 뜰 — 소리가 잦아드는 파이널 구간
+g.mode = 'world'; g.map = 'quietyard2';
+g.flags = v3Flags({ chapter1Clear: true, chapter2Clear: true, chapter3Clear: true,
+  chapter4Clear: true, chapter5Clear: true });
+setPlayer(7, 8, 'up');
 g.time = 18;
-shot('16-lab.png');
+shot('16-quietyard.png');
 
 // 17) 교사용 대시보드 (학생 둘은 데이터, 하나는 비어 있음)
 storage.set('ai-ethics-adventure-stats-1', JSON.stringify({
@@ -280,9 +276,9 @@ g.hof = { ret: 'title', cat: 0 };
 g.time = 20;
 shot('21-hof.png');
 
-// 22) 수업 모드 (스테이지 바로 시작)
+// 22) 수업 모드 (챕터 바로 시작)
 g.mode = 'classmode';
-g.classmode = { ret: 'world', sel: 3, confirm: false, toast: 0 };
+g.classmode = { ret: 'world', sel: 0, confirm: false, toast: 0 };
 g.time = 20;
 shot('22-classmode.png');
 

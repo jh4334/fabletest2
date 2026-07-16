@@ -19,6 +19,8 @@ jobs:
         run: npm run validate
       - name: 로직 스모크/슬롯 테스트
         run: npm test
+      - name: 플레이봇 완주 (프롤로그→진엔딩 회귀)
+        run: npm run playtest
       - name: Chromium 설치 (브라우저 스모크용)
         run: npx playwright install --with-deps chromium
       - name: 브라우저 스모크 (desktop/mobile 세로·가로 + 콘솔 에러)

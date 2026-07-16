@@ -1,7 +1,7 @@
 {
-  "name": "AI 윤리 어드벤처",
-  "short_name": "AI윤리",
-  "description": "한국 초등학생을 위한 AI 윤리 교육 게임. 몬스터를 퀴즈로 깨우치는 어드벤처.",
+  "name": "마음의 문",
+  "short_name": "마음의 문",
+  "description": "화면 속으로 떨어진 아이의 미스터리 어드벤처. 굳어 버린 아이들의 마음을 여는 여정.",
   "lang": "ko",
   "start_url": "./index.html",
   "scope": "./",

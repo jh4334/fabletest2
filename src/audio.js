@@ -21,35 +21,33 @@ const SONGS = {
       ]},
     ],
   },
-  // 마을: 밝고 통통 튀는 느낌
+  // 마을: 황혼의 경계마을 — 낮고 느린 단조, 사이사이 정적 (버려진 것들이 흘러오는 곳)
   village: {
-    bpm: 124,
+    bpm: 88,
     tracks: [
-      { wave: 'square', vol: 0.10, notes: [
-        [72,1],[76,1],[79,1],[76,1],[81,1],[79,1],[76,1],[72,1],
-        [74,1],[77,1],[81,1],[77,1],[79,1],[77,1],[76,1],[74,1],
-        [72,1],[76,1],[79,1],[76,1],[81,1],[79,1],[76,1],[79,1],
-        [81,1],[83,1],[84,1],[81,1],[79,1],[76,1],[72,2],
+      { wave: 'square', vol: 0.07, notes: [
+        [69,2],[72,2],[76,4],[74,2],[72,2],[69,4],
+        [67,2],[69,2],[72,4],[71,2],[67,2],[64,4],
       ]},
-      { wave: 'triangle', vol: 0.17, notes: [
-        [48,2],[48,2],[45,2],[45,2],[50,2],[50,2],[55,2],[55,2],
-        [48,2],[48,2],[45,2],[45,2],[53,2],[53,2],[55,2],[55,2],
+      { wave: 'triangle', vol: 0.14, notes: [
+        [45,4],[41,4],[43,4],[40,4],[45,4],[41,4],[43,4],[40,4],
+      ]},
+      // 영이 테마 라이트모티프 — 마을에도 아주 조용히 스며 있다 (긴 정적 포함)
+      { wave: 'triangle', vol: 0.04, notes: [
+        [76,2],[72,1],[69,1],[71,2],[67,2],[0,24],
       ]},
     ],
   },
-  // 필드(숲/호수): 모험을 떠나는 느낌
+  // 필드(정적의 숲): 발소리를 낮추게 되는 적막 — 느린 단조, 긴 쉼표
   field: {
-    bpm: 136,
+    bpm: 96,
     tracks: [
-      { wave: 'square', vol: 0.10, notes: [
-        [69,1],[72,1],[76,1],[72,1],[77,1],[76,1],[72,1],[69,1],
-        [67,1],[71,1],[74,1],[71,1],[76,1],[74,1],[71,1],[67,1],
-        [69,1],[72,1],[76,1],[79,1],[81,2],[79,1],[76,1],
-        [77,1],[76,1],[74,1],[72,1],[69,2],[0,2],
+      { wave: 'square', vol: 0.07, notes: [
+        [69,1],[71,1],[72,2],[71,1],[69,1],[67,2],[64,2],[67,2],[69,2],[0,2],
+        [72,1],[74,1],[76,2],[74,1],[72,1],[71,2],[69,2],[64,2],[69,2],[0,2],
       ]},
-      { wave: 'triangle', vol: 0.17, notes: [
-        [45,2],[45,2],[43,2],[43,2],[41,2],[41,2],[40,2],[40,2],
-        [45,2],[45,2],[50,2],[50,2],[41,2],[43,2],[45,2],[45,2],
+      { wave: 'triangle', vol: 0.14, notes: [
+        [45,4],[43,4],[41,4],[45,4],[45,4],[43,4],[40,4],[45,4],
       ]},
     ],
   },
@@ -90,6 +88,173 @@ const SONGS = {
       ]},
     ],
   },
+  // 1장 허브 「전부 공짜 거리」 전용 — 네온 광고 느낌. 구역 곡(lab/cave/glitch)과 분리.
+  // 트랙 길이는 validate 규칙상 동일해야 한다 (합계 박자).
+  street: {
+    bpm: 118,
+    tracks: [
+      { wave: 'square', vol: 0.09, notes: [
+        [72,0.5],[76,0.5],[79,1],[76,0.5],[72,0.5],[71,1],[0,0.5],[74,0.5],[76,1], // 6
+        [72,0.5],[76,0.5],[81,1],[79,0.5],[76,0.5],[74,1],[0,0.5],[71,0.5],[72,1], // 6
+        [69,0.5],[72,0.5],[76,1],[74,0.5],[71,0.5],[69,1],[0,1],[67,1],[69,1],     // 7
+        [72,1],[76,1],[74,1],[71,1],[72,2],[0,2],                                   // 8 → 합 27
+      ]},
+      { wave: 'triangle', vol: 0.14, notes: [
+        [45,1],[57,0.5],[45,0.5],[48,1],[60,0.5],[48,0.5], // 4
+        [43,1],[55,0.5],[43,0.5],[47,1],[59,0.5],[47,0.5], // 4
+        [45,1],[57,0.5],[45,0.5],[48,1],[60,0.5],[48,0.5], // 4
+        [40,1],[52,0.5],[40,0.5],[45,1],[0,1],[43,1],[45,2],[0,1], // 8 → 합 20 아직 부족
+        [48,1],[52,1],[55,1],[52,1],[48,1],[45,1],[43,1], // 7 → 합 27
+      ]},
+    ],
+  },
+  // ── 보스 전용 테마 (N-2) — 캐릭터 = 음악. 각 보스의 성격을 리듬·음계로 그린다 ──
+  // 따라(프롤로그): 서툰 왈츠 — 3박인데 자꾸 반 박자 늦고, 같은 악구를 베끼듯 반복한다
+  boss_ttara: {
+    bpm: 104,
+    tracks: [
+      { wave: 'square', vol: 0.09, notes: [
+        [69,1],[72,1],[71,1], [69,1],[72,1],[71,1], [69,1],[74,1],[72,1], [71,2],[0,1],
+        [69,1],[72,1],[71,1], [69,1],[72,1],[71,1], [67,1],[71,1],[69,1], [64,2],[0,1],
+      ]},
+      { wave: 'triangle', vol: 0.15, notes: [
+        [45,1],[57,1],[57,1], [43,1],[55,1],[55,1], [41,1],[53,1],[53,1], [40,1],[52,1],[52,1],
+        [45,1],[57,1],[57,1], [43,1],[55,1],[55,1], [40,1],[52,1],[52,1], [45,1],[52,1],[57,1],
+      ]},
+    ],
+  },
+  // 담아(1장): 수집 행진 — 스타카토로 하나, 둘, 셋… 자꾸 쌓아 올리는 단조 행진곡
+  boss_dama: {
+    bpm: 132,
+    tracks: [
+      { wave: 'square', vol: 0.10, notes: [
+        [64,0.5],[0,0.5],[64,0.5],[67,0.5],[69,1],[67,0.5],[64,0.5],[62,1],[0,1],
+        [64,0.5],[0,0.5],[64,0.5],[67,0.5],[71,1],[69,0.5],[67,0.5],[64,1],[0,1],
+        [64,0.5],[0,0.5],[64,0.5],[67,0.5],[72,1],[71,0.5],[69,0.5],[67,1],[64,1],
+        [62,1],[64,1],[59,2],[0,2],
+      ]},
+      { wave: 'triangle', vol: 0.16, notes: [
+        [40,0.5],[40,0.5],[52,0.5],[40,0.5],[40,0.5],[40,0.5],[52,0.5],[40,0.5],
+        [38,0.5],[38,0.5],[50,0.5],[38,0.5],[38,0.5],[38,0.5],[50,0.5],[38,0.5],
+        [40,0.5],[40,0.5],[52,0.5],[40,0.5],[43,0.5],[43,0.5],[55,0.5],[43,0.5],
+        [45,0.5],[45,0.5],[57,0.5],[45,0.5],[40,0.5],[40,0.5],[52,0.5],[40,0.5],
+        [38,0.5],[38,0.5],[50,0.5],[38,0.5],[40,0.5],[40,0.5],[52,0.5],[40,0.5],
+        [43,0.5],[43,0.5],[55,0.5],[43,0.5],[40,0.5],[40,0.5],[52,0.5],[40,0.5],
+      ]},
+    ],
+  },
+  // 기울(2장): 기울어진 박자 — 3+2의 절뚝이는 리듬. 한쪽으로만 자꾸 쏠린다
+  boss_giul: {
+    bpm: 120,
+    tracks: [
+      { wave: 'square', vol: 0.10, notes: [
+        [67,1.5],[69,0.5],[71,1],[67,1],[64,1], [67,1.5],[69,0.5],[71,1],[74,2],
+        [72,1.5],[71,0.5],[69,1],[72,1],[69,1], [67,1.5],[64,0.5],[62,1],[64,2],
+      ]},
+      { wave: 'triangle', vol: 0.16, notes: [
+        [40,1.5],[40,0.5],[47,1],[40,1],[47,1], [38,1.5],[38,0.5],[45,1],[38,2],
+        [36,1.5],[36,0.5],[43,1],[36,1],[43,1], [40,1.5],[40,0.5],[47,1],[40,2],
+      ]},
+    ],
+  },
+  // 그럴싸(3장): 그럴싸한 팡파르 — 당당한 장조 팡파르가 반 박자마다 미묘하게 어긋난다
+  boss_geureol: {
+    bpm: 138,
+    tracks: [
+      { wave: 'square', vol: 0.10, notes: [
+        [72,0.5],[72,0.5],[76,1],[79,1],[78,0.5],[76,0.5],[74,1],[0,0.5],[74,0.5],
+        [74,0.5],[74,0.5],[77,1],[81,1],[80,0.5],[77,0.5],[76,1],[0,0.5],[72,0.5],
+        [72,0.5],[76,0.5],[79,1],[84,1],[83,0.5],[80,0.5],[81,1],[79,1],
+        [77,1],[76,1],[74,1],[73,1],[72,1],[0,1],
+      ]},
+      { wave: 'triangle', vol: 0.17, notes: [
+        [48,0.5],[48,0.5],[55,0.5],[48,0.5],[48,0.5],[48,0.5],[55,0.5],[48,0.5],
+        [50,0.5],[50,0.5],[57,0.5],[50,0.5],[50,0.5],[50,0.5],[57,0.5],[50,0.5],
+        [48,0.5],[48,0.5],[55,0.5],[48,0.5],[53,0.5],[53,0.5],[60,0.5],[53,0.5],
+        [50,0.5],[50,0.5],[57,0.5],[50,0.5],[48,0.5],[48,0.5],[55,0.5],[48,0.5],
+        [48,0.5],[48,0.5],[55,0.5],[48,0.5],[53,0.5],[53,0.5],[60,0.5],[53,0.5],
+        [50,0.5],[50,0.5],[57,0.5],[50,0.5],[48,0.5],[48,0.5],[55,0.5],[48,0.5],
+      ]},
+    ],
+  },
+  // 반짝(4장): 네온 스윙 — 반짝반짝 튀는 스윙. 화려한데, 후렴 끝은 늘 텅 빈다
+  boss_banjjak: {
+    bpm: 144,
+    tracks: [
+      { wave: 'square', vol: 0.10, notes: [
+        [76,0.75],[74,0.25],[76,0.75],[74,0.25],[76,1],[72,1],[69,1],[0,1],
+        [77,0.75],[76,0.25],[77,0.75],[76,0.25],[77,1],[74,1],[71,1],[0,1],
+        [79,0.75],[77,0.25],[79,0.75],[77,0.25],[81,1],[79,1],[76,1],[74,1],
+        [72,1],[71,1],[69,2],[0,2],
+      ]},
+      { wave: 'triangle', vol: 0.16, notes: [
+        [45,0.75],[45,0.25],[52,1],[45,0.75],[45,0.25],[52,1],
+        [41,0.75],[41,0.25],[48,1],[41,0.75],[41,0.25],[48,1],
+        [43,0.75],[43,0.25],[50,1],[43,0.75],[43,0.25],[50,1],
+        [45,0.75],[45,0.25],[52,1],[45,0.75],[45,0.25],[52,1],
+        [43,0.75],[43,0.25],[50,1],[41,0.75],[41,0.25],[48,1],
+        [45,0.75],[45,0.25],[52,1],[40,1],[0,1],
+      ]},
+    ],
+  },
+  // 루미(5장): 좁아지는 자장가 — 포근한 리듬인데, 반음씩 내려앉으며 방이 좁아진다
+  boss_lumi: {
+    bpm: 76,
+    tracks: [
+      { wave: 'square', vol: 0.08, notes: [
+        [76,1],[74,0.5],[72,1],[71,0.5],[72,1],[74,0.5],[71,1.5],[0,1.5],
+        [74,1],[72,0.5],[71,1],[70,0.5],[71,1],[72,0.5],[69,1.5],[0,1.5],
+        [72,1],[71,0.5],[70,1],[69,0.5],[70,1],[71,0.5],[67,1.5],[0,1.5],
+        [69,1],[71,0.5],[72,1],[74,0.5],[71,1],[68,0.5],[69,3],
+      ]},
+      { wave: 'triangle', vol: 0.14, notes: [
+        [45,1.5],[52,1.5],[45,1.5],[52,1.5], [43,1.5],[50,1.5],[43,1.5],[50,1.5],
+        [41,1.5],[48,1.5],[41,1.5],[48,1.5], [40,1.5],[47,1.5],[40,1.5],[47,1.5],
+        [45,1.5],[52,1.5],[45,1.5],[45,1.5],
+      ]},
+    ],
+  },
+  // 고요(파이널 전): 침묵의 곡 — 음보다 쉼표가 많다. 낮은 곳에서 아주 가끔 말을 건다
+  boss_goyo: {
+    bpm: 60,
+    tracks: [
+      { wave: 'triangle', vol: 0.12, notes: [
+        [45,2],[0,4],[43,1],[45,1],[0,8],
+        [40,2],[0,4],[41,1],[40,1],[0,8],
+      ]},
+      { wave: 'square', vol: 0.04, notes: [
+        [0,8],[57,1],[0,7],
+        [0,8],[52,1],[55,1],[0,6],
+      ]},
+    ],
+  },
+  // 영이(진 파이널): 라이트모티프 완전판 — 타이틀·마을·코어에 숨어 있던 악구가
+  // 여기서 비로소 전체 멜로디가 된다 (E-C-A-B-G 모티프의 전개·응답·귀결)
+  boss_yeongi: {
+    bpm: 92,
+    tracks: [
+      { wave: 'square', vol: 0.10, notes: [
+        [76,2],[72,1],[69,1],[71,2],[67,2],
+        [69,2],[72,1],[76,1],[74,2],[71,2],
+        [76,2],[79,1],[76,1],[74,2],[72,2],
+        [71,1],[72,1],[74,1],[71,1],[69,4],
+        [76,2],[72,1],[69,1],[71,2],[74,2],
+        [72,2],[71,1],[67,1],[69,4],
+      ]},
+      { wave: 'triangle', vol: 0.16, notes: [
+        [45,4],[43,4],[41,4],[40,4],
+        [45,4],[43,4],[38,4],[40,4],
+        [45,4],[43,4],[41,4],[40,4],
+      ]},
+      // 응답 성부 — 반디의 음역으로 멜로디를 따라 부른다 (동행의 기억)
+      { wave: 'square', vol: 0.04, notes: [
+        [0,8],[88,1],[84,1],[81,1],[83,1],[0,4],
+        [0,8],[88,1],[84,1],[81,1],[83,1],[0,4],
+        [0,10],[81,2],[0,4],
+      ]},
+    ],
+  },
+
   // 사막: 이국적이고 신비한 느낌
   desert: {
     bpm: 112,
@@ -154,6 +319,38 @@ const SONGS = {
       ]},
     ],
   },
+  // 파이널 「고요의 뜰」 — 구역을 지날 때마다(맵 전환) 곡 버전이 바뀌어 트랙이 하나씩 준다
+  // (Sound.playSong은 그대로 두고, 맵마다 다른 song을 배정하는 쪽이 구현이 더 단순하다).
+  // 구역① 고요의 뜰 — 2트랙(선율+저음)
+  quietyard: {
+    bpm: 76,
+    tracks: [
+      { wave: 'triangle', vol: 0.12, notes: [
+        [64,4],[62,4],[60,4],[59,4],[60,4],[57,4],[55,4],[57,4],
+      ]},
+      { wave: 'square', vol: 0.05, notes: [
+        [40,8],[38,8],[36,8],[38,8],
+      ]},
+    ],
+  },
+  // 구역② 더 조용한 곳 — 1트랙(선율만, 저음 트랙이 꺼졌다)
+  quietyard2: {
+    bpm: 76,
+    tracks: [
+      { wave: 'triangle', vol: 0.10, notes: [
+        [64,6],[0,2],[60,6],[0,2],[57,6],[0,2],[55,6],[0,2],
+      ]},
+    ],
+  },
+  // 구역③ 가장 조용한 곳 — 1트랙(거의 쉼표, 선율마저 옅어졌다)
+  quietyard3: {
+    bpm: 76,
+    tracks: [
+      { wave: 'triangle', vol: 0.06, notes: [
+        [0,8],[60,4],[0,8],[57,4],[0,8],
+      ]},
+    ],
+  },
   // 미래연구소(보너스): 호기심 가득, 통통 튀는 미래 느낌
   lab: {
     bpm: 132,
@@ -195,9 +392,13 @@ const SONGS = {
 const Sound = {
   ctx: null,
   master: null,
+  bgmGain: null, // BGM 전용 버스 (SFX와 분리)
+  volume: 1, // 음량 3단계 (1 / 0.5 / 0.2) — setVolume으로 설정
   muted: false,
   songName: null,
   _timers: [],
+  _songGen: 0, // stop 세대 — 끊긴 루프의 setTimeout이 다시 스케줄하지 못하게
+  _bgmNodes: [], // 활성 BGM osc/gain — stop 시 전부 즉시 osc.stop()
 
   init() {
     if (this.ctx) return;
@@ -221,9 +422,13 @@ const Sound = {
     }
   },
 
+  setVolume(v) {
+    this.volume = v;
+    if (this.master) this.master.gain.value = this.muted ? 0 : v;
+  },
   toggleMute() {
     this.muted = !this.muted;
-    if (this.master) this.master.gain.value = this.muted ? 0 : 1;
+    if (this.master) this.master.gain.value = this.muted ? 0 : (this.volume || 1);
   },
 
   _freq(midi) {
@@ -235,40 +440,124 @@ const Sound = {
     this._timers = [];
   },
 
-  stopSong() {
-    this.songName = null;
+  // 예약·재생 중인 BGM 오실레이터를 전부 즉시 종료한다.
+  // gain disconnect만으로는 브라우저에 따라 잔향이 남을 수 있어 osc.stop()까지 한다.
+  _hardStopBgm() {
     this._clearTimers();
+    this._songGen = (this._songGen || 0) + 1;
+    const now = this.ctx ? this.ctx.currentTime : 0;
+    for (const node of this._bgmNodes) {
+      try {
+        node.g.gain.cancelScheduledValues(now);
+        node.g.gain.setValueAtTime(0, now);
+        node.osc.stop(now);
+      } catch (e) {}
+      try { node.osc.disconnect(); } catch (e) {}
+      try { node.g.disconnect(); } catch (e) {}
+    }
+    this._bgmNodes = [];
+    if (this.bgmGain) {
+      try {
+        this.bgmGain.gain.cancelScheduledValues(now);
+        this.bgmGain.gain.setValueAtTime(0, now);
+        this.bgmGain.disconnect();
+      } catch (e) {}
+      this.bgmGain = null;
+    }
+    this.songName = null;
   },
 
-  playSong(name) {
-    if (this.songName === name) return;
+  _ensureBgmBus() {
+    if (!this.ctx || !this.master) return null;
+    if (this.bgmGain) return this.bgmGain;
+    this.bgmGain = this.ctx.createGain();
+    this.bgmGain.gain.value = 1;
+    this.bgmGain.connect(this.master);
+    return this.bgmGain;
+  },
+
+  stopSong() {
+    this._hardStopBgm();
+  },
+
+  // 맵 전환용 — 이전 BGM을 항상 끄고 현재 맵 곡만 튼다 (같은 song 키여도 재시작).
+  playMapBgm(name) {
     this.init();
     if (!this.ctx) return;
-    this.stopSong();
+    if (!name || !SONGS[name]) name = 'village';
+    this._hardStopBgm();
     this.songName = name;
-    this._scheduleLoop(name);
+    const gen = this._songGen;
+    this._ensureBgmBus();
+    this._scheduleLoop(name, gen);
   },
 
-  _scheduleLoop(name) {
-    if (this.songName !== name || !this.ctx) return;
+  // 일반 재생 — 이미 같은 곡이면 유지(배틀 후 맵 복귀 등). 다른 곡이면 hard stop 후 교체.
+  playSong(name) {
+    if (!name || !SONGS[name]) name = 'village';
+    if (this.songName === name && this._timers.length > 0) return;
+    this.playMapBgm(name);
+  },
+
+  _scheduleLoop(name, gen) {
+    if (this.songName !== name || !this.ctx || gen !== this._songGen) return;
     const song = SONGS[name];
     if (!song) return;
+    const bus = this._ensureBgmBus();
+    if (!bus) return;
     const beat = 60 / song.bpm;
-    const t0 = this.ctx.currentTime + 0.06;
+    // 루프 경계에서 이전 루프 노트와 겹치지 않도록 약간 여유를 둔다
+    const t0 = this.ctx.currentTime + 0.03;
     let loopLen = 0;
     for (const track of song.tracks) {
       let t = t0;
       for (const [midi, dur] of track.notes) {
         const d = dur * beat;
-        if (midi > 0) this._tone(track.wave, this._freq(midi), t, d * 0.92, track.vol);
+        if (midi > 0) this._bgmTone(track.wave, this._freq(midi), t, d * 0.92, track.vol, bus, gen);
         t += d;
       }
       loopLen = Math.max(loopLen, t - t0);
     }
-    const timer = setTimeout(() => this._scheduleLoop(name), (loopLen - 0.05) * 1000);
-    this._timers = [timer];
+    // 다음 루프는 현재 루프가 끝난 뒤에만 (겹침 방지: -0.05 대신 +0.02)
+    const delayMs = Math.max(50, (loopLen + 0.02) * 1000);
+    const timer = setTimeout(() => {
+      if (gen !== this._songGen || this.songName !== name) return;
+      // 루프 재진입 전, 끝난 노드 목록만 정리(재생 중 노드는 이미 stop 예약됨)
+      this._bgmNodes = this._bgmNodes.filter((n) => n.gen === gen);
+      this._scheduleLoop(name, gen);
+    }, delayMs);
+    this._timers.push(timer);
   },
 
+  _bgmTone(wave, freq, t, dur, vol, bus, gen) {
+    if (!this.ctx || !bus || gen !== this._songGen) return;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = wave;
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.01);
+    g.gain.setValueAtTime(vol, t + Math.max(0.01, dur - 0.04));
+    g.gain.linearRampToValueAtTime(0, t + dur);
+    osc.connect(g);
+    g.connect(bus);
+    const node = { osc, g, gen };
+    this._bgmNodes.push(node);
+    try {
+      osc.start(t);
+      osc.stop(t + dur + 0.02);
+    } catch (e) {
+      try { osc.disconnect(); g.disconnect(); } catch (e2) {}
+      return;
+    }
+    osc.onended = () => {
+      try { osc.disconnect(); g.disconnect(); } catch (e) {}
+      const i = this._bgmNodes.indexOf(node);
+      if (i >= 0) this._bgmNodes.splice(i, 1);
+    };
+  },
+
+  // SFX 전용 — master로 직결 (BGM hard stop의 영향을 받지 않음)
   _tone(wave, freq, t, dur, vol) {
     const osc = this.ctx.createOscillator();
     const g = this.ctx.createGain();
@@ -295,7 +584,8 @@ const Sound = {
     }
   },
 
-  blip()    { this._sfxTone([880], 0.05, 'square', 0.06); },
+  // 타자기 blip — freq를 주면 인물별 목소리 음정으로 낸다 (M-3: 언더테일식 목소리 개성)
+  blip(freq) { this._sfxTone([freq || 880], 0.05, 'square', 0.06); },
   select()  { this._sfxTone([660, 880], 0.06, 'square', 0.07); },
   correct() { this._sfxTone([523, 659, 784, 1047], 0.09, 'square', 0.09); },
   wrong()   { this._sfxTone([330, 247, 196], 0.12, 'sawtooth', 0.07); },
