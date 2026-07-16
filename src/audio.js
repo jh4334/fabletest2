@@ -406,20 +406,29 @@ const Sound = {
     if (!AC) return;
     this.ctx = new AC();
     this.master = this.ctx.createGain();
-    this.master.gain.value = 1;
+    // ctx가 생기기 전에 setVolume/toggleMute로 저장해 둔 설정을 반영한다.
+    // (부팅 시퀀스: 설정 로드 → setVolume(볼륨만 기억) → 첫 제스처에서 init)
+    // 1로 하드코딩하면 교실에서 "작게"로 저장한 음량이 매 세션 무시된다.
+    this.master.gain.value = this.muted ? 0 : (typeof this.volume === 'number' ? this.volume : 1);
     this.master.connect(this.ctx.destination);
     this.ctx.addEventListener('statechange', () => {
-      if (this.ctx.state === 'interrupted') {
-        try { this.ctx.resume(); } catch (e) {}
-      }
+      if (this.ctx.state === 'interrupted') this._safeResume();
     });
+  },
+
+  // resume()의 프로미스 거부(iOS의 닫힌/interrupted 컨텍스트 등)는 try/catch로 못
+  // 잡는다 — 전역 unhandledrejection 안전망이 게임을 복구 화면으로 보내 버리므로,
+  // 오디오 실패는 여기서 조용히 삼킨다.
+  _safeResume() {
+    try {
+      const p = this.ctx.resume();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch (e) { /* 무시 */ }
   },
 
   resume() {
     this.init();
-    if (this.ctx && this.ctx.state === 'suspended') {
-      try { this.ctx.resume(); } catch (e) {}
-    }
+    if (this.ctx && this.ctx.state === 'suspended') this._safeResume();
   },
 
   setVolume(v) {

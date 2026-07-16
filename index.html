@@ -170,9 +170,18 @@
   }
   #rotate-hint .ico { font-size: 64px; animation: rot 1.8s ease-in-out infinite; }
   #rotate-hint small { color: #888; font-size: 15px; line-height: 1.5; }
+  #rotate-dismiss {
+    margin-top: 8px; padding: 12px 22px; min-height: 44px;
+    background: rgba(255,255,255,.14); color: #fff;
+    border: 1px solid rgba(255,255,255,.4); border-radius: 10px;
+    font-size: 15px; font-family: inherit;
+  }
   @keyframes rot { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(78deg); } }
+  /* 화면 회전이 잠긴 기기(케이스·거치대)에서 영영 막히지 않도록, 사용자가
+     '세로로 계속하기'를 누르면 body.allow-portrait로 오버레이를 숨긴다. */
   @media (orientation: portrait) and (pointer: coarse) {
     #rotate-hint { display: flex; }
+    body.allow-portrait #rotate-hint { display: none; }
   }
 
   /* ---- 이름 입력 오버레이 ---- */
@@ -260,6 +269,9 @@
 <div id="wrap">
   <canvas id="game" width="720" height="528" tabindex="0" role="application" aria-label="마음의 문 게임 화면. 방향키로 이동, Z 또는 스페이스로 결정합니다."></canvas>
 </div>
+<!-- 화면 낭독기용 알림 미러 — 캔버스 안 텍스트는 낭독기가 못 읽으므로,
+     게임 알림(notice)·대사를 여기에 복사해 aria-live로 전달한다 -->
+<div id="sr-live" aria-live="polite" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;"></div>
 <div id="touch-ui">
   <div id="t-stick" role="application" aria-label="이동 스틱. 손가락으로 끌어 상하좌우로 움직입니다.">
     <div id="t-stick-knob"></div>
@@ -274,6 +286,7 @@
   <div class="ico">📱</div>
   <div>화면을 가로로 돌려 주세요</div>
   <small>마음의 문은 가로 화면에 맞춰져 있어요</small>
+  <button id="rotate-dismiss" type="button">세로로 계속하기</button>
 </div>
 <div id="name-overlay">
   <div class="np-card">
@@ -281,7 +294,7 @@
     <div class="np-sub">최대 6글자 · 비워 두면 "수호자"</div>
     <input id="name-input" maxlength="6" placeholder="수호자" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="수호자 이름 입력 (최대 6글자, 비우면 수호자)">
     <div><button class="np-go" id="name-go">모험 시작 ▶</button></div>
-    <div class="np-hint">Enter 또는 A 버튼으로 시작 · Esc로 취소</div>
+    <div class="np-hint">「모험 시작」 버튼(또는 Enter)으로 시작 · Esc로 취소</div>
   </div>
 </div>
 <div id="boot-error">
@@ -319,10 +332,39 @@
     }, 100);
   })();
 
+  // 세로 화면 안내에서 '세로로 계속하기' — 회전 잠금 기기가 영영 막히지 않도록.
+  // 한 번 선택하면 기억한다(다음부터 안내를 건너뜀).
+  (function () {
+    try {
+      if (localStorage.getItem('ai-ethics-allow-portrait') === '1') document.body.classList.add('allow-portrait');
+    } catch (e) {}
+    var rd = document.getElementById('rotate-dismiss');
+    if (rd) rd.addEventListener('click', function () {
+      document.body.classList.add('allow-portrait');
+      try { localStorage.setItem('ai-ethics-allow-portrait', '1'); } catch (e) {}
+    });
+  })();
+
   // 오프라인 설치(PWA) — file:// 로 직접 열었을 때는 등록하지 않는다
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
+      navigator.serviceWorker.register('sw.js').then((reg) => {
+        // 새 버전 감지 — cache-first라 배포해도 기존 사용자는 옛 화면을 본다.
+        // 새 워커 설치가 끝나면 게임에 알려 '새로고침 한 번' 안내를 띄운다.
+        const watch = (worker) => {
+          if (!worker) return;
+          worker.addEventListener('statechange', () => {
+            if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+              window.__newVersionReady = true;
+              if (window.__onNewVersion) window.__onNewVersion();
+            }
+          });
+        };
+        watch(reg.installing);
+        reg.addEventListener('updatefound', () => watch(reg.installing));
+        // 교실에서 탭을 오래 열어 두는 환경 — 30분마다 업데이트 확인
+        setInterval(() => { reg.update().catch(() => {}); }, 30 * 60 * 1000);
+      }).catch(() => {});
     });
   }
 </script>

@@ -1,7 +1,7 @@
 // AI 윤리 어드벤처 — 오프라인 서비스워커
 // 모든 정적 자원을 처음 방문 때 캐시해, 이후 네트워크 없이도 실행되게 한다.
 // 게임 코드/콘텐츠가 바뀌면 CACHE 버전을 올리면 된다.
-const CACHE = 'ai-ethics-adventure-a45f5c84';
+const CACHE = 'ai-ethics-adventure-fd8fbca3';
 const ASSETS = [
   './',
   './index.html',
@@ -35,16 +35,24 @@ self.addEventListener('activate', (e) => {
 // 캐시 우선(cache-first): 빠르고 오프라인에서도 동작. 없으면 네트워크에서 받아 캐시.
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  // 페이지 진입(navigate)은 ?utm=… 같은 쿼리가 붙어도 같은 문서다 — 쿼리 무시 매치.
+  const isNav = e.request.mode === 'navigate';
   e.respondWith(
-    caches.match(e.request).then((hit) => {
+    caches.match(e.request, { ignoreSearch: isNav }).then((hit) => {
       if (hit) return hit;
       return fetch(e.request).then((res) => {
         if (res && res.status === 200 && res.type === 'basic') {
           const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy));
+          // 캐시 실패(쿼터 초과 등)는 응답과 무관 — 조용히 무시
+          caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
         }
         return res;
-      }).catch(() => hit);
+      }).catch(() => {
+        // 오프라인 + 캐시 미스: 진입 요청이면 프리캐시된 본문으로라도 연다.
+        // (여기서 undefined를 돌려주면 전체 캐시가 있어도 네트워크 오류 화면이 뜬다)
+        if (isNav) return caches.match('./index.html');
+        return undefined;
+      });
     })
   );
 });
