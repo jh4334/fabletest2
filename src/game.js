@@ -1120,7 +1120,11 @@
       const up = (e) => {
         e.preventDefault();
         for (const t of e.changedTouches) touchIds.delete(t.identifier);
-        held.delete(key);
+        // 같은 버튼을 두 손가락으로 누른 채 하나만 떼면 아직 눌린 상태다 —
+        // 남은 터치가 이 키를 잡고 있으면 릴리즈하지 않는다 (태블릿 멀티터치)
+        let stillHeld = false;
+        for (const info of touchIds.values()) if (info.key === key) { stillHeld = true; break; }
+        if (!stillHeld) held.delete(key);
       };
       const move = (e) => {
         for (const t of e.changedTouches) {
@@ -1128,8 +1132,10 @@
           if (!info || info.el !== el) continue;
           const r = el.getBoundingClientRect();
           if (t.clientX < r.left || t.clientX > r.right || t.clientY < r.top || t.clientY > r.bottom) {
-            held.delete(key);
             touchIds.delete(t.identifier);
+            let stillHeld = false;
+            for (const inf of touchIds.values()) if (inf.key === key) { stillHeld = true; break; }
+            if (!stillHeld) held.delete(key); // up과 동일한 멀티터치 규칙
           }
         }
       };
@@ -1174,6 +1180,9 @@
       };
       const onStart = (e) => {
         e.preventDefault(); Sound.resume();
+        // 이미 한 손가락이 스틱을 잡고 있으면 두 번째 손가락이 탈취하지 못하게 한다
+        // (탈취 후 떼면 첫 손가락이 남아 있어도 이동이 멈춰 버린다)
+        if (stickId !== null) return;
         const t = e.changedTouches[0];
         stickId = t.identifier;
         const r = stick.getBoundingClientRect();
