@@ -269,6 +269,9 @@
 <div id="wrap">
   <canvas id="game" width="720" height="528" tabindex="0" role="application" aria-label="마음의 문 게임 화면. 방향키로 이동, Z 또는 스페이스로 결정합니다."></canvas>
 </div>
+<!-- 화면 낭독기용 알림 미러 — 캔버스 안 텍스트는 낭독기가 못 읽으므로,
+     게임 알림(notice)·대사를 여기에 복사해 aria-live로 전달한다 -->
+<div id="sr-live" aria-live="polite" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;"></div>
 <div id="touch-ui">
   <div id="t-stick" role="application" aria-label="이동 스틱. 손가락으로 끌어 상하좌우로 움직입니다.">
     <div id="t-stick-knob"></div>

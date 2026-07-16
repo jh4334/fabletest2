@@ -9589,6 +9589,25 @@
       ctx.textAlign = 'left';
     } catch (e) { /* 그리기마저 실패하면 조용히 넘어간다 */ }
   }
+  // 화면 낭독기 미러 — 캔버스 안 텍스트는 낭독기가 읽지 못하므로, 게임 알림(notice)과
+  // 대사 한 줄을 숨김 aria-live 영역(#sr-live)에 복사한다. 읽어주기(TTS) 설정과 별개로,
+  // 학생이 쓰는 낭독기(톡백·보이스오버 등)가 항상 알림을 전달받게 하는 안전망이다.
+  const srLiveEl = (typeof document !== 'undefined' && document.getElementById)
+    ? document.getElementById('sr-live') : null;
+  let srLastText = '';
+  function syncSrLive() {
+    if (!srLiveEl) return;
+    let txt = '';
+    if (game.dialog && game.dialog.lines && typeof game.dialog.lines[game.dialog.idx] === 'string') {
+      txt = game.dialog.lines[game.dialog.idx];
+    } else if (game.notice && game.notice.t > 0 && game.notice.text) {
+      txt = game.notice.text;
+    }
+    if (txt !== srLastText) {
+      srLastText = txt;
+      try { srLiveEl.textContent = txt; } catch (e) { /* 테스트 목 등에서는 무시 */ }
+    }
+  }
   // 프레임 속도 제한: 90·120·144Hz 등 고주사율 화면에서 게임 로직(타이머·연출)이
   // 2배 빠르게 도는 것을 막아, 어떤 기기에서도 비슷한 속도로 진행되게 한다.
   // (테스트 환경엔 performance가 없어 매 프레임 그대로 처리된다)
@@ -9737,6 +9756,8 @@
         drawHof();
         break;
     }
+
+      syncSrLive(); // 낭독기 미러 — 이번 프레임의 알림·대사를 반영
 
       // 방탈출 중에는 터치 기기에도 힌트 버튼을 보여 준다 (H키의 터치 대응).
       // (배틀 중 50:50 힌트는 v3에서 퀴즈 배틀과 함께 폐지됨)
