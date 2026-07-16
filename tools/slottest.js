@@ -131,4 +131,22 @@ check('이동 가능한 칸으로 보정됨', WALKABLE.has(landed));
 check('원래 막힌 칸(0,0)이 아님', !(g.map === 'village' && g.player.x === 0 && g.player.y === 0));
 check('px/py가 NaN이 아님', Number.isFinite(g.player.px) && Number.isFinite(g.player.py));
 
+console.log('[7] 플래그 없는 손상 세이브 → 예외 없이 처리 (로드 불능 방지)');
+// 마이그레이터는 flags 없는 행을 그대로 통과시킨다(if (!data || !data.flags) return data).
+// 타이틀은 slotSummary가 null이라 빈 슬롯 취급하지만, 「선생님 방 > 학급 모드」는
+// loadSlot 결과를 직접 읽어 s.flags.defeated 접근에서 TypeError가 날 수 있었다.
+storage.set('ai-ethics-adventure-slot-2', JSON.stringify({ v: 1, name: '깨진세이브', map: 'village', x: 13, y: 16 }));
+g.mode = 'title'; g.titleScreen = 'slots'; g.slotCursor = 2;
+tap('z'); // 빈 슬롯 취급 → 이름 입력(크래시 아님)
+check('손상 세이브는 새 모험 안내로 진입', g.titleScreen === 'name');
+tap('Escape'); step(2);
+check('타이틀로 복귀', g.mode === 'title');
+g.flags = null; g.titleScreen = 'slots'; g.slotCursor = 2; // 세션 미로드 상태 재현
+tap('t'); // 선생님 방
+check('선생님 방 진입', g.mode === 'teacher');
+tap('ArrowDown'); tap('ArrowDown'); // dashboard → report → classmode
+tap('z'); // 학급 모드 — 플래그 없는 슬롯을 미리 로드해도 예외가 없어야 한다
+check('학급 모드 예외 없이 진입', g.mode !== 'teacher');
+check('flags가 새로 채워짐', !!g.flags && typeof g.flags.defeated === 'object');
+
 console.log(`\n✔ 슬롯 테스트 통과 (${passed}개 검사)`);

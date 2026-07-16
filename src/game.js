@@ -7244,8 +7244,9 @@
       if (s) {
         game.playerName = s.name || '수호자';
         game.map = (s.map && MAPS[s.map]) ? s.map : 'village';
-        game.flags = Object.assign(newFlags(), s.flags);
-        game.flags.defeated = Object.assign(newFlags().defeated, s.flags.defeated);
+        const sf = s.flags || {};
+        game.flags = Object.assign(newFlags(), sf);
+        game.flags.defeated = Object.assign(newFlags().defeated, sf.defeated);
       } else {
         game.playerName = '수호자';
         game.map = 'village';
@@ -9139,14 +9140,15 @@
       const sum = slotSummary(i);
       ctx.textAlign = 'left';
       ctx.fillStyle = '#888';
-      ctx.font = 'bold 13px monospace';
+      // 슬롯 선택은 게임의 첫 관문 — 큰 글씨 모드(fs)를 여기에도 적용한다
+      ctx.font = fs(13, true);
       ctx.fillText(`슬롯 ${i + 1}`, boxX + 18, y + 22);
       if (sum) {
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 19px monospace';
+        ctx.font = fs(19, true);
         ctx.fillText(sum.name, boxX + 18, y + 46);
         ctx.fillStyle = '#888';
-        ctx.font = '13px monospace';
+        ctx.font = fs(13);
         const prog = sum.done ? '모험 완료' : sum.stage;
         const streak = getMeta(i).streak || 0;
         ctx.textAlign = 'right';
@@ -9155,7 +9157,7 @@
       } else {
         // 신규 학생이 가장 먼저 골라야 하는 안내라 대비를 충분히 준다 (기존 #555는 2.8:1로 AA 미달)
         ctx.fillStyle = '#b7b2c8';
-        ctx.font = '17px monospace';
+        ctx.font = fs(17);
         ctx.fillText('— 비어 있음 (새 모험) —', boxX + 18, y + 46);
       }
     }
@@ -9288,8 +9290,10 @@
     game.player.x = sx; game.player.y = sy;
     game.player.px = sx * TS; game.player.py = sy * TS;
     game.player.dir = 'up';
-    game.flags = Object.assign(newFlags(), s.flags);
-    game.flags.defeated = Object.assign(newFlags().defeated, s.flags.defeated);
+    // 깨진 세이브(플래그 없음)도 새 플래그로 승계해 로드가 죽지 않게 한다
+    const sf = s.flags || {};
+    game.flags = Object.assign(newFlags(), sf);
+    game.flags.defeated = Object.assign(newFlags().defeated, sf.defeated);
     game.mode = 'world';
     syncPuzzleRun(); // 방탈출 방 안에서 저장된 세이브면 퍼즐을 새로 시작
     recordPlayDay(slot);
@@ -9574,13 +9578,13 @@
       ctx.fillRect(0, 0, LW, LH);
       ctx.textAlign = 'center';
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 22px monospace';
+      ctx.font = fs(22, true);
       ctx.fillText('이런! 잠깐 문제가 생겼어요', LW / 2, 210);
       ctx.fillStyle = '#cfc8e0';
-      ctx.font = '14px monospace';
+      ctx.font = fs(14);
       ctx.fillText('그동안의 진행 상황은 안전하게 저장되어 있어요.', LW / 2, 248);
       ctx.fillStyle = '#9a93b0';
-      ctx.font = '14px monospace';
+      ctx.font = fs(14);
       ctx.fillText('Z (또는 A): 마을로 돌아가기      X (또는 메뉴): 타이틀로', LW / 2, 290);
       ctx.textAlign = 'left';
     } catch (e) { /* 그리기마저 실패하면 조용히 넘어간다 */ }
