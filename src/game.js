@@ -5607,11 +5607,17 @@
     if (game.pauseCursor >= game.pauseScroll + PAUSE_VISIBLE) game.pauseScroll = game.pauseCursor - PAUSE_VISIBLE + 1;
     game.pauseScroll = Math.max(0, Math.min(game.pauseScroll, maxScroll));
   }
+  function speakPauseCursor() {
+    if (!game.tts) return;
+    const it = pauseItems()[game.pauseCursor];
+    const val = pauseValueLabel(it);
+    Speech.speak((PAUSE_LABELS[it] || '') + (val ? ', ' + val : ''));
+  }
   function updatePause() {
     const items = pauseItems();
     const n = items.length;
-    if (justPressed('up')) { game.pauseCursor = (game.pauseCursor + n - 1) % n; clampPauseScroll(); Sound.blip(); }
-    if (justPressed('down')) { game.pauseCursor = (game.pauseCursor + 1) % n; clampPauseScroll(); Sound.blip(); }
+    if (justPressed('up')) { game.pauseCursor = (game.pauseCursor + n - 1) % n; clampPauseScroll(); Sound.blip(); speakPauseCursor(); }
+    if (justPressed('down')) { game.pauseCursor = (game.pauseCursor + 1) % n; clampPauseScroll(); Sound.blip(); speakPauseCursor(); }
     if (justPressed('cancel')) { closePause(); return; }
     if (justPressed('action')) {
       const item = items[game.pauseCursor];
@@ -9147,7 +9153,8 @@
         ctx.fillText(`${prog}   ♥ ${sum.mercy}${streak ? '   🔥' + streak : ''}`, boxX + boxW - 18, y + 40);
         ctx.textAlign = 'left';
       } else {
-        ctx.fillStyle = '#555';
+        // 신규 학생이 가장 먼저 골라야 하는 안내라 대비를 충분히 준다 (기존 #555는 2.8:1로 AA 미달)
+        ctx.fillStyle = '#b7b2c8';
         ctx.font = '17px monospace';
         ctx.fillText('— 비어 있음 (새 모험) —', boxX + 18, y + 46);
       }
@@ -9290,6 +9297,13 @@
     Sound.playMapBgm(MAPS[game.map].song);
   }
 
+  // 읽어주기 접근성 — 슬롯 화면에서 현재 커서 위치를 말로 알려 준다
+  function speakSlotCursor() {
+    if (!game.tts) return;
+    const sum = slotSummary(game.slotCursor);
+    Speech.speak(`슬롯 ${game.slotCursor + 1}, ` + (sum ? `${sum.name}, 이어하기` : '비어 있음, 새 모험'));
+  }
+
   function updateTitle() {
     if (game.titleScreen === 'name') {
       if (game.nameConfirm) {
@@ -9329,8 +9343,13 @@
 
     // slots 화면
     if (justPressed('menu')) { openDex('title'); return; }
-    if (justPressed('up')) { game.slotCursor = (game.slotCursor + SLOT_COUNT - 1) % SLOT_COUNT; Sound.blip(); }
-    if (justPressed('down')) { game.slotCursor = (game.slotCursor + 1) % SLOT_COUNT; Sound.blip(); }
+    if (justPressed('up') || justPressed('down')) {
+      game.slotCursor = justPressed('up')
+        ? (game.slotCursor + SLOT_COUNT - 1) % SLOT_COUNT
+        : (game.slotCursor + 1) % SLOT_COUNT;
+      Sound.blip();
+      speakSlotCursor(); // 읽어주기 — 어떤 슬롯이 선택됐는지 귀로 알 수 있게
+    }
     if (justPressed('cancel')) {
       if (slotSummary(game.slotCursor)) { game.titleScreen = 'delete'; Sound.blip(); }
       return;
