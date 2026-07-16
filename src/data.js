@@ -621,8 +621,9 @@ const MAPS = {
     npcs: [],
     signs: [],
     monsters: [
-      { id: 'maearimon', x: 10, y: 8 },
-      { id: 'geurimjamon', x: 9, y: 4 },
+      // fx/fy: 폭 1 관문을 지키는 문지기가 친구가 되면 비켜서는 자리 (길막 소프트락 방지)
+      { id: 'maearimon', x: 10, y: 8, fx: 12, fy: 7 },
+      { id: 'geurimjamon', x: 9, y: 4, fx: 11, fy: 3 },
       { id: 'finalboss', x: 9, y: 2 },
     ],
   },
@@ -845,7 +846,7 @@ const MAPS = {
     npcs: [],
     signs: [],
     monsters: [
-      { id: 'jogakmon', x: 9, y: 5 },
+      { id: 'jogakmon', x: 9, y: 5, fx: 11, fy: 4 }, // 관문 문지기 — 친구가 되면 비켜선다
       { id: 'yeongi', x: 9, y: 2 },
     ],
   },

@@ -422,9 +422,16 @@ setPos(10, 9, 'up'); // 메아리몬 (10,8)
 tap('z'); advanceDialog();
 check('메아리몬 배틀 (복습 풀)', g.battle.monId === 'maearimon' && g.battle.questions.length >= 25);
 fightWithMercy(3, 0); advanceDialog();
+// 친구가 된 문지기는 관문(폭1 통로)을 비켜서야 한다 — 길막 소프트락 회귀 방지
+setPos(10, 9, 'up');
+hold('ArrowUp', 40);
+check('메아리몬 친구가 관문 (10,8)을 비켜섬 — 통과 가능', g.player.y <= 7);
 setPos(9, 5, 'up'); // 그림자몬 (9,4)
 tap('z'); advanceDialog();
 fightWithMercy(3, 0); advanceDialog();
+setPos(9, 5, 'up');
+hold('ArrowUp', 40);
+check('그림자몬 친구가 관문 (9,4)를 비켜섬 — 통과 가능', g.player.y <= 3);
 setPos(9, 3, 'up'); // 어둠대왕몬 (9,2)
 tap('z'); advanceDialog();
 check('최종 보스전', g.battle.monId === 'finalboss' && g.battle.monMaxHp === 8 && g.battle.maxHearts === 4);

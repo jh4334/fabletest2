@@ -1059,8 +1059,17 @@
   function isFriend(monId) {
     return !!(game.flags.defeated[monId] && game.flags.mercyChoice && game.flags.mercyChoice[monId] === 'mercy');
   }
+  // 친구가 된 뒤 서 있는 칸. 폭 1 관문을 지키던 문지기는 fx/fy로 옆에 비켜선다
+  // (그대로 두면 친구가 길을 막아 최종보스·진엔딩 도달 불가 소프트락)
+  function friendPos(mo) {
+    return { x: (mo.fx !== undefined ? mo.fx : mo.x), y: (mo.fy !== undefined ? mo.fy : mo.y) };
+  }
   function friendAt(mapId, x, y) {
-    return MAPS[mapId].monsters.find((mo) => mo.x === x && mo.y === y && isFriend(mo.id)) || null;
+    return MAPS[mapId].monsters.find((mo) => {
+      if (!isFriend(mo.id)) return false;
+      const p = friendPos(mo);
+      return p.x === x && p.y === y;
+    }) || null;
   }
 
   function signAt(mapId, x, y) {
@@ -4289,16 +4298,17 @@
       const dead = game.flags.defeated[mo.id];
       const friend = isFriend(mo.id);
       if (dead && !friend) continue;
+      const pos = friend ? friendPos(mo) : mo; // 친구는 관문을 비켜선 자리(fx/fy)에 선다
       const bob = Math.round(Math.sin(game.time / 18) * 4);
-      const dx0 = Math.round(mo.x * TS - cx), dy0 = Math.round(mo.y * TS - cy - 6 + bob);
+      const dx0 = Math.round(pos.x * TS - cx), dy0 = Math.round(pos.y * TS - cy - 6 + bob);
       drawSprite(ctx, MONSTER_SPRITES[mo.id], dx0, dy0, SCALE);
       if (friend) {
         // 친구가 된 몬스터: 머리 위 ♥ (말을 걸 수 있어요)
         ctx.fillStyle = '#e0453a';
         ctx.font = 'bold 16px monospace';
-        ctx.fillText('♥', Math.round(mo.x * TS - cx) + TS / 2 - 5, Math.round(mo.y * TS - cy) - 10 + bob);
+        ctx.fillText('♥', Math.round(pos.x * TS - cx) + TS / 2 - 5, Math.round(pos.y * TS - cy) - 10 + bob);
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
-        ctx.strokeText('♥', Math.round(mo.x * TS - cx) + TS / 2 - 5, Math.round(mo.y * TS - cy) - 10 + bob);
+        ctx.strokeText('♥', Math.round(pos.x * TS - cx) + TS / 2 - 5, Math.round(pos.y * TS - cy) - 10 + bob);
       } else {
         // 느낌표 (아직 헷갈리는 몬스터)
         ctx.fillStyle = '#ffd644';

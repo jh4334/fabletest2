@@ -62,6 +62,12 @@ for (const [id, m] of Object.entries(MAPS)) {
     if (!WALKABLE.has(t)) err(`${id} 몬스터 ${mo.id} (${mo.x},${mo.y}) 타일 '${t}' 위에 있음`);
     if (!MONSTERS[mo.id]) err(`${id} 몬스터 ${mo.id} 정의 없음`);
     if (!MONSTER_SPRITES[mo.id]) err(`${id} 몬스터 ${mo.id} 스프라이트 없음`);
+    // fx/fy(친구가 되면 비켜서는 자리)는 걸을 수 있는 칸이어야 하고 워프 위면 안 된다
+    if (mo.fx !== undefined || mo.fy !== undefined) {
+      const ft = m.tiles[mo.fy] && m.tiles[mo.fy][mo.fx];
+      if (!ft || !WALKABLE.has(ft)) err(`${id} 몬스터 ${mo.id} 친구 자리 (${mo.fx},${mo.fy}) 타일 '${ft}' (이동 불가)`);
+      if ((m.warps || []).some((w) => w.x === mo.fx && w.y === mo.fy)) err(`${id} 몬스터 ${mo.id} 친구 자리 (${mo.fx},${mo.fy})가 워프 위`);
+    }
   }
   for (const s of m.signs) {
     const t = m.tiles[s.y][s.x];
@@ -71,10 +77,15 @@ for (const [id, m] of Object.entries(MAPS)) {
 
 // 4. 도달 가능성 (BFS, 배지 게이트 무시)
 {
-  // 몬스터는 쓰러뜨리면 사라지므로 도달 가능성 검사에서는 통과 가능으로 취급
+  // 몬스터는 쓰러뜨리면 사라지므로 통과 가능으로 취급하되,
+  // '자비로 되돌리면' 친구가 되어 그 자리(fx/fy 또는 원래 칸)에 벽처럼 남는다.
+  // 최악의 경우(모든 몬스터를 친구로)에도 모든 곳이 도달 가능해야 한다 — 친구 길막 소프트락 방지.
+  const friendX = (mo) => (mo.fx !== undefined ? mo.fx : mo.x);
+  const friendY = (mo) => (mo.fy !== undefined ? mo.fy : mo.y);
   const solidEntity = (mapId, x, y) => {
     const m = MAPS[mapId];
-    return m.npcs.some((n) => n.x === x && n.y === y);
+    if (m.npcs.some((n) => n.x === x && n.y === y)) return true;
+    return m.monsters.some((mo) => friendX(mo) === x && friendY(mo) === y);
   };
   const key = (mapId, x, y) => `${mapId}:${x},${y}`;
   const visited = new Set();
