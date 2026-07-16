@@ -124,7 +124,7 @@
         hwangakmon: false, hapseongmon: false, miraemon: false,
         somunmon: false, musimon: false, nangbimon: false, pinggyemon: false,
       },
-      mercy: 0,        // 마음을 안아준 횟수 (스테이지 6~)
+      mercy: 0,        // 마음을 안아준 횟수 (모든 몬스터의 마지막 선택)
       visited: {},     // 맵 인트로 연출 1회 표시용
       trueEnding: false,
       correctCount: 0,
@@ -3906,6 +3906,7 @@
     saving: '4차시 (절제·디지털 발자국)', environment: '4차시 (절제·디지털 발자국)', persuasion: '4차시 (절제·디지털 발자국)',
     manners: '5차시 (관계·책임)', emotion: '5차시 (관계·책임)', responsibility: '5차시 (관계·책임)',
     excuse: '5차시 (관계·책임)', safety: '5차시 (관계·책임)', transparency: '5차시 (관계·책임)', core: '5차시 (관계·책임)',
+    creativity: '5차시 (관계·책임)', jobs: '5차시 (관계·책임)',
   };
   function topicSession(t) { return TOPIC_SESSION[t] || '종합 복습 (퀴즈 챌린지)'; }
 

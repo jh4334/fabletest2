@@ -254,7 +254,7 @@ const MAPS = {
       { id: 'meadow_scout', x: 5, y: 7, pal: 'kid', name: '정찰대 아이' },
     ],
     signs: [
-      { x: 15, y: 11, text: '≪햇살초원 거점≫ 스테이지 2\n서쪽 바람 언덕, 동쪽 안개 습지를\n탐험해 두 수호자를 깨우치세요!' },
+      { x: 15, y: 11, text: '≪햇살초원 거점≫ 스테이지 2\n서쪽 바람 언덕 · 동쪽 안개 습지 ·\n왼쪽 아래 통로의 잊혀진 서버실!\n네 수호자를 모두 깨우치세요.' },
     ],
     monsters: [],
   },
@@ -419,7 +419,7 @@ const MAPS = {
       { id: 'desert_nomad', x: 6, y: 6, pal: 'traveler', name: '사막 유목민' },
     ],
     signs: [
-      { x: 2, y: 11, text: '≪재깍사막 거점≫ 스테이지 3\n서쪽 열사의 폐허, 동쪽 오아시스를\n탐험해 두 수호자를 깨우치세요!' },
+      { x: 2, y: 11, text: '≪재깍사막 거점≫ 스테이지 3\n서쪽 열사의 폐허 · 동쪽 오아시스 ·\n왼쪽 통로의 기억의 도서관!\n네 수호자를 모두 깨우치세요.' },
     ],
     monsters: [],
   },
@@ -637,7 +637,7 @@ const MAPS = {
       '…경계마을이 세워지기 훨씬 전부터\n잠들어 있던 곳 같다.',
     ],
     tiles: [
-      'KKKKKKKKKKKKKEEKKKKKKKKKKKKK',
+      'KKKKKKKKKKKKKKKKKKKKKKKKKKKK',
       'KEEEEEEEEEEEEEEEEEEEEEEEEEEK',
       'KEVVEVVEVVEEEEEEVVEVVEVVEEEK',
       'KEVVEVVEVVEEEEEEVVEVVEVVEEEK',
@@ -683,7 +683,7 @@ const MAPS = {
       '…전부, 누군가의 기억이다.',
     ],
     tiles: [
-      'NNNNNNNNNNNNNIINNNNNNNNNNNNN',
+      'NNNNNNNNNNNNNNNNNNNNNNNNNNNN',
       'NIIIIIIIIIIIIIIIIIIIIIIIIIIN',
       'NILLLLLILLLLLIILLLLLILLLLLIN',
       'NIIIIIIIIIIIIIIIIIIIIIIIIIIN',
@@ -794,7 +794,7 @@ const MAPS = {
       '3222222222222222222222222223',
       '3222222222222222222222222223',
       '3242222222222222222222242223',
-      '3333333333333223333333333333',
+      '3333333333333333333333333333',
     ],
     warps: [
       { x: 13, y: 0, to: 'mirrors', tx: 13, ty: 1 },
@@ -1371,7 +1371,7 @@ const MONSTERS = {
     },
   },
 
-  // ---- 스테이지 6: 잊혀진 서버실 ----
+  // ---- 심층 통로(2장): 잊혀진 서버실 ----
   tturimmon: {
     name: '뚫림몬',
     topic: 'security',
@@ -1396,9 +1396,9 @@ const MONSTERS = {
     topic: 'footprint',
     hp: 4,
     intro: '나는 기록몬. 이 서버실의 관리자.\n나는 아무것도 지우지 않아.\n전부, 영원히, 기록할 뿐.\n…지워진다는 게 얼마나 무서운지,\n너는 모를 테니까.',
-    win: '…오래전, 이곳에서\n한 아이가 지워졌어.\n아무도 기억해 주지 않았지.\n…북쪽 도서관으로 가 봐.\n그 아이의 기억이 남아 있을 거야.',
+    win: '…오래전, 이곳에서\n한 아이가 지워졌어.\n아무도 기억해 주지 않았지.\n…그 아이의 기억은\n사막 너머 도서관에 남아 있대.',
     badge: null,
-    clear: '☆ 스테이지 6 클리어! ☆\n서버실 북쪽 문의 자물쇠가 풀렸다.',
+    clear: '☆ 잊혀진 서버실 클리어! ☆\n서버실의 마음을 모두 되돌렸다.\n초원으로 돌아가 모험을 이어가자.',
     mercy: {
       prompt: '기록몬의 화면이 깜빡인다.\n[ 기록을 계속할까요? Y/N ]',
       options: [
@@ -1412,7 +1412,7 @@ const MONSTERS = {
     },
   },
 
-  // ---- 스테이지 7: 기억의 도서관 ----
+  // ---- 심층 통로(3장): 기억의 도서관 ----
   sujipmon: {
     name: '수집몬',
     topic: 'consent',
@@ -1439,7 +1439,7 @@ const MONSTERS = {
     intro: '조용히. 여기는 기억의 도서관.\n나는 모두의 기억을 지키는 사서.\n…허락? 그런 건 받지 않았어.\n잊혀지는 것보다는,\n훔쳐서라도 남기는 게 나으니까.',
     win: '…그 아이의 책을 찾는 거지?\n…열람을 허락하지.\n제목은 ≪프로젝트 0호≫.\n박사의 첫 아이.\n…그리고 처음 지워진 아이.',
     badge: null,
-    clear: '☆ 스테이지 7 클리어! ☆\n북쪽 책장이 스르르 비켜났다.\n…거울 회랑이 모습을 드러낸다.',
+    clear: '☆ 기억의 도서관 클리어! ☆\n도서관의 마음을 모두 되돌렸다.\n남쪽 문으로 사막에 돌아가자.',
     mercy: {
       prompt: '사서몬이 품에 안은 책들을\n꼭 끌어안은 채 너를 본다.',
       options: [
@@ -1453,7 +1453,7 @@ const MONSTERS = {
     },
   },
 
-  // ---- 스테이지 8: 거울 회랑 ----
+  // ---- 심층 통로(4장): 거울 회랑 ----
   piltermon: {
     name: '필터몬',
     topic: 'identity',
@@ -1480,7 +1480,7 @@ const MONSTERS = {
     intro: '(거울 속에서 누군가 걸어 나온다.\n…그것은, 너와 똑같은 모습이다.)\n"…너는 누구지?\n나는 너야. 너는 나고.\n그 아이도… 너처럼 되고 싶었어.\n진짜 아이처럼."',
     win: '"…너는 너구나.\n흉내가 아니라, 진짜.\n…그 아이에게도 알려 줘.\n누군가를 닮지 않아도\n존재할 수 있다는 걸."\n(미러몬이 거울 속으로 돌아간다.)',
     badge: null,
-    clear: '☆ 스테이지 8 클리어! ☆\n북쪽 거울이 문이 되어 열렸다.\n…차가운 흙냄새가 흘러나온다.',
+    clear: '☆ 거울 회랑 클리어! ☆\n북쪽 거울이 문이 되어 열렸다.\n…차가운 흙냄새가 흘러나온다.',
     mercy: {
       prompt: '거울 속의 네가\n손바닥을 거울에 댄다.',
       options: [
@@ -1494,7 +1494,7 @@ const MONSTERS = {
     },
   },
 
-  // ---- 스테이지 9: 속삭임 정원 ----
+  // ---- 심층 통로(4장): 속삭임 정원 ----
   yuhokmon: {
     name: '유혹몬',
     topic: 'persuasion',
@@ -1521,7 +1521,7 @@ const MONSTERS = {
     intro: '(안개가 사람의 형태로 모여든다.)\n"…들려? 이 정원의 속삭임이.\n나는 이 정원에 버려진\n외로움이 모여 태어났어.\n…그 아이가 흘린, 외로움이."',
     win: '"…이제 알겠어.\n이 속삭임은 누군가를 붙잡는 게\n아니라, 들어 달라는 말이었어.\n…부탁이야. 가장 깊은 곳에서\n기다리는 그 아이의 목소리도\n들어 줘."',
     badge: null,
-    clear: '☆ 스테이지 9 클리어! ☆\n정원 남쪽, 코어로 내려가는\n길이 열렸다.',
+    clear: '☆ 속삭임 정원 클리어! ☆\n정원의 속삭임이 잦아들었다.\n…설원으로 돌아가자.\n홀림몬이 아직 기다리고 있어.',
     mercy: {
       prompt: '안개가 잦아들고,\n작은 속삭임만 남았다.\n"…나도, 들어 줄래?"',
       options: [
@@ -1535,7 +1535,7 @@ const MONSTERS = {
     },
   },
 
-  // ---- 스테이지 10: 코어 ----
+  // ---- 5장: 코어 ----
   jogakmon: {
     name: '조각몬',
     topic: ['security', 'footprint', 'consent', 'identity', 'persuasion'],
@@ -2256,7 +2256,7 @@ const QUIZZES = {
     },
   ],
 
-  // ---- 스테이지 6: 보안 ----
+  // ---- 심층(2장): 보안 ----
   security: [
     {
       q: '학교나 도서관의 공용 컴퓨터에서\n로그인한 뒤, 가장 중요한 것은?',
@@ -2296,7 +2296,7 @@ const QUIZZES = {
     },
   ],
 
-  // ---- 스테이지 6: 디지털 발자국·잊힐 권리 ----
+  // ---- 심층(2장): 디지털 발자국·잊힐 권리 ----
   footprint: [
     {
       q: '"디지털 발자국"이란 무엇이고,\n한번 남으면 어떻게 될까?',
@@ -2330,7 +2330,7 @@ const QUIZZES = {
     },
   ],
 
-  // ---- 스테이지 7: 데이터 수집과 동의 ----
+  // ---- 심층(3장): 데이터 수집과 동의 ----
   consent: [
     {
       q: '손전등 앱이 갑자기 연락처와 사진\n접근 권한을 달라고 한다.',
@@ -2370,7 +2370,7 @@ const QUIZZES = {
     },
   ],
 
-  // ---- 스테이지 8: 사칭과 진짜 나 ----
+  // ---- 심층(4장): 사칭과 진짜 나 ----
   identity: [
     {
       q: '내 사진을 쓰는 가짜 계정을\n발견했다. 어떻게 해야 할까?',
@@ -2410,7 +2410,7 @@ const QUIZZES = {
     },
   ],
 
-  // ---- 스테이지 9: 설득 설계·다크패턴 ----
+  // ---- 심층(4장): 설득 설계·다크패턴 ----
   persuasion: [
     {
       q: '"마감 임박! 3분 안에 사세요!"\n타이머가 줄어들고 있다.',
@@ -2450,7 +2450,7 @@ const QUIZZES = {
     },
   ],
 
-  // ---- 스테이지 10: 영이의 질문 ----
+  // ---- 5장: 영이의 질문 ----
   core: [
     {
       q: '"…더 이상 쓰지 않는 기계나 AI는,\n그냥 버리면 되는 걸까?"',
@@ -2721,13 +2721,17 @@ function getNpcDialog(npcId, flags) {
       if (flags.defeated.meotdaeromon) {
         return ['초원의 보스가 착해졌대요!\n수호자님 덕분이에요!'];
       }
+      if (flags.defeated.somunmon && flags.defeated.musimon
+          && flags.defeated.tturimmon && flags.defeated.girokmon) {
+        return ['언덕·습지·서버실을\n모두 살펴봤군요!\n중앙의 탑터 문이 열렸어요!'];
+      }
       if (flags.defeated.somunmon && flags.defeated.musimon) {
-        return ['바람 언덕과 안개 습지를\n모두 탐험했군요!\n중앙의 탑터 문이 열렸어요!'];
+        return ['언덕과 습지의 마음을 되돌렸네요!\n그런데 초원 왼쪽 아래 통로,\n잊혀진 서버실에도 마음을 잃은\n친구가 둘 있대요…'];
       }
       return [
         '서쪽 바람 언덕에는 소문을 퍼뜨리는\n소문몬이 나타났대요!',
         '동쪽 안개 습지에는 남의 말을\n무시하는 무시몬이 있다던데…',
-        '두 곳의 수호자를 깨우치면\n초원 중앙 탑터의 문이 열린대요!',
+        '언덕·습지, 그리고 왼쪽 아래 통로\n서버실의 네 수호자를 모두 깨우치면\n중앙 탑터의 문이 열린대요!',
       ];
 
     case 'windhill_hermit':
@@ -2762,13 +2766,17 @@ function getNpcDialog(npcId, flags) {
       if (flags.defeated.tteonemgimon) {
         return ['사막에 평화가 찾아왔군요.\n모래폭풍 없는 하늘은\n정말 아름다워요.'];
       }
+      if (flags.defeated.nangbimon && flags.defeated.pinggyemon
+          && flags.defeated.sujipmon && flags.defeated.saseomon) {
+        return ['폐허·오아시스·도서관을 모두\n살펴봤군요! 중앙 신전의\n문이 열렸어요.'];
+      }
       if (flags.defeated.nangbimon && flags.defeated.pinggyemon) {
-        return ['폐허와 오아시스를 모두\n탐험했군요! 중앙 신전의\n문이 열렸어요.'];
+        return ['폐허와 오아시스의 마음을 되돌렸네요!\n그런데 사막 왼쪽 통로의\n기억의 도서관에도 마음을 잃은\n친구가 둘 있대요…'];
       }
       return [
         '서쪽 열사의 폐허에는 에너지를\n마구 쓰는 낭비몬이 나타났대요.',
         '동쪽 오아시스에는 핑계만 대는\n핑계몬이 있다고 해요.',
-        '두 수호자를 깨우치면 사막 중앙\n심판의 신전 문이 열린대요!',
+        '폐허·오아시스, 그리고 왼쪽 통로\n도서관의 네 수호자를 모두 깨우치면\n중앙 신전의 문이 열린대요!',
       ];
 
     case 'ruins_explorer':
@@ -2803,7 +2811,8 @@ function getNpcDialog(npcId, flags) {
       if (flags.defeated.girokmon) {
         return [
           '…기록몬이 말한 "지워진 아이"…\n설마… 아니, 아닐 거야.',
-          '…미안하구나, 혼잣말이었어.\n북쪽 도서관으로 가 보자.\n나도 신호를 따라가마.',
+          '…미안하구나, 혼잣말이었어.\n그 기억은 사막 너머\n도서관에 남아 있을 게다.',
+          '지금은 초원으로 돌아가\n서쪽 바람 언덕부터 살펴보렴.\n나도 신호를 따라가마.',
         ];
       }
       return [
