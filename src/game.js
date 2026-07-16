@@ -2842,8 +2842,11 @@
     const c = game.choice;
     if (!c) { game.mode = game.choiceRet || 'world'; return; }
     const n = c.options.length;
-    if (justPressed('up')) { c.cursor = (c.cursor + n - 1) % n; Sound.blip(); }
-    if (justPressed('down')) { c.cursor = (c.cursor + 1) % n; Sound.blip(); }
+    if (justPressed('up') || justPressed('down')) {
+      c.cursor = justPressed('up') ? (c.cursor + n - 1) % n : (c.cursor + 1) % n;
+      Sound.blip();
+      if (game.tts) Speech.speak(`${c.cursor + 1}번, ${c.options[c.cursor]}`); // 읽어주기 접근성
+    }
     if (justPressed('cancel')) {
       const cb = c.onPick; game.choice = null; game.mode = game.choiceRet || 'world';
       Speech.stop(); if (cb) cb(-1);
@@ -5718,8 +5721,11 @@
   }
   function updateTeacherRoom() {
     const n = TEACHER_ITEMS.length;
-    if (justPressed('up')) { game.teacherCursor = (game.teacherCursor + n - 1) % n; Sound.blip(); }
-    if (justPressed('down')) { game.teacherCursor = (game.teacherCursor + 1) % n; Sound.blip(); }
+    if (justPressed('up') || justPressed('down')) {
+      game.teacherCursor = justPressed('up') ? (game.teacherCursor + n - 1) % n : (game.teacherCursor + 1) % n;
+      Sound.blip();
+      if (game.tts) Speech.speak(PAUSE_LABELS[TEACHER_ITEMS[game.teacherCursor]] || ''); // 읽어주기 접근성
+    }
     if (justPressed('cancel')) { closeTeacherRoom(); return; }
     if (justPressed('action')) {
       const item = TEACHER_ITEMS[game.teacherCursor];
@@ -6856,8 +6862,11 @@
     const b = game.backup;
     if (b.toast > 0) b.toast -= 1; else if (b.toast < 0) b.toast += 1;
     const n = BACKUP_ITEMS.length;
-    if (justPressed('up')) { b.cursor = (b.cursor + n - 1) % n; b.confirm = false; Sound.blip(); }
-    if (justPressed('down')) { b.cursor = (b.cursor + 1) % n; b.confirm = false; Sound.blip(); }
+    if (justPressed('up') || justPressed('down')) {
+      b.cursor = justPressed('up') ? (b.cursor + n - 1) % n : (b.cursor + 1) % n;
+      b.confirm = false; Sound.blip();
+      if (game.tts) Speech.speak(BACKUP_LABELS[BACKUP_ITEMS[b.cursor]] || ''); // 읽어주기 접근성
+    }
     if (justPressed('cancel') || justPressed('menu')) {
       if (b.confirm) { b.confirm = false; Sound.blip(); return; } // 확인 단계만 취소
       closeBackup();
