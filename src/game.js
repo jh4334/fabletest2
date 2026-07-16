@@ -5749,7 +5749,7 @@
 
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 17px monospace';
+    ctx.font = fs(17, true);
     ctx.fillText('선생님 방', boxX + 22, boxY + 30);
 
     let ty = boxY + 62;
@@ -9572,7 +9572,7 @@
 
     if (game.endingT > 120) {
       ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
-      ctx.font = '15px monospace';
+      ctx.font = fs(15); // 엔딩에서 다음 행동 안내 — 큰 글씨 모드 적용
       ctx.fillText('Z·스페이스를 누르면 모험이 계속됩니다', LW / 2, 516);
     }
     ctx.textAlign = 'left';
