@@ -9799,6 +9799,14 @@
   } catch (e) { /* 무시 */ }
 
   probeStorage(); // 저장 가능 여부 확인 (불가하면 타이틀에 경고 표시)
+  // 새 버전 준비 알림 (index.html 서비스워커 감시가 호출) — 다음에 월드로 나올 때 안내
+  window.__onNewVersion = () => {
+    try {
+      game.newVersionReady = true;
+      game.notice = { text: '⟳ 새 버전이 준비됐어요 — 새로고침 한 번이면 적용돼요.', t: 480 };
+    } catch (e) { /* 무시 */ }
+  };
+  if (window.__newVersionReady) window.__onNewVersion();
   // 읽어주기 한국어 음성 준비 (목록이 비동기로 채워지면 다시 고른다)
   try {
     if (Speech.supported()) {

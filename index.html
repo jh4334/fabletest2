@@ -322,7 +322,23 @@
   // 오프라인 설치(PWA) — file:// 로 직접 열었을 때는 등록하지 않는다
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
+      navigator.serviceWorker.register('sw.js').then((reg) => {
+        // 새 버전 감지 — cache-first라 배포해도 기존 사용자는 옛 화면을 본다.
+        // 새 워커 설치가 끝나면 게임에 알려 '새로고침 한 번' 안내를 띄운다.
+        const watch = (worker) => {
+          if (!worker) return;
+          worker.addEventListener('statechange', () => {
+            if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+              window.__newVersionReady = true;
+              if (window.__onNewVersion) window.__onNewVersion();
+            }
+          });
+        };
+        watch(reg.installing);
+        reg.addEventListener('updatefound', () => watch(reg.installing));
+        // 교실에서 탭을 오래 열어 두는 환경 — 30분마다 업데이트 확인
+        setInterval(() => { reg.update().catch(() => {}); }, 30 * 60 * 1000);
+      }).catch(() => {});
     });
   }
 </script>
