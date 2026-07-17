@@ -9903,6 +9903,8 @@
     chapter2HubVisualProfile, chapter2HubVisibleMarks, chapter3HubVisualProfile, chapter3HubVisibleMarks,
     chapter4HubVisualProfile, chapter4HubVisibleMarks, chapter5HubVisualProfile, chapter5HubVisibleMarks,
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
+    heldKeys: () => Array.from(held), // E2E 멀티터치 검증용 — 현재 눌린 논리 키
+    srLiveText: () => (srLiveEl ? srLiveEl.textContent : null), // aria-live 미러 검증용
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록
     persuadeAvail: () => (game.battle ? availableClaims(game.battle).map((c) => c.text) : []),
