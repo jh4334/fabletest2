@@ -283,6 +283,26 @@ check('누적 3 ≥ 임계(2) → 동요 전환 + 플로팅', g.battle.pState ==
 check('듣기 로그(조각 수 승계)', g.flags.pStats.fragments === 3);
 advanceReact();
 check('듣기 후 상대 턴 — 조각 없는 탄막', g.battle.phase === 'wave' && g.battle.wave.fragTotal === 0);
+// 읽기 게이트(Q-1): 같은 주장 반복 듣기는 게이지를 더 주지 않는다 — 대답을 기다린다
+forceMenu();
+battleMenuPick(2);
+check('반복 듣기 — 게이지 그대로(+0)·대답 안내', g.battle.gauge === 6 &&
+  /대답을 기다린다/.test(g.battle.react.text));
+advanceReact();
+// 읽기 게이트(Q-1): 듣기만으로는 만충 직전(gaugeMax-24)까지만 — 마지막은 정답으로
+forceMenu();
+{
+  const b = g.battle;
+  b.gauge = b.gaugeMax - 10; // 상한 위에서 새 주장 듣기 시도
+  b.listened = {};           // 새 주장으로 가정 (듣기 1회권 초기화)
+  battleMenuPick(2);
+  check('듣기 상한 — 만충 직전에서 더 오르지 않음', b.gauge === b.gaugeMax - 10 && !b.spareReady);
+}
+advanceReact();
+forceMenu();
+g.battle.gauge = 6; g.battle.listened = { 0: true }; // 이후 흐름(탈진·재도전 수치) 원복
+battleMenuPick(2); advanceReact(); // 반복 듣기(+0)로 상대 턴 재진입 — 탈진 검증용 탄막
+check('원복 후 상대 턴 — 게이지 6 유지', g.battle.phase === 'wave' && g.battle.gauge === 6);
 // 탈진: 하트를 1로 두고 하트 위에 탄을 얹어 결정적으로 피격
 g.battle.playerHp = 1;
 g.battle.arena.inv = 0;
@@ -337,7 +357,7 @@ check('프롤로그 마무리 후 1장 거리 입구로 자연 진입', g.map ==
 check('1장 목표가 바로 거리 탐험으로 이어짐', windowObj.__test.currentObjective() === '금고문으로 — 구역을 돌자');
 check('기억은 승리 후 지워짐', !g.flags.persuadeMemory.bekkyeomon);
 check('설득 로그 누적(응답·듣기)', g.flags.pStats.gateRight === 1 && g.flags.pStats.gateWrong === 1 &&
-  g.flags.pStats.fragments === 3);
+  g.flags.pStats.fragments === 6); // 듣기 2회(첫 듣기 + 상한 검증) ×3 — 반복 듣기는 미집계
 
 console.log('[21] 진엔딩 플래그 → 마을의 영이 등장');
 {

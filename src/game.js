@@ -4609,7 +4609,8 @@
       game.flags.sawPersuadeTip = true;
       lines.push(
         '[마음 조각 배틀]\n서로 번갈아 이야기해요.\n내 차례엔 「말 걸기·증거·듣기·안아 주기」\n중 하나를 골라요.',
-        '「가만히 듣기」로 속마음을 들으면\n마음이 조금 열리고, 힌트를 얻어요.\n상대 차례엔 ' + (isTouchDevice ? '스틱' : '화살표') + '로 하트를 움직여\n마음의 파도(탄막)를 피해요.',
+        '「가만히 듣기」로 속마음을 들으면\n마음이 조금 열리고, 힌트를 얻어요.\n들은 마음엔 「말 걸기」로 대답해야\n끝까지 열려요 — 잘 읽고 골라요!',
+        '상대 차례엔 ' + (isTouchDevice ? '스틱' : '화살표') + '로 하트를 움직여\n마음의 파도(탄막)를 피해요.',
         '이름이 노랗게 변하면 —\n「마음 안아 주기」로 배틀이 끝나요.\n하트가 다 닳으면 잠시 물러났다 다시 와요.'
       );
     }
@@ -4804,6 +4805,14 @@
       recordTopicResult(game.currentSlot, monTopic(b), false);
       text = claim.onWrong || '…아니야. 그런 게 아니야.';
       if (viaNote) text += '\n' + viaNote;
+      // 읽기 게이트(Q-1): 틀리면 속마음을 한 번 더 비춰 준다 — 읽고 다시 고르는 순환.
+      // 아직 안 들었다면 듣기부터 하라고 짚어 준다 (벌이 아니라 배우는 오답).
+      if (b.listened && b.listened[b.claimIdx]) {
+        const echo = (claim.hint || '').split('\n')[0];
+        if (echo) text += `\n* 들었던 속마음이 스친다 —\n${echo}`;
+      } else {
+        text += '\n(먼저 「가만히 듣기」로\n속마음을 들어 보자)';
+      }
       b.pIntense = true; // 다음 탄막 턴 강화
       b.flash = 14; Sound.wrong();
       if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.min(SHRINK_MAX_LEVEL, (b.shrinkLevel || 0) + 1);
@@ -4836,11 +4845,21 @@
       const claim = currentClaim();
       const inner = claim.hint ||
         ((claim.fragments && claim.fragments.length) ? claim.fragments.join('\n') : '……');
-      // 들어 준 만큼 마음이 조금 열린다 — 닫힘 해제(closedThreshold)와 게이지 소폭 상승
+      // 읽기 게이트(Q-1): 같은 주장은 다시 들어도 마음이 더 열리지 않는다 —
+      // 들은 속마음에는 「말 걸기」로 대답해야 다음으로 나아간다.
+      if (!b.listened) b.listened = {};
+      if (b.listened[b.claimIdx]) {
+        setReact(b, `${b.mon.name}: "${claim.text}"\n\n* 같은 이야기를 다시 들려준다…\n${inner}\n(들은 마음은 대답을 기다린다 — 「말 걸기」)`, 'wave');
+        return;
+      }
+      b.listened[b.claimIdx] = true;
+      // 들어 준 만큼 마음이 조금 열린다 — 단, 듣기만으로는 만충 직전까지.
+      // 마지막 한 걸음은 반드시 마음에 닿는 '대답'(정답 +26/32)이어야 한다.
       const n = b.p.fragmentsPerWave || 3;
       b.fragmentTotal += n;
       pStats().fragments += n;
-      b.gauge = clamp(b.gauge + n * 2, 0, b.gaugeMax);
+      const listenCap = Math.max(0, b.gaugeMax - 24);
+      b.gauge = clamp(Math.min(b.gauge + n * 2, Math.max(b.gauge, listenCap)), 0, b.gaugeMax);
       persuadeGaugeSync(b);
       setReact(b, `${b.mon.name}: "${claim.text}"\n\n* 가만히 귀를 기울였다 —\n${inner}`, 'wave');
       return;

@@ -314,6 +314,14 @@ setPos(9, 10, 'up'); tap('z'); advanceDialog();                 // 본인 확인
 if (!g.flags.s4KeyId) throw new Error('본인표 열쇠 없음');
 mark('4장 구역② 회원가입 골목 (판별 + 열쇠②)');
 
+// 구역③ 백스테이지 — 반짝의 「불 꺼진 무대」 주장을 받아치는 ev_offstage 카드.
+// 읽기 게이트(Q-1) 이후 듣기만으로는 게이지가 만충되지 않아, 정석대로
+// 증거 카드를 모아 와야 보스를 설득할 수 있다 (열쇠 2개로 안쪽 문 개방).
+enterZone(15, 5, 'ArrowUp', 'backstage'); // 워프 칸 (15,4) 바로 아래에서 위로
+setPos(9, 8, 'down'); tap('z'); advanceDialog(); // 잠긴 문(9,9) → 열쇠 2개로 개방
+if (!g.flags.evCards.includes('ev_offstage')) throw new Error('백스테이지 보상 없음');
+mark('4장 구역③ 백스테이지 (ev_offstage)');
+
 enterZone(18, 2, 'ArrowUp', 'yuhokstage');
 setPos(7, 3, 'up'); tap('z'); advanceDialog();
 if (g.mode !== 'battle') throw new Error('반짝 배틀 시작 실패');
