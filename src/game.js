@@ -3450,7 +3450,7 @@
   function drawCoreChairs(cx, cy) {
     const filled = coreMercyCount(game.flags);
     ctx.textAlign = 'center';
-    ctx.font = '16px monospace';
+    ctx.font = fs(16);
     for (let i = 0; i < CORE_CHAIR_SPOTS.length; i++) {
       const s = CORE_CHAIR_SPOTS[i];
       const sx = Math.round(s.x * TS - cx) + TS / 2;
@@ -5270,10 +5270,10 @@
     // 헤더
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 22px monospace';
+    ctx.font = fs(22, true);
     ctx.fillText('♥ 친구 수첩', 24, 38);
     ctx.fillStyle = '#888';
-    ctx.font = '15px monospace';
+    ctx.font = fs(15);
     ctx.fillText(`친구 ${dexSeenCount()} / ${DEX_ORDER.length}`, 24, 62);
 
     // 왼쪽: 목록 (커서 주변으로 스크롤)
@@ -5288,14 +5288,14 @@
       const y = listY + i * rowH;
       if (idx === cur) {
         ctx.fillStyle = '#e0453a';
-        ctx.font = '14px monospace';
+        ctx.font = fs(14);
         ctx.fillText('♥', listX - 18, y);
       }
       ctx.fillStyle = '#666';
-      ctx.font = '12px monospace';
+      ctx.font = fs(12);
       ctx.fillText(dexChapterShort(MONSTER_DEX[id].stage), listX, y);
       ctx.fillStyle = isSeen ? (idx === cur ? '#fff' : '#aaa') : '#444';
-      ctx.font = (idx === cur ? 'bold ' : '') + '15px monospace';
+      ctx.font = fs(15, idx === cur);
       ctx.fillText(isSeen ? monName(id) : '??? (아직 못 만남)', listX + 34, y);
     }
     // 스크롤 표시
@@ -5322,7 +5322,7 @@
       roundRect(cx - 44, 116, 88, 88, 6);
       ctx.stroke();
       ctx.fillStyle = '#444';
-      ctx.font = 'bold 48px monospace';
+      ctx.font = fs(48, true);
       ctx.textAlign = 'center';
       ctx.fillText('?', cx, 178);
       ctx.textAlign = 'left';
@@ -5330,35 +5330,35 @@
 
     ctx.textAlign = 'center';
     ctx.fillStyle = isSeen ? '#fff' : '#555';
-    ctx.font = 'bold 22px monospace';
+    ctx.font = fs(22, true);
     ctx.fillText(isSeen ? monName(id) : '???', cx, 238);
     ctx.fillStyle = '#888';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.fillText(dexChapterLabel(info.stage), cx, 260);
     ctx.textAlign = 'left';
 
     if (isSeen) {
       ctx.fillStyle = '#ffd644';
-      ctx.font = 'bold 15px monospace';
+      ctx.font = fs(15, true);
       wrapText(`주제 · ${info.theme}`, panelX + 24, 296, panelW - 48, 22);
       ctx.fillStyle = '#fff';
-      ctx.font = '15px monospace';
+      ctx.font = fs(15);
       const usedLines = wrapText(info.learn, panelX + 24, 330, panelW - 48, 24);
       const my = 330 + usedLines * 24 + 16;
       const mk = seen[id].mercy;
       ctx.fillStyle = '#e0453a';
-      ctx.font = '14px monospace';
+      ctx.font = fs(14);
       ctx.fillText(`작별 · ${mk ? MERCY_LABEL[mk] : '—'}`, panelX + 24, my);
     } else {
       ctx.fillStyle = '#666';
-      ctx.font = '15px monospace';
+      ctx.font = fs(15);
       ctx.fillText('아직 만나지 못한 마음입니다.', panelX + 24, 300);
       ctx.fillText('모험에서 깨우치면 기록됩니다.', panelX + 24, 326);
     }
 
     // 푸터
     ctx.fillStyle = '#777';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.textAlign = 'center';
     ctx.fillText('↑↓←→ 넘기기 · X 또는 A로 닫기', LW / 2, 510);
     ctx.textAlign = 'left';
@@ -5446,15 +5446,15 @@
     if (r.phase === 'list') {
       ctx.textAlign = 'left';
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 22px monospace';
+      ctx.font = fs(22, true);
       ctx.fillText('★ 다시 만나기', 24, 38);
       ctx.fillStyle = '#888';
-      ctx.font = '15px monospace';
+      ctx.font = fs(15);
       ctx.fillText(`다시 만날 이야기 ${ids.length}개`, 24, 62);
 
       if (ids.length === 0) {
         ctx.fillStyle = '#aaa';
-        ctx.font = '16px monospace';
+        ctx.font = fs(16);
         ctx.fillText('아직 틀린 문제가 없어요!', 24, 120);
         ctx.fillText('모험을 하며 틀린 문제가 있으면', 24, 148);
         ctx.fillText('여기에 모여요.', 24, 174);
@@ -5469,11 +5469,11 @@
           const y = listY + i * rowH;
           if (idx === r.cursor) {
             ctx.fillStyle = '#e0453a';
-            ctx.font = '14px monospace';
+            ctx.font = fs(14);
             ctx.fillText('♥', listX - 18, y);
           }
           ctx.fillStyle = idx === r.cursor ? '#fff' : '#aaa';
-          ctx.font = (idx === r.cursor ? 'bold ' : '') + '15px monospace';
+          ctx.font = fs(15, idx === r.cursor);
           const firstLine = m ? m.q.split('\n')[0] : '???';
           ctx.fillText(firstLine, listX, y);
         }
@@ -5482,7 +5482,7 @@
       }
 
       ctx.fillStyle = '#777';
-      ctx.font = '13px monospace';
+      ctx.font = fs(13);
       ctx.textAlign = 'center';
       if (ids.length > 0) ctx.fillText('↑↓ 선택 · Z/스페이스로 다시 풀기 · X로 닫기', LW / 2, 510);
       else ctx.fillText('X 또는 Z로 닫기', LW / 2, 510);
@@ -5507,7 +5507,7 @@
     const hintY = boxY + boxH - 18;
 
     ctx.fillStyle = '#888';
-    ctx.font = '14px monospace';
+    ctx.font = fs(14);
     ctx.fillText('★ 다시 만나기', 24, 32);
 
     utBox(12, boxY, LW - 24, boxH, 8);
@@ -5681,7 +5681,7 @@
 
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 17px monospace';
+    ctx.font = fs(17, true);
     ctx.fillText('메뉴', boxX + 22, boxY + 30);
 
     const start = game.pauseScroll;
@@ -5694,7 +5694,7 @@
       const val = pauseValueLabel(item);
       if (val) {
         ctx.fillStyle = warnColor();
-        ctx.font = '13px monospace';
+        ctx.font = fs(13);
         ctx.textAlign = 'right';
         ctx.fillText(val, boxX + boxW - 22, ty);
         ctx.textAlign = 'left';
@@ -5706,7 +5706,7 @@
     if (start + shown < items.length) { ctx.fillStyle = '#888'; ctx.textAlign = 'center'; ctx.fillText('▼', boxX + boxW - 16, boxY + boxH - 22); }
 
     ctx.fillStyle = '#777';
-    ctx.font = '12px monospace';
+    ctx.font = fs(12);
     ctx.textAlign = 'center';
     ctx.fillText('↑↓ 선택 · Z 결정 · X 닫기', LW / 2, boxY + boxH - 12);
     ctx.textAlign = 'left';
@@ -5768,7 +5768,7 @@
       const val = pauseValueLabel(item);
       if (val) {
         ctx.fillStyle = warnColor();
-        ctx.font = '13px monospace';
+        ctx.font = fs(13);
         ctx.textAlign = 'right';
         ctx.fillText(val, boxX + boxW - 22, ty);
         ctx.textAlign = 'left';
@@ -5777,7 +5777,7 @@
     }
 
     ctx.fillStyle = '#777';
-    ctx.font = '12px monospace';
+    ctx.font = fs(12);
     ctx.textAlign = 'center';
     ctx.fillText('↑↓ 선택 · Z 결정 · X 닫기', LW / 2, boxY + boxH - 12);
     ctx.textAlign = 'left';
@@ -5857,13 +5857,13 @@
 
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 22px monospace';
+    ctx.font = fs(22, true);
     ctx.fillText(`◆ 모험 일지 — ${slotLearnName(slot)}`, 24, 38);
     // 고른 칭호
     const title = selectedTitle(slot);
     if (title) {
       ctx.fillStyle = themeAccent();
-      ctx.font = 'bold 13px monospace';
+      ctx.font = fs(13, true);
       ctx.textAlign = 'right';
       ctx.fillText(`「${title.name}」`, LW - 24, 38);
       ctx.textAlign = 'left';
@@ -5871,13 +5871,13 @@
 
     // 요약 줄
     ctx.fillStyle = warnColor();
-    ctx.font = 'bold 16px monospace';
+    ctx.font = fs(16, true);
     ctx.fillText(`푼 문제 ${s.attempted}개  ·  정답 ${s.correct}개  ·  정답률 ${s.attempted ? Math.round(s.overallRate * 100) + '%' : '—'}`, 24, 66);
     const endSeen = getEndingsSeen();
     const endN = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
     const jm = getMeta(slot);
     ctx.fillStyle = '#888';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.fillText(`발견 엔딩 ${endN}/4  ·  친구 수첩 ${dexSeenCount()}/${DEX_ORDER.length}  ·  복습 노트 ${mistakeCount(slot)}개`, 24, 88);
     if (jm.streak || jm.bestStreak) {
       ctx.fillStyle = themeAccent();
@@ -5886,12 +5886,12 @@
 
     // 주제별 정답률 막대
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 14px monospace';
+    ctx.font = fs(14, true);
     ctx.fillText('주제별 정답률 (낮은 순)', 24, 118);
 
     if (s.rows.length === 0) {
       ctx.fillStyle = '#888';
-      ctx.font = '15px monospace';
+      ctx.font = fs(15);
       ctx.fillText('아직 푼 문제가 없어요. 모험에서 퀴즈를 풀면 여기에 쌓여요!', 24, 150);
     } else {
       const barX = 230, barW = LW - barX - 90, rowH = 38;
@@ -5901,7 +5901,7 @@
         const y = 140 + i * rowH;
         const weak = r.total >= 2 && r.rate < 0.6;
         ctx.fillStyle = weak ? badColor() : '#ddd';
-        ctx.font = '14px monospace';
+        ctx.font = fs(14);
         ctx.fillText(r.label, 24, y + 14);
         // 막대 배경/채움
         ctx.fillStyle = '#222';
@@ -5909,18 +5909,18 @@
         ctx.fillStyle = r.rate >= 0.8 ? okColor() : r.rate >= 0.6 ? warnColor() : badColor();
         ctx.fillRect(barX, y, Math.round(barW * r.rate), 16);
         ctx.fillStyle = '#fff';
-        ctx.font = '12px monospace';
+        ctx.font = fs(12);
         ctx.fillText(`${Math.round(r.rate * 100)}% (${r.correct}/${r.total})`, barX + barW + 8, y + 13);
       }
       // 스크롤 표시
-      if (start > 0) { ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.fillText('▲', LW - 40, 132); }
-      if (start + JOURNAL_VISIBLE < s.rows.length) { ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.fillText('▼', LW - 40, 140 + JOURNAL_VISIBLE * rowH - 8); }
+      if (start > 0) { ctx.fillStyle = '#888'; ctx.font = fs(14); ctx.fillText('▲', LW - 40, 132); }
+      if (start + JOURNAL_VISIBLE < s.rows.length) { ctx.fillStyle = '#888'; ctx.font = fs(14); ctx.fillText('▼', LW - 40, 140 + JOURNAL_VISIBLE * rowH - 8); }
     }
 
     // 약한 주제 안내
     if (s.weak.length) {
       ctx.fillStyle = badColor();
-      ctx.font = '13px monospace';
+      ctx.font = fs(13);
       ctx.fillText('더 살펴볼 주제: ' + s.weak.slice(0, 3).join(', '), 24, 470);
     }
 
@@ -5929,14 +5929,14 @@
       const ok = game.journal.toast > 0;
       ctx.textAlign = 'center';
       ctx.fillStyle = ok ? okColor() : badColor();
-      ctx.font = 'bold 15px monospace';
+      ctx.font = fs(15, true);
       ctx.fillText(ok ? '✓ 학습 리포트를 클립보드에 복사했어요!' : '복사할 수 없는 환경이에요 (직접 화면을 보여 주세요)', LW / 2, 490);
       ctx.textAlign = 'left';
     }
 
     // 푸터
     ctx.fillStyle = '#777';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.textAlign = 'center';
     ctx.fillText('↑↓ 스크롤 · Z 리포트 복사(교사용) · X 닫기', LW / 2, 512);
     ctx.textAlign = 'left';
@@ -6066,16 +6066,16 @@
     if (c.phase === 'topic') {
       ctx.textAlign = 'left';
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 22px monospace';
+      ctx.font = fs(22, true);
       ctx.fillText('▶ 도전 극장', 24, 40);
       ctx.fillStyle = '#888';
-      ctx.font = '14px monospace';
+      ctx.font = fs(14);
       ctx.fillText(`주제를 골라 ${CHALLENGE_LEN}문제에 도전! (모험과 별개로 즐겨요)`, 24, 64);
       // 연속 출석(스트릭) 표시
       const meta = getMeta(c.slot);
       if (meta.streak) {
         ctx.fillStyle = themeAccent();
-        ctx.font = 'bold 13px monospace';
+        ctx.font = fs(13, true);
         ctx.textAlign = 'right';
         ctx.fillText(`🔥 연속 출석 ${meta.streak}일`, LW - 24, 40);
         ctx.textAlign = 'left';
@@ -6094,11 +6094,11 @@
         const idx = start + i;
         drawChoiceLine(items[idx], listX, listY + i * rowH, idx === c.sel);
       }
-      if (start > 0) { ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.fillText('▲', LW - 50, listY - 8); }
-      if (start + visible < items.length) { ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.fillText('▼', LW - 50, listY + visible * rowH - 8); }
+      if (start > 0) { ctx.fillStyle = '#888'; ctx.font = fs(14); ctx.fillText('▲', LW - 50, listY - 8); }
+      if (start + visible < items.length) { ctx.fillStyle = '#888'; ctx.font = fs(14); ctx.fillText('▼', LW - 50, listY + visible * rowH - 8); }
 
       ctx.fillStyle = '#777';
-      ctx.font = '13px monospace';
+      ctx.font = fs(13);
       ctx.textAlign = 'center';
       ctx.fillText('↑↓ 선택 · Z 시작 · X 닫기', LW / 2, 512);
       ctx.textAlign = 'left';
@@ -6109,10 +6109,10 @@
       const total = c.questions.length;
       ctx.textAlign = 'center';
       ctx.fillStyle = warnColor();
-      ctx.font = 'bold 26px monospace';
+      ctx.font = fs(26, true);
       ctx.fillText('★ 챌린지 완료!', LW / 2, 150);
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 40px monospace';
+      ctx.font = fs(40, true);
       ctx.fillText(`${c.score} / ${total}`, LW / 2, 220);
       const rate = total ? c.score / total : 0;
       const msg = rate >= 0.9 ? '대단해요! 진정한 마음의 수호자!'
@@ -6120,10 +6120,10 @@
         : rate >= 0.5 ? '좋아요! 복습 노트로 다시 살펴봐요.'
         : '괜찮아요. 틀린 문제는 복습 노트에 모였어요!';
       ctx.fillStyle = '#aaa';
-      ctx.font = '16px monospace';
+      ctx.font = fs(16);
       ctx.fillText(msg, LW / 2, 270);
       ctx.fillStyle = '#777';
-      ctx.font = '13px monospace';
+      ctx.font = fs(13);
       ctx.fillText('Z 또는 X로 돌아가기', LW / 2, 330);
       ctx.textAlign = 'left';
       return;
@@ -6133,7 +6133,7 @@
     const q = c.questions[c.idx];
     ctx.textAlign = 'left';
     ctx.fillStyle = '#888';
-    ctx.font = '14px monospace';
+    ctx.font = fs(14);
     ctx.fillText(`문제 ${c.idx + 1} / ${c.questions.length}`, 24, 32);
     ctx.fillStyle = warnColor();
     ctx.fillText(`점수 ${c.score}`, LW - 110, 32);
@@ -6251,10 +6251,10 @@
 
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 22px monospace';
+    ctx.font = fs(22, true);
     ctx.fillText(`☆ 도전과제 — ${slotLearnName(slot)}`, 24, 38);
     ctx.fillStyle = warnColor();
-    ctx.font = 'bold 15px monospace';
+    ctx.font = fs(15, true);
     ctx.fillText(`달성 ${got} / ${ACHIEVEMENTS.length}`, 24, 62);
 
     const colW = (LW - 48) / 2, cellH = 66;
@@ -6266,19 +6266,19 @@
       const cat = ACH_CAT[a.cat];
       // 아이콘 표시
       ctx.fillStyle = unlocked ? cat.color : '#333';
-      ctx.font = 'bold 26px monospace';
+      ctx.font = fs(26, true);
       ctx.fillText(unlocked ? cat.icon : '·', x + 4, y + 26);
       // 이름·설명
       ctx.fillStyle = unlocked ? '#fff' : '#555';
-      ctx.font = 'bold 15px monospace';
+      ctx.font = fs(15, true);
       ctx.fillText(a.name, x + 42, y + 18);
       ctx.fillStyle = unlocked ? '#aaa' : '#444';
-      ctx.font = '12px monospace';
+      ctx.font = fs(12);
       ctx.fillText(unlocked ? a.desc : '???  ' + a.desc, x + 42, y + 40);
     }
 
     ctx.fillStyle = '#777';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.textAlign = 'center';
     ctx.fillText('Z 또는 X로 닫기', LW / 2, 512);
     ctx.textAlign = 'left';
@@ -6358,9 +6358,9 @@
     ctx.textAlign = 'left';
     const page = Math.min(game.helpPage || 0, HELP_PAGES.length - 1);
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 22px monospace';
+    ctx.font = fs(22, true);
     ctx.fillText('? 도움말', 24, 38);
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.fillStyle = '#888';
     ctx.textAlign = 'right';
     ctx.fillText(`${page + 1} / ${HELP_PAGES.length}`, LW - 24, 36);
@@ -6369,14 +6369,14 @@
     let y = 84;
     for (const [kind, text] of HELP_PAGES[page]) {
       if (text === '') { y += 14; continue; }
-      if (kind === 'head') { ctx.fillStyle = warnColor(); ctx.font = 'bold 16px monospace'; }
-      else { ctx.fillStyle = '#ddd'; ctx.font = '14px monospace'; }
+      if (kind === 'head') { ctx.fillStyle = warnColor(); ctx.font = fs(16, true); }
+      else { ctx.fillStyle = '#ddd'; ctx.font = fs(14); }
       ctx.fillText(text, 28, y);
       y += 28;
     }
 
     ctx.fillStyle = '#777';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.textAlign = 'center';
     const nav = page < HELP_PAGES.length - 1
       ? '← → 페이지 넘기기 · Z 다음 · X 닫기'
@@ -6432,12 +6432,12 @@
     ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 22px monospace';
+    ctx.font = fs(22, true);
     ctx.fillText(`✿ 꾸미기 — ${slotLearnName(slot)}`, 24, 38);
 
     const st = selectedTitle(slot), sth = selectedTheme(slot);
     ctx.fillStyle = sth ? sth.color : '#ffd644';
-    ctx.font = 'bold 15px monospace';
+    ctx.font = fs(15, true);
     ctx.fillText(`지금: 「${st ? st.name : '—'}」 · 테마 ${sth ? sth.name : '—'}`, 24, 62);
 
     const cols = [{ label: '칭호', list: TITLES, row: cm.rowTitle, selId: getCosmetic(slot).title },
@@ -6447,14 +6447,14 @@
       const col = cols[ci];
       const x = 24 + ci * colW;
       ctx.fillStyle = ci === cm.col ? themeAccent() : '#888';
-      ctx.font = 'bold 15px monospace';
+      ctx.font = fs(15, true);
       ctx.fillText(`◆ ${col.label}`, x, 92);
       for (let i = 0; i < col.list.length; i++) {
         const item = col.list[i];
         const unlocked = item.check(c);
         const y = 118 + i * 52;
         const active = ci === cm.col && i === col.row;
-        if (active) { ctx.fillStyle = '#e0453a'; ctx.font = '14px monospace'; ctx.fillText('♥', x - 2, y); }
+        if (active) { ctx.fillStyle = '#e0453a'; ctx.font = fs(14); ctx.fillText('♥', x - 2, y); }
         // 테마는 색 스와치를 보여 준다
         if (ci === 1) {
           ctx.fillStyle = unlocked ? item.color : '#333';
@@ -6462,10 +6462,10 @@
         }
         const equipped = item.id === col.selId || (!col.selId && i === 0);
         ctx.fillStyle = !unlocked ? '#555' : active ? '#fff' : '#bbb';
-        ctx.font = (active ? 'bold ' : '') + '15px monospace';
+        ctx.font = fs(15, active);
         ctx.fillText((unlocked ? item.name : '???') + (equipped && unlocked ? ' ✓' : ''), x + (ci === 1 ? 38 : 18), y);
         ctx.fillStyle = unlocked ? '#777' : '#444';
-        ctx.font = '11px monospace';
+        ctx.font = fs(11);
         ctx.fillText(unlocked ? item.desc : '잠김 · ' + item.desc, x + (ci === 1 ? 38 : 18), y + 16);
       }
     }
@@ -6473,12 +6473,12 @@
     if (cm.toast > 0) {
       ctx.textAlign = 'center';
       ctx.fillStyle = badColor();
-      ctx.font = 'bold 14px monospace';
+      ctx.font = fs(14, true);
       ctx.fillText('아직 잠긴 보상이에요. 조건을 채워 보세요!', LW / 2, 490);
       ctx.textAlign = 'left';
     }
     ctx.fillStyle = '#777';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.textAlign = 'center';
     ctx.fillText('←→ 칭호/테마 · ↑↓ 선택 · Z 적용 · X 닫기', LW / 2, 512);
     ctx.textAlign = 'left';
@@ -6510,14 +6510,14 @@
     ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 22px monospace';
+    ctx.font = fs(22, true);
     ctx.fillText(`📚 기억 조각 — ${slotLearnName(slot)}`, 24, 36);
     const got = collectedCards(slot);
     ctx.fillStyle = warnColor();
-    ctx.font = 'bold 14px monospace';
+    ctx.font = fs(14, true);
     ctx.fillText(`모은 카드 ${got} / ${LEARN_CARDS.length}`, 24, 58);
     ctx.fillStyle = '#888';
-    ctx.font = '11px monospace';
+    ctx.font = fs(11);
     ctx.fillText('각 주제에서 한 번이라도 정답을 맞히면 그 카드가 열려요.', 220, 58);
 
     const cardH = 96, top = 74, w = LW - 48;
@@ -6530,26 +6530,26 @@
       utBox(x, y, w, cardH, 6);
       // 아이콘
       ctx.textAlign = 'center';
-      ctx.font = '38px monospace';
+      ctx.font = fs(38);
       ctx.fillStyle = unlocked ? '#fff' : '#444';
       ctx.fillText(unlocked ? card.icon : '🔒', x + 44, y + 58);
       // 제목 + 해설
       ctx.textAlign = 'left';
       ctx.fillStyle = unlocked ? themeAccent() : '#555';
-      ctx.font = 'bold 17px monospace';
+      ctx.font = fs(17, true);
       ctx.fillText(`${i + 1}. ${topicLabel(card.topic)}`, x + 86, y + 32);
       ctx.fillStyle = unlocked ? '#ddd' : '#444';
-      ctx.font = '13px monospace';
+      ctx.font = fs(13);
       if (unlocked) wrapText(card.lesson, x + 86, y + 58, w - 110, 19);
       else ctx.fillText('아직 잠긴 카드예요 — 이 주제 문제를 맞혀 보세요!', x + 86, y + 58);
     }
     // 스크롤 표시
-    ctx.fillStyle = '#888'; ctx.font = '14px monospace'; ctx.textAlign = 'center';
+    ctx.fillStyle = '#888'; ctx.font = fs(14); ctx.textAlign = 'center';
     if (cd.scroll > 0) ctx.fillText('▲', LW / 2, top - 2);
     if (cd.scroll + CARDS_VISIBLE < LEARN_CARDS.length) ctx.fillText('▼', LW / 2, top + CARDS_VISIBLE * (cardH + 6) + 2);
 
     ctx.fillStyle = '#777';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.textAlign = 'center';
     ctx.fillText('↑↓ 넘기기 · Z 또는 X로 닫기', LW / 2, 514);
     ctx.textAlign = 'left';
@@ -6631,22 +6631,22 @@
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#7a5c12';
-    ctx.font = 'bold 15px monospace';
+    ctx.font = fs(15, true);
     ctx.fillText('AI 윤리 어드벤처', cx, by + 50);
     ctx.fillStyle = '#2a2417';
-    ctx.font = 'bold 30px monospace';
+    ctx.font = fs(30, true);
     ctx.fillText('수 료 증', cx, by + 92);
 
     const s = buildLearningSummary(slot);
     const sum = slotSummary(slot);
     const title = selectedTitle(slot);
     ctx.fillStyle = '#2a2417';
-    ctx.font = 'bold 22px monospace';
+    ctx.font = fs(22, true);
     ctx.fillText(slotLearnName(slot), cx, by + 138);
-    if (title) { ctx.fillStyle = '#a07b1e'; ctx.font = 'bold 13px monospace'; ctx.fillText(`「${title.name}」`, cx, by + 160); }
+    if (title) { ctx.fillStyle = '#a07b1e'; ctx.font = fs(13, true); ctx.fillText(`「${title.name}」`, cx, by + 160); }
 
     ctx.fillStyle = '#3a3220';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.fillText('위 학생은 AI를 바르고 안전하게 쓰는 법을', cx, by + 192);
     ctx.fillText('열심히 익혔기에 이 증서를 드립니다.', cx, by + 212);
 
@@ -6659,7 +6659,7 @@
       ['안아준 마음', `♥ ${sum ? sum.mercy : 0}`],
     ];
     let ry = by + 244;
-    ctx.font = '14px monospace';
+    ctx.font = fs(14);
     for (const [k, v] of rows) {
       ctx.textAlign = 'left'; ctx.fillStyle = '#6a5a2e'; ctx.fillText(k, bx + 70, ry);
       ctx.textAlign = 'right'; ctx.fillStyle = '#2a2417'; ctx.fillText(v, bx + bw - 70, ry);
@@ -6667,17 +6667,17 @@
     }
     ctx.textAlign = 'center';
     ctx.fillStyle = '#7a5c12';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.fillText(`${certDateStr()}   ·   AI 윤리 연구소`, cx, by + bh - 24);
 
     if (game.cert.toast !== 0) {
       ctx.fillStyle = game.cert.toast < 0 ? badColor() : okColor();
-      ctx.font = 'bold 13px monospace';
+      ctx.font = fs(13, true);
       ctx.fillText(game.cert.toast < 0 ? '복사·저장에 실패했어요 (브라우저에서 시도해 주세요)'
         : game.cert.toast === 1 ? '✓ 파일로 저장했어요!' : '✓ 글자로 복사했어요!', cx, 472);
     }
     ctx.fillStyle = '#aaa';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.fillText('Z 글자 복사 · C 파일 저장(.txt) · X 닫기', cx, 500);
     ctx.textAlign = 'left';
   }
@@ -6719,10 +6719,10 @@
     ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 22px monospace';
+    ctx.font = fs(22, true);
     ctx.fillText('🏆 명예의 전당', 24, 36);
     ctx.fillStyle = '#888';
-    ctx.font = '12px monospace';
+    ctx.font = fs(12);
     ctx.fillText('이 기기에서 함께한 학생들의 최고 기록이에요. ↑↓로 부문 선택.', 24, 56);
 
     // 부문 목록(왼쪽) + 순위(오른쪽)
@@ -6733,10 +6733,10 @@
       const y = listY + i * rowH;
       if (sel) { utBox(listX - 4, y - 22, 200, 50, 6); }
       ctx.textAlign = 'left';
-      ctx.font = '22px monospace';
+      ctx.font = fs(22);
       ctx.fillStyle = sel ? '#fff' : '#666';
       ctx.fillText(cat.icon, listX + 6, y + 8);
-      ctx.font = (sel ? 'bold ' : '') + '14px monospace';
+      ctx.font = fs(14, sel);
       ctx.fillStyle = sel ? themeAccent() : '#888';
       ctx.fillText(cat.label, listX + 40, y + 4);
     }
@@ -6747,16 +6747,16 @@
     utBox(panelX, panelY, panelW, 380, 8);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 16px monospace';
+    ctx.font = fs(16, true);
     ctx.fillText(`${cat.icon} ${cat.label}`, panelX + 20, panelY + 30);
 
     if (cat.shared) {
       ctx.fillStyle = warnColor();
-      ctx.font = 'bold 34px monospace';
+      ctx.font = fs(34, true);
       ctx.textAlign = 'center';
       ctx.fillText(cat.fmt(0), panelX + panelW / 2, panelY + 130);
       ctx.fillStyle = '#888';
-      ctx.font = '13px monospace';
+      ctx.font = fs(13);
       ctx.fillText('(친구 수첩은 모두가 함께 채우는 공동 기록이에요)', panelX + panelW / 2, panelY + 170);
       ctx.textAlign = 'left';
     } else {
@@ -6774,15 +6774,15 @@
         const empty = e.name === null;       // 슬롯 자체가 비어 있음
         const noRecord = !empty && e.v < 0;  // 학생은 있지만 이 부문 기록이 없음
         const ranking = !empty && !noRecord; // 순위 매김 대상
-        ctx.font = '26px monospace';
+        ctx.font = fs(26);
         ctx.textAlign = 'left';
         ctx.fillText(ranking ? (medals[r] || ' ') : '·', panelX + 20, ry + 8);
         ctx.fillStyle = ranking ? '#fff' : '#666';
-        ctx.font = 'bold 17px monospace';
+        ctx.font = fs(17, true);
         ctx.fillText(empty ? `슬롯 ${e.i + 1} — 비어 있음` : e.name, panelX + 64, ry);
         if (!empty) {
           ctx.fillStyle = ranking && r === 0 ? warnColor() : '#888';
-          ctx.font = 'bold 17px monospace';
+          ctx.font = fs(17, true);
           ctx.textAlign = 'right';
           ctx.fillText(noRecord ? '—' : e.label, panelX + panelW - 20, ry);
           ctx.textAlign = 'left';
@@ -6792,7 +6792,7 @@
     }
 
     ctx.fillStyle = '#777';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.textAlign = 'center';
     ctx.fillText('↑↓ 부문 · Z 또는 X로 닫기', LW / 2, 512);
     ctx.textAlign = 'left';
@@ -6912,10 +6912,10 @@
     ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 22px monospace';
+    ctx.font = fs(22, true);
     ctx.fillText('⇄ 데이터 백업 · 복원', 24, 40);
     ctx.fillStyle = '#888';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.fillText('모든 슬롯·학습 기록·친구 수첩·설정을 한 파일로 저장하고', 24, 66);
     ctx.fillText('다른 기기나 브라우저에서 다시 불러올 수 있어요.', 24, 86);
 
@@ -6925,22 +6925,22 @@
     }
 
     ctx.fillStyle = '#777';
-    ctx.font = '12px monospace';
+    ctx.font = fs(12);
     ctx.fillText('※ 가져오기를 하면 지금 이 기기의 기록을 덮어씁니다.', 24, listY + BACKUP_ITEMS.length * rowH + 24);
 
     if (b.confirm) {
       ctx.textAlign = 'center';
       ctx.fillStyle = badColor();
-      ctx.font = 'bold 15px monospace';
+      ctx.font = fs(15, true);
       ctx.fillText('지금 기록을 덮어쓰고 복원할까요?', LW / 2, 452);
       ctx.fillStyle = '#fff';
-      ctx.font = '13px monospace';
+      ctx.font = fs(13);
       ctx.fillText('Z: 파일 선택해서 복원   ·   X: 취소', LW / 2, 474);
       ctx.textAlign = 'left';
     } else if (b.toast !== 0) {
       ctx.textAlign = 'center';
       ctx.fillStyle = b.toast > 0 ? okColor() : badColor();
-      ctx.font = 'bold 15px monospace';
+      ctx.font = fs(15, true);
       const msg = b.toast > 0 ? '✓ 완료했어요!'
         : b.toast === -300 ? '이 파일에는 불러올 기록이 없어요 (다른 백업 파일을 골라 주세요)'
         : '이 환경에서는 할 수 없어요 (브라우저에서 시도해 주세요)';
@@ -6948,7 +6948,7 @@
       ctx.textAlign = 'left';
     }
     ctx.fillStyle = '#777';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.textAlign = 'center';
     ctx.fillText('↑↓ 선택 · Z 실행 · X 닫기', LW / 2, 512);
     ctx.textAlign = 'left';
@@ -7056,10 +7056,10 @@
     ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 22px monospace';
+    ctx.font = fs(22, true);
     ctx.fillText('▤ 교사용 대시보드 — 학생 현황', 24, 36);
     ctx.fillStyle = '#888';
-    ctx.font = '12px monospace';
+    ctx.font = fs(12);
     ctx.fillText('한 기기를 나눠 쓰는 세 학생(슬롯)의 학습 현황을 비교합니다.', 24, 56);
 
     const colW = (LW - 32) / SLOT_COUNT;
@@ -7070,11 +7070,11 @@
       const sum = slotSummary(i);
       ctx.textAlign = 'left';
       ctx.fillStyle = '#888';
-      ctx.font = 'bold 12px monospace';
+      ctx.font = fs(12, true);
       ctx.fillText(`슬롯 ${i + 1}`, x + 14, y + 22);
       if (!sum) {
         ctx.fillStyle = '#555';
-        ctx.font = '14px monospace';
+        ctx.font = fs(14);
         ctx.fillText('— 비어 있음 —', x + 14, y + 56);
         continue;
       }
@@ -7083,18 +7083,18 @@
       const title = selectedTitle(i);
       let ly = y + 46;
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 17px monospace';
+      ctx.font = fs(17, true);
       ctx.fillText(sum.name, x + 14, ly); ly += 22;
       if (title) {
         ctx.fillStyle = themeAccent();
-        ctx.font = 'bold 11px monospace';
+        ctx.font = fs(11, true);
         ctx.fillText(`「${title.name}」`, x + 14, ly);
       }
       ly += 22;
       const line = (label, val, col) => {
-        ctx.fillStyle = '#999'; ctx.font = '12px monospace';
+        ctx.fillStyle = '#999'; ctx.font = fs(12);
         ctx.fillText(label, x + 14, ly);
-        ctx.fillStyle = col || '#fff'; ctx.font = 'bold 13px monospace';
+        ctx.fillStyle = col || '#fff'; ctx.font = fs(13, true);
         ctx.textAlign = 'right'; ctx.fillText(val, x + w - 14, ly); ctx.textAlign = 'left';
         ly += 24;
       };
@@ -7107,9 +7107,9 @@
       line('안아준 마음', `♥ ${sum.mercy}`);
       line('연속 출석', meta.streak ? `🔥 ${meta.streak}일` : '—');
       // 약점 주제
-      ctx.fillStyle = '#999'; ctx.font = '12px monospace';
+      ctx.fillStyle = '#999'; ctx.font = fs(12);
       ctx.fillText('더 살펴볼 주제', x + 14, ly); ly += 18;
-      ctx.fillStyle = badColor(); ctx.font = '11px monospace';
+      ctx.fillStyle = badColor(); ctx.font = fs(11);
       if (s.weak.length) {
         for (const wlabel of s.weak.slice(0, 3)) { ctx.fillText('· ' + wlabel, x + 16, ly); ly += 16; }
       } else {
@@ -7121,15 +7121,15 @@
     ctx.textAlign = 'center';
     if (d.toast > 0) {
       ctx.fillStyle = okColor();
-      ctx.font = 'bold 14px monospace';
+      ctx.font = fs(14, true);
       ctx.fillText('✓ 반 현황 CSV를 저장했어요 (엑셀·구글시트에서 열기)', LW / 2, 512);
     } else if (d.toast < 0) {
       ctx.fillStyle = badColor();
-      ctx.font = 'bold 14px monospace';
+      ctx.font = fs(14, true);
       ctx.fillText('이 환경에서는 내보낼 수 없어요 (브라우저에서 시도해 주세요)', LW / 2, 512);
     } else {
       ctx.fillStyle = '#777';
-      ctx.font = '13px monospace';
+      ctx.font = fs(13);
       ctx.fillText('Z: 반 현황 CSV 내보내기 · X: 닫기 (상세 리포트는 각 학생 수호자 일지)', LW / 2, 512);
     }
     ctx.textAlign = 'left';
@@ -7318,10 +7318,10 @@
     ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 22px monospace';
+    ctx.font = fs(22, true);
     ctx.fillText('▶ 수업 모드 — 거리(챕터) 바로 시작', 24, 40);
     ctx.fillStyle = '#888';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.fillText('오늘 수업할 거리를 골라 바로 시작해요. (지금 학생 슬롯에 적용)', 24, 64);
 
     // 특별 항목 6개(v2 항목만 순환) — 「1장 — 전부 공짜 거리」는 그 외 모든 값이 아닐 때(else)로 처리한다.
@@ -7341,26 +7341,26 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = themeAccent();
     if (isFinal) {
-      ctx.font = 'bold 30px monospace';
+      ctx.font = fs(30, true);
       ctx.fillText('파이널 — 고요의 뜰 → 코어', LW / 2, 176);
     } else if (isCozy) {
-      ctx.font = 'bold 30px monospace';
+      ctx.font = fs(30, true);
       ctx.fillText('5장 — 포근한 집', LW / 2, 176);
     } else if (isArcade) {
-      ctx.font = 'bold 30px monospace';
+      ctx.font = fs(30, true);
       ctx.fillText('4장 — 반짝 아케이드', LW / 2, 176);
     } else if (isRumor) {
-      ctx.font = 'bold 30px monospace';
+      ctx.font = fs(30, true);
       ctx.fillText('3장 — 대문짝 신문사', LW / 2, 176);
     } else if (isTilt) {
-      ctx.font = 'bold 30px monospace';
+      ctx.font = fs(30, true);
       ctx.fillText('2장 — 기울어진 거리', LW / 2, 176);
     } else {
-      ctx.font = 'bold 30px monospace';
+      ctx.font = fs(30, true);
       ctx.fillText('1장 — 전부 공짜 거리', LW / 2, 176);
     }
     ctx.fillStyle = '#fff';
-    ctx.font = '15px monospace';
+    ctx.font = fs(15);
     ctx.fillText(isFinal ? '고요의 뜰(걷기) → 고요 보스 → 코어(여덟 의자·봉헌 퍼즐) → 영이'
       : isCozy ? 'AI와의 관계 · 경계 설정 · 확인하는 용기 (구역 3개 → 루미 보스)'
       : isArcade ? '다크패턴 · 광고 · 2단계 인증 (구역 3개 → 반짝 보스)'
@@ -7368,33 +7368,33 @@
       : isTilt ? '경청 · 필터버블 · 스스로 고르기 (구역 3개 → 기울 보스)'
       : '개인정보 · 디지털 발자국 · 동의 (구역 3개 → 담아 보스)', LW / 2, 250);
     ctx.fillStyle = '#666';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.fillText('◀ ▶ 거리 고르기', LW / 2, 286);
 
     if (cm.toast > 0) {
       ctx.fillStyle = okColor();
-      ctx.font = 'bold 17px monospace';
+      ctx.font = fs(17, true);
       ctx.fillText(`✓ ${selLabel} 상태로 맞췄어요!`, LW / 2, 360);
       ctx.fillStyle = '#aaa';
-      ctx.font = '13px monospace';
+      ctx.font = fs(13);
       ctx.fillText('잠시 후 모험 화면으로 돌아갑니다…', LW / 2, 386);
       if (cm.toast === 1) { game.mode = cm.ret; }
     } else if (cm.confirm) {
       ctx.fillStyle = badColor();
-      ctx.font = 'bold 16px monospace';
+      ctx.font = fs(16, true);
       ctx.fillText(`지금 이 슬롯을 ${selLabel} 상태로 바꿀까요?`, LW / 2, 360);
       ctx.fillStyle = '#ddd';
-      ctx.font = '13px monospace';
+      ctx.font = fs(13);
       ctx.fillText('이전 진행은 완료 처리되고 되돌릴 수 없어요.', LW / 2, 384);
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 14px monospace';
+      ctx.font = fs(14, true);
       ctx.fillText('Z: 시작   ·   X: 취소', LW / 2, 416);
     } else {
       ctx.fillStyle = '#777';
-      ctx.font = '13px monospace';
+      ctx.font = fs(13);
       ctx.fillText('Z: 이 거리로 시작 · X: 닫기', LW / 2, 360);
       ctx.fillStyle = '#555';
-      ctx.font = '12px monospace';
+      ctx.font = fs(12);
       ctx.fillText('※ 미리 「데이터 백업」을 해 두면 안전해요.', LW / 2, 388);
     }
     ctx.textAlign = 'left';
@@ -7527,29 +7527,29 @@
     const r = game.report;
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 22px monospace';
+    ctx.fillStyle = '#fff'; ctx.font = fs(22, true);
     ctx.fillText('🩺 학생 진단 리포트', 24, 38);
     const isClass = r.slot >= SLOT_COUNT;
-    ctx.fillStyle = '#888'; ctx.font = '12px monospace';
+    ctx.fillStyle = '#888'; ctx.font = fs(12);
     ctx.fillText(`◀ ▶ 전환 · ${isClass ? '반 전체' : '슬롯 ' + (r.slot + 1)}`, 24, 58);
 
     const rep = reportView(r.slot);
     let y = 92;
     const lines = rep.text.split('\n');
     for (const ln of lines) {
-      if (ln.startsWith('[')) { ctx.fillStyle = themeAccent(); ctx.font = 'bold 15px monospace'; }
-      else if (ln.startsWith('  · ')) { ctx.fillStyle = warnColor(); ctx.font = '13px monospace'; }
-      else if (ln.startsWith('추천 수업') || ln.startsWith('우선 추천')) { ctx.fillStyle = okColor(); ctx.font = 'bold 13px monospace'; }
-      else if (ln.startsWith('──')) { ctx.fillStyle = '#444'; ctx.font = '13px monospace'; }
-      else { ctx.fillStyle = '#ddd'; ctx.font = '13px monospace'; }
+      if (ln.startsWith('[')) { ctx.fillStyle = themeAccent(); ctx.font = fs(15, true); }
+      else if (ln.startsWith('  · ')) { ctx.fillStyle = warnColor(); ctx.font = fs(13); }
+      else if (ln.startsWith('추천 수업') || ln.startsWith('우선 추천')) { ctx.fillStyle = okColor(); ctx.font = fs(13, true); }
+      else if (ln.startsWith('──')) { ctx.fillStyle = '#444'; ctx.font = fs(13); }
+      else { ctx.fillStyle = '#ddd'; ctx.font = fs(13); }
       ctx.fillText(ln, 28, y);
       y += 22;
     }
 
     ctx.textAlign = 'center';
-    if (r.toast > 0) { ctx.fillStyle = okColor(); ctx.font = 'bold 14px monospace'; ctx.fillText('✓ 진단 리포트를 저장했어요 (인쇄·보관용)', LW / 2, 512); }
-    else if (r.toast < 0) { ctx.fillStyle = badColor(); ctx.font = 'bold 14px monospace'; ctx.fillText('이 환경에서는 내보낼 수 없어요 (브라우저에서 시도)', LW / 2, 512); }
-    else { ctx.fillStyle = '#777'; ctx.font = '13px monospace'; ctx.fillText('Z: 리포트 내보내기(.txt/클립보드) · ◀▶ 학생 전환 · X: 닫기', LW / 2, 512); }
+    if (r.toast > 0) { ctx.fillStyle = okColor(); ctx.font = fs(14, true); ctx.fillText('✓ 진단 리포트를 저장했어요 (인쇄·보관용)', LW / 2, 512); }
+    else if (r.toast < 0) { ctx.fillStyle = badColor(); ctx.font = fs(14, true); ctx.fillText('이 환경에서는 내보낼 수 없어요 (브라우저에서 시도)', LW / 2, 512); }
+    else { ctx.fillStyle = '#777'; ctx.font = fs(13); ctx.fillText('Z: 리포트 내보내기(.txt/클립보드) · ◀▶ 학생 전환 · X: 닫기', LW / 2, 512); }
     ctx.textAlign = 'left';
   }
 
@@ -7642,14 +7642,14 @@
     ctx.fillRect(0, 0, LW, LH);
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 22px monospace';
+    ctx.font = fs(22, true);
     ctx.fillText('✎ 커스텀 퀴즈 (선생님 문제)', 24, 38);
     const cnt = getCustomQuizzes().length;
     ctx.fillStyle = cnt ? okColor() : '#888';
-    ctx.font = 'bold 14px monospace';
+    ctx.font = fs(14, true);
     ctx.fillText(`현재 등록된 커스텀 문제: ${cnt}개`, 24, 64);
     ctx.fillStyle = '#888';
-    ctx.font = '12px monospace';
+    ctx.font = fs(12);
     ctx.fillText('커스텀 문제는 퀴즈 챌린지의 「커스텀 · 선생님 문제」 주제와', 24, 86);
     ctx.fillText('맞춤·오늘의 도전에 함께 출제됩니다.', 24, 104);
 
@@ -7659,29 +7659,29 @@
     }
 
     ctx.fillStyle = '#777';
-    ctx.font = '11px monospace';
+    ctx.font = fs(11);
     ctx.fillText('형식: [ {"q":"문제","a":["보기1","보기2","보기3"],"c":1,"why":"해설"}, … ]', 24, listY + QUIZEDIT_ITEMS.length * rowH + 18);
     ctx.fillText('또는 { "questions": [ … ] }  ·  c는 정답 번호(0~2)', 24, listY + QUIZEDIT_ITEMS.length * rowH + 36);
 
     if (q.confirm) {
       ctx.textAlign = 'center';
       ctx.fillStyle = badColor();
-      ctx.font = 'bold 15px monospace';
+      ctx.font = fs(15, true);
       ctx.fillText(`커스텀 문제 ${getCustomQuizzes().length}개를 모두 지울까요?`, LW / 2, 452);
       ctx.fillStyle = '#fff';
-      ctx.font = '13px monospace';
+      ctx.font = fs(13);
       ctx.fillText('Z: 모두 지우기   ·   X: 취소', LW / 2, 474);
       ctx.textAlign = 'left';
     } else if (q.toast !== 0) {
       ctx.textAlign = 'center';
-      if (q.toast < 0) { ctx.fillStyle = badColor(); ctx.font = 'bold 14px monospace';
+      if (q.toast < 0) { ctx.fillStyle = badColor(); ctx.font = fs(14, true);
         ctx.fillText('가져올 수 없어요. 형식을 확인하거나 브라우저에서 시도해 주세요.', LW / 2, 462); }
-      else { ctx.fillStyle = okColor(); ctx.font = 'bold 14px monospace';
+      else { ctx.fillStyle = okColor(); ctx.font = fs(14, true);
         ctx.fillText(q.toast >= 1 ? `✓ 커스텀 문제 ${q.toast}개를 등록했어요!` : '✓ 완료했어요!', LW / 2, 462); }
       ctx.textAlign = 'left';
     }
     ctx.fillStyle = '#777';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.textAlign = 'center';
     ctx.fillText('↑↓ 선택 · Z 실행 · X 닫기', LW / 2, 512);
     ctx.textAlign = 'left';
@@ -7841,7 +7841,7 @@
       ctx.lineWidth = 1;
       ctx.strokeRect(sx + 0.5, sy + 0.5, 37, 15);
       ctx.fillStyle = i >= 4 ? '#ff8a8a' : '#ffd644';
-      ctx.font = 'bold 10px monospace';
+      ctx.font = fs(10, true);
       ctx.fillText(ad.text, sx + 4, sy + 11);
     }
     ctx.globalAlpha = 1;
@@ -7907,7 +7907,7 @@
       { x: 7, y: 8, text: '추천' }, { x: 18, y: 7, text: '이쪽' }, { x: 11, y: 12, text: '다수' },
       { x: 21, y: 14, text: '별점' }, { x: 24, y: 9, text: '인기' },
     ];
-    ctx.font = 'bold 10px monospace';
+    ctx.font = fs(10, true);
     for (const hint of hints.slice(0, profile.recommendSigns)) {
       const sx = Math.round(hint.x * TS - cx + 6);
       const sy = Math.round(hint.y * TS - cy + 8);
@@ -7970,7 +7970,7 @@
         { x: 6, y: 7, text: '속보' }, { x: 12, y: 9, text: '단독' }, { x: 20, y: 7, text: '충격' },
         { x: 22, y: 13, text: '공유' }, { x: 10, y: 14, text: '불안' }, { x: 17, y: 12, text: '???' },
       ];
-    ctx.font = 'bold 10px monospace';
+    ctx.font = fs(10, true);
     for (const headline of headlines.slice(0, profile.headlineSigns)) {
       const sx = Math.round(headline.x * TS - cx + 5);
       const sy = Math.round(headline.y * TS - cy + 7);
@@ -8080,7 +8080,7 @@
       { x: 9, y: 8, text: '무료' }, { x: 25, y: 8, text: '동의' }, { x: 13, y: 15, text: '당첨' },
       { x: 31, y: 14, text: '오늘' }, { x: 4, y: 17, text: '해지' }, { x: 20, y: 19, text: '보안' },
     ];
-    ctx.save(); ctx.font = 'bold 10px monospace';
+    ctx.save(); ctx.font = fs(10, true);
     for (const s of signs.slice(0, profile.neonSigns)) {
       const sx = Math.round(s.x * TS - cx + 5), sy = Math.round(s.y * TS - cy + 7);
       if (sx < -70 || sx > LW + 40 || sy < -40 || sy > LH + 40) continue;
@@ -8194,14 +8194,14 @@
       if (friend) {
         // 친구가 된 인물: 머리 위 ♥ (말을 걸 수 있어요)
         ctx.fillStyle = '#e0453a';
-        ctx.font = 'bold 16px monospace';
+        ctx.font = fs(16, true);
         ctx.fillText('♥', Math.round(mo.x * TS - cx) + TS / 2 - 5, Math.round(mo.y * TS - cy) - 10 + bob);
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
         ctx.strokeText('♥', Math.round(mo.x * TS - cx) + TS / 2 - 5, Math.round(mo.y * TS - cy) - 10 + bob);
       } else {
         // 느낌표 (아직 헷갈리는 인물)
         ctx.fillStyle = '#ffd644';
-        ctx.font = 'bold 18px monospace';
+        ctx.font = fs(18, true);
         ctx.fillText('!', Math.round(mo.x * TS - cx) + TS / 2 - 3, Math.round(mo.y * TS - cy) - 10 + bob);
       }
     }
@@ -8214,11 +8214,11 @@
       ctx.textAlign = 'center';
       if (!game.reduceFx) {
         ctx.fillStyle = `rgba(255,244,180,${(0.28 * tw).toFixed(2)})`;
-        ctx.font = 'bold 30px monospace';
+        ctx.font = fs(30, true);
         ctx.fillText('✦', sx, sy + 9);
       }
       ctx.fillStyle = `rgba(255,214,68,${(0.6 + 0.4 * tw).toFixed(2)})`;
-      ctx.font = 'bold 20px monospace';
+      ctx.font = fs(20, true);
       ctx.fillText('✦', sx, sy + 7);
       ctx.textAlign = 'left';
     }
@@ -8325,7 +8325,7 @@
       ctx.lineWidth = 1;
       ctx.strokeRect(s.x + 0.5, s.y + 0.5, W, H);
       ctx.fillStyle = '#000';
-      ctx.font = 'bold 12px monospace';
+      ctx.font = fs(12, true);
       ctx.textAlign = 'center';
       ctx.fillText(deco.text, s.x + W / 2, s.y + H / 2 + 4);
       ctx.textAlign = 'left';
@@ -8545,7 +8545,7 @@
   function drawHud() {
     // 스테이지 + 지역 이름 + 목표
     const m = MAPS[game.map];
-    ctx.font = 'bold 14px monospace';
+    ctx.font = fs(14, true);
     const title = `${hudBadgeText(game.map, game.flags)} · ${m.name}`;
     // 방탈출 중에는 본편 퀘스트 대신 방 맥락 목표를 보여 준다 (클리어 후엔 보스방 안내)
     let objText;
@@ -8600,7 +8600,7 @@
     if (game.flags.mercy > 0) {
       utBox(LW - 196, 12, 64, 28, 4);
       ctx.fillStyle = '#e0453a';
-      ctx.font = 'bold 14px monospace';
+      ctx.font = fs(14, true);
       ctx.fillText(`♥ ${game.flags.mercy}`, LW - 184, 31);
     }
 
@@ -8609,13 +8609,13 @@
       const boxW = 206;
       utBox(LW - boxW - 10, game.flags.mercy > 0 ? 46 : 12, boxW, 30, 4);
       ctx.fillStyle = leak >= 5 ? '#e0453a' : leak >= 3 ? '#ffd644' : '#9bd3ff';
-      ctx.font = 'bold 13px monospace';
+      ctx.font = fs(13, true);
       ctx.fillText(`노출도 ${leak}/5 · ${privacyLevelLabel(leak)}`, LW - boxW, game.flags.mercy > 0 ? 66 : 32);
     }
 
     if (Sound.muted) {
       ctx.fillStyle = '#aaa';
-      ctx.font = '12px monospace';
+      ctx.font = fs(12);
       ctx.fillText('♪ 꺼짐(M)', LW - 110, 56);
     }
   }
@@ -8750,25 +8750,25 @@
     // 인물 이름 + 마음 게이지·상태 — 마음이 활짝 열리면 이름이 노래진다 (안아 줄 수 있다는 신호)
     utBox(24, 24, 240, 64, 6);
     ctx.fillStyle = b.spareReady ? '#ffd644' : '#fff';
-    ctx.font = 'bold 17px monospace';
+    ctx.font = fs(17, true);
     ctx.fillText(b.mon.name, 40, 50);
     if (b.isPersuade) {
       const stateColor = b.pState === 'open' ? okColor() : b.pState === 'shaken' ? warnColor() : badColor();
       ctx.fillStyle = stateColor;
-      ctx.font = 'bold 12px monospace';
+      ctx.font = fs(12, true);
       ctx.fillText(P_STATE_LABEL[b.pState], 40, 70);
       ctx.fillStyle = '#333';
       ctx.fillRect(72, 62, 168, 12);
       ctx.fillStyle = '#ffd644';
       ctx.fillRect(72, 62, 168 * clamp(b.gauge / b.gaugeMax, 0, 1), 12);
       ctx.fillStyle = '#888';
-      ctx.font = '11px monospace';
+      ctx.font = fs(11);
       ctx.fillText('마음', 244 - 24, 50);
     }
 
     // 플레이어 하트
     utBox(24, 100, 30 + b.maxHearts * 32, 44, 6);
-    ctx.font = '22px monospace';
+    ctx.font = fs(22);
     for (let i = 0; i < b.maxHearts; i++) {
       ctx.fillStyle = i < b.playerHp ? '#e0453a' : '#333';
       ctx.fillText('♥', 40 + i * 32, 132);
@@ -8912,11 +8912,11 @@
     ctx.textAlign = 'center';
     if (taunt) {
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 18px monospace';
+      ctx.font = fs(18, true);
       ctx.fillText(ellipsizeToWidth(taunt, maxW), cx, box.y - 28);
     }
     ctx.fillStyle = '#888';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.fillText(ellipsizeToWidth(guide, maxW), cx, box.y - 10);
     ctx.textAlign = 'left';
   }
@@ -8957,10 +8957,10 @@
       ctx.lineWidth = 1;
       ctx.strokeRect(24.5, 154.5, 210, 42);
       ctx.fillStyle = '#ffd644';
-      ctx.font = 'bold 13px monospace';
+      ctx.font = fs(13, true);
       ctx.fillText('프롤로그 · 따라의 마음 안쪽', 36, 176);
       ctx.fillStyle = '#bbb';
-      ctx.font = '11px monospace';
+      ctx.font = fs(11);
       ctx.fillText('퀴즈가 아니라, 듣고 피하고 다가가기', 36, 192);
     }
 
@@ -8996,7 +8996,7 @@
       if (b.p.openMechanic === 'dark' && (b.wave.darkWarnT || 0) > 0) {
         ctx.textAlign = 'center';
         ctx.fillStyle = Math.floor(game.time / 4) % 2 === 0 ? '#fff' : '#e07a5f';
-        ctx.font = 'bold 15px monospace';
+        ctx.font = fs(15, true);
         ctx.fillText('…!', box.x + box.w / 2, box.y - 12);
         ctx.textAlign = 'left';
       }
@@ -9006,25 +9006,25 @@
         const pc = b.wave.parcel;
         ctx.fillStyle = '#7bd1f0';
         ctx.fillRect(pc.hole.x - 9, pc.hole.y - 9, 18, 18);
-        ctx.fillStyle = '#000'; ctx.font = '11px monospace';
+        ctx.fillStyle = '#000'; ctx.font = fs(11);
         ctx.fillText('↩', pc.hole.x, pc.hole.y + 4);
-        if (pc.obj) { ctx.fillStyle = '#f0c060'; ctx.font = '16px monospace'; ctx.fillText('▣', pc.obj.x, pc.obj.y + 5); }
-        if (arena.carrying) { ctx.fillStyle = '#f0c060'; ctx.font = '13px monospace'; ctx.fillText('▣', arena.soul.x + 10, arena.soul.y - 8); }
+        if (pc.obj) { ctx.fillStyle = '#f0c060'; ctx.font = fs(16); ctx.fillText('▣', pc.obj.x, pc.obj.y + 5); }
+        if (arena.carrying) { ctx.fillStyle = '#f0c060'; ctx.font = fs(13); ctx.fillText('▣', arena.soul.x + 10, arena.soul.y - 8); }
       }
       // 기울(보스) 반례 구슬 + 저울 접시 (상자 오른쪽·높은 쪽 가장자리)
       if (b.p.openMechanic === 'tilt' && b.pState === 'open') {
         const tl = b.wave.tilt;
         ctx.fillStyle = '#e0a53a';
         ctx.fillRect(tl.plate.x - 9, tl.plate.y - 9, 18, 18);
-        ctx.fillStyle = '#000'; ctx.font = '11px monospace';
+        ctx.fillStyle = '#000'; ctx.font = fs(11);
         ctx.fillText('⚖', tl.plate.x, tl.plate.y + 4);
-        ctx.fillStyle = '#e0a53a'; ctx.font = '10px monospace';
+        ctx.fillStyle = '#e0a53a'; ctx.font = fs(10);
         ctx.fillText('저울 접시', tl.plate.x, tl.plate.y - 16);
         if (tl.orb) {
-          ctx.fillStyle = '#8ecbff'; ctx.font = '16px monospace'; ctx.fillText('◍', tl.orb.x, tl.orb.y + 5);
-          ctx.font = '10px monospace'; ctx.fillText('반례', tl.orb.x, tl.orb.y - 12);
+          ctx.fillStyle = '#8ecbff'; ctx.font = fs(16); ctx.fillText('◍', tl.orb.x, tl.orb.y + 5);
+          ctx.font = fs(10); ctx.fillText('반례', tl.orb.x, tl.orb.y - 12);
         }
-        if (arena.carrying) { ctx.fillStyle = '#8ecbff'; ctx.font = '13px monospace'; ctx.fillText('◍', arena.soul.x + 10, arena.soul.y - 8); }
+        if (arena.carrying) { ctx.fillStyle = '#8ecbff'; ctx.font = fs(13); ctx.fillText('◍', arena.soul.x + 10, arena.soul.y - 8); }
       }
       // 반짝(보스) 반짝이는 보상 아이템 — 240프레임 가까워지면 깜빡인다(버티면 곧 소멸+보상)
       if (b.p.openMechanic === 'tempt' && b.pState === 'open') {
@@ -9032,9 +9032,9 @@
         if (tp.obj) {
           const near = tp.obj.age > 180 && Math.floor(game.time / 6) % 2 === 0;
           ctx.fillStyle = near ? '#fff2a8' : '#ffd644';
-          ctx.font = '18px monospace';
+          ctx.font = fs(18);
           ctx.fillText('✧', tp.obj.x, tp.obj.y + 6);
-          ctx.font = '10px monospace';
+          ctx.font = fs(10);
           ctx.fillText('반짝', tp.obj.x, tp.obj.y - 12);
         }
       }
@@ -9044,7 +9044,7 @@
         if (tr.obj) {
           const isReal = tr.obj.kind === 'real';
           ctx.fillStyle = isReal ? okColor() : badColor();
-          ctx.font = 'bold 14px monospace';
+          ctx.font = fs(14, true);
           ctx.fillText(isReal ? '[진]' : '[낚]', tr.obj.x, tr.obj.y + 5);
         }
       }
@@ -9062,7 +9062,7 @@
       // 반짝(보스) 조명 표시 — 버틴 횟수(resisted)만큼 조명이 하나씩 꺼진다
       if (b.p.openMechanic === 'tempt' && b.pState === 'open') {
         const resisted = b.wave.tempt.resisted || 0;
-        ctx.font = '14px monospace';
+        ctx.font = fs(14);
         for (let i = 0; i < 3; i++) {
           ctx.fillStyle = i < resisted ? '#333' : '#ffd644';
           ctx.fillText('●', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
@@ -9071,7 +9071,7 @@
       // 그럴싸(보스) [진] 적중 표시 — 잡은 개수(caught)만큼 불이 들어온다
       if (b.p.openMechanic === 'truth' && b.pState === 'open') {
         const caught = b.wave.truth.caught || 0;
-        ctx.font = '14px monospace';
+        ctx.font = fs(14);
         for (let i = 0; i < 3; i++) {
           ctx.fillStyle = i < caught ? okColor() : '#555';
           ctx.fillText('●', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
@@ -9083,7 +9083,7 @@
         ctx.fillStyle = '#333'; ctx.fillRect(box.x, box.y + box.h + 22, box.w, 4);
         ctx.fillStyle = '#e0a583'; ctx.fillRect(box.x, box.y + box.h + 22, box.w * (lvl / SHRINK_MAX_LEVEL), 4);
         ctx.textAlign = 'center';
-        ctx.fillStyle = '#e0a583'; ctx.font = '10px monospace';
+        ctx.fillStyle = '#e0a583'; ctx.font = fs(10);
         ctx.fillText(`포근함 ${lvl}/${SHRINK_MAX_LEVEL}`, box.x + box.w / 2, box.y + box.h + 34);
         ctx.textAlign = 'left';
       }
@@ -9092,7 +9092,7 @@
     // 하트(소울) — 무적 시간 동안 깜빡임
     if (!(arena.inv > 0 && Math.floor(game.time / 4) % 2 === 0)) {
       ctx.fillStyle = '#e0453a';
-      ctx.font = '17px monospace';
+      ctx.font = fs(17);
       ctx.textAlign = 'center';
       ctx.fillText('♥', arena.soul.x, arena.soul.y + 6);
       ctx.textAlign = 'left';
@@ -9104,7 +9104,7 @@
       const alpha = fa.t < 20 ? fa.t / 20 : fa.t > fa.dur - 30 ? (fa.dur - fa.t) / 30 : 1;
       const fy = box.y - 70 - fa.t * 0.12; // 외침(-28)·안내(-10)와 겹치지 않게 그 위에서 시작
       ctx.textAlign = 'center';
-      ctx.font = 'bold 14px monospace';
+      ctx.font = fs(14, true);
       const parts = String(fa.text).split('\n');
       for (let i = 0; i < parts.length; i++) {
         ctx.fillStyle = `rgba(255,255,255,${Math.max(0, alpha)})`;
@@ -9129,10 +9129,10 @@
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 40px monospace';
+    ctx.font = fs(40, true);
     ctx.fillText('마음의 문', LW / 2, 86);
     ctx.fillStyle = '#888';
-    ctx.font = '15px monospace';
+    ctx.font = fs(15);
     ctx.fillText('화면 속에서, 누군가 기다리고 있다', LW / 2, 114);
 
     // 인물들 둥실둥실 (한 줄)
@@ -9150,7 +9150,7 @@
       utBox(boxX, y, boxW, h, 4);
       if (sel) {
         ctx.fillStyle = '#e0453a';
-        ctx.font = '16px monospace';
+        ctx.font = fs(16);
         ctx.textAlign = 'left';
         ctx.fillText('♥', boxX - 22, y + 38);
       }
@@ -9184,21 +9184,21 @@
     ctx.fillStyle = '#777';
     // 단축키는 핵심만 — 나머지는 I 도움말(또는 메뉴). 벽 같은 키 나열은 초등 첫인상을 해친다.
     if (isTouchDevice) {
-      ctx.font = '14px monospace';
+      ctx.font = fs(14);
       ctx.fillText('스틱으로 슬롯 선택 · Ⓐ로 시작', LW / 2, 456);
       ctx.fillStyle = '#9aa8c8';
-      ctx.font = '13px monospace';
+      ctx.font = fs(13);
       ctx.fillText('친구수첩·백업 등 → [메뉴]   ·   선생님 → 오른쪽 아래', LW / 2, 476);
     } else {
-      ctx.font = '13px monospace';
+      ctx.font = fs(13);
       ctx.fillText('↑↓ 선택  ·  Z 시작  ·  X 삭제  ·  I 도움말', LW / 2, 456);
       ctx.fillStyle = '#666';
-      ctx.font = '12px monospace';
+      ctx.font = fs(12);
       ctx.fillText('T 선생님 방' + (hasDeletedSlot() ? '  ·  R 지운 세이브 되살리기' : '') + '  ·  M 음악', LW / 2, 476);
     }
     // 빌드 버전 — SW 캐시로 옛 빌드가 남았는지 구분용
     ctx.fillStyle = '#444';
-    ctx.font = '11px monospace';
+    ctx.font = fs(11);
     ctx.fillText(`v${GAME_VERSION}`, LW - 36, 18);
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
@@ -9208,13 +9208,13 @@
     const found = ['home', 'dawn', 'farewell', 'silent']
       .map((k) => (seen[k] ? names[k] : '???')).join(' · ');
     ctx.fillStyle = '#e0453a';
-    ctx.font = '13px monospace';
+    ctx.font = fs(13);
     ctx.fillText(`♥ 발견한 엔딩 ${seenCount}/4 — ${found}   ·   친구 ${dexSeenCount()}/${DEX_ORDER.length}`, LW / 2, 498);
 
     // 저장 불가 환경 경고 (비공개 모드·저장공간 가득 등)
     if (!storageOk) {
       ctx.fillStyle = badColor();
-      ctx.font = 'bold 12px monospace';
+      ctx.font = fs(12, true);
       ctx.fillText('⚠ 진행이 저장되지 않는 환경이에요 — 메뉴의 데이터 백업을 이용하세요', LW / 2, 520);
     }
 
@@ -9225,15 +9225,15 @@
       const sum = slotSummary(game.slotCursor);
       utBox(LW / 2 - 200, 200, 400, 130, 6);
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 18px monospace';
+      ctx.font = fs(18, true);
       ctx.fillText(`슬롯 ${game.slotCursor + 1} "${sum ? sum.name : ''}"`, LW / 2, 240);
-      ctx.font = '15px monospace';
+      ctx.font = fs(15);
       ctx.fillStyle = '#e0453a';
       ctx.fillText('정말 삭제할까요?', LW / 2, 270);
       ctx.fillStyle = '#888';
-      ctx.font = '13px monospace';
+      ctx.font = fs(13);
       ctx.fillText('실수로 지웠다면 슬롯 화면에서 R로 한 번 되살릴 수 있어요.', LW / 2, 292);
-      ctx.font = '14px monospace';
+      ctx.font = fs(14);
       ctx.fillText('Z: 삭제   ·   X: 취소', LW / 2, 316);
     }
     ctx.textAlign = 'left';
@@ -9507,9 +9507,9 @@
     if (game.endingType === 'true') {
       const e = TRUE_ENDINGS[game.flags.endingId] || TRUE_ENDINGS.farewell;
       ctx.fillStyle = e.color;
-      ctx.font = 'bold 34px monospace';
+      ctx.font = fs(34, true);
       ctx.fillText(e.title, LW / 2, 110);
-      ctx.font = '16px monospace';
+      ctx.font = fs(16);
       ctx.fillStyle = '#ccc';
       let ty = 160;
       for (const l of e.lines) { ctx.fillText(l, LW / 2, ty); ty += 26; }
@@ -9518,7 +9518,7 @@
       // 다회차 동기 — 발견한 결말 수 (타이틀에도 기록이 남는다)
       const seenCount = Object.keys(getEndingsSeen()).filter((k) => TRUE_ENDINGS[k]).length;
       ctx.fillStyle = '#666a8c';
-      ctx.font = '13px monospace';
+      ctx.font = fs(13);
       ctx.fillText(`발견한 결말 ${seenCount}/${Object.keys(TRUE_ENDINGS).length}` +
         (seenCount < Object.keys(TRUE_ENDINGS).length ? ' — 다른 작별도, 있었을지 모른다' : ' — 모든 작별을 만났다'), LW / 2, ty + 32);
       if (e.yeongi) {
@@ -9532,7 +9532,7 @@
       }
       if (game.endingT > 150) {
         ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
-        ctx.font = '15px monospace';
+        ctx.font = fs(15);
         ctx.fillText('Z·스페이스를 누르면 마을로 돌아갑니다', LW / 2, 510);
       }
       ctx.textAlign = 'left';
@@ -9541,14 +9541,14 @@
 
     // 1차 엔딩 (스테이지 5 클리어)
     ctx.fillStyle = '#ffd644';
-    ctx.font = 'bold 36px monospace';
+    ctx.font = fs(36, true);
     ctx.fillText('축하합니다!', LW / 2, 100);
 
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 22px monospace';
+    ctx.font = fs(22, true);
     ctx.fillText('🏆 마음의 수호자 인증서 🏆', LW / 2, 155);
 
-    ctx.font = '16px monospace';
+    ctx.font = fs(16);
     ctx.fillStyle = '#ccc';
     const lines = [
       '위 어린이는 다섯 거리를 모두 지나며',
@@ -9903,6 +9903,8 @@
     chapter2HubVisualProfile, chapter2HubVisibleMarks, chapter3HubVisualProfile, chapter3HubVisibleMarks,
     chapter4HubVisualProfile, chapter4HubVisibleMarks, chapter5HubVisualProfile, chapter5HubVisibleMarks,
     stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
+    heldKeys: () => Array.from(held), // E2E 멀티터치 검증용 — 현재 눌린 논리 키
+    srLiveText: () => (srLiveEl ? srLiveEl.textContent : null), // aria-live 미러 검증용
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록
     persuadeAvail: () => (game.battle ? availableClaims(game.battle).map((c) => c.text) : []),

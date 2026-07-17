@@ -449,33 +449,6 @@ const Sound = {
     this._timers = [];
   },
 
-  // 예약·재생 중인 BGM 오실레이터를 전부 즉시 종료한다.
-  // gain disconnect만으로는 브라우저에 따라 잔향이 남을 수 있어 osc.stop()까지 한다.
-  _hardStopBgm() {
-    this._clearTimers();
-    this._songGen = (this._songGen || 0) + 1;
-    const now = this.ctx ? this.ctx.currentTime : 0;
-    for (const node of this._bgmNodes) {
-      try {
-        node.g.gain.cancelScheduledValues(now);
-        node.g.gain.setValueAtTime(0, now);
-        node.osc.stop(now);
-      } catch (e) {}
-      try { node.osc.disconnect(); } catch (e) {}
-      try { node.g.disconnect(); } catch (e) {}
-    }
-    this._bgmNodes = [];
-    if (this.bgmGain) {
-      try {
-        this.bgmGain.gain.cancelScheduledValues(now);
-        this.bgmGain.gain.setValueAtTime(0, now);
-        this.bgmGain.disconnect();
-      } catch (e) {}
-      this.bgmGain = null;
-    }
-    this.songName = null;
-  },
-
   _ensureBgmBus() {
     if (!this.ctx || !this.master) return null;
     if (this.bgmGain) return this.bgmGain;
@@ -485,19 +458,58 @@ const Sound = {
     return this.bgmGain;
   },
 
-  stopSong() {
-    this._hardStopBgm();
+  // 부드러운 정지 — 현재 BGM 버스를 짧게 페이드아웃한 뒤 노드를 정리한다.
+  // 맵 이동·배틀 진입에서 곡이 '뚝' 끊기는 대신 스르륵 잦아들게 한다.
+  // 새 곡은 새 버스에서 즉시 시작하므로(크로스페이드) 체감 지연은 없다.
+  _fadeOutBgm(dur) {
+    this._clearTimers();
+    this._songGen = (this._songGen || 0) + 1; // 끊긴 루프가 다시 스케줄하지 못하게
+    const oldNodes = this._bgmNodes;
+    const oldBus = this.bgmGain;
+    this._bgmNodes = [];
+    this.bgmGain = null;
+    this.songName = null;
+    if (!this.ctx || !oldBus) return;
+    const now = this.ctx.currentTime;
+    const d = (typeof dur === 'number' && dur > 0) ? dur : 0.3;
+    try {
+      oldBus.gain.cancelScheduledValues(now);
+      oldBus.gain.setValueAtTime(oldBus.gain.value, now);
+      oldBus.gain.linearRampToValueAtTime(0, now + d);
+    } catch (e) { /* 실패하면 아래 지연 정리에서 그냥 멈춘다 */ }
+    setTimeout(() => {
+      const t = this.ctx ? this.ctx.currentTime : 0;
+      for (const node of oldNodes) {
+        try { node.osc.stop(t); } catch (e) {}
+        try { node.osc.disconnect(); } catch (e) {}
+        try { node.g.disconnect(); } catch (e) {}
+      }
+      try { oldBus.disconnect(); } catch (e) {}
+    }, d * 1000 + 60);
   },
 
-  // 맵 전환용 — 이전 BGM을 항상 끄고 현재 맵 곡만 튼다 (같은 song 키여도 재시작).
+  stopSong() {
+    this._fadeOutBgm(0.25);
+  },
+
+  // 맵 전환용 — 이전 곡은 페이드아웃, 현재 맵 곡은 새 버스에서 페이드인(크로스페이드).
+  // (같은 song 키여도 재시작)
   playMapBgm(name) {
     this.init();
     if (!this.ctx) return;
     if (!name || !SONGS[name]) name = 'village';
-    this._hardStopBgm();
+    this._fadeOutBgm(0.3);
     this.songName = name;
     const gen = this._songGen;
-    this._ensureBgmBus();
+    const bus = this._ensureBgmBus();
+    if (bus) {
+      // 새 곡 페이드인 — 크로스페이드의 절반
+      const now = this.ctx.currentTime;
+      try {
+        bus.gain.setValueAtTime(0, now);
+        bus.gain.linearRampToValueAtTime(1, now + 0.3);
+      } catch (e) { bus.gain.value = 1; }
+    }
     this._scheduleLoop(name, gen);
   },
 

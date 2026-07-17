@@ -391,6 +391,18 @@ if (process.argv.includes('--print')) {
   }
 })();
 
+// 큰 글씨 모드 린트 — 캔버스 폰트는 반드시 fs()를 거쳐야 largeText 배율이 적용된다.
+// 'NNpx monospace' 하드코딩이 새로 들어오면 큰 글씨 모드에서 그 텍스트만 작게 남는다.
+(() => {
+  const raw = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
+  raw.split('\n').forEach((line, i) => {
+    if (/function fs\(px, bold\)/.test(line)) return; // fs() 정의 자신은 예외
+    if (/['"`](bold )?\d+px monospace['"`]/.test(line)) {
+      err(`폰트 린트 src/game.js:${i + 1} — 하드코딩 폰트 발견, fs(크기[, 굵게])를 쓰세요 (큰 글씨 모드 적용)`);
+    }
+  });
+})();
+
 // 서비스워커 캐시 버전 = 자산 해시 검증 — 자산을 고치고 캐시를 안 올리면
 // 배포 후에도 클라이언트가 옛 버전을 계속 보는 사고가 난다. (npm run bump로 갱신)
 (() => {

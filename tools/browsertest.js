@@ -152,6 +152,112 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
     await ctx.close();
   }
 
+  // 큰 글씨 모드(1.25×) 렌더: 전 화면 fs() 전환(P-1) 회귀 검증 — 타이틀·월드·메뉴가
+  // 배율 적용 상태로 프레임 오류 없이 그려지는지 본다.
+  {
+    console.log('[largetext] 큰 글씨 모드 렌더');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await page.evaluate(() => { window.__game.largeText = true; });
+    await page.waitForTimeout(300); // 타이틀 렌더
+    await page.evaluate(() => {
+      window.__test.applyTiltStreetClass();
+      window.__game.largeText = true;
+      window.__game.mode = 'world';
+    });
+    await page.waitForTimeout(300); // 월드 렌더
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300); // 일시정지 메뉴 렌더
+    check('큰 글씨: 렌더 유지(프레임 크래시 없음)', (await page.evaluate(() => window.__game.mode)) !== undefined && errors.length === 0);
+    await page.screenshot({ path: path.join(shotsDir, 'browser-largetext.png') });
+    await ctx.close();
+  }
+
+  // 멀티터치: 같은 버튼 두 손가락 → 하나만 떼도 유지, 스틱은 둘째 손가락이 탈취 못 함
+  {
+    console.log('[multitouch] 태블릿 멀티터치 입력');
+    const ctx = await browser.newContext({
+      viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true,
+    });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    const r = await page.evaluate(() => {
+      // 합성 TouchEvent로 게임 요소 핸들러를 직접 구동 (e.changedTouches 기반 로직 검증)
+      const mkTouch = (el, id, x, y) => new Touch({ identifier: id, target: el, clientX: x, clientY: y });
+      const fire = (el, type, touches) => el.dispatchEvent(new TouchEvent(type, { changedTouches: touches, bubbles: true, cancelable: true }));
+      const center = (el) => { const b = el.getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2]; };
+      const out = {};
+
+      const btn = document.getElementById('t-a');
+      const [bx, by] = center(btn);
+      fire(btn, 'touchstart', [mkTouch(btn, 11, bx, by)]);
+      fire(btn, 'touchstart', [mkTouch(btn, 12, bx + 4, by)]);
+      fire(btn, 'touchend', [mkTouch(btn, 11, bx, by)]);          // 한 손가락만 뗌
+      out.heldAfterOneUp = window.__test.heldKeys().includes('action');
+      fire(btn, 'touchend', [mkTouch(btn, 12, bx + 4, by)]);      // 나머지도 뗌
+      out.heldAfterAllUp = window.__test.heldKeys().includes('action');
+
+      const stick = document.getElementById('t-stick');
+      const [sx, sy] = center(stick);
+      fire(stick, 'touchstart', [mkTouch(stick, 21, sx + 40, sy)]); // 오른쪽으로 밀기
+      out.stickRight = window.__test.heldKeys().includes('right');
+      fire(stick, 'touchstart', [mkTouch(stick, 22, sx, sy)]);      // 둘째 손가락 난입
+      fire(stick, 'touchend', [mkTouch(stick, 22, sx, sy)]);        // 난입 손가락 뗌
+      out.stickSurvivesSteal = window.__test.heldKeys().includes('right');
+      fire(stick, 'touchend', [mkTouch(stick, 21, sx + 40, sy)]);   // 원래 손가락 뗌
+      out.stickReleased = !window.__test.heldKeys().includes('right');
+      return out;
+    });
+    check('버튼: 두 손가락 중 하나만 떼면 유지', r.heldAfterOneUp === true);
+    check('버튼: 모두 떼면 릴리즈', r.heldAfterAllUp === false);
+    check('스틱: 방향 입력 인식', r.stickRight === true);
+    check('스틱: 둘째 손가락 탈취에도 이동 유지', r.stickSurvivesSteal === true);
+    check('스틱: 원래 손가락 떼면 정지', r.stickReleased === true);
+    await ctx.close();
+  }
+
+  // 오프라인 폴백: 서비스워커 캐시 준비 후, ?utm= 붙은 URL로 오프라인 재진입해도 열려야 한다
+  {
+    console.log('[offline] 쿼리스트링 오프라인 진입 폴백');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    // 주의: waitForFunction에 async 조건식을 주면 프로미스가 그대로 truthy로 평가돼
+    // 거짓 통과한다 — page.evaluate(프로미스를 실제로 기다림)를 Node 쪽에서 폴링한다.
+    let swReady = false;
+    for (let i = 0; i < 60 && !swReady; i++) {
+      swReady = await page.evaluate(async () => {
+        if (!('serviceWorker' in navigator)) return false;
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (!reg || !reg.active) return false;
+        const keys = await caches.keys();
+        if (!keys.length) return false;
+        const c = await caches.open(keys[0]);
+        return (await c.keys()).length >= 5; // 프리캐시 완료(자산 여러 개) 대기
+      }).catch(() => false);
+      if (!swReady) await page.waitForTimeout(250);
+    }
+    check('서비스워커 프리캐시 완료', swReady);
+    if (swReady) {
+      await ctx.setOffline(true);
+      let offlineOk = false;
+      try {
+        await page.goto(base + '?utm_source=share&fbclid=test', { waitUntil: 'load' });
+        await page.waitForFunction(() => !!window.__test, { timeout: 8000 });
+        offlineOk = true;
+      } catch (e) { /* 실패 기록 */ }
+      check('오프라인 + 쿼리스트링 진입 성공', offlineOk);
+      await ctx.setOffline(false);
+    }
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
 
