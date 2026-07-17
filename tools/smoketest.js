@@ -1524,7 +1524,7 @@ advanceDialog();
 check('담아(수집몬 보스) 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'menu');
 // R라운드 연습 파도 — 첫 상대 턴은 다치지 않는 리허설
 battleMenuPick(2); advanceReact(); // 첫 파도 (startListen 헬퍼는 practice를 끄므로 직접 진입)
-check('첫 파도는 연습(무피해 리허설)', g.battle.wave.practice === true);
+check('첫 패턴 파도는 연습(무피해 리허설)', g.battle.wave.practice === true && g.battle.practiceDone === true);
 {
   const b = g.battle;
   b.arena.inv = 0;

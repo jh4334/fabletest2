@@ -3898,6 +3898,14 @@ const PERSUADE = {
   yeongi_boss: {
     song: 'boss_yeongi', // 전용 테마 (N-2)
     pattern: 'rotate', // R라운드 — 「일곱 마음의 회전」: 지나온 패턴이 가볍게 순환
+    // rotate의 verify 파도용 — 영이에 관한 소문을 원본 기록과 대조한다
+    verifyCard: '코어 기록: 영이는 지워진 게 아니라, 숨었다',
+    verifyPieces: [
+      { label: '「영이는 처음부터 나빴다!」', truth: false },
+      { label: '「영이는 숨어 있었다」', truth: true },
+      { label: '「아무도 말 걸지 않았다」', truth: true },
+      { label: '「영이가 마을을 부쉈다!」', truth: false },
+    ],
     gaugeMax: 100,
     closedThreshold: 2,
     fragmentsPerWave: 3,

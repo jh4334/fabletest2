@@ -5062,9 +5062,11 @@
       // 고요 「아무 말 없음」 — 희미한 존재 곁에 머무르면 어둠이 걷힌다
       quiet: { spot: { x: box.x + box.w / 2, y: box.y + 50 }, nearT: 0, warm: b.quietWarm || 0 },
     };
-    // 연습 파도(R라운드) — 첫 상대 턴은 다치지 않는 리허설. 패턴을 안전하게 보여 준다.
+    // 연습 파도(R라운드) — 패턴이 '실제로 처음 등장하는' 파도가 무피해 리허설이 된다.
+    // (closed 상태로 흘려보낸 파도에 연습권이 소모되지 않게 activePattern으로 판정)
     b.waveCount = (b.waveCount || 0) + 1;
-    b.wave.practice = b.waveCount === 1 && !!b.p.pattern;
+    b.wave.practice = !b.practiceDone && !!activePattern(b);
+    if (b.wave.practice) b.practiceDone = true;
     // 담아 미끼·기울 편식 구슬 — 기존 기믹 상태에 함정 오브젝트 슬롯 추가
     b.wave.parcel.decoy = null; b.wave.parcel.decoyTimer = 200;
     b.wave.tilt.junk = null; b.wave.tilt.junkTimer = 160;
@@ -5081,6 +5083,16 @@
       b.wave.spawnTimer += 30; // 예고가 끝난 뒤에야 첫 탄막이 나온다
     }
     if (game.tts) Speech.speak(claim.text);
+    // R라운드 접근성 — 패턴이 처음 활성화되는 파도에 조작 안내를 낭독·플로팅 1회
+    const patNew = activePattern(b);
+    if (patNew && !b.patternIntroDone) {
+      b.patternIntroDone = true;
+      const g0 = PATTERN_GUIDES[patNew];
+      if (g0) {
+        pushFloat('* ' + g0, true);
+        if (game.tts) Speech.speak(g0);
+      }
+    }
   }
 
   function moveSoul(arena, box, speedMul) {
@@ -5192,8 +5204,21 @@
   function activePattern(b) {
     if (!b.p.pattern) return null;
     if (b.pState === 'closed') return null;
-    if (b.p.pattern === 'rotate') return ROTATE_SEQ[(b.waveCount - 1) % ROTATE_SEQ.length];
+    if (b.p.pattern === 'rotate') {
+      // verify는 원본 카드·조각 데이터가 있어야 성립 — 없으면 건너뛴다 (죽은 UI 방지)
+      const seq = b.p.verifyPieces ? ROTATE_SEQ : ROTATE_SEQ.filter((k) => k !== 'verify');
+      return seq[(b.waveCount - 1) % seq.length];
+    }
     return b.p.pattern;
+  }
+
+  // 패턴 오브젝트 스폰 좌표 — 하트에서 60px 이상 떨어진 곳으로 (반응할 틈 보장)
+  function spawnAway(box, soul, mx, my, w, h) {
+    for (let i = 0; i < 8; i++) {
+      const x = box.x + mx + Math.random() * (w != null ? w : box.w - mx * 2);
+      const y = box.y + my + Math.random() * (h != null ? h : box.h - my * 2);
+      if (Math.hypot(x - soul.x, y - soul.y) >= 60 || i === 7) return { x, y };
+    }
   }
 
   // 따라 「그림자 하트」 — 2초(90프레임) 전의 내 위치를 그대로 따라오는 그림자.
@@ -5207,6 +5232,14 @@
     if (sh.trail.length >= 90 && !w.practice && arena.inv <= 0) {
       const dx = ghost.x - arena.soul.x, dy = ghost.y - arena.soul.y;
       if (dx * dx + dy * dy < (SOUL_R + 8) * (SOUL_R + 8)) {
+        sh.trail.length = 0; // 궤적 초기화 — 그림자가 다시 다가오는 1.5초의 유예
+        if (!b.shadowWarned) {
+          // 배틀당 첫 접촉은 경고만 — 얼어붙은 아이를 연타하지 않는다
+          b.shadowWarned = true;
+          arena.inv = 42; b.flash = 8; Sound.bump();
+          pushFloat('따라: "잡았다! …이번만 봐줄게.\n크게 움직여 봐!"', true);
+          return;
+        }
         b.playerHp = Math.max(0, b.playerHp - 1);
         arena.inv = 42; b.flash = 12; Sound.bump();
         pushFloat('따라: "잡았다!\n…똑같이 움직였잖아."', true);
@@ -5217,7 +5250,7 @@
     sh.checkT -= 1;
     if (sh.checkT <= 0) {
       const dx = arena.soul.x - sh.refX, dy = arena.soul.y - sh.refY;
-      if (Math.hypot(dx, dy) > 70 && sh.tired < 3) {
+      if (Math.hypot(dx, dy) > 70 && sh.tired < 3 && !w.practice) {
         sh.tired += 1; b.shadowTired = sh.tired;
         b.gauge = clamp(b.gauge + 8, 0, b.gaugeMax);
         if (sh.tired >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 24); // 듣기 상한과 동일선
@@ -5250,7 +5283,8 @@
       if (vf.spawnTimer <= 0) {
         const piece = pieces[vf.idx % pieces.length];
         vf.idx += 1; b.verifyIdx = vf.idx;
-        vf.obj = { x: box.x + 40 + Math.random() * (box.w - 80), y: box.y + 30 + Math.random() * (box.h / 2), piece };
+        vf.obj = Object.assign(spawnAway(box, arena.soul, 40, 30, box.w - 80, box.h / 2), { piece });
+        if (game.tts) Speech.speak('속보. ' + piece.label); // 읽어주기 — 딱지 내용 낭독
       }
     }
     if (vf.obj) {
@@ -5271,7 +5305,7 @@
           const ok = vf.carry.truth === h.judge;
           if (ok) {
             vf.judged += 1; b.verifyJudged = vf.judged;
-            b.gauge = clamp(b.gauge + 8, 0, b.gaugeMax);
+            if (vf.judged <= 3) b.gauge = clamp(b.gauge + 8, 0, b.gaugeMax); // [D4] 3회 상한
             if (vf.judged >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2);
             pushFloat((b.p.truthReply || '…확인했구나.') + `\n(원본과 대조했다! ${Math.min(3, vf.judged)}/3)`, true);
             Sound.correct(); persuadeGaugeSync(b);
@@ -5322,8 +5356,13 @@
       cz.doorOpenT -= 1;
       const ddx = cz.door.x - arena.soul.x, ddy = cz.door.y - arena.soul.y;
       if (ddx * ddx + ddy * ddy < (SOUL_R + 12) * (SOUL_R + 12)) {
+        if (w.practice) { // 연습: 문 결단 체험만, 게이지 없음
+          pushFloat('* 연습: 문이 열리면 저리로!\n(실전에선 마음이 크게 열린다)', true);
+          cz.door = null; cz.doorT = 150;
+          return;
+        }
         cz.exits += 1; b.cozyExits = cz.exits;
-        b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax);
+        if (cz.exits <= 3) b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax); // [D4] 3회 상한
         if (cz.exits >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2);
         if (b.shrinkLevel) b.shrinkLevel = Math.max(0, b.shrinkLevel - 1);
         pushFloat((b.p.doorReply || '…잘 갔다 와.') + `\n(이불 밖으로! ${Math.min(3, cz.exits)}/3 — 시계가 멈췄다)`, true);
@@ -5346,7 +5385,7 @@
     q.near = dx * dx + dy * dy < 60 * 60;
     if (q.near) {
       q.nearT += 1;
-      if (q.nearT % 45 === 0 && q.warm < 5) {
+      if (q.nearT % 45 === 0 && q.warm < 5 && !w.practice) {
         q.warm += 1; b.quietWarm = q.warm;
         b.gauge = clamp(b.gauge + 6, 0, b.gaugeMax);
         pushFloat((b.p.nearReply || '……아직, 있네.') + `\n(어둠이 조금 걷혔다 ${q.warm}/5)`, true);
@@ -5361,7 +5400,7 @@
     if (!pc.decoy) {
       pc.decoyTimer -= 1;
       if (pc.decoyTimer <= 0) {
-        pc.decoy = { x: box.x + 30 + Math.random() * (box.w - 60), y: box.y + 30 + Math.random() * (box.h - 60), age: 0 };
+        pc.decoy = Object.assign(spawnAway(box, arena.soul, 30, 30), { age: 0 });
       }
     } else {
       pc.decoy.age += 1;
@@ -5397,8 +5436,11 @@
     if (arena.carrying) {
       const dx = pc.hole.x - arena.soul.x, dy = pc.hole.y - arena.soul.y;
       if (dx * dx + dy * dy < (SOUL_R + 12) * (SOUL_R + 12)) { // 배달
-        arena.carrying = false; pc.deliveries += 1; b.parcelDeliveries = pc.deliveries;
-        b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax);
+        arena.carrying = false;
+        if (w.practice) { pushFloat('* 연습: 꾸러미는 이렇게 돌려준다!', true); pc.spawnTimer = 90; return; }
+        pc.deliveries += 1; b.parcelDeliveries = pc.deliveries;
+        // [D4] 3회 이후에는 게이지 지급 없음 — 마지막 한 걸음은 반드시 '대답'으로
+        if (pc.deliveries <= 3) b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax);
         pushFloat(b.p.parcelReply || '…돌려줄게.', true);
         if (pc.deliveries >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3회 → 만충 직전
         pc.spawnTimer = 90;
@@ -5416,7 +5458,7 @@
     if (!tl.junk) {
       tl.junkTimer -= 1;
       if (tl.junkTimer <= 0) {
-        tl.junk = { x: box.x + 20 + Math.random() * (box.w / 2 - 40), y: box.y + 40 + Math.random() * (box.h - 80), age: 0 };
+        tl.junk = Object.assign(spawnAway(box, arena.soul, 20, 40, box.w / 2 - 40, box.h - 80), { age: 0 });
       }
     } else {
       tl.junk.age += 1;
@@ -5453,8 +5495,10 @@
     if (arena.carrying) {
       const dx = tl.plate.x - arena.soul.x, dy = tl.plate.y - arena.soul.y;
       if (dx * dx + dy * dy < (SOUL_R + 12) * (SOUL_R + 12)) { // 높은 쪽(오른쪽) 저울 접시에 배달
-        arena.carrying = false; tl.deliveries += 1; b.tiltDeliveries = tl.deliveries;
-        b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax);
+        arena.carrying = false;
+        if (w.practice) { pushFloat('* 연습: 반례 구슬은 이렇게 접시로!', true); tl.spawnTimer = 90; return; }
+        tl.deliveries += 1; b.tiltDeliveries = tl.deliveries;
+        if (tl.deliveries <= 3) b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax); // [D4] 3회 상한
         // 0.9 → 0.6 → 0.3 → 0 (표를 사용해 부동소수점 오차 없이 정확한 값으로)
         tl.drift = TILT_DRIFT_STEPS[Math.min(tl.deliveries, TILT_DRIFT_STEPS.length - 1)];
         pushFloat((b.p.tiltReply || '…어? 저울이… 움직였다?') + '\n(기울기가 줄었다!)', true);
@@ -5473,11 +5517,7 @@
     if (!tp.obj) {
       tp.spawnTimer -= 1;
       if (tp.spawnTimer <= 0) {
-        tp.obj = {
-          x: box.x + 30 + Math.random() * (box.w - 60),
-          y: box.y + 30 + Math.random() * (box.h - 60),
-          age: 0,
-        };
+        tp.obj = Object.assign(spawnAway(box, arena.soul, 30, 30), { age: 0 });
       }
       return;
     }
@@ -5485,6 +5525,14 @@
     const dx = tp.obj.x - arena.soul.x, dy = tp.obj.y - arena.soul.y;
     const d2 = dx * dx + dy * dy;
     if (d2 < (SOUL_R + 10) * (SOUL_R + 10)) {
+      if (arena.inv > 0) return; // 무적 중엔 접촉 판정 없음 (탄막 피격과 같은 프레임 2중 피해 방지)
+      // 응시 도중 살짝 스친 것은 벌하지 않는다 — 응시만 처음부터 다시 (조작 미숙 배려)
+      if (tp.obj.gazeT > 0 && !w.practice) {
+        tp.obj.gazeT = 0;
+        pushFloat('* 앗, 너무 가까워!\n(반 발짝 떨어져서 읽자)', true);
+        arena.inv = 20;
+        return;
+      }
       // 접촉 — 역효과: 피해 + 광고 얼룩 (연습 파도에서는 안내만)
       tp.obj = null;
       tp.spawnTimer = 60;
@@ -5506,9 +5554,11 @@
       tp.obj.gazeT = (tp.obj.gazeT || 0) + 1;
       if (tp.obj.gazeT >= 45) {
         tp.obj = null; tp.spawnTimer = 60;
+        if (w.practice) { pushFloat('* 연습: 확률을 읽으면\n빛이 꺼진다!', true); return; }
+        const wasMax = tp.resisted >= 3;
         tp.resisted = Math.min(3, tp.resisted + 1);
         b.temptResisted = tp.resisted;
-        b.gauge = clamp(b.gauge + 8, 0, b.gaugeMax);
+        if (!wasMax) b.gauge = clamp(b.gauge + 8, 0, b.gaugeMax); // [D4] 3회 상한
         if (tp.resisted >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2);
         pushFloat((b.p.gazeReply || '…확률을, 읽었어?') + `\n(레전드 1.5%… 빛이 꺼졌다 ${tp.resisted}/3)`, true);
         Sound.correct(); persuadeGaugeSync(b);
@@ -5519,9 +5569,11 @@
       // 버텨 냄 — 소멸 + 보상(게이지 +10, 조명 하나 꺼짐, 최대 3회)
       tp.obj = null;
       tp.spawnTimer = 60;
+      if (w.practice) { pushFloat('* 연습: 안 만지고 버티면\n유혹은 사라진다!', true); return; }
+      const wasMax = tp.resisted >= 3;
       tp.resisted = Math.min(3, tp.resisted + 1);
       b.temptResisted = tp.resisted;
-      b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax);
+      if (!wasMax) b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax); // [D4] 3회 상한
       pushFloat((b.p.temptReply || '…버텼다.') + `\n(조명이 하나 꺼졌다! ${tp.resisted}/3)`, true);
       if (tp.resisted >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3회 → 만충 직전
       Sound.correct();
@@ -9407,7 +9459,7 @@
     parcel: '내 정보 꾸러미를 ↩에 돌려주자 · 공짜 🎁는 미끼!',
     tilt: '밝은 반례 구슬만 ⚖ 접시로 — 어두운 편식 구슬은 함정',
     verify: '🛑에 멈춰 원본과 대조 → 조각을 참/거짓 구멍에!',
-    tempt: '누르지 말고 곁에서 확률표를 읽자 — 빛이 꺼진다',
+    tempt: '곁에서 확률표를 읽자 — 멀리서 버텨도 돼!',
     cozy: '담요는 포근하지만 시간이 샌다 — 문이 열리면 나가자!',
     quiet: '…곁에 있어 주자. 어둠이 조금씩 걷힌다.',
     truth: '[진]만 잡자 — [낚]은 그럴듯한 가짜',
@@ -9504,9 +9556,9 @@
           ctx.font = fs(10); ctx.fillText('반례', tl.orb.x, tl.orb.y - 12);
         }
         if (arena.carrying) { ctx.fillStyle = '#8ecbff'; ctx.font = fs(13); ctx.fillText('◍', arena.soul.x + 10, arena.soul.y - 8); }
-        if (tl.junk) {
-          ctx.fillStyle = '#6b5a86'; ctx.font = fs(16); ctx.fillText('◍', tl.junk.x, tl.junk.y + 5);
-          ctx.font = fs(10); ctx.fillText('편식', tl.junk.x, tl.junk.y - 12);
+        if (tl.junk) { // 반례(◍)와 다른 글리프(▼) — 색만으로 구분하지 않는다
+          ctx.fillStyle = '#6b5a86'; ctx.font = fs(15); ctx.fillText('▼', tl.junk.x, tl.junk.y + 5);
+          ctx.font = fs(11, true); ctx.fillText('편식', tl.junk.x, tl.junk.y - 12);
         }
       }
       // 반짝(보스) 대박 버튼 — 곁에서 확률표를 읽으면(응시 링) 빛이 꺼진다
@@ -9537,8 +9589,8 @@
         // 원본 카드 (상자 위)
         ctx.fillStyle = 'rgba(123,209,240,0.14)';
         ctx.fillRect(box.x + box.w / 2 - 120, box.y - 30, 240, 20);
-        ctx.fillStyle = '#7bd1f0'; ctx.font = fs(11, true);
-        ctx.fillText(b.p.verifyCard || '원본 기록', box.x + box.w / 2, box.y - 16);
+        ctx.fillStyle = '#7bd1f0'; ctx.font = fs(13, true);
+        ctx.fillText(b.p.verifyCard || '원본 기록', box.x + box.w / 2, box.y - 15);
         // 판정 구멍
         ctx.fillStyle = okColor();
         ctx.fillRect(box.x + 7, box.y + box.h / 2 - 9, 18, 18);
@@ -9546,24 +9598,33 @@
         ctx.fillStyle = badColor();
         ctx.fillRect(box.x + box.w - 25, box.y + box.h / 2 - 9, 18, 18);
         ctx.fillStyle = '#000'; ctx.fillText('거짓', box.x + box.w - 16, box.y + box.h / 2 + 4);
-        // 멈춤존 (하단 중앙)
+        // 멈춤존 (하단 중앙) — 쿨다운은 줄어드는 링 + '쉬는 중' 표시로 알린다
+        const szx = box.x + box.w / 2, szy = box.y + box.h - 15;
         ctx.fillStyle = vf.stopCd > 0 ? '#444' : '#e0453a';
         ctx.font = fs(13);
-        ctx.fillText('🛑', box.x + box.w / 2, box.y + box.h - 12);
+        ctx.fillText('🛑', szx, szy + 3);
+        if (vf.stopCd > 0) {
+          ctx.strokeStyle = '#666'; ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(szx, szy, 13, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (vf.stopCd / 240));
+          ctx.stroke();
+          ctx.fillStyle = '#888'; ctx.font = fs(9);
+          ctx.fillText('쉬는 중…', szx, szy - 18);
+        }
         if (vf.slowT > 0) {
-          ctx.fillStyle = 'rgba(142,203,255,0.5)'; ctx.font = fs(10);
-          ctx.fillText('…세상이 느려졌다', box.x + box.w / 2, box.y + box.h - 26);
+          ctx.fillStyle = 'rgba(142,203,255,0.7)'; ctx.font = fs(11);
+          ctx.fillText('…세상이 느려졌다', szx, szy - 18);
         }
         // 조각(딱지 포함) — 들고 있으면 하트 옆에
         if (vf.obj) {
           ctx.fillStyle = '#fff'; ctx.font = fs(12, true);
-          ctx.fillText('[속보]', vf.obj.x, vf.obj.y - 8);
-          ctx.font = fs(10); ctx.fillStyle = '#ffd644';
-          ctx.fillText(vf.obj.piece.label, vf.obj.x, vf.obj.y + 6);
+          ctx.fillText('[속보]', vf.obj.x, vf.obj.y - 10);
+          ctx.font = fs(13, true); ctx.fillStyle = '#ffd644';
+          ctx.fillText(vf.obj.piece.label, vf.obj.x, vf.obj.y + 7);
         }
         if (arena.carrying && vf.carry) {
-          ctx.fillStyle = '#ffd644'; ctx.font = fs(10);
-          ctx.fillText(vf.carry.label, arena.soul.x, arena.soul.y - 14);
+          ctx.fillStyle = '#ffd644'; ctx.font = fs(13, true);
+          ctx.fillText(vf.carry.label, arena.soul.x, arena.soul.y - 15);
         }
       }
       // (구) [진]/[낚] 잡기 — verify 미사용 프로필 호환
