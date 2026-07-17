@@ -148,6 +148,10 @@ function crudeWin() {
         else { dispatch('keydown', { key: 'x' }); step(1); dispatch('keyup', { key: 'x' }); // 뒤로
                g.battle.menuIdx = 2; tap('z'); dialogTaps += 1; } // 카드가 없으면 듣기
       }
+    } else if (b.phase === 'sub' && b.sub && b.sub.kind === 'finalgate') {
+      // 최종 관문(Q-3) — 일기를 읽어 온 아이처럼 정답을 고른다
+      const i = b.sub.options.findIndex((o) => o.correct);
+      g.battle.subIdx = i >= 0 ? i : 0; tap('z'); dialogTaps += 1;
     } else if (b.phase === 'react') {
       tap('z'); dialogTaps += 1;
     } else if (b.phase === 'wave') {
@@ -313,6 +317,14 @@ setPos(9, 6, 'up'); tap('z'); pickChoice(0); advanceDialog();   // 진짜 도메
 setPos(9, 10, 'up'); tap('z'); advanceDialog();                 // 본인 확인함 → 본인표 열쇠
 if (!g.flags.s4KeyId) throw new Error('본인표 열쇠 없음');
 mark('4장 구역② 회원가입 골목 (판별 + 열쇠②)');
+
+// 구역③ 백스테이지 — 반짝의 「불 꺼진 무대」 주장을 받아치는 ev_offstage 카드.
+// 읽기 게이트(Q-1) 이후 듣기만으로는 게이지가 만충되지 않아, 정석대로
+// 증거 카드를 모아 와야 보스를 설득할 수 있다 (열쇠 2개로 안쪽 문 개방).
+enterZone(15, 5, 'ArrowUp', 'backstage'); // 워프 칸 (15,4) 바로 아래에서 위로
+setPos(9, 8, 'down'); tap('z'); advanceDialog(); // 잠긴 문(9,9) → 열쇠 2개로 개방
+if (!g.flags.evCards.includes('ev_offstage')) throw new Error('백스테이지 보상 없음');
+mark('4장 구역③ 백스테이지 (ev_offstage)');
 
 enterZone(18, 2, 'ArrowUp', 'yuhokstage');
 setPos(7, 3, 'up'); tap('z'); advanceDialog();

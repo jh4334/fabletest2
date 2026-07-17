@@ -4397,6 +4397,7 @@
     if (b.mercyChoiceKind === 'mercy') lines.push(cfg.mercyLine);
     lines.push(cfg.clearLine);
     lines.push(cfg.afterLine);
+    grantDiaryShard('ch' + n, lines, b.mercyChoiceKind); // 자비로 되돌렸다면 일기 조각(Q-2)
     lines.push(bandiBossLine('ch' + n, b.mercyChoiceKind, game.flags));
     startDialog(lines, mon.name, () => Sound.playMapBgm(MAPS[cfg.map].song));
   }
@@ -4426,6 +4427,7 @@
       lines.push('💛 고요의 침묵 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!');
     }
     lines.push('☆ 가장 깊은 곳의 문이 열렸다 ☆\n…고요를 지나, 코어로 들어선다.');
+    grantDiaryShard('goyo', lines, b.mercyChoiceKind); // 마지막 조각 — 서명 「— 영」이 드러난다
     lines.push(bandiBossLine('goyo', b.mercyChoiceKind, game.flags));
     startDialog(lines, mon.name, () => Sound.playMapBgm(MAPS.coreroom.song));
   }
@@ -4470,7 +4472,10 @@
       save();
     }
     if (mon.clear) lines.push(mon.clear);
-    if (b.monId === 'bekkyeomon') lines.push(bandiBossLine('prologue', b.mercyChoiceKind, game.flags));
+    if (b.monId === 'bekkyeomon') {
+      grantDiaryShard('prologue', lines, b.mercyChoiceKind); // 첫 일기 조각(Q-2) — 미스터리의 시작
+      lines.push(bandiBossLine('prologue', b.mercyChoiceKind, game.flags));
+    }
     if (b.monId === 'yeongi') {
       // 최종 엔딩 분기: 여정 전체의 자비 + 마지막 선택
       const endingId = computeEnding(b.mercyChoiceKind, game.flags.mercy);
@@ -4609,7 +4614,8 @@
       game.flags.sawPersuadeTip = true;
       lines.push(
         '[마음 조각 배틀]\n서로 번갈아 이야기해요.\n내 차례엔 「말 걸기·증거·듣기·안아 주기」\n중 하나를 골라요.',
-        '「가만히 듣기」로 속마음을 들으면\n마음이 조금 열리고, 힌트를 얻어요.\n상대 차례엔 ' + (isTouchDevice ? '스틱' : '화살표') + '로 하트를 움직여\n마음의 파도(탄막)를 피해요.',
+        '「가만히 듣기」로 속마음을 들으면\n마음이 조금 열리고, 힌트를 얻어요.\n들은 마음엔 「말 걸기」로 대답해야\n끝까지 열려요 — 잘 읽고 골라요!',
+        '상대 차례엔 ' + (isTouchDevice ? '스틱' : '화살표') + '로 하트를 움직여\n마음의 파도(탄막)를 피해요.',
         '이름이 노랗게 변하면 —\n「마음 안아 주기」로 배틀이 끝나요.\n하트가 다 닳으면 잠시 물러났다 다시 와요.'
       );
     }
@@ -4804,6 +4810,14 @@
       recordTopicResult(game.currentSlot, monTopic(b), false);
       text = claim.onWrong || '…아니야. 그런 게 아니야.';
       if (viaNote) text += '\n' + viaNote;
+      // 읽기 게이트(Q-1): 틀리면 속마음을 한 번 더 비춰 준다 — 읽고 다시 고르는 순환.
+      // 아직 안 들었다면 듣기부터 하라고 짚어 준다 (벌이 아니라 배우는 오답).
+      if (b.listened && b.listened[b.claimIdx]) {
+        const echo = (claim.hint || '').split('\n')[0];
+        if (echo) text += `\n* 들었던 속마음이 스친다 —\n${echo}`;
+      } else {
+        text += '\n(먼저 「가만히 듣기」로\n속마음을 들어 보자)';
+      }
       b.pIntense = true; // 다음 탄막 턴 강화
       b.flash = 14; Sound.wrong();
       if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.min(SHRINK_MAX_LEVEL, (b.shrinkLevel || 0) + 1);
@@ -4836,17 +4850,44 @@
       const claim = currentClaim();
       const inner = claim.hint ||
         ((claim.fragments && claim.fragments.length) ? claim.fragments.join('\n') : '……');
-      // 들어 준 만큼 마음이 조금 열린다 — 닫힘 해제(closedThreshold)와 게이지 소폭 상승
+      // 읽기 게이트(Q-1): 같은 주장은 다시 들어도 마음이 더 열리지 않는다 —
+      // 들은 속마음에는 「말 걸기」로 대답해야 다음으로 나아간다.
+      if (!b.listened) b.listened = {};
+      if (b.listened[b.claimIdx]) {
+        setReact(b, `${b.mon.name}: "${claim.text}"\n\n* 같은 이야기를 다시 들려준다…\n${inner}\n(들은 마음은 대답을 기다린다 — 「말 걸기」)`, 'wave');
+        return;
+      }
+      b.listened[b.claimIdx] = true;
+      // 들어 준 만큼 마음이 조금 열린다 — 단, 듣기만으로는 만충 직전까지.
+      // 마지막 한 걸음은 반드시 마음에 닿는 '대답'(정답 +26/32)이어야 한다.
       const n = b.p.fragmentsPerWave || 3;
       b.fragmentTotal += n;
       pStats().fragments += n;
-      b.gauge = clamp(b.gauge + n * 2, 0, b.gaugeMax);
+      const listenCap = Math.max(0, b.gaugeMax - 24);
+      b.gauge = clamp(Math.min(b.gauge + n * 2, Math.max(b.gauge, listenCap)), 0, b.gaugeMax);
       persuadeGaugeSync(b);
       setReact(b, `${b.mon.name}: "${claim.text}"\n\n* 가만히 귀를 기울였다 —\n${inner}`, 'wave');
       return;
     }
     // 마음 안아 주기
-    if (b.gauge >= b.gaugeMax) { persuadeTriumph(); return; }
+    if (b.gauge >= b.gaugeMax) {
+      // 최종 관문(Q-3): 영이만은, 안아 주기 전에 이야기를 이해했는지 묻는다.
+      // 일기 조각(Q-2)을 읽어 온 아이는 한 번에 답한다 — 클라이맥스 = 독해 관문.
+      if (b.persuadeId === 'yeongi_boss' && !b.finalGateDone) {
+        b.sub = {
+          kind: 'finalgate',
+          options: shuffled([
+            { label: '누군가 이야기를 끝까지 들어 주는 것', correct: true },
+            { label: '모두보다 반짝반짝 빛나는 것', correct: false },
+            { label: '완벽한 가면을 완성하는 것', correct: false },
+          ]),
+        };
+        b.subIdx = 0; b.phase = 'sub'; Sound.select();
+        if (game.tts) Speech.speak('영이가 정말 바란 건 뭐였을까? ' + b.sub.options[0].label);
+        return;
+      }
+      persuadeTriumph(); return;
+    }
     if (b.pState === 'open') {
       setReact(b, '* 마음이 열리고 있다.\n…조금만 더 이야기를 나누자.', 'wave');
     } else {
@@ -4855,6 +4896,21 @@
   }
   function selectBattleSub(b) {
     const opt = b.sub.options[b.subIdx];
+    if (b.sub.kind === 'finalgate') { // 최종 관문(Q-3) — 게이지 증감 없음, 이해했는지만 묻는다
+      if (opt.correct) {
+        b.finalGateDone = true;
+        Sound.correct();
+        setReact(b, '영이: "……어떻게, 알았어."\n\n* 가면 너머의 눈이, 처음으로\n너를 똑바로 본다.\n(다시 한번 — 「마음 안아 주기」)', 'menu');
+      } else {
+        Sound.wrong();
+        const hasLastShard = game.flags.diaryShards && game.flags.diaryShards.goyo;
+        setReact(b, '영이: "…아니야. 그런 게 아니야."\n\n' +
+          (hasLastShard
+            ? '* 일기 조각의 마지막 줄이 스친다 —\n「말을 걸어도 아무도 대답하지 않던 날」'
+            : '* 지나온 아이들의 이야기를\n다시 떠올려 보자.'), 'wave');
+      }
+      return;
+    }
     if (b.sub.kind === 'act') {
       if (opt.locked) {
         Sound.bump(); b.flash = 6;
@@ -5545,14 +5601,21 @@
   const PAUSE_ITEMS = ['journal', 'cards', 'halloffame', 'awards', 'cosmetics',
     'challenge', 'review', 'dex', 'backup', 'difficulty', 'textspeed', 'tts',
     'largetext', 'colorblind', 'reducefx', 'lowgraphics', 'volume', 'mute', 'help', 'close'];
-  // 방탈출 중에는 「힌트」 항목을 맨 위에 붙인다 (터치 기기에서 H키 대체)
+  // 방탈출 중에는 「힌트」 항목을 맨 위에 붙인다 (터치 기기에서 H키 대체).
+  // 「낡은 일기」(Q-2)는 첫 조각을 줍기 전에는 목록에 없다 — 미스터리는 주운 뒤부터.
   function pauseItems() {
-    return game.puzzleRun ? ['hint'].concat(PAUSE_ITEMS) : PAUSE_ITEMS;
+    let items = game.puzzleRun ? ['hint'].concat(PAUSE_ITEMS) : PAUSE_ITEMS;
+    if (diaryCount() > 0) {
+      items = items.slice();
+      items.splice(items.indexOf('cards') + 1, 0, 'diary');
+    }
+    return items;
   }
   const PAUSE_LABELS = {
     hint: '💡 힌트',
     journal: '◆ 모험 일지',
     cards: '📚 기억 조각',
+    diary: '✉ 낡은 일기',
     halloffame: '🏆 명예의 전당',
     dashboard: '▤ 교사용 대시보드',
     report: '🩺 학생 진단 리포트',
@@ -5593,6 +5656,7 @@
     if (item === 'awards') return `${countAchievements(game.currentSlot)}/${ACHIEVEMENTS.length}`;
     if (item === 'cosmetics') return `${unlockedCount(game.currentSlot)}/${TITLES.length + THEMES.length}`;
     if (item === 'cards') return `${collectedCards(game.currentSlot)}/${LEARN_CARDS.length}`;
+    if (item === 'diary') return `${diaryCount()}/${DIARY_SHARDS.length}`;
     if (item === 'quizedit') return `${getCustomQuizzes().length}개`;
     if (item === 'journal') {
       const s = buildLearningSummary(game.currentSlot);
@@ -5636,6 +5700,7 @@
       if (item === 'hint') { const had = game.puzzleRun; closePause(); if (had) openHint(); }
       else if (item === 'journal') openJournal('pause');
       else if (item === 'cards') openCards('pause');
+      else if (item === 'diary') openDiary('pause');
       else if (item === 'halloffame') openHof('pause');
       else if (item === 'cert') openCert('pause');
       else if (item === 'dashboard') openDashboard('pause');
@@ -6551,6 +6616,92 @@
     ctx.fillStyle = '#777';
     ctx.font = fs(13);
     ctx.textAlign = 'center';
+    ctx.fillText('↑↓ 넘기기 · Z 또는 X로 닫기', LW / 2, 514);
+    ctx.textAlign = 'left';
+  }
+
+  // ---------- 낡은 일기 (Q-2 기억 미스터리) ----------
+  // 보스를 자비로 되돌리면 떨어지는 일기 조각 모음. 일곱 조각을 이어 읽으면
+  // 다섯 거리의 아이들이 전부 '한 사람이 버린 마음'이었음이 드러난다.
+  function diaryCount() {
+    const d = game.flags && game.flags.diaryShards;
+    return d ? DIARY_SHARDS.filter((s) => d[s.key]).length : 0;
+  }
+  // mercyKind를 인자로 받는다 — 승리 처리들이 game.battle을 먼저 비우기 때문
+  function grantDiaryShard(key, lines, mercyKind) {
+    if (mercyKind !== 'mercy') return;
+    const shard = DIARY_SHARDS.find((s) => s.key === key);
+    if (!shard) return;
+    if (!game.flags.diaryShards) game.flags.diaryShards = {};
+    if (game.flags.diaryShards[key]) return;
+    game.flags.diaryShards[key] = true;
+    save();
+    lines.push(`✦ 낡은 일기 조각 ${shard.no}을 주웠다.\n\n「${shard.text}」`);
+    lines.push(shard.bandi);
+    if (diaryCount() === 1) lines.push('(주운 조각은 메뉴의 「낡은 일기」에서\n언제든 다시 읽을 수 있다)');
+  }
+  function openDiary(ret) {
+    game.diary = { ret, scroll: 0 };
+    game.mode = 'diary';
+    Sound.select();
+  }
+  function updateDiary() {
+    const d = game.diary;
+    const maxScroll = Math.max(0, DIARY_SHARDS.length - DIARY_VISIBLE);
+    if (justPressed('up')) { d.scroll = Math.max(0, d.scroll - 1); Sound.blip(); }
+    if (justPressed('down')) { d.scroll = Math.min(maxScroll, d.scroll + 1); Sound.blip(); }
+    if (justPressed('cancel') || justPressed('menu') || justPressed('action')) {
+      game.mode = d.ret || 'pause';
+      Sound.select();
+    }
+  }
+  const DIARY_VISIBLE = 4;
+  function drawDiary() {
+    const d = game.diary;
+    const shards = game.flags.diaryShards || {};
+    ctx.fillStyle = '#0b0e1a';
+    ctx.fillRect(0, 0, LW, LH);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff';
+    ctx.font = fs(22, true);
+    ctx.fillText('✉ 낡은 일기', 24, 36);
+    ctx.fillStyle = warnColor();
+    ctx.font = fs(14, true);
+    ctx.fillText(`조각 ${diaryCount()} / ${DIARY_SHARDS.length}`, 24, 58);
+    ctx.fillStyle = '#888';
+    ctx.font = fs(11);
+    ctx.fillText('마음을 안아 준 아이가 하나씩 돌려준다. …누구의 일기일까.', 200, 58);
+    const rowH = 100, top = 74, w = LW - 48;
+    for (let k = 0; k < DIARY_VISIBLE; k++) {
+      const i = d.scroll + k;
+      if (i >= DIARY_SHARDS.length) break;
+      const s = DIARY_SHARDS[i];
+      const got = !!shards[s.key];
+      const x = 24, y = top + k * (rowH + 6);
+      utBox(x, y, w, rowH, 6);
+      ctx.textAlign = 'center';
+      ctx.font = fs(26);
+      ctx.fillStyle = got ? themeAccent() : '#444';
+      ctx.fillText(got ? s.no : '?', x + 40, y + 56);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = got ? '#ddd' : '#444';
+      ctx.font = fs(13);
+      if (got) {
+        let ty = y + 26;
+        for (const line of s.text.split('\n')) {
+          if (!line) { ty += lh(9); continue; }
+          ctx.fillText(line, x + 78, ty);
+          ty += lh(19);
+        }
+      } else {
+        ctx.fillText('…아직 찾지 못한 조각.', x + 78, y + 54);
+      }
+    }
+    ctx.fillStyle = '#888'; ctx.font = fs(14); ctx.textAlign = 'center';
+    if (d.scroll > 0) ctx.fillText('▲', LW / 2, top - 2);
+    if (d.scroll + DIARY_VISIBLE < DIARY_SHARDS.length) ctx.fillText('▼', LW / 2, top + DIARY_VISIBLE * (rowH + 6) + 2);
+    ctx.fillStyle = '#777';
+    ctx.font = fs(13);
     ctx.fillText('↑↓ 넘기기 · Z 또는 X로 닫기', LW / 2, 514);
     ctx.textAlign = 'left';
   }
@@ -8825,7 +8976,8 @@
       // 증거 카드는 후반에 10장을 넘으므로 커서를 따라가는 스크롤 창으로 그린다.
       ctx.fillStyle = '#ccc';
       ctx.font = fs(16);
-      ctx.fillText(b.sub.kind === 'act' ? '* 무슨 말을 건넬까?' : '* 어떤 증거를 보여 줄까?', 34, boxY + 34);
+      ctx.fillText(b.sub.kind === 'finalgate' ? '* …영이가 정말 바란 건, 뭐였을까?'
+        : b.sub.kind === 'act' ? '* 무슨 말을 건넬까?' : '* 어떤 증거를 보여 줄까?', 34, boxY + 34);
       const opts = b.sub.options;
       const stepS = game.largeText ? 40 : 34;
       const maxRows = game.largeText ? 4 : 5;
@@ -9765,6 +9917,10 @@
         updateCards();
         drawCards();
         break;
+      case 'diary':
+        updateDiary();
+        drawDiary();
+        break;
       case 'cert':
         updateCert();
         drawCert();
@@ -9906,6 +10062,7 @@
     heldKeys: () => Array.from(held), // E2E 멀티터치 검증용 — 현재 눌린 논리 키
     srLiveText: () => (srLiveEl ? srLiveEl.textContent : null), // aria-live 미러 검증용
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
+    pauseItems, diaryCount, // 낡은 일기(Q-2) — 동적 메뉴 검증용
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록
     persuadeAvail: () => (game.battle ? availableClaims(game.battle).map((c) => c.text) : []),
     battleObserve: () => (game.battle ? battleObserve(game.battle) : ''),

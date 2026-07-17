@@ -283,6 +283,26 @@ check('누적 3 ≥ 임계(2) → 동요 전환 + 플로팅', g.battle.pState ==
 check('듣기 로그(조각 수 승계)', g.flags.pStats.fragments === 3);
 advanceReact();
 check('듣기 후 상대 턴 — 조각 없는 탄막', g.battle.phase === 'wave' && g.battle.wave.fragTotal === 0);
+// 읽기 게이트(Q-1): 같은 주장 반복 듣기는 게이지를 더 주지 않는다 — 대답을 기다린다
+forceMenu();
+battleMenuPick(2);
+check('반복 듣기 — 게이지 그대로(+0)·대답 안내', g.battle.gauge === 6 &&
+  /대답을 기다린다/.test(g.battle.react.text));
+advanceReact();
+// 읽기 게이트(Q-1): 듣기만으로는 만충 직전(gaugeMax-24)까지만 — 마지막은 정답으로
+forceMenu();
+{
+  const b = g.battle;
+  b.gauge = b.gaugeMax - 10; // 상한 위에서 새 주장 듣기 시도
+  b.listened = {};           // 새 주장으로 가정 (듣기 1회권 초기화)
+  battleMenuPick(2);
+  check('듣기 상한 — 만충 직전에서 더 오르지 않음', b.gauge === b.gaugeMax - 10 && !b.spareReady);
+}
+advanceReact();
+forceMenu();
+g.battle.gauge = 6; g.battle.listened = { 0: true }; // 이후 흐름(탈진·재도전 수치) 원복
+battleMenuPick(2); advanceReact(); // 반복 듣기(+0)로 상대 턴 재진입 — 탈진 검증용 탄막
+check('원복 후 상대 턴 — 게이지 6 유지', g.battle.phase === 'wave' && g.battle.gauge === 6);
 // 탈진: 하트를 1로 두고 하트 위에 탄을 얹어 결정적으로 피격
 g.battle.playerHp = 1;
 g.battle.arena.inv = 0;
@@ -337,7 +357,7 @@ check('프롤로그 마무리 후 1장 거리 입구로 자연 진입', g.map ==
 check('1장 목표가 바로 거리 탐험으로 이어짐', windowObj.__test.currentObjective() === '금고문으로 — 구역을 돌자');
 check('기억은 승리 후 지워짐', !g.flags.persuadeMemory.bekkyeomon);
 check('설득 로그 누적(응답·듣기)', g.flags.pStats.gateRight === 1 && g.flags.pStats.gateWrong === 1 &&
-  g.flags.pStats.fragments === 3);
+  g.flags.pStats.fragments === 6); // 듣기 2회(첫 듣기 + 상한 검증) ×3 — 반복 듣기는 미집계
 
 console.log('[21] 진엔딩 플래그 → 마을의 영이 등장');
 {
@@ -668,7 +688,9 @@ check('초기 커서 0 (수호자 일지)', g.pauseCursor === 0);
 // 교사 전용 항목(dashboard·report·classmode·quizedit·cert)은 「선생님 방」으로 옮겨져
 // 더 이상 학생용 일시정지 메뉴에 없다(스텔스 교육 원칙) — 아래 [41]/[46]/[52]에서 확인.
 const { PAUSE_ITEMS: PAUSE_ORDER, TEACHER_ITEMS } = vm.runInContext('window.__test', sandbox);
-const pauseIdx = (name) => PAUSE_ORDER.indexOf(name);
+// 「낡은 일기」(Q-2)는 조각을 주우면 동적으로 끼어들므로, 커서 내비게이션은
+// 정적 PAUSE_ITEMS가 아니라 실제 pauseItems()의 인덱스를 쓴다.
+const pauseIdx = (name) => vm.runInContext('window.__test.pauseItems()', sandbox).indexOf(name);
 check('일시정지 메뉴에 교사 항목 없음', !PAUSE_ORDER.includes('dashboard') && !PAUSE_ORDER.includes('report') &&
   !PAUSE_ORDER.includes('classmode') && !PAUSE_ORDER.includes('quizedit') && !PAUSE_ORDER.includes('cert'));
 check('일시정지 메뉴에 백업은 남음', PAUSE_ORDER.includes('backup'));
@@ -1567,6 +1589,8 @@ tap('z'); // 응답 닫기 → 승리 처리
 check('승리 대화 시작', g.mode === 'dialog');
 advanceDialog();
 check('1장 클리어 플래그', g.flags.chapter1Clear === true);
+check('일기 조각 ②(Q-2) — 자비 승리로 획득', g.flags.diaryShards && g.flags.diaryShards.ch1 === true &&
+  Object.keys(g.flags.diaryShards).length === 1);
 check('보스 승리 후 금고 앞(거리) 복귀', g.map === 'freestreet' && g.player.x === 17 && g.player.y === 5);
 check('라이브러리 수집몬 처치 플래그 오염 없음', g.flags.defeated.sujipmon === false);
 check('보스는 도감 순서에 없음', !DEX_ORDER.includes('sujipmon_boss'));
@@ -1974,6 +1998,9 @@ step(1);
 check('[진] 접촉 → 게이지 +6', g.battle.gauge === truthGaugeBefore1 + 6);
 check('[진] 접촉 → truthCaught 1', g.battle.truthCaught === 1);
 check('접촉한 조각 소멸', g.battle.wave.truth.obj === null);
+// 하트를 다시 구석으로 — [진]을 집은 자리(무작위 좌표)에 그대로 두면
+// 두 번째 조각이 그 근처에 스폰될 때 즉시 접촉·소멸해 플레이크가 난다
+g.battle.arena.soul.x = g.battle.arena.box.x + 8; g.battle.arena.soul.y = g.battle.arena.box.y + 8;
 step(61); // 두 번째 조각([낚]) 스폰
 check('두 번째 헤드라인 조각은 [낚]', !!g.battle.wave.truth.obj && g.battle.wave.truth.obj.kind === 'bait');
 g.battle.wave.fragments.length = 0;
@@ -2640,7 +2667,19 @@ check('보스는 도감 순서에 없음', !DEX_ORDER.includes('yeongi_boss'));
 g.flags.mercy = 25;
 g.battle.gauge = g.battle.gaugeMax; step(1); // 게이지 만충 → 내 턴 + spareReady
 check('게이지 만충 → 내 턴 + spareReady(영이)', g.battle.phase === 'menu' && g.battle.spareReady === true);
-battleMenuPick(3); // 마음 안아 주기
+battleMenuPick(3); // 마음 안아 주기 → 최종 관문(Q-3: 스토리 이해 확인)
+check('안아 주기 → 최종 관문(영이가 바란 것 3지선다)', g.battle.phase === 'sub' && g.battle.sub.kind === 'finalgate' &&
+  g.battle.sub.options.length === 3);
+g.battle.subIdx = g.battle.sub.options.findIndex((o) => !o.correct); tap('z'); // 오답
+check('관문 오답 → 일기 회상 반응, 관문 미통과', g.battle.phase === 'react' && !g.battle.finalGateDone &&
+  /떠올려 보자|일기 조각/.test(g.battle.react.text));
+advanceReact(); // 게이지 만충이라 탄막 없이 내 턴 복귀
+check('오답 후 내 턴 복귀(게이지 불이익 없음)', g.battle.phase === 'menu' && g.battle.gauge === g.battle.gaugeMax);
+battleMenuPick(3); // 다시 안아 주기 → 관문 재도전
+g.battle.subIdx = g.battle.sub.options.findIndex((o) => o.correct); tap('z'); // 정답
+check('관문 정답 → 눈을 마주친다', g.battle.phase === 'react' && g.battle.finalGateDone === true);
+advanceReact();
+battleMenuPick(3); // 관문 통과 후 안아 주기
 check('안아 주기 → 마음의 선택(영이 기존 mercy 그대로 재사용)', g.battle.phase === 'mercy' &&
   g.battle.mon.mercy.prompt.includes('이만 사라져야 할까'));
 while (g.battle.cursor !== 0) tap('ArrowDown'); // "함께 돌아가자"(mercy)
