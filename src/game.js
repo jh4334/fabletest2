@@ -442,7 +442,11 @@
       if (!this.supported()) return;
       try {
         const vs = window.speechSynthesis.getVoices() || [];
-        this._voice = vs.find((v) => v.lang && v.lang.toLowerCase().indexOf('ko') === 0)
+        // 기기 내장(localService) 음성 우선 — 네트워크 음성은 대사 텍스트(학생 별명 포함)가
+        // 브라우저 제조사 서버로 나갈 수 있다 (개인정보 안내 문서와 일관되게)
+        const ko = (v) => v.lang && v.lang.toLowerCase().indexOf('ko') === 0;
+        this._voice = vs.find((v) => ko(v) && v.localService)
+          || vs.find(ko)
           || vs.find((v) => /korean|한국/i.test(v.name || '')) || null;
         if (vs.length > 0) this._voicePicked = true;
       } catch (e) { /* 무시 */ }
@@ -891,7 +895,8 @@
 
   // ---------- 데이터 백업 · 복원 ----------
   function allBackupKeys() {
-    const keys = [SETTINGS_KEY, ENDINGS_KEY, DEX_KEY];
+    // CUSTOM_QUIZ_KEY 포함 — 교사 제작 문항이 기기 교체 시 유실되지 않게 (S-2)
+    const keys = [SETTINGS_KEY, ENDINGS_KEY, DEX_KEY, CUSTOM_QUIZ_KEY];
     for (let i = 0; i < SLOT_COUNT; i++) {
       keys.push(slotKey(i), statsKey(i), mistakesKey(i), metaKey(i), cosmeticKey(i), puzzleKey(i));
     }
@@ -3901,7 +3906,9 @@
     const p = game.player;
     const nx = p.x + (p.dir === 'left' ? 1 : p.dir === 'right' ? -1 : 0);
     const ny = p.y + (p.dir === 'up' ? 1 : p.dir === 'down' ? -1 : 0);
-    if (!SOLID(tileAt(game.map, nx, ny)) && !npcAt(game.map, nx, ny)) {
+    // 이동 판정(tileBlocked)과 같은 기준으로 — 인물·친구·퍼즐 오브젝트 타일로
+    // 밀어 넣으면 4방향이 모두 막히는 영구 소프트락이 된다 (S-2)
+    if (!tileBlocked(nx, ny)) {
       p.x = nx; p.y = ny;
     }
     p.px = p.x * TS;
@@ -4599,7 +4606,7 @@
   function pStats() {
     if (!game.flags.pStats || game.flags.pStats.fragments === undefined) {
       // gateTimeout은 옛 「응답의 문」 시절의 잔재 — 구 세이브 호환을 위해 필드만 유지 (더는 증가하지 않음)
-      game.flags.pStats = { fragments: 0, gateRight: 0, gateWrong: 0, gateTimeout: 0, perfectWaves: 0, backfire: 0 };
+      game.flags.pStats = { fragments: 0, gateRight: 0, gateWrong: 0, gateTimeout: 0, perfectWaves: 0, backfire: 0, verifyWrong: 0 };
     }
     return game.flags.pStats;
   }
@@ -4693,6 +4700,17 @@
       // gaugeMax는 고정값 또는 flags를 받는 함수(고요의 침묵 루트 강화용) — 배틀 시작 시 1회만 계산해 굳힌다
       gaugeMax: (typeof p.gaugeMax === 'function') ? p.gaugeMax(game.flags) : (p.gaugeMax || 100),
       pState: memo ? memo.state : 'closed',
+      // 후퇴 전 패턴 카운터·연습 소진 복원 — 재입장 파밍 차단 (S-1)
+      parcelDeliveries: memo && memo.pat ? memo.pat.parcelDeliveries : 0,
+      tiltDeliveries: memo && memo.pat ? memo.pat.tiltDeliveries : 0,
+      temptResisted: memo && memo.pat ? memo.pat.temptResisted : 0,
+      verifyJudged: memo && memo.pat ? memo.pat.verifyJudged : 0,
+      verifyIdx: memo && memo.pat ? memo.pat.verifyIdx : 0,
+      cozyExits: memo && memo.pat ? memo.pat.cozyExits : 0,
+      quietWarm: memo && memo.pat ? memo.pat.quietWarm : 0,
+      shadowTired: memo && memo.pat ? memo.pat.shadowTired : 0,
+      practiceDone: !!(memo && memo.pat && memo.pat.practiceDone),
+      capNudged: !!(memo && memo.pat && memo.pat.capNudged),
       claimIdx: 0,
       playerHp: maxHearts,
       maxHearts,
@@ -4937,11 +4955,16 @@
         setReact(b, '영이: "……어떻게, 알았어."\n\n* 가면 너머의 눈이, 처음으로\n너를 똑바로 본다.\n(다시 한번 — 「마음 안아 주기」)', 'menu');
       } else {
         Sound.wrong();
+        // 오답 실코스트 — 마음이 살짝 닫혀(만충-2) 탄막 턴이 실제로 오고,
+        // 정답 응답 한 번으로 다시 만충해야 한다 (무비용 찍기 방지)
+        b.gauge = Math.min(b.gauge, b.gaugeMax - 2);
+        persuadeGaugeSync(b);
         const hasLastShard = game.flags.diaryShards && game.flags.diaryShards.goyo;
         setReact(b, '영이: "…아니야. 그런 게 아니야."\n\n' +
           (hasLastShard
             ? '* 일기 조각의 마지막 줄이 스친다 —\n「말을 걸어도 아무도 대답하지 않던 날」'
-            : '* 지나온 아이들의 이야기를\n다시 떠올려 보자.'), 'wave');
+            : '* 지나온 아이들의 이야기를\n다시 떠올려 보자.') +
+          '\n(마음이 살짝 닫혔다 — 한 번 더 대답하자)', 'wave');
       }
       return;
     }
@@ -4981,11 +5004,15 @@
   // speak=true면 game.tts일 때 Speech.speak로도 읽어 준다 — 과도한 수다를 막기 위해
   // 기믹의 "결과성" 이벤트(운반·버티기·진위 판정 완료 등)에만 선택적으로 붙인다.
   function pushFloat(text, speak) {
+    // 대기열 상한 2 — 오래된 줄부터 밀어낸다 (도파민은 신선할 때만)
+    if (game.battle && game.battle.floatQ.length >= 2) game.battle.floatQ.shift();
     if (!text) return;
     game.battle.floatQ.push(text);
     if (speak && game.tts) Speech.speak(text);
   }
   function updateFloats(b) {
+    // 보상 피드백이 행동보다 늦지 않게 — 대기열이 있으면 현재 줄을 90프레임으로 단축 (S-3)
+    if (b.floatActive && b.floatQ.length && b.floatActive.dur > 90) b.floatActive.dur = 90;
     if (!b.floatActive && b.floatQ.length) b.floatActive = { text: b.floatQ.shift(), t: 0, dur: 150 };
     if (b.floatActive) { b.floatActive.t += 1; if (b.floatActive.t >= b.floatActive.dur) b.floatActive = null; }
   }
@@ -5065,7 +5092,9 @@
     // 연습 파도(R라운드) — 패턴이 '실제로 처음 등장하는' 파도가 무피해 리허설이 된다.
     // (closed 상태로 흘려보낸 파도에 연습권이 소모되지 않게 activePattern으로 판정)
     b.waveCount = (b.waveCount || 0) + 1;
-    b.wave.practice = !b.practiceDone && !!activePattern(b);
+    // quiet(고요)는 원래 벌이 없는 패턴 — 연습 라벨이 감정 장면을 깨지 않게 생략
+    const apNow = activePattern(b);
+    b.wave.practice = !b.practiceDone && !!apNow && apNow !== 'quiet';
     if (b.wave.practice) b.practiceDone = true;
     // 담아 미끼·기울 편식 구슬 — 기존 기믹 상태에 함정 오브젝트 슬롯 추가
     b.wave.parcel.decoy = null; b.wave.parcel.decoyTimer = 200;
@@ -5192,8 +5221,9 @@
 
     // 탄막 턴 종료: 시간 만료 → 내 턴(메뉴)으로
     if (w.t >= w.dur) {
-      if (w.hits === 0) { b.gauge = clamp(b.gauge + 6, 0, b.gaugeMax); pStats().perfectWaves += 1;
-        pushFloat('* 끝까지 들어 줬다 — 마음 +6'); persuadeGaugeSync(b); }
+      // 무피해 보너스 — 연습 파도 제외 + gaugeMax-2 상한 (회피만으로는 만충 불가)
+      if (w.hits === 0 && !w.practice) { grantPatternGauge(b, 6); pStats().perfectWaves += 1;
+        pushFloat('* 끝까지 들어 줬다 — 마음 +6'); }
       enterMenuPhase(b);
     }
   }
@@ -5212,6 +5242,26 @@
     return b.p.pattern;
   }
 
+  // ── S라운드 공용 헬퍼 ──
+  // 패턴 보상 — 어떤 행동 보상도 gaugeMax-2를 넘지 못한다. 마지막 두 칸은
+  // 반드시 '대답'(정답 +26/32)만 채울 수 있다 (Q-1 읽기 게이트 불변식).
+  function grantPatternGauge(b, amount) {
+    b.gauge = clamp(Math.min(b.gauge + amount, Math.max(b.gauge, b.gaugeMax - 2)), 0, b.gaugeMax);
+    persuadeGaugeSync(b);
+  }
+  // 3회 상한 도달 안내 — 배틀당 1회, "이제 대답할 차례"를 짚어 준다
+  function patternCapNudge(b) {
+    if (b.capNudged) return;
+    b.capNudged = true;
+    pushFloat('반디: "몸으로는 충분히 보여 줬어!\n이제 네 말로 대답해 — 「말 걸기」"', true);
+  }
+  // 난이도 계수 — 저학년(easy)은 패턴 판정 창이 더 관대하다 (S-4)
+  function patEase() {
+    return game.difficulty === 'easy'
+      ? { gaze: 30, door: 130, shadowDelay: 120, slow: 130 }
+      : { gaze: 45, door: 90, shadowDelay: 90, slow: 90 };
+  }
+
   // 패턴 오브젝트 스폰 좌표 — 하트에서 60px 이상 떨어진 곳으로 (반응할 틈 보장)
   function spawnAway(box, soul, mx, my, w, h) {
     for (let i = 0; i < 8; i++) {
@@ -5226,10 +5276,11 @@
   // 충분히 새로운 자리로 이동해 있으면 따라가 지친다(+게이지, 파도당 최대 3회).
   function updateShadow(b) {
     const w = b.wave, sh = w.shadow, arena = b.arena;
+    const shadowDelay = patEase().shadowDelay; // 저학년은 그림자가 더 늦게 따라온다
     sh.trail.push({ x: arena.soul.x, y: arena.soul.y });
-    if (sh.trail.length > 90) sh.trail.shift();
+    if (sh.trail.length > shadowDelay) sh.trail.shift();
     const ghost = sh.trail[0];
-    if (sh.trail.length >= 90 && !w.practice && arena.inv <= 0) {
+    if (sh.trail.length >= shadowDelay && !w.practice && arena.inv <= 0) {
       const dx = ghost.x - arena.soul.x, dy = ghost.y - arena.soul.y;
       if (dx * dx + dy * dy < (SOUL_R + 8) * (SOUL_R + 8)) {
         sh.trail.length = 0; // 궤적 초기화 — 그림자가 다시 다가오는 1.5초의 유예
@@ -5238,6 +5289,16 @@
           b.shadowWarned = true;
           arena.inv = 42; b.flash = 8; Sound.bump();
           pushFloat('따라: "잡았다! …이번만 봐줄게.\n크게 움직여 봐!"', true);
+          return;
+        }
+        // 생애 첫 배틀(따라)에서는 하트 대신 게이지가 살짝 닫힌다 — 겁먹고
+        // 멈춘 아이를 하트 연타로 벌하지 않는다. 실피해는 영이(rotate)에서만.
+        if (b.p.pattern !== 'rotate') {
+          arena.inv = 42; b.flash = 10; Sound.bump();
+          b.gauge = clamp(b.gauge - 4, 0, b.gaugeMax);
+          persuadeGaugeSync(b);
+          pushFloat('따라: "잡았다!\n…똑같이 움직였잖아."\n(마음이 살짝 닫혔다)', true);
+          w.hits += 1;
           return;
         }
         b.playerHp = Math.max(0, b.playerHp - 1);
@@ -5252,8 +5313,8 @@
       const dx = arena.soul.x - sh.refX, dy = arena.soul.y - sh.refY;
       if (Math.hypot(dx, dy) > 70 && sh.tired < 3 && !w.practice) {
         sh.tired += 1; b.shadowTired = sh.tired;
-        b.gauge = clamp(b.gauge + 8, 0, b.gaugeMax);
-        if (sh.tired >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 24); // 듣기 상한과 동일선
+        grantPatternGauge(b, 8);
+        if (sh.tired >= 3) patternCapNudge(b);
         pushFloat((b.p.shadowReply || '…어떻게 따라가지?') + `\n(따라가 지쳤다! ${sh.tired}/3)`, true);
         Sound.correct(); persuadeGaugeSync(b);
       }
@@ -5270,11 +5331,13 @@
     if (!pieces.length) return;
     if (vf.slowT > 0) vf.slowT -= 1;
     if (vf.stopCd > 0) vf.stopCd -= 1;
+    // 조각을 들고 있는 동안은 자동 슬로 — 읽고 대조하는 시간은 세상이 기다려 준다 (S-3)
+    if (arena.carrying && vf.carry) vf.slowT = Math.max(vf.slowT, 2);
     // 멈춤존 — 상자 하단 중앙. 서 있으면 90프레임 슬로 (쿨다운 150)
     const sz = { x: box.x + box.w / 2, y: box.y + box.h - 18 };
     const sdx = sz.x - arena.soul.x, sdy = sz.y - arena.soul.y;
     if (vf.stopCd <= 0 && sdx * sdx + sdy * sdy < 20 * 20) {
-      vf.slowT = 90; vf.stopCd = 240;
+      vf.slowT = patEase().slow; vf.stopCd = 240;
       pushFloat('🛑 멈춤 — 세상이 잠깐 느려졌다.\n(원본과 대조할 시간!)', true);
       Sound.blip();
     }
@@ -5305,13 +5368,15 @@
           const ok = vf.carry.truth === h.judge;
           if (ok) {
             vf.judged += 1; b.verifyJudged = vf.judged;
-            if (vf.judged <= 3) b.gauge = clamp(b.gauge + 8, 0, b.gaugeMax); // [D4] 3회 상한
-            if (vf.judged >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2);
+            if (vf.judged <= 3) grantPatternGauge(b, 8); // [D4] 3회 상한
+            if (vf.judged >= 3) { b.gauge = Math.max(b.gauge, b.gaugeMax - 2); patternCapNudge(b); }
             pushFloat((b.p.truthReply || '…확인했구나.') + `\n(원본과 대조했다! ${Math.min(3, vf.judged)}/3)`, true);
             Sound.correct(); persuadeGaugeSync(b);
           } else if (!w.practice) {
             b.gauge = clamp(b.gauge - 4, 0, b.gaugeMax);
             b.flash = 12;
+            // 교사 계측(S-5) — '확인 없이 찍기' 오개념을 직접 계량한다
+            const st5 = pStats(); st5.verifyWrong = (st5.verifyWrong || 0) + 1;
             pushFloat('그럴싸: "거봐, 급하니까 낚이지?"\n(원본 카드와 다시 대조하자)', true);
             Sound.bump(); persuadeGaugeSync(b);
           } else {
@@ -5349,7 +5414,7 @@
           : side === 1 ? { x: box.x + box.w - 14, y: box.y + 30 + Math.random() * (box.h - 60) }
           : side === 2 ? { x: box.x + 30 + Math.random() * (box.w - 60), y: box.y + 14 }
           : { x: box.x + 30 + Math.random() * (box.w - 60), y: box.y + box.h - 14 };
-        cz.doorOpenT = 90;
+        cz.doorOpenT = patEase().door;
         pushFloat('* 문이 열렸다 — 지금이야!', true);
       }
     } else {
@@ -5362,7 +5427,8 @@
           return;
         }
         cz.exits += 1; b.cozyExits = cz.exits;
-        if (cz.exits <= 3) b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax); // [D4] 3회 상한
+        if (cz.exits <= 3) grantPatternGauge(b, 10); // [D4] 3회 상한
+        if (cz.exits >= 3) patternCapNudge(b);
         if (cz.exits >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2);
         if (b.shrinkLevel) b.shrinkLevel = Math.max(0, b.shrinkLevel - 1);
         pushFloat((b.p.doorReply || '…잘 갔다 와.') + `\n(이불 밖으로! ${Math.min(3, cz.exits)}/3 — 시계가 멈췄다)`, true);
@@ -5387,7 +5453,7 @@
       q.nearT += 1;
       if (q.nearT % 45 === 0 && q.warm < 5 && !w.practice) {
         q.warm += 1; b.quietWarm = q.warm;
-        b.gauge = clamp(b.gauge + 6, 0, b.gaugeMax);
+        grantPatternGauge(b, 6);
         pushFloat((b.p.nearReply || '……아직, 있네.') + `\n(어둠이 조금 걷혔다 ${q.warm}/5)`, true);
         Sound.blip(); persuadeGaugeSync(b);
       }
@@ -5440,9 +5506,10 @@
         if (w.practice) { pushFloat('* 연습: 꾸러미는 이렇게 돌려준다!', true); pc.spawnTimer = 90; return; }
         pc.deliveries += 1; b.parcelDeliveries = pc.deliveries;
         // [D4] 3회 이후에는 게이지 지급 없음 — 마지막 한 걸음은 반드시 '대답'으로
-        if (pc.deliveries <= 3) b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax);
+        if (pc.deliveries <= 3) grantPatternGauge(b, 10);
+        if (pc.deliveries === 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3회 → 만충 직전
+        if (pc.deliveries >= 3) patternCapNudge(b);
         pushFloat(b.p.parcelReply || '…돌려줄게.', true);
-        if (pc.deliveries >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3회 → 만충 직전
         pc.spawnTimer = 90;
         Sound.correct();
         persuadeGaugeSync(b);
@@ -5498,11 +5565,12 @@
         arena.carrying = false;
         if (w.practice) { pushFloat('* 연습: 반례 구슬은 이렇게 접시로!', true); tl.spawnTimer = 90; return; }
         tl.deliveries += 1; b.tiltDeliveries = tl.deliveries;
-        if (tl.deliveries <= 3) b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax); // [D4] 3회 상한
+        if (tl.deliveries <= 3) grantPatternGauge(b, 10); // [D4] 3회 상한
+        if (tl.deliveries === 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3회 → 만충 직전
+        if (tl.deliveries >= 3) patternCapNudge(b);
         // 0.9 → 0.6 → 0.3 → 0 (표를 사용해 부동소수점 오차 없이 정확한 값으로)
         tl.drift = TILT_DRIFT_STEPS[Math.min(tl.deliveries, TILT_DRIFT_STEPS.length - 1)];
         pushFloat((b.p.tiltReply || '…어? 저울이… 움직였다?') + '\n(기울기가 줄었다!)', true);
-        if (tl.deliveries >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3회 → 만충 직전
         tl.spawnTimer = 90;
         Sound.correct();
         persuadeGaugeSync(b);
@@ -5552,14 +5620,15 @@
     // 버튼의 작은 확률표를 읽으면, 유혹의 빛이 꺼진다 (+8, 버티기와 같은 누적 카운트)
     if (d2 < 44 * 44) {
       tp.obj.gazeT = (tp.obj.gazeT || 0) + 1;
-      if (tp.obj.gazeT >= 45) {
+      if (tp.obj.gazeT >= patEase().gaze) {
         tp.obj = null; tp.spawnTimer = 60;
         if (w.practice) { pushFloat('* 연습: 확률을 읽으면\n빛이 꺼진다!', true); return; }
         const wasMax = tp.resisted >= 3;
         tp.resisted = Math.min(3, tp.resisted + 1);
         b.temptResisted = tp.resisted;
-        if (!wasMax) b.gauge = clamp(b.gauge + 8, 0, b.gaugeMax); // [D4] 3회 상한
-        if (tp.resisted >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2);
+        if (!wasMax) grantPatternGauge(b, 8); // [D4] 3회 상한
+        if (tp.resisted === 3 && !wasMax) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3회 → 만충 직전
+        if (tp.resisted >= 3) patternCapNudge(b);
         pushFloat((b.p.gazeReply || '…확률을, 읽었어?') + `\n(레전드 1.5%… 빛이 꺼졌다 ${tp.resisted}/3)`, true);
         Sound.correct(); persuadeGaugeSync(b);
         return;
@@ -5573,9 +5642,10 @@
       const wasMax = tp.resisted >= 3;
       tp.resisted = Math.min(3, tp.resisted + 1);
       b.temptResisted = tp.resisted;
-      if (!wasMax) b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax); // [D4] 3회 상한
+      if (!wasMax) grantPatternGauge(b, 10); // [D4] 3회 상한
+      if (tp.resisted === 3 && !wasMax) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3회 → 만충 직전
+      if (tp.resisted >= 3) patternCapNudge(b);
       pushFloat((b.p.temptReply || '…버텼다.') + `\n(조명이 하나 꺼졌다! ${tp.resisted}/3)`, true);
-      if (tp.resisted >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3회 → 만충 직전
       Sound.correct();
       persuadeGaugeSync(b);
     }
@@ -5629,6 +5699,14 @@
     game.flags.persuadeMemory[b.persuadeId] = {
       gauge: game.difficulty === 'easy' ? b.gauge : Math.floor(b.gauge / 2),
       state: b.pState === 'closed' ? 'closed' : 'shaken',
+      // 패턴 3회 상한 카운터·연습 소진을 함께 기억 — 후퇴-재입장 파밍 차단 (S-1)
+      pat: {
+        parcelDeliveries: b.parcelDeliveries || 0, tiltDeliveries: b.tiltDeliveries || 0,
+        temptResisted: b.temptResisted || 0, verifyJudged: b.verifyJudged || 0,
+        verifyIdx: b.verifyIdx || 0, cozyExits: b.cozyExits || 0,
+        quietWarm: b.quietWarm || 0, shadowTired: b.shadowTired || 0,
+        practiceDone: !!b.practiceDone, capNudged: !!b.capNudged,
+      },
     };
     save();
     const nm = b.mon.name;
@@ -7695,6 +7773,8 @@
     const flags = setupClassBaseFlags();
     flags.defeated.bekkyeomon = true; // 프롤로그(따라)는 이미 클리어한 상태
     flags.chapter1Clear = true; // 2장은 1장 클리어 후 상태
+    // 장 점프 수업은 관문 문답(Q-4)도 통과 처리 — 안 배운 장의 퀴즈로 차단되지 않게
+    flags.gateQuiz1 = true;
     game.flags = flags;
     game.map = 'tiltstreet';
     const p = game.player;
@@ -7708,6 +7788,8 @@
     flags.defeated.bekkyeomon = true; // 프롤로그(따라)는 이미 클리어한 상태
     flags.chapter1Clear = true;
     flags.chapter2Clear = true; // 3장은 2장 클리어 후 상태
+    // 장 점프 수업은 관문 문답(Q-4)도 통과 처리 — 안 배운 장의 퀴즈로 차단되지 않게
+    flags.gateQuiz1 = true; flags.gateQuiz2 = true;
     game.flags = flags;
     game.map = 'rumorstreet';
     const p = game.player;
@@ -7722,6 +7804,8 @@
     flags.chapter1Clear = true;
     flags.chapter2Clear = true;
     flags.chapter3Clear = true; // 4장은 3장 클리어 후 상태
+    // 장 점프 수업은 관문 문답(Q-4)도 통과 처리 — 안 배운 장의 퀴즈로 차단되지 않게
+    flags.gateQuiz1 = true; flags.gateQuiz2 = true; flags.gateQuiz3 = true;
     game.flags = flags;
     game.map = 'arcade';
     const p = game.player;
@@ -7737,6 +7821,8 @@
     flags.chapter2Clear = true;
     flags.chapter3Clear = true;
     flags.chapter4Clear = true; // 5장은 4장 클리어 후 상태
+    // 장 점프 수업은 관문 문답(Q-4)도 통과 처리 — 안 배운 장의 퀴즈로 차단되지 않게
+    flags.gateQuiz1 = true; flags.gateQuiz2 = true; flags.gateQuiz3 = true; flags.gateQuiz4 = true;
     game.flags = flags;
     game.map = 'cozyhome';
     const p = game.player;
@@ -7753,6 +7839,8 @@
     flags.chapter3Clear = true;
     flags.chapter4Clear = true;
     flags.chapter5Clear = true; // 파이널은 5장 클리어 후 상태
+    // 장 점프 수업은 관문 문답(Q-4)도 통과 처리 — 안 배운 장의 퀴즈로 차단되지 않게
+    flags.gateQuiz1 = true; flags.gateQuiz2 = true; flags.gateQuiz3 = true; flags.gateQuiz4 = true; flags.gateQuiz5 = true;
     game.flags = flags;
     game.map = 'cozyhome';
     const p = game.player;
@@ -9520,7 +9608,7 @@
       // 고요(보스) — 탄막이 나오기 전, 스폰을 한 번 깜빡여 예고한다
       if (b.p.openMechanic === 'dark' && (b.wave.darkWarnT || 0) > 0) {
         ctx.textAlign = 'center';
-        ctx.fillStyle = Math.floor(game.time / 4) % 2 === 0 ? '#fff' : '#e07a5f';
+        ctx.fillStyle = (game.reduceFx || Math.floor(game.time / 4) % 2 === 0) ? '#fff' : '#e07a5f';
         ctx.font = fs(15, true);
         ctx.fillText('…!', box.x + box.w / 2, box.y - 12);
         ctx.textAlign = 'left';
@@ -9536,7 +9624,7 @@
         if (pc.obj) { ctx.fillStyle = '#f0c060'; ctx.font = fs(16); ctx.fillText('▣', pc.obj.x, pc.obj.y + 5); }
         if (arena.carrying) { ctx.fillStyle = '#f0c060'; ctx.font = fs(13); ctx.fillText('▣', arena.soul.x + 10, arena.soul.y - 8); }
         if (pc.decoy) {
-          const tw = Math.floor(game.time / 8) % 2 === 0;
+          const tw = !game.reduceFx && Math.floor(game.time / 8) % 2 === 0;
           ctx.fillStyle = tw ? '#fff2a8' : '#ffd644'; ctx.font = fs(16);
           ctx.fillText('🎁', pc.decoy.x, pc.decoy.y + 5);
           ctx.font = fs(10); ctx.fillText('공짜!', pc.decoy.x, pc.decoy.y - 12);
@@ -9565,7 +9653,7 @@
       if (patDraw === 'tempt') {
         const tp = b.wave.tempt;
         if (tp.obj) {
-          const near = tp.obj.age > 180 && Math.floor(game.time / 6) % 2 === 0;
+          const near = !game.reduceFx && tp.obj.age > 180 && Math.floor(game.time / 6) % 2 === 0;
           ctx.fillStyle = near ? '#fff2a8' : '#ffd644';
           ctx.font = fs(18);
           ctx.fillText('✧', tp.obj.x, tp.obj.y + 6);
@@ -9578,7 +9666,7 @@
           if (tp.obj.gazeT > 0) { // 응시 진행 링
             ctx.strokeStyle = '#8ecbff'; ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.arc(tp.obj.x, tp.obj.y, 26, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (tp.obj.gazeT / 45));
+            ctx.arc(tp.obj.x, tp.obj.y, 26, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (tp.obj.gazeT / patEase().gaze));
             ctx.stroke();
           }
         }
@@ -9640,7 +9728,7 @@
       // 따라 「그림자 하트」
       if (patDraw === 'shadow') {
         const sh = b.wave.shadow;
-        const ghost = sh.trail.length >= 90 ? sh.trail[0] : null;
+        const ghost = sh.trail.length >= patEase().shadowDelay ? sh.trail[0] : null;
         if (ghost) {
           ctx.fillStyle = 'rgba(160,160,180,0.55)';
           ctx.font = fs(17);
@@ -9662,7 +9750,7 @@
         ctx.fillStyle = '#e0a583'; ctx.font = fs(10);
         ctx.fillText('담요', box.x + box.w / 2, box.y + box.h / 2 + 3);
         if (cz.door) {
-          const blink = cz.doorOpenT < 30 && Math.floor(game.time / 5) % 2 === 0;
+          const blink = !game.reduceFx && cz.doorOpenT < 30 && Math.floor(game.time / 5) % 2 === 0;
           ctx.fillStyle = blink ? '#fff' : '#8ecbff'; ctx.font = fs(15, true);
           ctx.fillText('🚪', cz.door.x, cz.door.y + 5);
           ctx.font = fs(9); ctx.fillText('열림!', cz.door.x, cz.door.y - 12);

@@ -320,7 +320,19 @@ check('원복 후 상대 턴 — 게이지 6 유지', g.battle.phase === 'wave' 
   step(61);
   check('새 길 이동 — 따라가 지침(+8)', sh.tired === 1 && b.gauge === gB + 8);
   check('그림자 궤적 상한(90프레임)', sh.trail.length === 90);
-  b.gauge = 6; b.shadowTired = 0; sh.tired = 0; // 이후 탈진·기억 검사 수치 원복
+  // S-5: 그림자 접촉 — 첫 회는 경고만, 이후 프롤로그(비 rotate)에서는 하트 대신 게이지 -4
+  b.wave.practice = false; b.arena.inv = 0;
+  sh.trail.length = 0;
+  for (let i = 0; i < 90; i++) sh.trail.push({ x: b.arena.soul.x, y: b.arena.soul.y });
+  step(1); // 제자리 → 그림자와 겹침 → 첫 접촉 경고
+  check('그림자 첫 접촉 — 경고만(하트·게이지 그대로)', b.shadowWarned === true &&
+    b.playerHp === b.maxHearts);
+  b.arena.inv = 0; sh.trail.length = 0;
+  for (let i = 0; i < 90; i++) sh.trail.push({ x: b.arena.soul.x, y: b.arena.soul.y });
+  const gS = b.gauge = 20;
+  step(1); // 둘째 접촉
+  check('프롤로그 그림자 — 하트 대신 게이지 -4', b.playerHp === b.maxHearts && b.gauge === gS - 4);
+  b.gauge = 6; b.shadowTired = 0; sh.tired = 0; b.arena.inv = 999; // 이후 탈진·기억 검사 수치 원복
 }
 // 탈진: 하트를 1로 두고 하트 위에 탄을 얹어 결정적으로 피격
 g.battle.playerHp = 1;
@@ -1531,6 +1543,17 @@ check('첫 패턴 파도는 연습(무피해 리허설)', g.battle.wave.practice
   b.arena.bullets = [{ x: b.arena.soul.x, y: b.arena.soul.y, vx: 0, vy: 0, r: 6 }];
   step(1);
   check('연습 파도 — 탄에 닿아도 하트 그대로', b.playerHp === b.maxHearts);
+  // S-5: 연습 중 카운터 행동은 게이지·카운터를 주지 않는다 (파밍 차단)
+  b.pState = 'open'; b.arena.bullets.length = 0; b.arena.inv = 999;
+  const pcP = b.wave.parcel, boxP = b.arena.box;
+  const gP = b.gauge; // (진입에 쓴 듣기 +6 포함 — 이후 불변이어야 한다)
+  pcP.obj = { x: boxP.x + 40, y: boxP.y + 40 };
+  b.arena.soul.x = pcP.obj.x; b.arena.soul.y = pcP.obj.y; step(1); // 집기
+  b.arena.soul.x = pcP.hole.x; b.arena.soul.y = pcP.hole.y; step(1); // 배달
+check('연습 파도 — 배달해도 게이지·카운터 불변', b.gauge === gP && (b.parcelDeliveries || 0) === 0);
+  // S-5: 연습 파도는 무피해라 퍼펙트 +6도 제외
+  b.wave.t = b.wave.dur; step(1);
+  check('연습 파도 — 퍼펙트 보너스 없음', b.gauge === gP && b.phase === 'menu');
 }
 forceMenu();
 // 연습 파도 진입이 소모한 턴/듣기 상태를 원복 — 이후 검사(관찰 대사 순환 등) 격리
@@ -1694,6 +1717,11 @@ check('첫 통과 — 관문 문답(선택지 3)', g.mode === 'choice' && g.map 
   check('관문 오답 → 힌트 대화·통과 플래그 없음', g.mode === 'dialog' && !g.flags.gateQuiz1 &&
     g.dialog.lines.some((l) => /다시 떠올려/.test(l)));
   advanceDialog();
+  // 취소(X)해도 통과 플래그 없이 다시 밟으면 재출제된다 (S-5)
+  setPos(36, 15, 'right'); hold('ArrowRight', 12);
+  check('관문 재출제(취소 검증 전 상태)', g.mode === 'choice');
+  tap('x'); step(2);
+  check('관문 취소 → 통과 플래그 없음·월드 복귀', !g.flags.gateQuiz1 && g.mode === 'world');
   // 다시 밟아 정답
   setPos(36, 15, 'right'); hold('ArrowRight', 12);
   const okIdx = g.choice.options.findIndex((t) => t === GQ.chapter1Clear.options[0]);
@@ -2844,10 +2872,12 @@ battleMenuPick(3); // 마음 안아 주기 → 최종 관문(Q-3: 스토리 이�
 check('안아 주기 → 최종 관문(영이가 바란 것 3지선다)', g.battle.phase === 'sub' && g.battle.sub.kind === 'finalgate' &&
   g.battle.sub.options.length === 3);
 g.battle.subIdx = g.battle.sub.options.findIndex((o) => !o.correct); tap('z'); // 오답
-check('관문 오답 → 일기 회상 반응, 관문 미통과', g.battle.phase === 'react' && !g.battle.finalGateDone &&
-  /떠올려 보자|일기 조각/.test(g.battle.react.text));
-advanceReact(); // 게이지 만충이라 탄막 없이 내 턴 복귀
-check('오답 후 내 턴 복귀(게이지 불이익 없음)', g.battle.phase === 'menu' && g.battle.gauge === g.battle.gaugeMax);
+check('관문 오답 → 회상 반응 + 실코스트(만충-2)', g.battle.phase === 'react' && !g.battle.finalGateDone &&
+  /떠올려 보자|일기 조각/.test(g.battle.react.text) && g.battle.gauge === g.battle.gaugeMax - 2);
+advanceReact(); // 게이지가 내려갔으므로 탄막 턴이 실제로 온다 (무비용 찍기 방지)
+check('오답 후 상대 턴 발동', g.battle.phase === 'wave');
+forceMenu();
+g.battle.gauge = g.battle.gaugeMax; step(1); // 정답 재응답 대신 직접 재만충(빠른 검증)
 battleMenuPick(3); // 다시 안아 주기 → 관문 재도전
 g.battle.subIdx = g.battle.sub.options.findIndex((o) => o.correct); tap('z'); // 정답
 check('관문 정답 → 눈을 마주친다', g.battle.phase === 'react' && g.battle.finalGateDone === true);

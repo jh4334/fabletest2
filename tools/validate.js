@@ -403,6 +403,48 @@ if (process.argv.includes('--print')) {
   });
 })();
 
+// R라운드 패턴 데이터 린트 — pattern 키 오타는 '조용한 무패턴 배틀'이 되므로 화이트리스트로 잡는다.
+// verify는 원본 카드·조각 스키마까지, GATE_QUIZ/DIARY_SHARDS는 구조 무결성을 검사한다.
+(() => {
+  const { PERSUADE, GATE_QUIZ, DIARY_SHARDS } =
+    vm.runInContext('({ PERSUADE, GATE_QUIZ, DIARY_SHARDS })', ctx);
+  const R_PATTERNS = ['shadow', 'parcel', 'tilt', 'verify', 'tempt', 'cozy', 'quiet', 'rotate'];
+  for (const [k, p] of Object.entries(PERSUADE)) {
+    if (p.pattern && !R_PATTERNS.includes(p.pattern)) {
+      err(`PERSUADE.${k}.pattern '${p.pattern}' — 미등록 패턴 (오타 시 무패턴 배틀이 된다)`);
+    }
+    const needsVerify = p.pattern === 'verify';
+    if (needsVerify || p.verifyPieces) {
+      if (!p.verifyCard) err(`PERSUADE.${k} — verify 패턴인데 verifyCard 없음`);
+      if (!Array.isArray(p.verifyPieces) || p.verifyPieces.length < 3) {
+        err(`PERSUADE.${k} — verifyPieces가 3개 미만`);
+      } else {
+        p.verifyPieces.forEach((pc, i) => {
+          if (typeof pc.truth !== 'boolean') err(`PERSUADE.${k}.verifyPieces[${i}].truth가 boolean이 아님`);
+          if (!pc.label || pc.label.length > 22) err(`PERSUADE.${k}.verifyPieces[${i}].label 길이 초과(>22자) — 상자 폭을 넘는다`);
+        });
+        if (!p.verifyPieces.some((pc) => pc.truth) || !p.verifyPieces.some((pc) => !pc.truth)) {
+          err(`PERSUADE.${k}.verifyPieces — 진짜/가짜가 모두 있어야 한다 (의심이 아니라 확인)`);
+        }
+      }
+    }
+  }
+  const doneFlags = new Set();
+  for (const [k, q] of Object.entries(GATE_QUIZ)) {
+    if (!q.options || q.options.length !== 3) err(`GATE_QUIZ.${k} — 선택지는 정확히 3개`);
+    if (!q.done) err(`GATE_QUIZ.${k} — done 플래그 없음`);
+    if (doneFlags.has(q.done)) err(`GATE_QUIZ.${k} — done 플래그 '${q.done}' 중복`);
+    doneFlags.add(q.done);
+    if (!q.ask || !q.okLine || !q.wrongLine) err(`GATE_QUIZ.${k} — ask/okLine/wrongLine 누락`);
+  }
+  const shardKeys = new Set();
+  for (const sh of DIARY_SHARDS) {
+    if (shardKeys.has(sh.key)) err(`DIARY_SHARDS key '${sh.key}' 중복`);
+    shardKeys.add(sh.key);
+    if (!sh.text || !sh.bandi || !sh.no) err(`DIARY_SHARDS '${sh.key}' — no/text/bandi 누락`);
+  }
+})();
+
 // 서비스워커 캐시 버전 = 자산 해시 검증 — 자산을 고치고 캐시를 안 올리면
 // 배포 후에도 클라이언트가 옛 버전을 계속 보는 사고가 난다. (npm run bump로 갱신)
 (() => {
