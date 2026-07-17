@@ -1322,6 +1322,15 @@ const MAPS = {
       'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
       'HHHHHHHHHHHHHH9HHHHHHHHHHHHH',
     ],
+    // B-4 탐험 보상 — 실험실의 자잘한 조사 플레이버 (마른 유머 + 멜랑콜리)
+    flavors: [
+      { x: 5, y: 2, text: '서버 랙에 손을 대 보았다.\n아직 미지근하다. 누군가, 방금 전까지\n여기 있었던 것처럼.' },
+      { x: 23, y: 3, text: '반대편 랙은 완전히 식어 있다.\n먼지가 소복이, 오래 쌓인 눈처럼.' },
+      { x: 10, y: 8, text: '낡은 기계가 혼자 깜빡인다.\n아무도 안 보는데, 성실하기도 하지.' },
+      { x: 7, y: 11, text: '전선 뭉치가 벽을 타고 오른다.\n어디로도 이어지지 않은 채 끊겨 있다.' },
+      { x: 13, y: 13, text: '바닥의 노란 테이프가 반쯤 뜯겼다.\n「여기서 기다릴 것」 — 뒷말은 지워졌다.',
+        bandi: '"기다리라고 해 놓고… 아무도 안 왔나 봐."' },
+    ],
     warps: [
       { x: 14, y: 17, to: 'forest', tx: 20, ty: 2, needFlag: 'introDoorOpen', exitDir: 'south', dir: 'down',
         lockText: '실험실 출구는 아직 잠겨 있다.' },
@@ -1360,6 +1369,15 @@ const MAPS = {
       'TTTTTTTTTTTTTTTGGGGGPPGGTTTTTTTTTTTT',
       'TTTTTTTTTTTTTTTTTTTTPPTTTTTTTTTTTTTT',
     ],
+    // B-4 탐험 보상 — 정적의 숲 조사 플레이버 (고독 + 마른 유머)
+    flavors: [
+      { x: 9, y: 2, text: '나무껍질에 누가 금을 그어 놨다.\n하루에 하나씩. 세다가 만 듯하다.' },
+      { x: 16, y: 4, text: '가운데만 나무가 빽빽한 섬.\n볕이 안 드는데도, 잎은 푸르다.' },
+      { x: 3, y: 6, text: '길 잃은 리본이 가지에 묶여 있다.\n색이 바랬다. 돌아온 사람은 없었다.' },
+      { x: 31, y: 6, text: '나무 사이로 바람이 지난다.\n소리는 나는데, 흔들리는 건 나뿐이다.',
+        bandi: '"…쉿. 숲이 우리 얘길 듣는 것 같지 않아?"' },
+      { x: 22, y: 8, text: '옹이 하나가 꼭 눈처럼 생겼다.\n한참을 마주 봤지만, 먼저 깜빡인 건 나였다.' },
+    ],
     warps: [
       { x: 8, y: 5, to: 'forestdeep', tx: 12, ty: 16, exitDir: 'north', dir: 'up' },
       { x: 20, y: 23, to: 'village', tx: 13, ty: 1 },
@@ -1394,6 +1412,15 @@ const MAPS = {
       'TTTTTTTGGGGPPGGGGTTTTTTT',
       'TTTTTTTTGGGPPGGGTTTTTTTT',
       'TTTTTTTTTTTPPTTTTTTTTTTT',
+    ],
+    // B-4 탐험 보상 — 안쪽 공터 조사 플레이버 (멜랑콜리 + 마른 유머)
+    flavors: [
+      { x: 5, y: 1, text: '가장 안쪽 나무.\n누가 밑동에 작은 돌을 괴어 놨다.\n쓰러지지 말라는 듯이.' },
+      { x: 21, y: 4, text: '가지 끝에 낡은 연필 한 자루가 걸렸다.\n심이 다 닳도록, 무얼 그렸을까.' },
+      { x: 2, y: 11, text: '이끼가 한쪽으로만 자랐다.\n볕이 늘 같은 데서 들었다는 뜻이다.' },
+      { x: 18, y: 14, text: '풀숲에 종이비행기가 처박혀 있다.\n펴 보니, 아무것도 안 적혀 있다.',
+        bandi: '"빈 종이래도… 접은 사람은 뭔가 바랐겠지."' },
+      { x: 6, y: 15, text: '공터 가장자리, 자리만 반들반들하다.\n누가 오래, 여기 앉아 있었던 자국이다.' },
     ],
     warps: [
       { x: 12, y: 17, to: 'forest', tx: 8, ty: 6, exitDir: 'south', dir: 'down' },

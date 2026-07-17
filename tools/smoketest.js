@@ -3270,4 +3270,137 @@ console.log('[115] N-2 보스별 전용 테마 — 프로필 song이 실제 SONG
   check('영이 테마 = 라이트모티프 완전판(76,72,69,71,67 시작)', yeongiNotes === '76,72,69,71,67');
 }
 
+// ================= T라운드 신규 기능 =================
+// (T = window.__test — 파일 상단에서 이미 선언됨)
+
+console.log('[T-A1] 숨은 워프 자동 마커 — 진단된 10곳만 대상, 가장자리·랜드마크 워프는 제외');
+{
+  // 문 없는데 이동하던 버그 지점(비가장자리 + 인접 조사물 없음)만 마커 대상이 된다
+  check('마을 24,5 = 숨은 워프(마커 대상)', T.isHiddenWarp('village', 24, 5) === true);
+  check('숲 8,5 = 숨은 워프', T.isHiddenWarp('forest', 8, 5) === true);
+  check('메아리골목 내부 순간이동 6,11 = 숨은 워프', T.isHiddenWarp('echoalley', 6, 11) === true);
+  check('제보실 층계 17,2 = 숨은 워프', T.isHiddenWarp('tipsroom', 17, 2) === true);
+  // 인접 조사물(랜드마크)이 있는 워프는 제외 — 이미 눈에 보인다
+  check('공짜거리 6,5(옆에 조사물) = 마커 제외', T.isHiddenWarp('freestreet', 6, 5) === false);
+  // 가장자리 워프(자연 출구)는 제외
+  check('마을 북쪽 출구 13,1(가장자리) = 마커 제외', T.isHiddenWarp('village', 13, 1) === false);
+  // 같은 맵으로 되돌아가는 순간이동은 소용돌이, 다른 맵 문은 아치
+  const echo = T.hiddenWarpsOf('echoalley');
+  check('메아리골목 숨은 워프 3곳 = 소용돌이(swirl)', echo.length === 3 && echo.every((m) => m.kind === 'swirl'));
+  check('마을 숨은 워프 = 문(arch) 1곳', (() => { const v = T.hiddenWarpsOf('village'); return v.length === 1 && v[0].kind === 'arch'; })());
+}
+
+console.log('[T-A2] 워프 쿨다운 재진입 예약 — 워프 칸을 벗어나면 예약이 풀린다');
+{
+  // 실험실 아래 출구(14,17)로 워프 → 숲(20,2). 쿨다운 중 워프 칸에서 벗어나면
+  // 재판정 예약(pendingWarpRecheck)이 false로 갱신되어, 엉뚱한 칸에서 되튕기지 않는다.
+  g.dialog = null; g.battle = null; g.mode = 'world'; g.map = 'forest';
+  // 숲 남쪽 입구(20,2) 근처에서 워프 칸(위쪽 실험실 방향)이 아닌 곳으로 이동하며 쿨다운을 소비
+  setPos(20, 3, 'down'); g.warpCooldownFrames = 6; g.pendingWarpRecheck = true;
+  hold('ArrowDown', 8); // 워프 칸(20,2)에서 멀어지는 이동 — 쿨다운 소진 + 재판정 예약 갱신
+  check('워프 칸을 벗어나면 재진입 예약이 풀린다', g.pendingWarpRecheck === false);
+  // A-2 소스 불변식 — 예약 플래그를 '현재 칸 워프 여부'로 갱신한다(스테일 true 방지)
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
+  check('checkWarp가 예약을 현재 칸 기준으로 갱신', /pendingWarpRecheck = !!warpAt\(game\.map, p\.x, p\.y\)/.test(src));
+}
+
+console.log('[T-B1] 획득 순간 팡파르 — 도전과제·배움 카드 해금 알림 + 중복 방지');
+{
+  // 기준선을 먼저 세팅(첫 확인은 조용히) → 이후 새 해금이 생기면 토스트가 뜬다
+  const slot = 0;
+  T.checkUnlocks(slot);            // 기준선 확정(ackAch/ackCards)
+  g.notice = { text: '', t: 0 };
+  const cos = T.getCosmetic(slot);
+  cos.ackAch = [];                 // 도전과제 하나도 확인 안 한 상태로 되돌림
+  T.setCosmetic(slot, cos);
+  T.checkUnlocks(slot);            // 진행된 슬롯 → 새 도전과제 감지 → 토스트
+  check('새 도전과제 달성 순간 토스트', !!g.notice.text && /도전과제 달성/.test(g.notice.text));
+  g.notice = { text: '', t: 0 };
+  T.checkUnlocks(slot);            // 이미 확인함 → 다시 알리지 않음
+  check('같은 해금은 다시 알리지 않음(중복 방지)', !g.notice.text);
+}
+
+console.log('[T-B2] 배틀 등급 — 오답·피격 기준 S/A/B 산출');
+{
+  const fakeS = { rankWrong: 0, rankHits: 0 };
+  const fakeA = { rankWrong: 1, rankHits: 2 };
+  const fakeB = { rankWrong: 2, rankHits: 0 };
+  // battleRank는 현재 배틀을 읽으므로, game.battle에 임시 객체를 꽂아 판정만 확인한다
+  const save0 = g.battle;
+  g.battle = fakeS; check('오답0·피격0 → S', T.battleRank() === 'S');
+  g.battle = fakeA; check('오답1·피격2 → A', T.battleRank() === 'A');
+  g.battle = fakeB; check('오답2 → B', T.battleRank() === 'B');
+  g.battle = save0;
+}
+
+console.log('[T-B3] 일일 도전 표면화 — 미완료면 알림, 완료면 조용');
+{
+  const slot = 0;
+  const metaKey = 'ai-ethics-adventure-meta-' + slot;
+  const meta = T.getMeta(slot);
+  meta.lastDailyDay = null; meta.lastMilestone = 999; // 오늘 미완료 + 마일스톤 방지
+  storage.set(metaKey, JSON.stringify(meta));
+  g.notice = { text: '', t: 0 };
+  T.surfaceDailyAndStreak(slot, { streak: 1, lastMilestone: 999 });
+  check('오늘의 도전 미완료 → 알림', /오늘의 도전이 기다려요/.test(g.notice.text));
+  const meta2 = T.getMeta(slot);
+  meta2.lastDailyDay = T.todayStr();
+  storage.set(metaKey, JSON.stringify(meta2));
+  g.notice = { text: '', t: 0 };
+  T.surfaceDailyAndStreak(slot, { streak: 1, lastMilestone: 999 });
+  check('오늘의 도전 완료 → 알림 없음', !g.notice.text);
+}
+
+console.log('[T-B4] 탐험 보상 — 새 이동 맵 플레이버 + 처음 조사 누적 도전과제');
+{
+  const flavCount = ['introlab', 'forest', 'forestdeep'].every((m) => (MAPS[m].flavors || []).length >= 4);
+  check('실험실·숲·안쪽 공터 각각 4개 이상 플레이버', flavCount);
+  // 워프 칸과 겹치지 않는다(validate와 동일 불변식 재확인)
+  const noWarpOverlap = ['introlab', 'forest', 'forestdeep'].every((m) =>
+    (MAPS[m].flavors || []).every((fl) => !(MAPS[m].warps || []).some((w) => w.x === fl.x && w.y === fl.y)));
+  check('새 플레이버는 워프 칸을 침범하지 않음', noWarpOverlap);
+  // 처음 조사한 플레이버 25개면 탐험 도전과제(explorer)가 열린다
+  g.flags.flavorSeen = {};
+  for (let i = 0; i < 25; i++) g.flags.flavorSeen['map' + i + ':0,0'] = true;
+  const ctx25 = T.achievementCtx(0);
+  check('플레이버 25개 → 탐험 도전과제 컨텍스트 반영', ctx25.flavorsSeen >= 25);
+}
+
+console.log('[T-C2] 따라 첫 배틀 — 1파도는 탄막 0(그림자만), 2파도부터 탄막 합류');
+{
+  g.dialog = null; g.battle = null; g.mode = 'world';
+  g.flags.defeated.bekkyeomon = false;
+  g.flags.introForestTrace = true; g.flags.ttaraFirstEncounter = true; // 조우 연출 건너뛰기
+  g.flags.sawPersuadeTip = true; // 튜토리얼 안내 길게 안 뜨게
+  g.map = 'forestdeep';
+  setPos(12, 4, 'down');
+  tap('z');
+  if (g.mode === 'dialog') advanceDialog();
+  check('따라 프롤로그 튜토리얼 배틀 시작', g.mode === 'battle' && g.battle.prologueTutorial === true);
+  // 첫 파도(듣기) 진입
+  battleMenuPick(2); advanceReact();
+  check('첫 파도 = 파도 번호 1', g.battle.wave && g.battle.waveCount === 1);
+  g.battle.arena.inv = 999; step(80); // 정상 파도라면 스폰타이머가 지나 탄막이 생길 시점
+  check('C-2 첫 파도는 탄막이 하나도 없다(그림자 패턴만)', g.battle.arena.bullets.length === 0);
+  // 파도 번호만 2로 올리면 같은 조건에서 탄막이 합류한다
+  g.battle.waveCount = 2; g.battle.wave.spawnTimer = 1; g.battle.wave.t = 5; step(20);
+  check('C-2 2파도부터 탄막이 합류한다', g.battle.arena.bullets.length > 0);
+  g.battle = null; g.mode = 'world'; // 정리
+}
+
+console.log('[T-C3] 대화 빨리감기 — Z 홀드 시 타자기 즉시완성 + 자동 진행');
+{
+  g.battle = null; g.dialog = null; g.mode = 'world'; g.map = 'village';
+  // 긴 대사 3상자를 띄우고, Z를 길게 홀드해 자동으로 넘어가는지 본다
+  vm.runInContext('window.__game.dialog = { lines: ["첫째 상자입니다. 아주 긴 문장이라 타자기가 오래 걸립니다.", "둘째 상자.", "셋째 상자."], idx: 0, chars: 0 }; window.__game.mode = "dialog";', sandbox);
+  const idx0 = g.dialog.idx;
+  // 홀드: keydown 후 떼지 않고 오래 step (autoFF 12프레임 + 자동 진행 간격)
+  dispatch('keydown', { key: 'z' });
+  step(20); // 12프레임 홀드 → 즉시완성, 14프레임마다 자동 진행
+  check('홀드 12프레임 이상 → 타자기 즉시완성', g.dialog === null || g.dialog.chars >= (g.dialog ? g.dialog.lines[g.dialog.idx].length : 0) || g.dialog.idx > idx0);
+  step(40); // 계속 홀드 → 남은 상자들도 자동으로 넘어가 대화 종료
+  dispatch('keyup', { key: 'z' });
+  check('홀드 유지 → 상자들이 자동 진행되어 대화 종료', g.mode === 'world' && g.dialog === null);
+}
+
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
