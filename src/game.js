@@ -3939,6 +3939,30 @@
       startDialog([w.lockText || '문이 잠겨 있다.', `금고 잠금 ${s1LockCount()}/${w.needS1Locks} 해제.`]);
       return;
     }
+    // 장 관문 문답(Q-4) — 다음 장으로 넘어가기 전, 직전 장 아이의 이야기를 한 문항
+    // 되묻는다(처음 한 번만). 대사를 스킵 연타한 아이는 여기서 한 번 멈춰 서게 된다.
+    // 오답은 힌트와 함께 다시 도전 — 벌이 아니라 되짚는 문.
+    if (w.needFlag && game.flags[w.needFlag]) {
+      const gq = GATE_QUIZ[w.needFlag];
+      if (gq && !game.flags[gq.done]) {
+        pushBack();
+        Sound.blip();
+        const opts = shuffled(gq.options.map((t, i) => ({ t, ok: i === 0 })));
+        startChoice(gq.ask, opts.map((o) => o.t), (idx) => {
+          if (idx < 0) return; // 취소 — 다시 밟으면 또 묻는다
+          if (opts[idx].ok) {
+            game.flags[gq.done] = true;
+            save();
+            Sound.correct();
+            startDialog([gq.okLine, '* 문이 스르르 열렸다.\n(다시 걸어 들어가자)']);
+          } else {
+            Sound.wrong();
+            startDialog([gq.wrongLine, '* 문이 아직 굳게 닫혀 있다.\n…한 번 더 생각해 보자.']);
+          }
+        });
+        return;
+      }
+    }
     // 플래그 게이트 (예: 2장 입구 — chapter1Clear 전엔 잠김)
     if (w.needFlag && !game.flags[w.needFlag]) {
       // 프롤로그 실험실 — 동적 단서 카운트 표시
@@ -4802,9 +4826,19 @@
       recordTopicResult(game.currentSlot, topic, true);
       text = claim.okLine || r.evidenceRight || '…그랬구나.';
       b.shake = 14; b.flinchT = 40; Sound.correct(); // 흠칫 — 말이 닿았다 (N-1)
+      // 연속 정답 콤보(Q-5) — 잘 읽고 연달아 맞히는 것 자체가 보상이 되게.
+      // 2연속부터 +4 보너스, 3연속엔 반디가 감탄한다 (콤보는 오답에서 끊긴다)
+      b.combo = (b.combo || 0) + 1;
+      if (b.combo >= 2) {
+        b.gauge = clamp(b.gauge + 4, 0, b.gaugeMax);
+        b.shake = 20;
+        pushFloat(`✦ ${b.combo}연속으로 마음에 닿았다! (+4)`, true);
+        if (b.combo === 3) pushFloat('반디: "…대단해. 전부\n제대로 듣고 있었구나."', true);
+      }
       b.claimIdx += 1; // 다음 주장으로
       if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.max(0, (b.shrinkLevel || 0) - 1);
     } else {
+      b.combo = 0; // 콤보(Q-5)는 오답에서 끊긴다
       b.gauge = clamp(b.gauge - 6, 0, b.gaugeMax);
       st.gateWrong += 1; st.backfire += 1;
       recordTopicResult(game.currentSlot, monTopic(b), false);

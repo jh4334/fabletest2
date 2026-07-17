@@ -77,7 +77,19 @@ function enterZone(x, y, key, expectMap) {
   step(14); // 직전 워프의 쿨다운(12프레임)이 남아 있으면 워프 칸을 그냥 지나친다
   let guard = 0;
   const from = g.map;
-  while (g.map === from && guard++ < 6) hold(key, 14);
+  while (g.map === from && guard++ < 6) {
+    hold(key, 14);
+    // 장 관문 문답(Q-4) — 이야기를 읽어 온 아이처럼 정답을 고른다.
+    // (GATE_QUIZ의 options[0]이 정답 원문 — 화면에는 섞여 나온다)
+    if (g.mode === 'choice' && g.choice) {
+      const GQ = vm.runInContext('GATE_QUIZ', sandbox);
+      const answers = Object.values(GQ).map((q) => q.options[0]);
+      const idx = g.choice.options.findIndex((t) => answers.includes(t));
+      g.choice.cursor = Math.max(0, idx);
+      tap('z'); dialogTaps += 1;              // 정답 선택
+      if (g.mode === 'dialog') advanceDialog(); // "문이 열렸다" 대사
+    }
+  }
   if (g.map !== expectMap) {
     throw new Error(expectMap + ' 진입 실패: map=' + g.map + ' mode=' + g.mode +
       ' pos=(' + g.player.x + ',' + g.player.y + ')' +

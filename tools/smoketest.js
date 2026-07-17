@@ -1533,7 +1533,8 @@ check('열림 정답 응답 큰 폭 (+32)', g.battle.gauge === 87 && g.flags.pSt
 g.battle.pState = 'open'; g.battle.gauge = 70; g.battle.claimIdx = 3;
 check('현재 주장 = 감정 주장(best=empathy)', /돌려주면/.test(TH.persuadeAvail()[g.battle.claimIdx % TH.persuadeAvail().length]));
 answerClaim(true);
-check('열림 감정 정답 응답 (+32)', g.battle.gauge === 102 && g.flags.pStats.gateRight === 2);
+check('열림 감정 정답 응답 (+32, 2연속 콤보 +4)', g.battle.gauge === 106 && g.flags.pStats.gateRight === 2 &&
+  g.battle.combo === 2);
 
 // ── best 주장에 증거 카드를 들이밀면 역효과 + 안내(revealNote) ──
 // (claim3은 unlockAt 70 — 게이지 75로 순환에 올린 상태에서 확인)
@@ -1629,13 +1630,34 @@ hold('ArrowRight', 12);
 check('2장 입구 — chapter1Clear 전 잠김(거리에 남음)', g.map === 'freestreet' && g.mode === 'dialog');
 check('잠김 안내(기울어 보인다)', g.dialog.lines.some((l) => /기울어 보인다/.test(l)));
 advanceDialog();
-// chapter1Clear 후 개방
+// chapter1Clear 후 개방 — 단, 첫 통과는 장 관문 문답(Q-4)을 지나야 한다
 g.flags.chapter1Clear = true;
 g.flags.visited.tiltstreet = true; // 인트로 스킵
 g.dialog = null; g.mode = 'world'; setPos(36, 15, 'right');
 hold('ArrowRight', 12);
+check('첫 통과 — 관문 문답(선택지 3)', g.mode === 'choice' && g.map === 'freestreet' &&
+  g.choice.options.length === 3 && /담아는 왜/.test(g.choice.prompt));
+{ // 오답 → 힌트 대화 + 문 닫힘 (재도전 가능)
+  const GQ = vm.runInContext('GATE_QUIZ', sandbox);
+  const wrongIdx = g.choice.options.findIndex((t) => t !== GQ.chapter1Clear.options[0]);
+  while (g.choice.cursor !== wrongIdx) tap('ArrowDown');
+  tap('z');
+  check('관문 오답 → 힌트 대화·통과 플래그 없음', g.mode === 'dialog' && !g.flags.gateQuiz1 &&
+    g.dialog.lines.some((l) => /다시 떠올려/.test(l)));
+  advanceDialog();
+  // 다시 밟아 정답
+  setPos(36, 15, 'right'); hold('ArrowRight', 12);
+  const okIdx = g.choice.options.findIndex((t) => t === GQ.chapter1Clear.options[0]);
+  while (g.choice.cursor !== okIdx) tap('ArrowDown');
+  tap('z');
+  check('관문 정답 → 문 열림 + 통과 플래그', g.mode === 'dialog' && g.flags.gateQuiz1 === true);
+  advanceDialog();
+}
+g.dialog = null; g.mode = 'world'; setPos(36, 15, 'right');
+hold('ArrowRight', 12);
 check('chapter1Clear 후 2장 허브 진입 — 서쪽 입구에서 오른쪽을 바라봄',
   g.map === 'tiltstreet' && g.player.x === 1 && g.player.y === 10 && g.player.dir === 'right');
+check('관문 문답은 한 번만 — 재진입 시 묻지 않음', g.mode === 'world');
 check('허브에 뱅뱅(wander) + 또또 2명',
   MAPS.tiltstreet.npcs.filter((n) => n.name === '또또').length === 2 &&
   MAPS.tiltstreet.npcs.some((n) => n.name === '뱅뱅' && n.wander));
@@ -1828,7 +1850,7 @@ setPos(26, 10, 'right');
 hold('ArrowRight', 12);
 check('3장 입구 — chapter2Clear 전 잠김(거리에 남음)', g.map === 'tiltstreet' && g.mode === 'dialog');
 advanceDialog();
-g.flags.chapter2Clear = true;
+g.flags.chapter2Clear = true; g.flags.gateQuiz2 = true; // 관문 문답(Q-4)은 2장 입구에서 검증됨
 g.dialog = null; g.mode = 'world'; setPos(26, 10, 'right'); hold('ArrowRight', 12);
 check('chapter2Clear 후 3장 허브 진입 — 서쪽 입구에서 오른쪽을 바라봄',
   g.map === 'rumorstreet' && g.player.x === 1 && g.player.y === 10 && g.player.dir === 'right');
@@ -2097,7 +2119,7 @@ setPos(26, 10, 'right');
 hold('ArrowRight', 12);
 check('4장 입구 — chapter3Clear 전 잠김(거리에 남음)', g.map === 'rumorstreet' && g.mode === 'dialog');
 advanceDialog();
-g.flags.chapter3Clear = true;
+g.flags.chapter3Clear = true; g.flags.gateQuiz3 = true; // 관문 문답(Q-4)은 2장 입구에서 검증됨
 g.dialog = null; g.mode = 'world'; setPos(26, 10, 'right'); hold('ArrowRight', 12);
 check('chapter3Clear 후 아케이드 진입 — 서쪽 입구에서 오른쪽을 바라봄',
   g.map === 'arcade' && g.player.x === 1 && g.player.y === 10 && g.player.dir === 'right');
@@ -2327,7 +2349,7 @@ setPos(33, 10, 'right');
 hold('ArrowRight', 12);
 check('5장 입구 — chapter4Clear 전 잠김(아케이드에 남음)', g.map === 'arcade' && g.mode === 'dialog');
 advanceDialog();
-g.flags.chapter4Clear = true;
+g.flags.chapter4Clear = true; g.flags.gateQuiz4 = true; // 관문 문답(Q-4)은 2장 입구에서 검증됨
 g.dialog = null; g.mode = 'world'; setPos(33, 10, 'right'); hold('ArrowRight', 12);
 check('chapter4Clear 후 포근한 집 진입 — 서쪽 입구에서 오른쪽을 바라봄',
   g.map === 'cozyhome' && g.player.x === 1 && g.player.y === 10 && g.player.dir === 'right');
@@ -2544,7 +2566,7 @@ setPos(31, 19, 'down');
 hold('ArrowDown', 12);
 check('chapter5Clear 전 잠김(집에 남음)', g.map === 'cozyhome' && g.mode === 'dialog');
 advanceDialog();
-g.flags.chapter5Clear = true;
+g.flags.chapter5Clear = true; g.flags.gateQuiz5 = true; // 관문 문답(Q-4)은 2장 입구에서 검증됨
 g.dialog = null; g.mode = 'world'; setPos(31, 19, 'down'); hold('ArrowDown', 12);
 check('chapter5Clear 후 고요의 뜰 진입', g.map === 'quietyard' && g.player.x === 9 && g.player.y === 1);
 
