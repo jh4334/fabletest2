@@ -5052,7 +5052,22 @@
       // 그럴싸(보스) open 페이즈 고유 기믹 — [진]/[낚] 헤드라인 조각이 60프레임 간격으로
       // 번갈아 스폰된다. 잡은 [진] 개수(caught)는 파도가 바뀌어도 이어진다(최대 3).
       truth: { obj: null, caught: b.truthCaught || 0, spawnTimer: 60, nextKind: 'real' },
+      // ── R라운드 행동 배틀 패턴 상태 ──
+      // 따라 「그림자 하트」 — 2초 전 위치를 따라오는 그림자. 새 길을 그리면 지침.
+      shadow: { trail: [], tired: b.shadowTired || 0, checkT: 60, refX: b.arena.soul.x, refY: b.arena.soul.y },
+      // 그럴싸 「검증 절차」 — [속보] 조각을 원본 카드와 대조해 참/거짓 구멍에 배달
+      verify: { obj: null, spawnTimer: 70, idx: b.verifyIdx || 0, judged: b.verifyJudged || 0, slowT: 0, stopCd: 0 },
+      // 루미 「포근한 방」 — 담요(중앙)·벽시계·가끔 열리는 문
+      cozy: { doorT: 150, door: null, doorOpenT: 0, drainT: 0, exits: b.cozyExits || 0 },
+      // 고요 「아무 말 없음」 — 희미한 존재 곁에 머무르면 어둠이 걷힌다
+      quiet: { spot: { x: box.x + box.w / 2, y: box.y + 50 }, nearT: 0, warm: b.quietWarm || 0 },
     };
+    // 연습 파도(R라운드) — 첫 상대 턴은 다치지 않는 리허설. 패턴을 안전하게 보여 준다.
+    b.waveCount = (b.waveCount || 0) + 1;
+    b.wave.practice = b.waveCount === 1 && !!b.p.pattern;
+    // 담아 미끼·기울 편식 구슬 — 기존 기믹 상태에 함정 오브젝트 슬롯 추가
+    b.wave.parcel.decoy = null; b.wave.parcel.decoyTimer = 200;
+    b.wave.tilt.junk = null; b.wave.tilt.junkTimer = 160;
     // 공격 예고 (N-5) — 상대 턴 시작 플레이버 + 20프레임 숨 고르기
     if (b.p.announce && b.p.announce.length) {
       pushFloat(b.p.announce[b.turnCount % b.p.announce.length]);
@@ -5106,44 +5121,59 @@
     moveSoul(arena, box, arena.carrying ? 0.6 : 1);
 
     // 기울(보스) open 페이즈 — 기울기 드리프트: 하트가 낮은 쪽(왼쪽)으로 조금씩 미끄러진다
-    const tiltActive = b.p.openMechanic === 'tilt' && b.pState === 'open';
+    const patNow = activePattern(b);
+    const tiltActive = patNow === 'tilt';
     if (tiltActive) {
       arena.soul.x -= w.tilt.drift;
       arena.soul.x = clamp(arena.soul.x, box.x + SOUL_R, box.x + box.w - SOUL_R);
     }
 
-    // 탄막 생성 (끝나기 직전엔 멈춤)
-    w.spawnTimer -= 1;
+    // 탄막 생성 (끝나기 직전엔 멈춤). R라운드: 패턴이 본체가 되면서 탄막은
+    // 배경 리듬으로 강등 — 패턴 보스는 간격 ×1.4(밀도 약 30% 하향).
+    // 그럴싸의 멈춤존(verify.slowT)이 살아 있으면 탄막 생성·이동이 절반 속도.
+    const slowMul = (w.verify && w.verify.slowT > 0) ? 2 : 1;
+    w.spawnTimer -= (w.t % slowMul === 0) ? 1 : 0;
     if (w.spawnTimer <= 0 && w.t < w.dur - 40) {
       const pat = currentPattern({ t: w.t, dur: w.dur }, b.attack);
       spawnBullets(arena, pat, arena.soul);
+      // 담아: 미끼에 정보를 내준 만큼 다음 스폰이 「맞춤 광고 조준탄」이 된다
+      if (patNow === 'parcel' && b.adShots > 0) {
+        b.adShots -= 1;
+        spawnBullets(arena, 'aimed', arena.soul);
+        pushFloat('반짝반짝 맞춤 광고가 따라온다!', true);
+      }
       const baseRate = pat === 'burst' ? 24 : pat === 'spiral' ? 8
         : pat === 'wall' ? 42 : pat === 'zigzag' ? 18 : pat === 'aimed' ? 16 : 15;
-      w.spawnTimer = Math.max(4, Math.round(baseRate * (arena.rateMul || 1)));
+      const patternEase = b.p.pattern ? 1.4 : 1;
+      w.spawnTimer = Math.max(4, Math.round(baseRate * (arena.rateMul || 1) * patternEase));
     }
     // 탄막 이동 + 화면 밖 제거 (기울기 드리프트의 절반이 탄막에도 실린다)
+    // 그럴싸 멈춤존이 살아 있으면 탄막이 절반 속도로 흐른다 (대조할 시간)
     const tiltBulletDrift = tiltActive ? w.tilt.drift * 0.5 : 0;
+    const slowF = slowMul === 2 ? 0.5 : 1;
     for (const bu of arena.bullets) {
       if (bu.zig) { bu.zigT = (bu.zigT || 0) + 1; bu.vy = Math.sin(bu.zigT / 7) * bu.zig; }
-      bu.x += bu.vx - tiltBulletDrift; bu.y += bu.vy;
+      bu.x += (bu.vx - tiltBulletDrift) * slowF; bu.y += bu.vy * slowF;
     }
     arena.bullets = arena.bullets.filter((bu) =>
       bu.x > box.x - 24 && bu.x < box.x + box.w + 24 && bu.y > box.y - 24 && bu.y < box.y + box.h + 24);
 
-    if (bulletHits(b, arena)) { w.hits += 1; if (b.playerHp <= 0) { persuadeExhaust(); return; } }
+    // 연습 파도에서는 피격이 없다 — 패턴을 안전하게 살펴보는 리허설
+    if (!w.practice && bulletHits(b, arena)) { w.hits += 1; if (b.playerHp <= 0) { persuadeExhaust(); return; } }
 
-    // 담아(보스) open 페이즈 — 「정보 꾸러미」 운반 기믹
-    if (b.p.openMechanic === 'parcel' && b.pState === 'open') updateParcel(b);
-    // 기울(보스) open 페이즈 — 기울어지는 상자: 「반례 구슬」 운반 기믹
+    // ── R라운드 행동 배틀 — 보스의 이름이 곧 패턴 (shaken·open에서 가동) ──
+    if (patNow === 'parcel') updateParcel(b);
     if (tiltActive) updateTilt(b);
-    // 반짝(보스) open 페이즈 — 반짝이는 보상 아이템: 접촉=역효과, 버티면 보상(피해로 탈진 가능)
-    if (b.p.openMechanic === 'tempt' && b.pState === 'open') {
+    if (patNow === 'tempt') {
       updateTempt(b);
       if (!game.battle) return; // 접촉 피해로 탈진했으면 여기서 중단
     }
-    // 그럴싸(보스) open 페이즈 — [진]/[낚] 헤드라인 조각: [진]=게이지+6(누적 3회째 보너스),
-    // [낚]=게이지-4+화면 얼룩(피해 없음)
-    if (b.p.openMechanic === 'truth' && b.pState === 'open') updateTruth(b);
+    if (patNow === 'verify') updateVerify(b);
+    if (patNow === 'truth') updateTruth(b); // (구 그럴싸 기믹 — verify로 대체, 호환 유지)
+    if (patNow === 'shadow') updateShadow(b);
+    if (patNow === 'cozy') updateCozy(b);
+    if (patNow === 'quiet') updateQuiet(b);
+    if (!game.battle) return; // 패턴 처리 중 탈진 가능성 방어
 
     // 게이지 만충 — 탄막 턴을 바로 끝내고 내 턴으로 (「마음 안아 주기」 마무리)
     if (b.gauge >= b.gaugeMax) { enterMenuPhase(b); return; }
@@ -5155,8 +5185,203 @@
       enterMenuPhase(b);
     }
   }
+  // ── R라운드: 현재 파도의 활성 패턴 ──
+  // closed(굳게 닫힘)에서는 패턴이 없다 — 먼저 들어야 한다. 영이(rotate)는
+  // 파도(턴)마다 지나온 보스의 패턴을 가볍게 순환한다: 게임 전체가 최종전의 연습.
+  const ROTATE_SEQ = ['shadow', 'parcel', 'tilt', 'verify', 'tempt', 'cozy', 'quiet'];
+  function activePattern(b) {
+    if (!b.p.pattern) return null;
+    if (b.pState === 'closed') return null;
+    if (b.p.pattern === 'rotate') return ROTATE_SEQ[(b.waveCount - 1) % ROTATE_SEQ.length];
+    return b.p.pattern;
+  }
+
+  // 따라 「그림자 하트」 — 2초(90프레임) 전의 내 위치를 그대로 따라오는 그림자.
+  // 같은 자리를 맴돌면(따라 하기 쉬운 동선) 그림자에 잡혀 피해. 60프레임마다
+  // 충분히 새로운 자리로 이동해 있으면 따라가 지친다(+게이지, 파도당 최대 3회).
+  function updateShadow(b) {
+    const w = b.wave, sh = w.shadow, arena = b.arena;
+    sh.trail.push({ x: arena.soul.x, y: arena.soul.y });
+    if (sh.trail.length > 90) sh.trail.shift();
+    const ghost = sh.trail[0];
+    if (sh.trail.length >= 90 && !w.practice && arena.inv <= 0) {
+      const dx = ghost.x - arena.soul.x, dy = ghost.y - arena.soul.y;
+      if (dx * dx + dy * dy < (SOUL_R + 8) * (SOUL_R + 8)) {
+        b.playerHp = Math.max(0, b.playerHp - 1);
+        arena.inv = 42; b.flash = 12; Sound.bump();
+        pushFloat('따라: "잡았다!\n…똑같이 움직였잖아."', true);
+        w.hits += 1;
+        if (b.playerHp <= 0) { persuadeExhaust(); return; }
+      }
+    }
+    sh.checkT -= 1;
+    if (sh.checkT <= 0) {
+      const dx = arena.soul.x - sh.refX, dy = arena.soul.y - sh.refY;
+      if (Math.hypot(dx, dy) > 70 && sh.tired < 3) {
+        sh.tired += 1; b.shadowTired = sh.tired;
+        b.gauge = clamp(b.gauge + 8, 0, b.gaugeMax);
+        if (sh.tired >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 24); // 듣기 상한과 동일선
+        pushFloat((b.p.shadowReply || '…어떻게 따라가지?') + `\n(따라가 지쳤다! ${sh.tired}/3)`, true);
+        Sound.correct(); persuadeGaugeSync(b);
+      }
+      sh.refX = arena.soul.x; sh.refY = arena.soul.y; sh.checkT = 60;
+    }
+  }
+
+  // 그럴싸 「검증 절차」 — 상단 원본 카드와 [속보] 조각의 딱지를 대조해,
+  // 왼쪽 [참] / 오른쪽 [거짓] 구멍에 배달한다. 멈춤존(🛑)에 서면 잠시 세상이 느려진다.
+  // 조각 중 일부는 진짜 — 무조건 [거짓]을 찍으면 틀린다 ("의심이 아니라 확인").
+  function updateVerify(b) {
+    const w = b.wave, vf = w.verify, arena = b.arena, box = arena.box;
+    const pieces = b.p.verifyPieces || [];
+    if (!pieces.length) return;
+    if (vf.slowT > 0) vf.slowT -= 1;
+    if (vf.stopCd > 0) vf.stopCd -= 1;
+    // 멈춤존 — 상자 하단 중앙. 서 있으면 90프레임 슬로 (쿨다운 150)
+    const sz = { x: box.x + box.w / 2, y: box.y + box.h - 18 };
+    const sdx = sz.x - arena.soul.x, sdy = sz.y - arena.soul.y;
+    if (vf.stopCd <= 0 && sdx * sdx + sdy * sdy < 20 * 20) {
+      vf.slowT = 90; vf.stopCd = 240;
+      pushFloat('🛑 멈춤 — 세상이 잠깐 느려졌다.\n(원본과 대조할 시간!)', true);
+      Sound.blip();
+    }
+    if (!vf.obj && !arena.carrying) {
+      vf.spawnTimer -= 1;
+      if (vf.spawnTimer <= 0) {
+        const piece = pieces[vf.idx % pieces.length];
+        vf.idx += 1; b.verifyIdx = vf.idx;
+        vf.obj = { x: box.x + 40 + Math.random() * (box.w - 80), y: box.y + 30 + Math.random() * (box.h / 2), piece };
+      }
+    }
+    if (vf.obj) {
+      const dx = vf.obj.x - arena.soul.x, dy = vf.obj.y - arena.soul.y;
+      if (dx * dx + dy * dy < (SOUL_R + 12) * (SOUL_R + 12)) {
+        arena.carrying = true; vf.carry = vf.obj.piece; vf.obj = null; Sound.blip();
+      }
+    }
+    if (arena.carrying && vf.carry) {
+      const holes = [
+        { x: box.x + 16, y: box.y + box.h / 2, judge: true },   // [참]
+        { x: box.x + box.w - 16, y: box.y + box.h / 2, judge: false }, // [거짓]
+      ];
+      for (const h of holes) {
+        const dx = h.x - arena.soul.x, dy = h.y - arena.soul.y;
+        if (dx * dx + dy * dy < (SOUL_R + 13) * (SOUL_R + 13)) {
+          arena.carrying = false;
+          const ok = vf.carry.truth === h.judge;
+          if (ok) {
+            vf.judged += 1; b.verifyJudged = vf.judged;
+            b.gauge = clamp(b.gauge + 8, 0, b.gaugeMax);
+            if (vf.judged >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2);
+            pushFloat((b.p.truthReply || '…확인했구나.') + `\n(원본과 대조했다! ${Math.min(3, vf.judged)}/3)`, true);
+            Sound.correct(); persuadeGaugeSync(b);
+          } else if (!w.practice) {
+            b.gauge = clamp(b.gauge - 4, 0, b.gaugeMax);
+            b.flash = 12;
+            pushFloat('그럴싸: "거봐, 급하니까 낚이지?"\n(원본 카드와 다시 대조하자)', true);
+            Sound.bump(); persuadeGaugeSync(b);
+          } else {
+            pushFloat('* 연습: 딱지를 위의 원본 카드와\n비교하고 판정하자.', true);
+          }
+          vf.carry = null; vf.spawnTimer = 80;
+          break;
+        }
+      }
+    }
+  }
+
+  // 루미 「포근한 방」 — 중앙 담요는 아늑하지만 느려지고 시간이 샌다(벽시계 가속).
+  // 가끔 열리는 문으로 나가는 결단이 카운터 — 시계가 멈추고 상자가 한 단계 넓어진다.
+  function updateCozy(b) {
+    const w = b.wave, cz = w.cozy, arena = b.arena, box = arena.box;
+    // 담요(중앙 원) — 안에 있으면 이동이 느려지고 60프레임마다 게이지가 샌다
+    const bx = box.x + box.w / 2, by = box.y + box.h / 2;
+    const dx = bx - arena.soul.x, dy = by - arena.soul.y;
+    cz.inBlanket = dx * dx + dy * dy < 42 * 42;
+    if (cz.inBlanket && !w.practice) {
+      cz.drainT += 1;
+      if (cz.drainT % 60 === 0) {
+        b.gauge = clamp(b.gauge - 2, 0, b.gaugeMax);
+        pushFloat('* 포근하다… 시곗바늘만 빨라진다.', true);
+        persuadeGaugeSync(b);
+      }
+    } else if (!cz.inBlanket) cz.drainT = 0;
+    // 문 — 150프레임마다 상자 가장자리에 90프레임 동안 열린다
+    if (!cz.door) {
+      cz.doorT -= 1;
+      if (cz.doorT <= 0) {
+        const side = Math.floor(Math.random() * 4);
+        cz.door = side === 0 ? { x: box.x + 14, y: box.y + 30 + Math.random() * (box.h - 60) }
+          : side === 1 ? { x: box.x + box.w - 14, y: box.y + 30 + Math.random() * (box.h - 60) }
+          : side === 2 ? { x: box.x + 30 + Math.random() * (box.w - 60), y: box.y + 14 }
+          : { x: box.x + 30 + Math.random() * (box.w - 60), y: box.y + box.h - 14 };
+        cz.doorOpenT = 90;
+        pushFloat('* 문이 열렸다 — 지금이야!', true);
+      }
+    } else {
+      cz.doorOpenT -= 1;
+      const ddx = cz.door.x - arena.soul.x, ddy = cz.door.y - arena.soul.y;
+      if (ddx * ddx + ddy * ddy < (SOUL_R + 12) * (SOUL_R + 12)) {
+        cz.exits += 1; b.cozyExits = cz.exits;
+        b.gauge = clamp(b.gauge + 10, 0, b.gaugeMax);
+        if (cz.exits >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2);
+        if (b.shrinkLevel) b.shrinkLevel = Math.max(0, b.shrinkLevel - 1);
+        pushFloat((b.p.doorReply || '…잘 갔다 와.') + `\n(이불 밖으로! ${Math.min(3, cz.exits)}/3 — 시계가 멈췄다)`, true);
+        Sound.correct(); persuadeGaugeSync(b);
+        cz.door = null; cz.doorT = 180;
+      } else if (cz.doorOpenT <= 0) {
+        cz.door = null; cz.doorT = 150;
+        if (!w.practice) pushFloat('* …문이 다시 닫혔다.', true);
+      }
+    }
+  }
+
+  // 고요 「아무 말 없음」 — 희미한 존재가 천천히 떠돈다. 곁에 머무르면(60px)
+  // 어둠이 걷히고 마음이 조금씩 열린다. 멀어져도 벌은 없다 — 다정한 보스.
+  function updateQuiet(b) {
+    const w = b.wave, q = w.quiet, arena = b.arena, box = arena.box;
+    q.spot.x = clamp(q.spot.x + Math.sin(w.t / 40) * 0.8, box.x + 30, box.x + box.w - 30);
+    q.spot.y = clamp(q.spot.y + Math.cos(w.t / 55) * 0.5, box.y + 24, box.y + box.h - 24);
+    const dx = q.spot.x - arena.soul.x, dy = q.spot.y - arena.soul.y;
+    q.near = dx * dx + dy * dy < 60 * 60;
+    if (q.near) {
+      q.nearT += 1;
+      if (q.nearT % 45 === 0 && q.warm < 5) {
+        q.warm += 1; b.quietWarm = q.warm;
+        b.gauge = clamp(b.gauge + 6, 0, b.gaugeMax);
+        pushFloat((b.p.nearReply || '……아직, 있네.') + `\n(어둠이 조금 걷혔다 ${q.warm}/5)`, true);
+        Sound.blip(); persuadeGaugeSync(b);
+      }
+    } else q.nearT = 0;
+  }
+
   function updateParcel(b) {
     const w = b.wave, pc = w.parcel, arena = b.arena, box = arena.box;
+    // 미끼 「공짜 선물」 — 만지면 정보를 내주고(게이지-4) 다음 스폰이 맞춤 광고 조준탄이 된다
+    if (!pc.decoy) {
+      pc.decoyTimer -= 1;
+      if (pc.decoyTimer <= 0) {
+        pc.decoy = { x: box.x + 30 + Math.random() * (box.w - 60), y: box.y + 30 + Math.random() * (box.h - 60), age: 0 };
+      }
+    } else {
+      pc.decoy.age += 1;
+      if (pc.decoy.age > 220) { pc.decoy = null; pc.decoyTimer = 220; }
+      else {
+        const ddx = pc.decoy.x - arena.soul.x, ddy = pc.decoy.y - arena.soul.y;
+        if (ddx * ddx + ddy * ddy < (SOUL_R + 11) * (SOUL_R + 11)) {
+          pc.decoy = null; pc.decoyTimer = 260;
+          if (!w.practice) {
+            b.gauge = clamp(b.gauge - 4, 0, b.gaugeMax);
+            b.adShots = (b.adShots || 0) + 2;
+            b.flash = 10;
+            pushFloat((b.p.decoyReply || '히히… 공짜 좋아하는구나?') + '\n(내 정보가 광고가 되어 돌아온다…)', true);
+            Sound.bump(); persuadeGaugeSync(b);
+          } else {
+            pushFloat('* 연습: 공짜 선물은 미끼 —\n만지면 내 정보를 내주게 된다.', true);
+          }
+        }
+      }
+    }
     if (!pc.obj && !arena.carrying) {
       pc.spawnTimer -= 1;
       if (pc.spawnTimer <= 0) {
@@ -5186,6 +5411,33 @@
   const TILT_DRIFT_STEPS = [0.9, 0.6, 0.3, 0];
   function updateTilt(b) {
     const w = b.wave, tl = w.tilt, arena = b.arena, box = arena.box;
+    // 편식 구슬(어두운 구슬) — 낮은 쪽에 섞여 스폰. 만지면 "같은 쪽 이야기만 담은" 셈:
+    // 게이지-4에 기울기가 한 단계 되돌아간다. 반례(밝은 구슬)와 구별해 담아야 한다.
+    if (!tl.junk) {
+      tl.junkTimer -= 1;
+      if (tl.junkTimer <= 0) {
+        tl.junk = { x: box.x + 20 + Math.random() * (box.w / 2 - 40), y: box.y + 40 + Math.random() * (box.h - 80), age: 0 };
+      }
+    } else {
+      tl.junk.age += 1;
+      if (tl.junk.age > 240) { tl.junk = null; tl.junkTimer = 200; }
+      else {
+        const jdx = tl.junk.x - arena.soul.x, jdy = tl.junk.y - arena.soul.y;
+        if (jdx * jdx + jdy * jdy < (SOUL_R + 10) * (SOUL_R + 10)) {
+          tl.junk = null; tl.junkTimer = 240;
+          if (!w.practice) {
+            b.gauge = clamp(b.gauge - 4, 0, b.gaugeMax);
+            tl.deliveries = Math.max(0, tl.deliveries - 1); b.tiltDeliveries = tl.deliveries;
+            tl.drift = TILT_DRIFT_STEPS[Math.min(tl.deliveries, TILT_DRIFT_STEPS.length - 1)];
+            b.flash = 10;
+            pushFloat((b.p.junkReply || '거봐, 역시 이쪽 이야기가 맞다니까!') + '\n(저울이 다시 기울었다…)', true);
+            Sound.bump(); persuadeGaugeSync(b);
+          } else {
+            pushFloat('* 연습: 어두운 구슬은 편식 —\n밝은 반례 구슬만 접시에 담자.', true);
+          }
+        }
+      }
+    }
     if (!tl.orb && !arena.carrying) {
       tl.spawnTimer -= 1;
       if (tl.spawnTimer <= 0) { // 낮은 쪽(왼쪽) 절반에만 스폰
@@ -5231,10 +5483,15 @@
     }
     tp.obj.age += 1;
     const dx = tp.obj.x - arena.soul.x, dy = tp.obj.y - arena.soul.y;
-    if (dx * dx + dy * dy < (SOUL_R + 10) * (SOUL_R + 10)) {
-      // 접촉 — 역효과: 피해 + 광고 얼룩
+    const d2 = dx * dx + dy * dy;
+    if (d2 < (SOUL_R + 10) * (SOUL_R + 10)) {
+      // 접촉 — 역효과: 피해 + 광고 얼룩 (연습 파도에서는 안내만)
       tp.obj = null;
       tp.spawnTimer = 60;
+      if (w.practice) {
+        pushFloat('* 연습: 대박 버튼은 만지지 말고,\n곁에서 작은 확률표를 읽자.', true);
+        return;
+      }
       b.playerHp = Math.max(0, b.playerHp - 1);
       arena.inv = 42; b.flash = 12;
       addAdSticker();
@@ -5243,6 +5500,21 @@
       if (b.playerHp <= 0) { persuadeExhaust(); return; }
       return;
     }
+    // 확률표 응시(R라운드·10차시) — 만지지 않을 만큼 가까이(20~44px)서 45프레임
+    // 버튼의 작은 확률표를 읽으면, 유혹의 빛이 꺼진다 (+8, 버티기와 같은 누적 카운트)
+    if (d2 < 44 * 44) {
+      tp.obj.gazeT = (tp.obj.gazeT || 0) + 1;
+      if (tp.obj.gazeT >= 45) {
+        tp.obj = null; tp.spawnTimer = 60;
+        tp.resisted = Math.min(3, tp.resisted + 1);
+        b.temptResisted = tp.resisted;
+        b.gauge = clamp(b.gauge + 8, 0, b.gaugeMax);
+        if (tp.resisted >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2);
+        pushFloat((b.p.gazeReply || '…확률을, 읽었어?') + `\n(레전드 1.5%… 빛이 꺼졌다 ${tp.resisted}/3)`, true);
+        Sound.correct(); persuadeGaugeSync(b);
+        return;
+      }
+    } else if (tp.obj.gazeT) tp.obj.gazeT = 0;
     if (tp.obj.age >= TEMPT_SURVIVE_FRAMES) {
       // 버텨 냄 — 소멸 + 보상(게이지 +10, 조명 하나 꺼짐, 최대 3회)
       tp.obj = null;
@@ -9129,11 +9401,25 @@
   }
 
   // 마음 조각 배틀 — 상대 턴(탄막 회피 + 듣기 턴의 조각 줍기)을 한 상자 안에서 그린다.
+  // R라운드 — 패턴별 조작 안내 한 줄 (연습 파도에는 접두어가 붙는다)
+  const PATTERN_GUIDES = {
+    shadow: '그림자가 내 길을 따라온다 — 같은 길을 돌지 말자!',
+    parcel: '내 정보 꾸러미를 ↩에 돌려주자 · 공짜 🎁는 미끼!',
+    tilt: '밝은 반례 구슬만 ⚖ 접시로 — 어두운 편식 구슬은 함정',
+    verify: '🛑에 멈춰 원본과 대조 → 조각을 참/거짓 구멍에!',
+    tempt: '누르지 말고 곁에서 확률표를 읽자 — 빛이 꺼진다',
+    cozy: '담요는 포근하지만 시간이 샌다 — 문이 열리면 나가자!',
+    quiet: '…곁에 있어 주자. 어둠이 조금씩 걷힌다.',
+    truth: '[진]만 잡자 — [낚]은 그럴듯한 가짜',
+  };
   function drawPersuadeArena(b) {
     const arena = b.arena, box = arena.box;
-    // 인물의 외침 + 조작 안내
-    drawArenaGuide(box, b.attack ? b.attack.taunt : null,
-      b.prologueTutorial ? '마음의 파도: 탄막을 피하며 버텨요 — 곧 내 차례!' : '탄막을 피하며 버텨요 — 곧 내 차례가 온다!');
+    // 인물의 외침 + 조작 안내 — 패턴이 있으면 패턴 안내가 우선
+    const patG = b.phase === 'wave' ? activePattern(b) : null;
+    let guide = (patG && PATTERN_GUIDES[patG]) ||
+      (b.prologueTutorial ? '마음의 파도: 탄막을 피하며 버텨요 — 곧 내 차례!' : '탄막을 피하며 버텨요 — 곧 내 차례가 온다!');
+    if (b.phase === 'wave' && b.wave.practice) guide = '연습 파도 (다치지 않아요) — ' + guide;
+    drawArenaGuide(box, b.attack ? b.attack.taunt : null, guide);
 
     if (b.prologueTutorial) {
       ctx.textAlign = 'left';
@@ -9175,7 +9461,8 @@
     }
 
     // 고요(보스) — 어둠 속에서 하트 주변만 보인다(탄막은 어둠 밖에서 날아든다)
-    if (b.p.openMechanic === 'dark' && b.pState === 'open' && b.phase === 'wave') drawDarkArenaVignette(b);
+    const patDraw = b.phase === 'wave' ? activePattern(b) : null;
+    if ((patDraw === 'quiet' || (b.p.openMechanic === 'dark' && b.pState === 'open')) && b.phase === 'wave') drawDarkArenaVignette(b);
 
     if (b.phase === 'wave') {
       // 고요(보스) — 탄막이 나오기 전, 스폰을 한 번 깜빡여 예고한다
@@ -9187,8 +9474,8 @@
         ctx.textAlign = 'left';
       }
       ctx.textAlign = 'center';
-      // 담아(보스) 정보 꾸러미 + 돌려주기 구멍
-      if (b.p.openMechanic === 'parcel' && b.pState === 'open') {
+      // 담아(보스) 정보 꾸러미 + 돌려주기 구멍 + 공짜 선물 미끼
+      if (patDraw === 'parcel') {
         const pc = b.wave.parcel;
         ctx.fillStyle = '#7bd1f0';
         ctx.fillRect(pc.hole.x - 9, pc.hole.y - 9, 18, 18);
@@ -9196,9 +9483,15 @@
         ctx.fillText('↩', pc.hole.x, pc.hole.y + 4);
         if (pc.obj) { ctx.fillStyle = '#f0c060'; ctx.font = fs(16); ctx.fillText('▣', pc.obj.x, pc.obj.y + 5); }
         if (arena.carrying) { ctx.fillStyle = '#f0c060'; ctx.font = fs(13); ctx.fillText('▣', arena.soul.x + 10, arena.soul.y - 8); }
+        if (pc.decoy) {
+          const tw = Math.floor(game.time / 8) % 2 === 0;
+          ctx.fillStyle = tw ? '#fff2a8' : '#ffd644'; ctx.font = fs(16);
+          ctx.fillText('🎁', pc.decoy.x, pc.decoy.y + 5);
+          ctx.font = fs(10); ctx.fillText('공짜!', pc.decoy.x, pc.decoy.y - 12);
+        }
       }
-      // 기울(보스) 반례 구슬 + 저울 접시 (상자 오른쪽·높은 쪽 가장자리)
-      if (b.p.openMechanic === 'tilt' && b.pState === 'open') {
+      // 기울(보스) 반례 구슬 + 저울 접시 + 편식 구슬(함정)
+      if (patDraw === 'tilt') {
         const tl = b.wave.tilt;
         ctx.fillStyle = '#e0a53a';
         ctx.fillRect(tl.plate.x - 9, tl.plate.y - 9, 18, 18);
@@ -9211,21 +9504,70 @@
           ctx.font = fs(10); ctx.fillText('반례', tl.orb.x, tl.orb.y - 12);
         }
         if (arena.carrying) { ctx.fillStyle = '#8ecbff'; ctx.font = fs(13); ctx.fillText('◍', arena.soul.x + 10, arena.soul.y - 8); }
+        if (tl.junk) {
+          ctx.fillStyle = '#6b5a86'; ctx.font = fs(16); ctx.fillText('◍', tl.junk.x, tl.junk.y + 5);
+          ctx.font = fs(10); ctx.fillText('편식', tl.junk.x, tl.junk.y - 12);
+        }
       }
-      // 반짝(보스) 반짝이는 보상 아이템 — 240프레임 가까워지면 깜빡인다(버티면 곧 소멸+보상)
-      if (b.p.openMechanic === 'tempt' && b.pState === 'open') {
+      // 반짝(보스) 대박 버튼 — 곁에서 확률표를 읽으면(응시 링) 빛이 꺼진다
+      if (patDraw === 'tempt') {
         const tp = b.wave.tempt;
         if (tp.obj) {
           const near = tp.obj.age > 180 && Math.floor(game.time / 6) % 2 === 0;
           ctx.fillStyle = near ? '#fff2a8' : '#ffd644';
           ctx.font = fs(18);
           ctx.fillText('✧', tp.obj.x, tp.obj.y + 6);
+          ctx.font = fs(9);
+          ctx.fillStyle = '#9a93b0';
+          ctx.fillText('레전드 1.5%', tp.obj.x, tp.obj.y + 20);
+          ctx.fillStyle = near ? '#fff2a8' : '#ffd644';
           ctx.font = fs(10);
-          ctx.fillText('반짝', tp.obj.x, tp.obj.y - 12);
+          ctx.fillText('지금 누르면 대박!', tp.obj.x, tp.obj.y - 12);
+          if (tp.obj.gazeT > 0) { // 응시 진행 링
+            ctx.strokeStyle = '#8ecbff'; ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(tp.obj.x, tp.obj.y, 26, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (tp.obj.gazeT / 45));
+            ctx.stroke();
+          }
         }
       }
-      // 그럴싸(보스) [진]/[낚] 헤드라인 조각 — 색약 모드는 okColor/badColor로 색 구분
-      if (b.p.openMechanic === 'truth' && b.pState === 'open') {
+      // 그럴싸(보스) 「검증 절차」 — 원본 카드·[속보] 조각·참/거짓 구멍·멈춤존
+      if (patDraw === 'verify') {
+        const vf = b.wave.verify;
+        // 원본 카드 (상자 위)
+        ctx.fillStyle = 'rgba(123,209,240,0.14)';
+        ctx.fillRect(box.x + box.w / 2 - 120, box.y - 30, 240, 20);
+        ctx.fillStyle = '#7bd1f0'; ctx.font = fs(11, true);
+        ctx.fillText(b.p.verifyCard || '원본 기록', box.x + box.w / 2, box.y - 16);
+        // 판정 구멍
+        ctx.fillStyle = okColor();
+        ctx.fillRect(box.x + 7, box.y + box.h / 2 - 9, 18, 18);
+        ctx.fillStyle = '#000'; ctx.font = fs(10, true); ctx.fillText('참', box.x + 16, box.y + box.h / 2 + 4);
+        ctx.fillStyle = badColor();
+        ctx.fillRect(box.x + box.w - 25, box.y + box.h / 2 - 9, 18, 18);
+        ctx.fillStyle = '#000'; ctx.fillText('거짓', box.x + box.w - 16, box.y + box.h / 2 + 4);
+        // 멈춤존 (하단 중앙)
+        ctx.fillStyle = vf.stopCd > 0 ? '#444' : '#e0453a';
+        ctx.font = fs(13);
+        ctx.fillText('🛑', box.x + box.w / 2, box.y + box.h - 12);
+        if (vf.slowT > 0) {
+          ctx.fillStyle = 'rgba(142,203,255,0.5)'; ctx.font = fs(10);
+          ctx.fillText('…세상이 느려졌다', box.x + box.w / 2, box.y + box.h - 26);
+        }
+        // 조각(딱지 포함) — 들고 있으면 하트 옆에
+        if (vf.obj) {
+          ctx.fillStyle = '#fff'; ctx.font = fs(12, true);
+          ctx.fillText('[속보]', vf.obj.x, vf.obj.y - 8);
+          ctx.font = fs(10); ctx.fillStyle = '#ffd644';
+          ctx.fillText(vf.obj.piece.label, vf.obj.x, vf.obj.y + 6);
+        }
+        if (arena.carrying && vf.carry) {
+          ctx.fillStyle = '#ffd644'; ctx.font = fs(10);
+          ctx.fillText(vf.carry.label, arena.soul.x, arena.soul.y - 14);
+        }
+      }
+      // (구) [진]/[낚] 잡기 — verify 미사용 프로필 호환
+      if (patDraw === 'truth') {
         const tr = b.wave.truth;
         if (tr.obj) {
           const isReal = tr.obj.kind === 'real';
@@ -9234,19 +9576,77 @@
           ctx.fillText(isReal ? '[진]' : '[낚]', tr.obj.x, tr.obj.y + 5);
         }
       }
+      // 따라 「그림자 하트」
+      if (patDraw === 'shadow') {
+        const sh = b.wave.shadow;
+        const ghost = sh.trail.length >= 90 ? sh.trail[0] : null;
+        if (ghost) {
+          ctx.fillStyle = 'rgba(160,160,180,0.55)';
+          ctx.font = fs(17);
+          ctx.fillText('♥', ghost.x, ghost.y + 6);
+          ctx.font = fs(9); ctx.fillStyle = '#9a93b0';
+          ctx.fillText('그림자', ghost.x, ghost.y - 12);
+        }
+        ctx.font = fs(14);
+        for (let i = 0; i < 3; i++) {
+          ctx.fillStyle = i < (sh.tired || 0) ? '#8ecbff' : '#555';
+          ctx.fillText('●', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
+        }
+      }
+      // 루미 「포근한 방」 — 담요·문·벽시계
+      if (patDraw === 'cozy') {
+        const cz = b.wave.cozy;
+        ctx.fillStyle = 'rgba(224,165,131,0.16)';
+        ctx.beginPath(); ctx.arc(box.x + box.w / 2, box.y + box.h / 2, 42, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#e0a583'; ctx.font = fs(10);
+        ctx.fillText('담요', box.x + box.w / 2, box.y + box.h / 2 + 3);
+        if (cz.door) {
+          const blink = cz.doorOpenT < 30 && Math.floor(game.time / 5) % 2 === 0;
+          ctx.fillStyle = blink ? '#fff' : '#8ecbff'; ctx.font = fs(15, true);
+          ctx.fillText('🚪', cz.door.x, cz.door.y + 5);
+          ctx.font = fs(9); ctx.fillText('열림!', cz.door.x, cz.door.y - 12);
+        }
+        // 벽시계 — 담요 안이면 바늘이 빨리 돈다
+        const cxk = box.x + box.w + 26, cyk = box.y + 16;
+        ctx.strokeStyle = '#e0a583'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(cxk, cyk, 10, 0, Math.PI * 2); ctx.stroke();
+        const spd = cz.inBlanket ? 6 : 60;
+        const ang = (game.time / spd) % (Math.PI * 2);
+        ctx.beginPath(); ctx.moveTo(cxk, cyk);
+        ctx.lineTo(cxk + Math.sin(ang) * 8, cyk - Math.cos(ang) * 8); ctx.stroke();
+        ctx.font = fs(14);
+        for (let i = 0; i < 3; i++) {
+          ctx.fillStyle = i < (cz.exits || 0) ? '#8ecbff' : '#555';
+          ctx.fillText('●', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
+        }
+      }
+      // 고요 「아무 말 없음」 — 희미한 존재 (곁에 있으면 밝아진다)
+      if (patDraw === 'quiet') {
+        const q = b.wave.quiet;
+        const glow = q.near ? 0.5 + Math.sin(game.time / 10) * 0.15 : 0.22;
+        ctx.fillStyle = `rgba(200,210,255,${glow})`;
+        ctx.font = fs(15);
+        ctx.fillText('◌', q.spot.x, q.spot.y + 5);
+        if (q.near) { ctx.font = fs(9); ctx.fillStyle = '#8ecbff'; ctx.fillText('…곁', q.spot.x, q.spot.y - 12); }
+        ctx.font = fs(14);
+        for (let i = 0; i < 5; i++) {
+          ctx.fillStyle = i < (q.warm || 0) ? '#8ecbff' : '#555';
+          ctx.fillText('●', box.x + box.w - 96 + i * 18, box.y + box.h + 34);
+        }
+      }
       ctx.textAlign = 'left';
       // 남은 파도 시간 바
       const frac = Math.max(0, 1 - b.wave.t / b.wave.dur);
       ctx.fillStyle = '#333'; ctx.fillRect(box.x, box.y + box.h + 12, box.w, 6);
       ctx.fillStyle = '#ffd644'; ctx.fillRect(box.x, box.y + box.h + 12, box.w * frac, 6);
       // 기울기 바 — 상자가 왼쪽으로 얼마나 기울어 있는지(왼쪽부터 채워지는 게이지)
-      if (b.p.openMechanic === 'tilt' && b.pState === 'open') {
+      if (patDraw === 'tilt') {
         const tiltFrac = b.wave.tilt.drift / 0.9;
         ctx.fillStyle = '#333'; ctx.fillRect(box.x, box.y + box.h + 22, box.w, 4);
         ctx.fillStyle = '#e0a53a'; ctx.fillRect(box.x, box.y + box.h + 22, box.w * 0.5 * tiltFrac, 4);
       }
       // 반짝(보스) 조명 표시 — 버틴 횟수(resisted)만큼 조명이 하나씩 꺼진다
-      if (b.p.openMechanic === 'tempt' && b.pState === 'open') {
+      if (patDraw === 'tempt') {
         const resisted = b.wave.tempt.resisted || 0;
         ctx.font = fs(14);
         for (let i = 0; i < 3; i++) {
@@ -9255,7 +9655,7 @@
         }
       }
       // 그럴싸(보스) [진] 적중 표시 — 잡은 개수(caught)만큼 불이 들어온다
-      if (b.p.openMechanic === 'truth' && b.pState === 'open') {
+      if (patDraw === 'truth') {
         const caught = b.wave.truth.caught || 0;
         ctx.font = fs(14);
         for (let i = 0; i < 3; i++) {
@@ -9264,7 +9664,7 @@
         }
       }
       // 루미(보스) 축소 단계 표시 — 상자가 좁아진 단계만큼 채워지는 게이지(포근한 색)
-      if (b.p.openMechanic === 'shrink' && b.pState === 'open') {
+      if (patDraw === 'cozy' || (b.p.openMechanic === 'shrink' && b.pState === 'open')) {
         const lvl = b.shrinkLevel || 0;
         ctx.fillStyle = '#333'; ctx.fillRect(box.x, box.y + box.h + 22, box.w, 4);
         ctx.fillStyle = '#e0a583'; ctx.fillRect(box.x, box.y + box.h + 22, box.w * (lvl / SHRINK_MAX_LEVEL), 4);
@@ -10099,6 +10499,7 @@
     pauseItems, diaryCount, // 낡은 일기(Q-2) — 동적 메뉴 검증용
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록
     persuadeAvail: () => (game.battle ? availableClaims(game.battle).map((c) => c.text) : []),
+    activePattern: () => (game.battle ? activePattern(game.battle) : null), // R라운드 검증용
     battleObserve: () => (game.battle ? battleObserve(game.battle) : ''),
     // 파이널 「고요의 뜰」 — 맵별 어둠 단계 확인용
     QUIET_DIM_LEVEL,

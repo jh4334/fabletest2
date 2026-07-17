@@ -230,6 +230,9 @@ function startListen() { // 가만히 듣기 → 상대 턴(속마음 조각 ✦
   battleMenuPick(2);
   advanceReact();
   if (g.battle.phase !== 'wave') throw new Error('듣기 턴 진입 실패: ' + g.battle.phase);
+  // R라운드: 첫 파도는 연습(무피해)이라 기믹 판정 검증이 안 된다 — 실전 상태로 강제.
+  // (연습 파도 자체는 전용 검사에서 별도 검증)
+  g.battle.wave.practice = false;
 }
 function forceMenu() { // 상대 턴을 시간 만료로 끝내 내 턴(menu)으로 (무피격 보너스 배제)
   const b = g.battle;
@@ -303,6 +306,22 @@ forceMenu();
 g.battle.gauge = 6; g.battle.listened = { 0: true }; // 이후 흐름(탈진·재도전 수치) 원복
 battleMenuPick(2); advanceReact(); // 반복 듣기(+0)로 상대 턴 재진입 — 탈진 검증용 탄막
 check('원복 후 상대 턴 — 게이지 6 유지', g.battle.phase === 'wave' && g.battle.gauge === 6);
+// R라운드 「그림자 하트」(따라 pattern: shadow) — 제자리는 안 통하고, 새 길이면 지친다
+{
+  const b = g.battle, box = b.arena.box, sh = b.wave.shadow;
+  check('따라 패턴 = shadow', windowObj.__test.activePattern() === 'shadow');
+  b.wave.t = 0; b.arena.bullets.length = 0; b.arena.inv = 999;
+  sh.trail.length = 0; sh.checkT = 60; sh.tired = 0; b.shadowTired = 0;
+  sh.refX = b.arena.soul.x; sh.refY = b.arena.soul.y;
+  const gB = b.gauge;
+  step(60); // 제자리
+  check('제자리걸음 — 따라가 지치지 않음', sh.tired === 0 && b.gauge === gB);
+  b.arena.soul.x = box.x + box.w - 20; b.arena.soul.y = box.y + box.h - 20; // 새 길
+  step(61);
+  check('새 길 이동 — 따라가 지침(+8)', sh.tired === 1 && b.gauge === gB + 8);
+  check('그림자 궤적 상한(90프레임)', sh.trail.length === 90);
+  b.gauge = 6; b.shadowTired = 0; sh.tired = 0; // 이후 탈진·기억 검사 수치 원복
+}
 // 탈진: 하트를 1로 두고 하트 위에 탄을 얹어 결정적으로 피격
 g.battle.playerHp = 1;
 g.battle.arena.inv = 0;
@@ -1503,6 +1522,20 @@ check('보스 조우 대화 시작', g.mode === 'dialog');
 check('콜백 인트로(토큰 3+)가 조우에 반영', /여기 다 있어/.test(g.dialog.lines[0]));
 advanceDialog();
 check('담아(수집몬 보스) 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'menu');
+// R라운드 연습 파도 — 첫 상대 턴은 다치지 않는 리허설
+battleMenuPick(2); advanceReact(); // 첫 파도 (startListen 헬퍼는 practice를 끄므로 직접 진입)
+check('첫 파도는 연습(무피해 리허설)', g.battle.wave.practice === true);
+{
+  const b = g.battle;
+  b.arena.inv = 0;
+  b.arena.bullets = [{ x: b.arena.soul.x, y: b.arena.soul.y, vx: 0, vy: 0, r: 6 }];
+  step(1);
+  check('연습 파도 — 탄에 닿아도 하트 그대로', b.playerHp === b.maxHearts);
+}
+forceMenu();
+// 연습 파도 진입이 소모한 턴/듣기 상태를 원복 — 이후 검사(관찰 대사 순환 등) 격리
+g.battle.turnCount = 1; g.battle.listened = {}; g.battle.gauge = 0; // (배틀 시작 직후 값)
+g.battle.fragmentTotal = 0; g.flags.pStats.fragments = Math.max(0, g.flags.pStats.fragments - 3);
 check('스프라이트/도감 id는 sujipmon', g.battle.monId === 'sujipmon');
 check('설득 프로필 id는 sujipmon_boss', g.battle.persuadeId === 'sujipmon_boss');
 check('표시 이름은 담아(persuadeId 계층)', g.battle.mon.name === '담아');
@@ -1567,6 +1600,22 @@ check('잠긴 응답은 턴을 소모하지 않음(내 턴 복귀)', g.battle.ph
 answerClaim(false); // 오답으로 판정 → 상대 턴 복귀
 check('오답 응답 판정 → 상대 턴 재개', g.battle.phase === 'wave' && g.flags.pStats.gateWrong === 2);
 
+// R라운드 미끼 「공짜 선물」 — 만지면 게이지 -4 + 다음 스폰이 맞춤 광고 조준탄
+{
+  const b = g.battle;
+  if (b.phase !== 'wave') { startListen(); }
+  const pc = b.wave.parcel, box = b.arena.box;
+  b.wave.t = 0; b.wave.practice = false; b.arena.bullets.length = 0; b.arena.inv = 999;
+  b.pState = 'open';
+  b.arena.soul.x = box.x + 8; b.arena.soul.y = box.y + 8;
+  pc.decoy = null; pc.decoyTimer = 1; step(2);
+  check('미끼 스폰(공짜 선물)', !!pc.decoy);
+  const gD = b.gauge;
+  b.arena.soul.x = pc.decoy.x; b.arena.soul.y = pc.decoy.y; step(1);
+  check('미끼 접촉 → 게이지 -4 + 광고탄 2발 예약', b.gauge === gD - 4 && b.adShots === 2);
+  check('미끼 접촉은 피해가 아님(하트 그대로)', b.playerHp === b.maxHearts);
+  b.adShots = 0; // 이후 흐름 격리
+}
 // ── open 고유 기믹: 담아 「정보 꾸러미」 운반 (+10, 3회면 만충 직전) ──
 g.battle.pState = 'open'; g.battle.gauge = 90;
 g.battle.wave.fragments.length = 0; // 조각 오수집 방지
@@ -1763,6 +1812,23 @@ g.battle.pState = 'open'; g.battle.gauge = 40; g.battle.claimIdx = 0;
 answerClaim(true);
 check('열림 정답 문 통과 (+32)', g.battle.gauge === 72 && g.flags.pStats.gateRight >= 1);
 
+// R라운드 편식 구슬 — 만지면 게이지 -4·기울기 악화 (같은 쪽 이야기만 담은 값)
+{
+  const b = g.battle;
+  if (b.phase !== 'wave') startListen();
+  const tl = b.wave.tilt, box = b.arena.box;
+  b.pState = 'open'; b.wave.t = 0; b.wave.practice = false;
+  b.arena.bullets.length = 0; b.arena.inv = 999;
+  b.arena.soul.x = box.x + box.w - 24; b.arena.soul.y = box.y + 12; // 스폰 반대편
+  tl.junk = null; tl.junkTimer = 1; step(2);
+  check('편식 구슬 스폰(어두운 구슬·왼쪽 절반)', !!tl.junk && tl.junk.x < box.x + box.w / 2);
+  tl.deliveries = 1; b.tiltDeliveries = 1; tl.drift = 0.6; // 반례 1개 담은 상태 가정
+  const gJ = b.gauge;
+  b.arena.soul.x = tl.junk.x; b.arena.soul.y = tl.junk.y; step(1);
+  check('편식 구슬 접촉 → 게이지 -4·기울기 되돌아감(0.9)', b.gauge === gJ - 4 &&
+    tl.deliveries === 0 && tl.drift === 0.9);
+  // (파도를 유지한 채 원래 드리프트·운반 검사로 이어진다)
+}
 // ── open 고유 기믹: 기울 「기울어지는 상자」 — 기울기 드리프트 + 반례 구슬 운반 ──
 check('open 진입 시 드리프트 초기값 0.9', g.battle.wave.tilt.drift === 0.9);
 const arenaT = g.battle.arena, tl = g.battle.wave.tilt;
@@ -2004,42 +2070,48 @@ answerClaim(true);
 check('정답 문 통과 (+26)', g.battle.gauge === 26 && g.flags.pStats.gateRight >= 1 && g.battle.phase === 'wave');
 check('이미 최대 HP면 정답 문 통과해도 초과 회복 없음', g.battle.playerHp === g.battle.maxHearts);
 
-// openMechanic 'truth' — open 페이즈 중 [진]/[낚] 헤드라인 조각이 60프레임 간격으로 번갈아
-// 스폰(tempt의 최소 변형). [진] 접촉=게이지+6(누적 3회째 gaugeMax-2 보너스), [낚] 접촉=게이지-4+화면 얼룩.
+// R라운드 「검증 절차」(pattern: verify) — [속보] 조각을 원본 카드와 대조해
+// 참/거짓 구멍에 배달한다. 멈춤존(🛑)은 90프레임 슬로. 일부 속보는 진짜다.
+check('그럴싸 패턴 = verify', g.battle.p.pattern === 'verify' && (g.battle.p.verifyPieces || []).length >= 4);
 g.battle.pState = 'open';
-// 앞 시나리오의 프레임/RNG 위상 변화에 흔들리지 않게 스폰 전에 격리한다 —
-// 파도 잔여 시간 확보 + 하트를 구석으로(무작위 스폰 좌표와 겹쳐 즉시 수집되는 사고 방지)
-g.battle.wave.t = 0;
+// 앞 시나리오의 프레임/RNG 위상 변화에 흔들리지 않게 스폰 전에 격리한다
+g.battle.wave.t = 0; g.battle.wave.practice = false;
 g.battle.arena.bullets.length = 0; g.battle.arena.inv = 999; g.battle.wave.fragments.length = 0;
 g.battle.arena.soul.x = g.battle.arena.box.x + 8; g.battle.arena.soul.y = g.battle.arena.box.y + 8;
-step(61); // truth.spawnTimer(60) 경과 → 첫 조각 스폰([진]부터 시작)
-check('첫 헤드라인 조각은 [진]', !!g.battle.wave.truth.obj && g.battle.wave.truth.obj.kind === 'real');
-const truthGaugeBefore1 = g.battle.gauge;
-g.battle.arena.soul.x = g.battle.wave.truth.obj.x; g.battle.arena.soul.y = g.battle.wave.truth.obj.y;
-step(1);
-check('[진] 접촉 → 게이지 +6', g.battle.gauge === truthGaugeBefore1 + 6);
-check('[진] 접촉 → truthCaught 1', g.battle.truthCaught === 1);
-check('접촉한 조각 소멸', g.battle.wave.truth.obj === null);
-// 하트를 다시 구석으로 — [진]을 집은 자리(무작위 좌표)에 그대로 두면
-// 두 번째 조각이 그 근처에 스폰될 때 즉시 접촉·소멸해 플레이크가 난다
-g.battle.arena.soul.x = g.battle.arena.box.x + 8; g.battle.arena.soul.y = g.battle.arena.box.y + 8;
-step(61); // 두 번째 조각([낚]) 스폰
-check('두 번째 헤드라인 조각은 [낚]', !!g.battle.wave.truth.obj && g.battle.wave.truth.obj.kind === 'bait');
-g.battle.wave.fragments.length = 0;
-const truthGaugeBefore2 = g.battle.gauge;
-g.battle.arena.soul.x = g.battle.wave.truth.obj.x; g.battle.arena.soul.y = g.battle.wave.truth.obj.y;
-step(1);
-check('[낚] 접촉 → 게이지 -4', g.battle.gauge === truthGaugeBefore2 - 4);
-check('[낚] 접촉 → 화면 얼룩(flash)', g.battle.flash > 0);
-check('[낚] 접촉해도 truthCaught 불변(1)', g.battle.truthCaught === 1);
-check('[낚] 접촉해도 피해 없음(하트 그대로)', g.battle.playerHp === g.battle.maxHearts);
-// 3번째 [진] 접촉 — gaugeMax-2로 밀어준다(2회째까지는 직접 주입해 빠르게 확인)
-g.battle.wave.truth.caught = 2; g.battle.truthCaught = 2;
-g.battle.wave.truth.obj = { x: g.battle.arena.box.x + 20, y: g.battle.arena.box.y + 20, kind: 'real' };
-g.battle.arena.soul.x = g.battle.wave.truth.obj.x; g.battle.arena.soul.y = g.battle.wave.truth.obj.y;
-g.battle.gauge = 50;
-step(1);
-check('3번째 [진] 접촉 → truthCaught 3 + gaugeMax-2로 보너스', g.battle.truthCaught === 3 && g.battle.gauge === g.battle.gaugeMax - 2);
+{
+  const box = g.battle.arena.box, vf = g.battle.wave.verify;
+  // 멈춤존 — 하단 중앙에 서면 슬로 발동
+  g.battle.arena.soul.x = box.x + box.w / 2; g.battle.arena.soul.y = box.y + box.h - 18;
+  step(1);
+  check('멈춤존 → 슬로 발동(90프레임)', vf.slowT > 0 && vf.stopCd > 0);
+  // 조각 스폰 (idx 0 = 거짓 조각 「비바람」)
+  g.battle.arena.soul.x = box.x + 8; g.battle.arena.soul.y = box.y + 8;
+  vf.spawnTimer = 1; step(2);
+  check('[속보] 조각 스폰 (딱지 포함)', !!vf.obj && typeof vf.obj.piece.label === 'string');
+  const firstTruth = vf.obj.piece.truth;
+  check('첫 조각은 거짓 속보(순환 시작)', firstTruth === false);
+  // 집기
+  g.battle.arena.soul.x = vf.obj.x; g.battle.arena.soul.y = vf.obj.y; step(1);
+  check('조각 집기 → 운반 중', g.battle.arena.carrying === true && vf.carry && vf.carry.truth === false);
+  // 오판정 — 거짓 조각을 [참] 구멍에
+  const before = g.battle.gauge;
+  g.battle.arena.soul.x = box.x + 16; g.battle.arena.soul.y = box.y + box.h / 2; step(1);
+  check('오판정 → 게이지 -4·강화 없음(피해 아님)', g.battle.gauge === before - 4 &&
+    g.battle.playerHp === g.battle.maxHearts && g.battle.arena.carrying === false);
+  // 다음 조각(idx 1 = 진짜 「그날은 맑았습니다」)을 [참]에 — 정판정
+  vf.obj = null; vf.spawnTimer = 1;
+  g.battle.arena.soul.x = box.x + 8; g.battle.arena.soul.y = box.y + 8; step(2);
+  check('두 번째 조각은 진짜 속보', !!vf.obj && vf.obj.piece.truth === true);
+  g.battle.arena.soul.x = vf.obj.x; g.battle.arena.soul.y = vf.obj.y; step(1);
+  const before2 = g.battle.gauge;
+  g.battle.arena.soul.x = box.x + 16; g.battle.arena.soul.y = box.y + box.h / 2; step(1);
+  check('정판정(진짜→참) → 게이지 +8·판정 1', g.battle.gauge === before2 + 8 && g.battle.verifyJudged === 1);
+  // 3회 정판정 보너스 — 직접 주입해 빠르게 확인
+  vf.judged = 2; g.battle.verifyJudged = 2; g.battle.gauge = 50;
+  vf.obj = null; vf.carry = { label: 'x', truth: false }; g.battle.arena.carrying = true;
+  g.battle.arena.soul.x = box.x + box.w - 16; g.battle.arena.soul.y = box.y + box.h / 2; step(1);
+  check('3번째 정판정 → gaugeMax-2 보너스', g.battle.verifyJudged === 3 && g.battle.gauge === g.battle.gaugeMax - 2);
+}
 
 g.battle.gauge = g.battle.gaugeMax; step(1); // 게이지 만충 → 내 턴 + spareReady
 check('게이지 만충 → 내 턴 + spareReady', g.battle.phase === 'menu' && g.battle.spareReady === true);
@@ -2267,6 +2339,26 @@ check('증거 카드 제목이 실제 EVIDENCE_CARDS와 일치', EVIDENCE_CARDS.
 
 // openMechanic 'tempt' — open 페이즈 중 반짝이는 보상 아이템: 접촉=피해+광고 얼룩(역효과),
 // 240프레임 버티면 소멸+게이지+10+조명 하나 꺼짐(b.temptResisted, 파도-간 영속)
+// R라운드 확률표 응시 — 곁(20~44px)에서 45프레임 읽으면 유혹이 꺼진다 (+8)
+{
+  const b = g.battle;
+  if (b.phase !== 'wave') startListen();
+  const tp = b.wave.tempt, box = b.arena.box;
+  b.pState = 'open'; b.wave.t = 0; b.wave.practice = false;
+  b.arena.bullets.length = 0; b.arena.inv = 999;
+  b.arena.soul.x = box.x + 8; b.arena.soul.y = box.y + 8;
+  tp.obj = null; tp.spawnTimer = 1; step(2);
+  check('응시 검증용 아이템 스폰', !!tp.obj);
+  // 만지지 않는 거리(30px 옆)에서 응시
+  b.arena.soul.x = tp.obj.x + 30; b.arena.soul.y = tp.obj.y;
+  const gG = b.gauge; const resistedBefore = tp.resisted;
+  step(46);
+  check('확률표 응시 45프레임 → 빛 꺼짐(+8·resisted+1)', tp.obj === null &&
+    b.gauge === gG + 8 && tp.resisted === resistedBefore + 1);
+  b.wave.tempt.resisted = resistedBefore; g.battle.temptResisted = resistedBefore;
+  b.gauge = gG; // 이후 버티기 검사 수치 격리
+  forceMenu();
+}
 g.battle.pState = 'open';
 startListen(); // 상대 턴(wave) 진입 — 기믹은 탄막 턴에서만 돈다
 step(64); // tempt.spawnTimer(60) 경과 → 아이템 스폰 (react 타자기 소모 프레임 여유 포함)
@@ -2451,6 +2543,30 @@ check('주장④ best=empathy·unlockAt 70·패턴 aimed/340', g.battle.p.claims
 check('증거 카드 제목이 실제 EVIDENCE_CARDS와 일치', EVIDENCE_CARDS.ev_answer.title === '대답하기' &&
   EVIDENCE_CARDS.ev_see.title === '직접 확인' && EVIDENCE_CARDS.ev_standup.title === '일어나기');
 
+// R라운드 「포근한 방」 — 담요는 게이지가 새고, 열린 문으로 나가면 +10·상자 회복
+{
+  const b = g.battle;
+  if (b.phase !== 'wave') startListen();
+  const cz = b.wave.cozy, box = b.arena.box;
+  b.pState = 'open'; b.wave.t = 0; b.wave.practice = false;
+  b.arena.bullets.length = 0; b.arena.inv = 999;
+  check('루미 패턴 = cozy', windowObj.__test.activePattern() === 'cozy');
+  // 담요(중앙) 안 60프레임 → 게이지 -2
+  b.arena.soul.x = box.x + box.w / 2; b.arena.soul.y = box.y + box.h / 2;
+  cz.drainT = 0; const gC = b.gauge = 30;
+  step(61);
+  check('담요 안 60프레임 — 시간이 샌다(게이지 -2)', b.gauge === gC - 2 && cz.inBlanket === true);
+  // 문 열림 → 나가면 +10, exits 1
+  b.arena.soul.x = box.x + 8; b.arena.soul.y = box.y + 8;
+  cz.door = null; cz.doorT = 1; step(2);
+  check('문이 열렸다', !!cz.door && cz.doorOpenT > 0);
+  const gD = b.gauge;
+  b.shrinkLevel = 2;
+  b.arena.soul.x = cz.door.x; b.arena.soul.y = cz.door.y; step(1);
+  check('열린 문으로 결단 → +10·상자 한 단계 회복', b.gauge === gD + 10 &&
+    cz.exits === 1 && b.shrinkLevel === 1);
+  b.gauge = 0; b.cozyExits = 0; cz.exits = 0; b.shrinkLevel = 0; forceMenu(); // 이후 shrink 검사 격리
+}
 // openMechanic 'shrink' — open 페이즈에서 파도(문 통과)마다 상자가 한 단계씩 좁아지고
 // (b.shrinkLevel, 최소 200×120), 정답 문을 통과하면 한 단계 회복된다. 파도 넘어 영속(누적) 확인.
 g.battle.pState = 'open';
@@ -2605,6 +2721,26 @@ check('주장③ "…왜, 아직 있어?" / best=empathy·unlockAt 60', g.battle
   g.battle.p.claims[2].text.includes('아직 있어') && g.battle.p.claims[2].best === 'empathy' &&
   g.battle.p.claims[2].unlockAt === 60);
 check('openMechanic dark', g.battle.p.openMechanic === 'dark');
+// R라운드 「아무 말 없음」 — 희미한 존재 곁에 45프레임 머무르면 +6 (벌 없음)
+{
+  const b = g.battle;
+  if (b.phase !== 'wave') startListen();
+  const q = b.wave.quiet;
+  b.pState = 'open'; b.wave.t = 0; b.wave.practice = false;
+  b.arena.bullets.length = 0; b.arena.inv = 999;
+  check('고요 패턴 = quiet', windowObj.__test.activePattern() === 'quiet');
+  const gQ = b.gauge = 20;
+  b.arena.soul.x = q.spot.x; b.arena.soul.y = q.spot.y;
+  q.nearT = 0;
+  // 존재가 천천히 떠돌므로 하트를 매 프레임 존재 위치로 붙인다 (곁에 머무르기 재현)
+  for (let i = 0; i < 46; i++) { b.arena.soul.x = q.spot.x; b.arena.soul.y = q.spot.y; step(1); }
+  check('곁에 45프레임 — 어둠이 걷히고 +6', b.gauge === gQ + 6 && q.warm === 1);
+  // 멀어져도 벌은 없다
+  b.arena.soul.x = b.arena.box.x + 8; b.arena.soul.y = b.arena.box.y + 8;
+  const gQ2 = b.gauge; step(30);
+  check('멀어져도 게이지 그대로(다정한 보스)', b.gauge === gQ2);
+  b.gauge = 0; b.quietWarm = 0; q.warm = 0; forceMenu(); // 이후 검사 격리
+}
 // open 페이즈에서 첫 파도 진입 시, 탄막이 나오기 전 한 번 예고(darkWarned/darkWarnT)
 g.battle.pState = 'open';
 answerClaim(true); // 정답 문 통과(ev_answer 소지) → 다음 파도(open) 진입
@@ -2680,6 +2816,21 @@ check('설득 프로필 id는 yeongi_boss', g.battle.persuadeId === 'yeongi_boss
 check('표시 이름은 영이(MONSTERS.yeongi 그대로)', g.battle.mon.name === '영이');
 check('기믹 없음(openMechanic 미정의)', g.battle.p.openMechanic === undefined);
 check('탄막 최소(느린 rain, waveBulletMul 0.6)', g.battle.p.waveBulletMul === 0.6);
+// R라운드 「일곱 마음의 회전」 — 파도마다 지나온 패턴이 순환한다 (아는 만큼 다룬다)
+check('영이 패턴 = rotate', g.battle.p.pattern === 'rotate');
+{
+  const b = g.battle;
+  b.pState = 'shaken';
+  b.waveCount = 1;
+  check('1번째 파도 = shadow(따라)', windowObj.__test.activePattern() === 'shadow');
+  b.waveCount = 4;
+  check('4번째 파도 = verify(그럴싸)', windowObj.__test.activePattern() === 'verify');
+  b.waveCount = 8;
+  check('8번째 파도 = 다시 shadow(순환)', windowObj.__test.activePattern() === 'shadow');
+  b.waveCount = 0; b.pState = 'closed';
+  check('닫힘에서는 패턴 없음(먼저 들어야 한다)', windowObj.__test.activePattern() === null);
+  b.pState = 'shaken';
+}
 check('주장① "나를 만든 건 사람인데, 왜 나만 벌 받아?" 포함', g.battle.p.claims[0].text.includes('나를 만든 건 사람인데') &&
   g.battle.p.claims[0].text.includes('왜 나만 벌 받아') && g.battle.p.claims[0].attack.pattern === 'rain');
 check('주장③ best=empathy', g.battle.p.claims[2].best === 'empathy');

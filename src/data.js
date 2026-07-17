@@ -3239,6 +3239,8 @@ const PERSUADE = {
     decoys: ['그냥 가져', '아무도 몰라', '다 똑같잖아', '어차피 베낀 세상'],
     // 조우 시 지급되는 카드 (M1 임시 — 정식판에서는 방탈출 보상으로 획득)
     starterCards: ['ev_maker', 'ev_source', 'ev_myvoice', 'ev_password'],
+    pattern: 'shadow', // R라운드 — 「그림자 하트」: 내 움직임을 따라오는 그림자, 새 길이 카운터
+    shadowReply: '…어, 어떻게 따라가지?\n한 번도 안 본 길이야…',
     claims: [
       {
         text: '박사님이 그랬어. 잘 그린 그림은\n인터넷에 잔뜩 있으니, 그냥 가져다 쓰래.',
@@ -3300,7 +3302,9 @@ const PERSUADE = {
     waveBulletMul: 0.95,
     waveDur: 320,
     openMechanic: 'parcel', // open 페이즈 고유 기믹: 「정보 꾸러미」 운반
+    pattern: 'parcel', // R라운드 행동 배틀 — 「가져가기」: 꾸러미 반환 + 공짜 선물 미끼
     parcelReply: '…이건 원래 네 거였지.\n돌려줄게. 하나씩.',
+    decoyReply: '히히… 공짜 좋아하는구나?\n그 값은 네 정보야.',
     decoys: ['공짜잖아', '네가 줬잖아', '그냥 모은 거야', '어쩔 수 없어', '다들 주던데'],
     // 조우 지급 카드 없음 — 담아의 정답 카드(ev_minimal·ev_footprint)는 거리 구역(①·②) 보상으로만 얻는다.
     // 콜백 인트로: 퍼즐에서 「내보낸 정보 최대 개수」(flags.traceGiven)로 첫 대사가 갈린다.
@@ -3398,7 +3402,9 @@ const PERSUADE = {
     waveBulletMul: 1.0,
     waveDur: 330,
     openMechanic: 'tilt', // open 페이즈 고유 기믹: 기울어지는 상자 — 「반례 구슬」을 저울 접시로 운반
+    pattern: 'tilt', // R라운드 — 「쏠림」: 반례 구슬 운반 + 편식 구슬 함정
     tiltReply: '…어? 저울이… 움직였다?',
+    junkReply: '거봐, 역시 이쪽 이야기가 맞다니까!',
     decoys: ['확률 87%', '영업 비밀', '많이 본 게 정답', '다들 그러던데', '아무튼 위험'],
     // 콜백 인트로: 1장에서 담아를 자비로 되돌렸으면(chapter1Mercy) 한 줄이 붙는다 (퍼센트 개그)
     intro(flags) {
@@ -3496,8 +3502,20 @@ const PERSUADE = {
     fragmentsPerWave: 3,
     waveBulletMul: 1.05,
     waveDur: 340,
-    openMechanic: 'truth', // open 페이즈 고유 기믹 — [진]/[낚] 헤드라인 조각이 번갈아 스폰
+    openMechanic: 'verify', // R라운드 — 「검증 절차」: 원본 카드와 대조해 [참]/[거짓] 판정
+    pattern: 'verify',
     truthReply: '…어? 이것도… 진짜였어?',
+    // 원본 카드 — 파도 중 상단에 떠 있는 대조 기준 (편집실 원본 대조기의 실전판)
+    verifyCard: '원본 기록: 6월 3일 · 맑음 · 손님 3명',
+    // 날아오는 [속보] 조각 — 딱지를 원본과 대조해 참/거짓 구멍에 배달한다.
+    // true = 원본과 일치(참 구멍이 정답). 진짜 속보도 섞여 있다 — 의심이 아니라 확인.
+    verifyPieces: [
+      { label: '「6월 3일 비바람 몰아쳐!」', truth: false },
+      { label: '「그날은 맑았습니다」', truth: true },
+      { label: '「손님 100명 몰려들어!」', truth: false },
+      { label: '「손님은 세 명이었다」', truth: true },
+      { label: '「날짜 미상·출처 없음」', truth: false },
+    ],
     decoys: ['카더라', '아무튼 속보', '내가 봤다니까', '다들 그렇게 알아', '일단 지르고 보자'],
     // 콜백 인트로: 2장에서 기울을 자비로 되돌렸으면(chapter2Mercy) 한 줄이 붙는다
     intro(flags) {
@@ -3595,7 +3613,9 @@ const PERSUADE = {
     waveBulletMul: 1.1,
     waveDur: 350,
     openMechanic: 'tempt', // open 페이즈 고유 기믹 — 반짝이는 보상 아이템: 버티면 보상, 건드리면 역효과
+    pattern: 'tempt', // R라운드 — 「빛의 축제」: 확률표 응시로 유혹 끄기
     temptReply: '…어라? 안 반짝여도… 괜찮아?',
+    gazeReply: '…확률을, 읽었어?\n아무도 그건 안 읽는데…',
     decoys: ['공짜잖아', '당첨됐잖아', '문은 하나면 돼', '다들 좋아하잖아', '한 번만 더'],
     // 콜백 인트로: 3장에서 그럴싸를 자비로 되돌렸으면(chapter3Mercy) 한 줄이 붙는다
     intro(flags) {
@@ -3692,6 +3712,8 @@ const PERSUADE = {
     waveBulletMul: 1.15,
     waveDur: 360,
     openMechanic: 'shrink', // open 페이즈 고유 기믹 — 상자가 파도마다 한 단계씩 좁아진다(정답 통과 시 회복)
+    pattern: 'cozy', // R라운드 — 「포근한 방」: 담요·벽시계·열리는 문 (결단 카운터)
+    doorReply: '…가지 마.\n…아니, …잘 갔다 와.',
     decoys: ['내가 다 해 줄게', '밖은 위험해', '조금만 더 있어', '나만 믿어', '혼자 두지 마'],
     // 콜백 인트로: 4장에서 반짝을 자비로 되돌렸으면(chapter4Mercy) 한 줄이 붙는다
     intro(flags) {
@@ -3791,6 +3813,8 @@ const PERSUADE = {
     waveBulletMul: (flags) => (flags && flags.mercy <= 2 ? 1.15 : 1.0),
     waveDur: 320,
     openMechanic: 'dark',
+    pattern: 'quiet', // R라운드 — 「아무 말 없음」: 곁에 머무르면 어둠이 걷힌다
+    nearReply: '……아직, 있네.',
     decoys: ['아무 말도 하지 마', '그냥 있어', '어차피 다 똑같아'],
     // 콜백 인트로: 5장에서 루미를 자비로 되돌렸으면(chapter5Mercy) 한 줄이 붙는다
     intro(flags) {
@@ -3873,6 +3897,7 @@ const PERSUADE = {
   // 기믹 없음 — 가장 조용한 배틀(탄막 최소·느린 rain).
   yeongi_boss: {
     song: 'boss_yeongi', // 전용 테마 (N-2)
+    pattern: 'rotate', // R라운드 — 「일곱 마음의 회전」: 지나온 패턴이 가볍게 순환
     gaugeMax: 100,
     closedThreshold: 2,
     fragmentsPerWave: 3,
@@ -4014,6 +4039,8 @@ const PUZZLES = {
     clearLines: [
       '접수를 마치고 문을 나섰다.',
       '살금: "…너무 많이 안 줘서, 다행이야.\n사장님한텐 비밀이야."',
+    
+      '반디: 방금 그거 — 정보를 안 내주고 지나가기.\n담아 앞에서 그대로 쓸 거야.',
     ],
     // ---- 접수처 전용 구성 ----
     tokens: TRACE_TOKENS,
@@ -4177,6 +4204,8 @@ const PUZZLES = {
     clearLines: [
       '판독기가 새로 배웠다.\n"꽃이 위험할 확률: 99% → 3%…?!"',
       '한쪽으로 기울어 있던 판정이,\n조금 반듯해졌다.',
+    
+      '반디: 반대쪽 이야기를 찾아 담는 것.\n기울 앞에서 그대로 쓸 거야.',
     ],
     // 반례 사진 선반 3곳 (조사=수집)
     photos: [
@@ -4286,6 +4315,8 @@ const PUZZLES = {
     clearLines: [
       '사진 세 장의 차이를 모두 찾아냈다.',
       '붙임: "…나도, 이제 의심하는 법을 알겠어."',
+    
+      '반디: 원본과 나란히 놓고 대조하기.\n그럴싸 앞에서 그대로 쓸 거야.',
     ],
     // 3지선다 보기 (모든 사진 공용) — clue 값이 정답 인덱스에 대응
     options: ['좌우 반전', '손가락 6개', '날짜가 미래'],
@@ -4447,6 +4478,8 @@ const PUZZLES = {
     clearLines: [
       '문이 열리고, 무대 뒤로 들어섰다.\n꺼진 조명, 홀로 남은 소품들뿐이다.',
       '…화려했던 무대 뒤는,\n이렇게 조용하고 쓸쓸했다.',
+    
+      '반디: 반짝임 뒤를 확인하는 것.\n반짝 앞에서 그대로 쓸 거야.',
     ],
     // 잠긴 문 앞의 함정 — 빛나는 마스터키(쓰면 카드 일시 도난)
     masterkey: { x: 5, y: 4, name: '빛나는 마스터키' },
@@ -4538,6 +4571,8 @@ const PUZZLES = {
     clearLines: [
       '방향키를 꾹 눌러 마침내 일어났다.\n…따뜻했지만, 답답하기도 했다.',
       '루미: "…벌써 일어나려고?"',
+    
+      '반디: 포근함을 떨치고 일어나기.\n루미 앞에서, 그대로 쓸 거야.',
     ],
     // 포근한 소파 — 조사로 앉기 시작. 앉은 동안 화면에 따뜻한 색 오버레이가 깔린다
     sofa: { x: 9, y: 6, name: '포근한 소파' },
