@@ -148,6 +148,10 @@ function crudeWin() {
         else { dispatch('keydown', { key: 'x' }); step(1); dispatch('keyup', { key: 'x' }); // 뒤로
                g.battle.menuIdx = 2; tap('z'); dialogTaps += 1; } // 카드가 없으면 듣기
       }
+    } else if (b.phase === 'sub' && b.sub && b.sub.kind === 'finalgate') {
+      // 최종 관문(Q-3) — 일기를 읽어 온 아이처럼 정답을 고른다
+      const i = b.sub.options.findIndex((o) => o.correct);
+      g.battle.subIdx = i >= 0 ? i : 0; tap('z'); dialogTaps += 1;
     } else if (b.phase === 'react') {
       tap('z'); dialogTaps += 1;
     } else if (b.phase === 'wave') {
