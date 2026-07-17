@@ -301,6 +301,24 @@ if (typeof getObjectiveTarget === 'function') {
   flags.defeated.yeongi = true; flags.trueEnding = true; checkTarget('진엔딩');
 }
 
+// A-1 회귀 방지 — 비가장자리·인접 랜드마크 없는 워프(=숨은 워프)는 drawWorld의
+// drawWarpMarkers가 자동으로 시각화한다(데이터 수정 없이). 여기서는 그 대상 칸을 집계만 해,
+// game.js의 isHiddenWarp와 같은 판정(가장자리 2칸 이내 제외 + 인접 1칸 prop 없음)이
+// 성립하는지 확인한다. 진단된 10곳(마을·기울거리·메아리골목·층계·숲)이 유지되어야 한다.
+{
+  let hidden = 0;
+  for (const [id, m] of Object.entries(MAPS)) {
+    const W = m.tiles[0].length, H = m.tiles.length;
+    for (const w of (m.warps || [])) {
+      if (w.x <= 1 || w.y <= 1 || w.x >= W - 2 || w.y >= H - 2) continue; // 가장자리 = 자연 출구
+      const near = (MAP_PROPS[id] || []).some((p) => Math.abs(p.x - w.x) <= 1 && Math.abs(p.y - w.y) <= 1);
+      if (!near) hidden++; // 눈에 보이는 표식이 없는 워프 → 자동 마커 대상
+    }
+  }
+  // 진단 기준선(10곳). 새 맵/워프로 이 수가 바뀌면 drawWarpMarkers 커버리지를 재확인하라는 신호.
+  if (hidden < 10) err(`A-1 숨은 워프 자동 마커 대상이 ${hidden}곳 — 기준선 10곳보다 적다(회귀 의심)`);
+}
+
 // 맵 출력 (눈으로 확인용)
 if (process.argv.includes('--print')) {
   for (const [id, m] of Object.entries(MAPS)) {
@@ -478,6 +496,15 @@ if (process.argv.includes('--print')) {
   for (const k of Object.keys(CL)) {
     if (!MAPS[k]) err(`COMPANION_LINES '${k}'는 존재하지 않는 맵`);
     if (!/^반디: /.test(CL[k])) err(`COMPANION_LINES '${k}' 형식 오류 — '반디: '로 시작해야 함`);
+  }
+  // U-5 NG+ 오버레이 — 키는 실제 맵 + '반디: '로 시작 + 10~15개 핵심 맵만 (원본 대사가 있는 맵)
+  const NG = vm.runInContext('COMPANION_LINES_NG', ctx);
+  const ngKeys = Object.keys(NG);
+  if (ngKeys.length < 10 || ngKeys.length > 15) err(`COMPANION_LINES_NG는 10~15개여야 함 (현재 ${ngKeys.length})`);
+  for (const k of ngKeys) {
+    if (!MAPS[k]) err(`COMPANION_LINES_NG '${k}'는 존재하지 않는 맵`);
+    if (!CL[k]) err(`COMPANION_LINES_NG '${k}'는 COMPANION_LINES에 원본 대사가 있어야 함`);
+    if (!/^반디: /.test(NG[k])) err(`COMPANION_LINES_NG '${k}' 형식 오류 — '반디: '로 시작해야 함`);
   }
 }
 

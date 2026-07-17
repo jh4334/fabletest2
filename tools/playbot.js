@@ -394,6 +394,9 @@ for (let i = 0; i < SHRINE_WHISPERS.length; i++) {
   pickChoice(idx); advanceDialog();
 }
 if (!g.flags.shrineDone || !g.flags.bandiRevealed) throw new Error('봉헌/정체 공개 실패');
+// U-2 반디 리빌 정지 비트 — Z로 넘기면 마지막 대사("…가면을 벗을게")로 이어진다
+if (g.mode === 'revealbeat') tap('z');
+if (g.mode === 'dialog') advanceDialog();
 mark('파이널 — 코어 봉헌 (반디 정체 공개)');
 
 // 영이 — 마지막 설득 배틀 → 진엔딩

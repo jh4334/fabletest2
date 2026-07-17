@@ -2828,6 +2828,17 @@ for (let i = 1; i < SHRINE_WHISPERS.length; i++) {
   }
 }
 check('마지막 봉헌 → 정체 공개 대화 시작', g.mode === 'dialog');
+advanceDialog(); // "…처음부터, 나였어."까지 진행 → U-2 리빌 정지 비트로 이어진다
+// U-2 반디 리빌 정지 비트 — reduceFx가 아니면 무입력 대기(revealbeat) 모드로 들어가고,
+// Z로 조기 종료할 수 있으며(스킵 불가 아님), 그 뒤 "…가면을 벗을게" 한 줄이 나온다.
+if (!g.reduceFx) {
+  check('U-2 리빌 정지 비트 — 무입력 대기 모드 진입', g.mode === 'revealbeat');
+  step(30);
+  check('U-2 정지 비트는 기본 대기 — 30프레임 뒤에도 유지', g.mode === 'revealbeat');
+  tap('z'); // Z로 조기 종료(스킵 가능)
+  check('U-2 Z로 정지 비트 조기 종료 → 대사 복귀', g.mode === 'dialog');
+}
+check('U-2 리빌 직후 마지막 대사 "…가면을 벗을게"', g.mode === 'dialog' && /가면을 벗을게/.test(g.dialog.lines.join('\n')));
 advanceDialog();
 check('반디 정체 공개(bandiRevealed) — 동행 종료', g.flags.bandiRevealed === true);
 check('봉헌 퍼즐 완료(shrineDone=true, shrineIdx=8) — 영이 등장', g.flags.shrineDone === true &&
@@ -3268,6 +3279,218 @@ console.log('[115] N-2 보스별 전용 테마 — 프로필 song이 실제 SONG
   // 영이 테마는 라이트모티프(E-C-A-B-G)로 시작한다 — 타이틀·마을·코어와 같은 악구
   const yeongiNotes = vm.runInContext('SONGS.boss_yeongi.tracks[0].notes.slice(0,5).map(n=>n[0]).join()', sandbox);
   check('영이 테마 = 라이트모티프 완전판(76,72,69,71,67 시작)', yeongiNotes === '76,72,69,71,67');
+}
+
+// ================= T라운드 신규 기능 =================
+// (T = window.__test — 파일 상단에서 이미 선언됨)
+
+console.log('[T-A1] 숨은 워프 자동 마커 — 진단된 10곳만 대상, 가장자리·랜드마크 워프는 제외');
+{
+  // 문 없는데 이동하던 버그 지점(비가장자리 + 인접 조사물 없음)만 마커 대상이 된다
+  check('마을 24,5 = 숨은 워프(마커 대상)', T.isHiddenWarp('village', 24, 5) === true);
+  check('숲 8,5 = 숨은 워프', T.isHiddenWarp('forest', 8, 5) === true);
+  check('메아리골목 내부 순간이동 6,11 = 숨은 워프', T.isHiddenWarp('echoalley', 6, 11) === true);
+  check('제보실 층계 17,2 = 숨은 워프', T.isHiddenWarp('tipsroom', 17, 2) === true);
+  // 인접 조사물(랜드마크)이 있는 워프는 제외 — 이미 눈에 보인다
+  check('공짜거리 6,5(옆에 조사물) = 마커 제외', T.isHiddenWarp('freestreet', 6, 5) === false);
+  // 가장자리 워프(자연 출구)는 제외
+  check('마을 북쪽 출구 13,1(가장자리) = 마커 제외', T.isHiddenWarp('village', 13, 1) === false);
+  // 같은 맵으로 되돌아가는 순간이동은 소용돌이, 다른 맵 문은 아치
+  const echo = T.hiddenWarpsOf('echoalley');
+  check('메아리골목 숨은 워프 3곳 = 소용돌이(swirl)', echo.length === 3 && echo.every((m) => m.kind === 'swirl'));
+  check('마을 숨은 워프 = 문(arch) 1곳', (() => { const v = T.hiddenWarpsOf('village'); return v.length === 1 && v[0].kind === 'arch'; })());
+}
+
+console.log('[T-A2] 워프 쿨다운 재진입 예약 — 워프 칸을 벗어나면 예약이 풀린다');
+{
+  // 실험실 아래 출구(14,17)로 워프 → 숲(20,2). 쿨다운 중 워프 칸에서 벗어나면
+  // 재판정 예약(pendingWarpRecheck)이 false로 갱신되어, 엉뚱한 칸에서 되튕기지 않는다.
+  g.dialog = null; g.battle = null; g.mode = 'world'; g.map = 'forest';
+  // 숲 남쪽 입구(20,2) 근처에서 워프 칸(위쪽 실험실 방향)이 아닌 곳으로 이동하며 쿨다운을 소비
+  setPos(20, 3, 'down'); g.warpCooldownFrames = 6; g.pendingWarpRecheck = true;
+  hold('ArrowDown', 8); // 워프 칸(20,2)에서 멀어지는 이동 — 쿨다운 소진 + 재판정 예약 갱신
+  check('워프 칸을 벗어나면 재진입 예약이 풀린다', g.pendingWarpRecheck === false);
+  // A-2 소스 불변식 — 예약 플래그를 '현재 칸 워프 여부'로 갱신한다(스테일 true 방지)
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
+  check('checkWarp가 예약을 현재 칸 기준으로 갱신', /pendingWarpRecheck = !!warpAt\(game\.map, p\.x, p\.y\)/.test(src));
+}
+
+console.log('[T-B1] 획득 순간 팡파르 — 도전과제·배움 카드 해금 알림 + 중복 방지');
+{
+  // 기준선을 먼저 세팅(첫 확인은 조용히) → 이후 새 해금이 생기면 토스트가 뜬다
+  const slot = 0;
+  T.checkUnlocks(slot);            // 기준선 확정(ackAch/ackCards)
+  g.notice = { text: '', t: 0 };
+  const cos = T.getCosmetic(slot);
+  cos.ackAch = [];                 // 도전과제 하나도 확인 안 한 상태로 되돌림
+  T.setCosmetic(slot, cos);
+  T.checkUnlocks(slot);            // 진행된 슬롯 → 새 도전과제 감지 → 토스트
+  check('새 도전과제 달성 순간 토스트', !!g.notice.text && /도전과제 달성/.test(g.notice.text));
+  g.notice = { text: '', t: 0 };
+  T.checkUnlocks(slot);            // 이미 확인함 → 다시 알리지 않음
+  check('같은 해금은 다시 알리지 않음(중복 방지)', !g.notice.text);
+}
+
+console.log('[T-B2] 배틀 등급 — 오답·피격 기준 S/A/B 산출');
+{
+  const fakeS = { rankWrong: 0, rankHits: 0 };
+  const fakeA = { rankWrong: 1, rankHits: 2 };
+  const fakeB = { rankWrong: 2, rankHits: 0 };
+  // battleRank는 현재 배틀을 읽으므로, game.battle에 임시 객체를 꽂아 판정만 확인한다
+  const save0 = g.battle;
+  g.battle = fakeS; check('오답0·피격0 → S', T.battleRank() === 'S');
+  g.battle = fakeA; check('오답1·피격2 → A', T.battleRank() === 'A');
+  g.battle = fakeB; check('오답2 → B', T.battleRank() === 'B');
+  g.battle = save0;
+}
+
+console.log('[T-B3] 일일 도전 표면화 — 미완료면 알림, 완료면 조용');
+{
+  const slot = 0;
+  const metaKey = 'ai-ethics-adventure-meta-' + slot;
+  const meta = T.getMeta(slot);
+  meta.lastDailyDay = null; meta.lastMilestone = 999; // 오늘 미완료 + 마일스톤 방지
+  storage.set(metaKey, JSON.stringify(meta));
+  g.notice = { text: '', t: 0 };
+  T.surfaceDailyAndStreak(slot, { streak: 1, lastMilestone: 999 });
+  check('오늘의 도전 미완료 → 알림', /오늘의 도전이 기다려요/.test(g.notice.text));
+  const meta2 = T.getMeta(slot);
+  meta2.lastDailyDay = T.todayStr();
+  storage.set(metaKey, JSON.stringify(meta2));
+  g.notice = { text: '', t: 0 };
+  T.surfaceDailyAndStreak(slot, { streak: 1, lastMilestone: 999 });
+  check('오늘의 도전 완료 → 알림 없음', !g.notice.text);
+}
+
+console.log('[T-B4] 탐험 보상 — 새 이동 맵 플레이버 + 처음 조사 누적 도전과제');
+{
+  const flavCount = ['introlab', 'forest', 'forestdeep'].every((m) => (MAPS[m].flavors || []).length >= 4);
+  check('실험실·숲·안쪽 공터 각각 4개 이상 플레이버', flavCount);
+  // 워프 칸과 겹치지 않는다(validate와 동일 불변식 재확인)
+  const noWarpOverlap = ['introlab', 'forest', 'forestdeep'].every((m) =>
+    (MAPS[m].flavors || []).every((fl) => !(MAPS[m].warps || []).some((w) => w.x === fl.x && w.y === fl.y)));
+  check('새 플레이버는 워프 칸을 침범하지 않음', noWarpOverlap);
+  // 처음 조사한 플레이버 25개면 탐험 도전과제(explorer)가 열린다
+  g.flags.flavorSeen = {};
+  for (let i = 0; i < 25; i++) g.flags.flavorSeen['map' + i + ':0,0'] = true;
+  const ctx25 = T.achievementCtx(0);
+  check('플레이버 25개 → 탐험 도전과제 컨텍스트 반영', ctx25.flavorsSeen >= 25);
+}
+
+console.log('[T-C2] 따라 첫 배틀 — 1파도는 탄막 0(그림자만), 2파도부터 탄막 합류');
+{
+  g.dialog = null; g.battle = null; g.mode = 'world';
+  g.flags.defeated.bekkyeomon = false;
+  g.flags.introForestTrace = true; g.flags.ttaraFirstEncounter = true; // 조우 연출 건너뛰기
+  g.flags.sawPersuadeTip = true; // 튜토리얼 안내 길게 안 뜨게
+  g.map = 'forestdeep';
+  setPos(12, 4, 'down');
+  tap('z');
+  if (g.mode === 'dialog') advanceDialog();
+  check('따라 프롤로그 튜토리얼 배틀 시작', g.mode === 'battle' && g.battle.prologueTutorial === true);
+  // 첫 파도(듣기) 진입
+  battleMenuPick(2); advanceReact();
+  check('첫 파도 = 파도 번호 1', g.battle.wave && g.battle.waveCount === 1);
+  g.battle.arena.inv = 999; step(80); // 정상 파도라면 스폰타이머가 지나 탄막이 생길 시점
+  check('C-2 첫 파도는 탄막이 하나도 없다(그림자 패턴만)', g.battle.arena.bullets.length === 0);
+  // 파도 번호만 2로 올리면 같은 조건에서 탄막이 합류한다
+  g.battle.waveCount = 2; g.battle.wave.spawnTimer = 1; g.battle.wave.t = 5; step(20);
+  check('C-2 2파도부터 탄막이 합류한다', g.battle.arena.bullets.length > 0);
+  g.battle = null; g.mode = 'world'; // 정리
+}
+
+console.log('[T-C3] 대화 빨리감기 — Z 홀드 시 타자기 즉시완성 + 자동 진행');
+{
+  g.battle = null; g.dialog = null; g.mode = 'world'; g.map = 'village';
+  // 긴 대사 3상자를 띄우고, Z를 길게 홀드해 자동으로 넘어가는지 본다
+  vm.runInContext('window.__game.dialog = { lines: ["첫째 상자입니다. 아주 긴 문장이라 타자기가 오래 걸립니다.", "둘째 상자.", "셋째 상자."], idx: 0, chars: 0 }; window.__game.mode = "dialog";', sandbox);
+  const idx0 = g.dialog.idx;
+  // 홀드: keydown 후 떼지 않고 오래 step (autoFF 12프레임 + 자동 진행 간격)
+  dispatch('keydown', { key: 'z' });
+  step(20); // 12프레임 홀드 → 즉시완성, 14프레임마다 자동 진행
+  check('홀드 12프레임 이상 → 타자기 즉시완성', g.dialog === null || g.dialog.chars >= (g.dialog ? g.dialog.lines[g.dialog.idx].length : 0) || g.dialog.idx > idx0);
+  step(40); // 계속 홀드 → 남은 상자들도 자동으로 넘어가 대화 종료
+  dispatch('keyup', { key: 'z' });
+  check('홀드 유지 → 상자들이 자동 진행되어 대화 종료', g.mode === 'world' && g.dialog === null);
+}
+
+// ── U라운드 스토리 외과수술 — 데이터·소스 보증 검사 ──
+console.log('[U-1] 박사 고백 — 답안지에서 힌트로 (직접 연결 삭제 + 열린 질문)');
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
+  // startProfConfession 본문만 잘라 검사한다
+  const body = src.slice(src.indexOf('function startProfConfession'), src.indexOf('function updateWorld'));
+  check('U-1 "모은 조각=영이의 기억" 직접 연결 설명 삭제', !/모은 조각들[\s\S]*?영이의 기억/.test(body));
+  check('U-1 마지막은 열린 질문 "…어디로 갔는지, 나는 끝내 몰라"', /어디로 갔는지[\s\S]*?끝내 몰라/.test(body));
+  check('U-1 죄책감·0호·도망 맥락은 유지', /프로젝트 0호/.test(body) && /로그아웃해서 도망쳤단다/.test(body));
+}
+
+console.log('[U-2] 반디 리빌 정지 비트 — 소스 보증 (BGM 정지·reduceFx 생략)');
+{
+  check('U-2 정지 비트는 BGM을 끊는다(startRevealBeat → Sound.stopSong)',
+    /function startRevealBeat[\s\S]*?Sound\.stopSong\(\)/.test(gameSrcFinal));
+  check('U-2 reduceFx면 연출 생략하고 대사만', /if \(game\.reduceFx\) \{ revealBeatFinalLine\(\); return; \}/.test(gameSrcFinal));
+  check('U-2 기본은 90~120프레임 대기(Z-skippable)', /REVEAL_BEAT_FRAMES = 1\d\d/.test(gameSrcFinal) && /rb\.t >= REVEAL_BEAT_FRAMES \|\| justPressed\('action'\)/.test(gameSrcFinal));
+}
+
+console.log('[U-3] 반디 인물 순간 4개 — 데이터·소스');
+{
+  const { MAPS: M3 } = vm.runInContext('({ MAPS })', sandbox);
+  const benchFlavor = (M3.village.flavors || []).find((f) => f.bandi && /벤치/.test(f.text));
+  check('U-3① 마을 벤치 반디 잡담(교훈 0)', !!benchFlavor && /아무것도 안 해도/.test(benchFlavor.bandi));
+  const askFlavor = (M3.tiltstreet.flavors || []).find((f) => f.ask);
+  check('U-3② 반디 질문 플레이버 — 선택지 2개 + flags 저장', !!askFlavor &&
+    askFlavor.ask.options.length === 2 && askFlavor.ask.flag === 'bandiAnswer' &&
+    askFlavor.ask.values.length === 2 && /기억해 둘게/.test(askFlavor.ask.reply));
+  const isrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
+  check('U-3③ quietyard 진입 시 저장한 답 콜백', /w\.to === 'quietyard'[\s\S]*?bandiAnswer[\s\S]*?bandiRecalled/.test(isrc) && /전에 네가/.test(isrc));
+  check('U-3④ 첫 보스 클리어 후 반디 순수 농담 1회성', /bandiJokeShown/.test(isrc) && /내 흉내도 있었을까/.test(isrc));
+}
+
+console.log('[U-4] 보스 감정 템플릿 차별화 — 담아(버려짐)·반짝(존재)·루미(역할)');
+{
+  const { PERSUADE: P4 } = vm.runInContext('({ PERSUADE })', sandbox);
+  const banjjakFears = P4.yuhok_boss.claims.map((c) => (c.fragments || []).join(' ')).join(' | ');
+  const lumiFears = P4.hollim_boss.claims.map((c) => (c.fragments || []).join(' ')).join(' | ');
+  const damaFears = P4.sujipmon_boss.claims.map((c) => (c.fragments || []).join(' ')).join(' | ');
+  check('U-4 반짝 = 존재 증명 상실("불이 꺼지면, 내가 없는")', /불이 꺼지면[\s\S]*?내가 없는/.test(banjjakFears));
+  check('U-4 반짝 감정 주장에 "혼자 남는" 문구 제거', !/혼자 남는/.test(banjjakFears));
+  check('U-4 루미 = 역할 상실("문을 나가면, 나는 뭘 하면 되지")', /문을 나가면[\s\S]*?뭘 하면 되지/.test(lumiFears));
+  check('U-4 담아 = 원조(버려짐/혼자 남는) 유지', /혼자 남는/.test(damaFears));
+}
+
+console.log('[U-5] NG+ — 두 번째 모험 (대사 스왑 오버레이 + 타이틀 선택)');
+{
+  const { COMPANION_LINES: CL5, COMPANION_LINES_NG: NG5 } = vm.runInContext('({ COMPANION_LINES, COMPANION_LINES_NG })', sandbox);
+  const nk = Object.keys(NG5);
+  check('U-5 NG 오버레이 10~15개 핵심 맵', nk.length >= 10 && nk.length <= 15);
+  check('U-5 NG 키는 전부 원본 대사 있는 맵', nk.every((k) => !!CL5[k]));
+  check('U-5 NG 대사는 정체 재해석("정보는 아껴" → 내줬었거든)', /너무 많이 내줬었거든[\s\S]*?정보는 아껴/.test(NG5.freestreet));
+  // 타이틀 흐름 — 클리어(endingId) 슬롯에서 Z → ngchoice, "처음부터"면 startNewGame(...true)
+  const tsrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
+  check('U-5 클리어 슬롯 Z → 두 번째 모험 선택(ngchoice)', /sum && sum\.endingId[\s\S]*?titleScreen = 'ngchoice'/.test(tsrc));
+  check('U-5 처음부터 선택 → NG+ 새 게임(startNewGame(slot, ..., true))', /startNewGame\(slot, sum \? sum\.name : '수호자', true\)/.test(tsrc));
+  check('U-5 세이브 스키마 무영향 — flags.ng에만 반영', /if \(ng\) game\.flags\.ng = true;/.test(tsrc) && !/SAVE_VERSION = 9/.test(tsrc));
+}
+
+console.log('[U-5b] NG+ 오버레이 실제 적용 — 워프 시 반디 대사가 NG 버전으로 바뀐다');
+{
+  const { COMPANION_LINES: CLx, COMPANION_LINES_NG: NGx } = vm.runInContext('({ COMPANION_LINES, COMPANION_LINES_NG })', sandbox);
+  // 공통 셋업 — 반디 동행 중·정체 공개 전·냉담 루트 아님, freestreet 인트로는 억제
+  const warpToFreestreet = () => {
+    g.dialog = null; g.mode = 'world'; g.map = 'village';
+    g.flags.bandiJoined = true; g.flags.bandiRevealed = false; g.flags.mercy = 5;
+    g.flags.bandiSaid = {}; g.notice = { text: '', t: 0 };
+    g.warpCooldownFrames = 0; g.lastWarp = null; g.pendingWarpRecheck = false;
+    g.flags.visited = g.flags.visited || {}; g.flags.visited.freestreet = true;
+    setPos(24, 6, 'up'); hold('ArrowUp', 10);
+  };
+  g.flags.ng = true; warpToFreestreet();
+  check('U-5 2회차 워프로 freestreet 진입', g.map === 'freestreet');
+  check('U-5 NG 오버레이 적용 — 반디 대사가 NG 버전', !!g.notice && g.notice.text === NGx.freestreet);
+  g.flags.ng = false; warpToFreestreet();
+  check('U-5 일반 슬롯(ng=false)은 원본 반디 대사 — 무영향', g.map === 'freestreet' && !!g.notice && g.notice.text === CLx.freestreet);
+  g.flags.ng = false;
 }
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

@@ -64,6 +64,7 @@
     cosmetics: { ret: 'title', slot: 0, col: 0, rowTitle: 0, rowTheme: 0, toast: 0 },
     backup: { ret: 'title', cursor: 0, toast: 0, confirm: false },
     notice: { text: '', t: 0 }, // 월드 상단 안내 토스트 (해금 알림 등)
+    unlockFlash: 0,      // B-1 획득 순간 화면 반짝임 카운트다운 (reduceFx면 0 유지)
     helpRet: 'title',
     pauseCursor: 0,
     teacherCursor: 0,    // 「선생님 방」 메뉴 커서
@@ -176,6 +177,11 @@
       privacyLeak: 0,       // 1장 개인정보 그림자가 붙을 때 오르는 노출도(0~5)
       privacyRecovery: 0,   // 노출도 MAX 후 회복 목표 진행(지운 정보 조각 수)
       privacyRecoveryActive: false, // 노출도 5에서 즉시 실패 대신 회복 목표 발동
+      flavorSeen: {},      // B-4 처음 조사한 플레이버 좌표('맵:x,y') — 탐험 도전과제용
+      bandiAnswer: null,   // U-3② 반디가 물은 질문에 고른 답('together'|'alone') — 파이널 직전 콜백용
+      bandiRecalled: false, // U-3③ 파이널 직전(quietyard 진입) 반디 콜백을 이미 봤는가
+      bandiJokeShown: false, // U-3④ 첫 보스 클리어 후 반디 순수 농담 1회성
+      ng: false,           // U-5 두 번째 모험(NG+) — 대사 스왑만, 난이도·보상 동일
     };
   }
 
@@ -840,20 +846,65 @@
     const t = selectedTheme(activeSlot());
     return t ? t.color : '#ffd644';
   }
-  // 새로 해금된 칭호·테마가 있으면 알림 토스트를 띄운다 (월드에서)
-  function checkCosmeticUnlocks(slot) {
+  // B-1 획득 순간 팡파르 — 새로 해금된 칭호·테마·도전과제·배움 카드가 있으면
+  // 그 '순간'에 토스트 + Sound.badge() + (reduceFx 아니면) 가벼운 화면 연출을 낸다.
+  // checkCosmeticUnlocks(칭호/테마 ack) 패턴을 일반화했다. 확인한 목록(ackAch/ackCards)을
+  // 슬롯 꾸미기 메타에 저장해 중복 알림을 막고, 첫 로드(기준선 세팅)는 조용히 넘어간다.
+  function checkUnlocks(slot) {
     const cos = getCosmetic(slot);
+    let changed = false;
+
+    // ── 칭호·테마 (기존 동작 유지) ──
     const now = unlockedCount(slot);
     const ack = cos.ack || 0;
     if (now > ack) {
-      cos.ack = now;
-      setCosmetic(slot, cos);
+      cos.ack = now; changed = true;
       if (ack > 0) { // 첫 진입(0→N)에는 시끄럽지 않게 조용히 넘어간다
         game.notice = { text: '새 칭호·테마가 열렸어요! (메뉴 → 꾸미기)', t: 200 };
         Sound.unlock();
       }
     }
+
+    // ── 도전과제 달성 순간 팡파르 ──
+    const ctx0 = achievementCtx(slot);
+    const gotAch = ACHIEVEMENTS.filter((a) => a.check(ctx0)).map((a) => a.id);
+    if (cos.ackAch === undefined) {
+      cos.ackAch = gotAch; changed = true; // 첫 확인 — 기준선만 조용히 기록
+    } else {
+      const newAch = gotAch.filter((id) => !cos.ackAch.includes(id));
+      if (newAch.length) {
+        cos.ackAch = gotAch; changed = true;
+        const a = ACHIEVEMENTS.find((x) => x.id === newAch[newAch.length - 1]);
+        if (a) fanfare(`☆ 도전과제 달성! 「${a.name}」`);
+      }
+    }
+
+    // ── 배움 카드(기억 조각) 해금 순간 팡파르 ──
+    const gotCards = LEARN_CARDS.filter((c) => cardUnlocked(slot, c.topic)).map((c) => c.topic);
+    if (cos.ackCards === undefined) {
+      cos.ackCards = gotCards; changed = true; // 첫 확인 — 기준선만 조용히 기록
+    } else {
+      const newCards = gotCards.filter((t) => !cos.ackCards.includes(t));
+      if (newCards.length) {
+        cos.ackCards = gotCards; changed = true;
+        const c = LEARN_CARDS.find((x) => x.topic === newCards[newCards.length - 1]);
+        const label = c ? (TOPIC_LABEL[c.topic] || c.topic) : '';
+        // 칭호·테마 토스트가 이미 이 프레임을 차지했으면 카드는 다음 기회로 미루지 않고
+        // 덮어써도 무방하다(둘 다 acked 되어 중복 알림은 없다). 소리는 배지음으로 통일.
+        if (!(now > ack)) fanfare(`📚 기억 조각을 얻었다 — 「${label}」`);
+      }
+    }
+
+    if (changed) setCosmetic(slot, cos);
   }
+  // 획득 팡파르 공통 — 토스트 + 배지음 + (reduceFx 아니면) 짧은 화면 반짝임
+  function fanfare(text) {
+    game.notice = { text, t: 240 };
+    Sound.badge();
+    if (!game.reduceFx) game.unlockFlash = 24; // drawWorld에서 소비
+  }
+  // 구 이름 호환 — 여전히 곳곳에서 부르는 진입점(꾸미기 전용 확인)을 일반 확인으로 승격
+  function checkCosmeticUnlocks(slot) { checkUnlocks(slot); }
 
   // ---------- 학습 카드 컬렉션 ----------
   // 한 주제에서 한 번이라도 정답을 맞히면 그 주제의 '배움 카드'가 열린다.
@@ -1319,6 +1370,32 @@
     return MAPS[mapId].warps.find((w) => w.x === x && w.y === y) || null;
   }
 
+  // A-1 「문이 없는데 맵 이동」 버그 — 데이터를 고치지 않고, drawWorld에서 워프 칸을
+  // 자동으로 시각화한다. '숨은 워프' 판정: (1) 맵 가장자리 2칸 이내가 아니고(자연 출구
+  // 제외), (2) 인접 1칸 안에 조사 물체(MAP_PROPS)가 없어 눈에 보이는 표식이 전혀 없는 칸.
+  // 이 조건이 진단된 10곳(마을 24,5 / 기울거리 14,18·14,2 / 메아리골목 내부 3곳 /
+  // 제보실·편집실·송출탑 층계 / 숲 8,5)과 정확히 일치한다.
+  function isHiddenWarp(mapId, x, y) {
+    const m = MAPS[mapId];
+    if (!m) return false;
+    const w = (m.warps || []).find((wp) => wp.x === x && wp.y === y);
+    if (!w) return false;
+    const W = m.tiles[0].length, H = m.tiles.length;
+    if (x <= 1 || y <= 1 || x >= W - 2 || y >= H - 2) return false; // 가장자리 = 자연 출구
+    const near = (MAP_PROPS[mapId] || []).some((p) => Math.abs(p.x - x) <= 1 && Math.abs(p.y - y) <= 1);
+    if (near) return false; // 이미 조사 물체(랜드마크)가 곁에 있으면 표식 불필요
+    return true;
+  }
+  // 현재 맵의 숨은 워프 목록(마커 종류 포함). 같은 맵으로 되돌아가는 순간이동은
+  // 소용돌이(◌), 다른 맵으로 가는 문은 발광 아치로 구분한다.
+  function hiddenWarpsOf(mapId) {
+    const m = MAPS[mapId];
+    if (!m) return [];
+    return (m.warps || [])
+      .filter((w) => isHiddenWarp(mapId, w.x, w.y))
+      .map((w) => ({ x: w.x, y: w.y, kind: w.to === mapId ? 'swirl' : 'arch' }));
+  }
+
   // 타일 그리기 (절차적 도트)
   const tileCache = new Map();
   function tileCanvas(ch, frame) {
@@ -1702,17 +1779,26 @@
   function updateDialog() {
     const d = game.dialog;
     const line = d.lines[d.idx];
+    // C-3 대화 빨리감기 — Z(action)를 12프레임 이상 홀드하면 타자기를 즉시 완성하고,
+    // 각 상자를 240ms(≈14프레임) 보여 준 뒤 자동으로 다음 상자로 넘긴다. 관문 문답(Q-4)이
+    // 있어 스킵 남용으로 인한 학습 손실 걱정은 없다. (탭 1회 진행은 기존과 동일)
+    d.hold = held.has('action') ? (d.hold || 0) + 1 : 0;
+    const autoFF = d.hold >= 12;
     if (d.chars < line.length) {
       const prev = Math.floor(d.chars);
       d.chars += TEXT_SPEEDS[game.textSpeed]; // 타자기 효과 (자막 속도 적용)
       if (Math.floor(d.chars) !== prev && game.time % 4 === 0) Sound.blip(dialogBlipFreq(d));
-      if (justPressed('action')) d.chars = line.length; // 스킵
+      if (justPressed('action') || autoFF) d.chars = line.length; // 스킵 / 빨리감기 즉시완성
+      d.fullT = 0;
       return;
     }
-    if (justPressed('action')) {
+    d.fullT = (d.fullT || 0) + 1; // 이 상자를 완전히 보여 준 프레임 수
+    const auto = autoFF && d.fullT >= 14; // 홀드 중이면 240ms 뒤 자동 진행
+    if (justPressed('action') || auto) {
       Sound.select();
       d.idx += 1;
       d.chars = 0;
+      d.fullT = 0;
       if (d.idx >= d.lines.length) {
         const onEnd = d.onEnd;
         game.dialog = null;
@@ -3870,7 +3956,36 @@
     }
     // N-3 「모든 것을 조사할 수 있다」 — 맵별 조사 플레이버 (한 줄 관찰 + 마른 유머)
     const flavor = (MAPS[game.map].flavors || []).find((v) => v.x === f.x && v.y === f.y);
+    // U-3② 반디가 플레이어에게 되묻는 순간 — 아직 답하지 않았고 반디가 곁에 있을 때만.
+    // 두 선택지 중 무엇을 골라도 "…그렇구나. 기억해 둘게." — 답을 flags.bandiAnswer에 저장해
+    // 파이널 직전(quietyard)에서 반디가 콜백한다(U-3③). 답을 미루면 다음에 다시 물어본다.
+    if (flavor && flavor.ask && game.flags.bandiJoined && !game.flags.bandiRevealed &&
+        !game.flags[flavor.ask.flag]) {
+      const ask = flavor.ask;
+      startDialog(['* ' + flavor.text], null, () => {
+        startChoice(ask.q, ask.options.concat('(대답하지 않는다)'), (i) => {
+          if (i < 0 || i >= ask.options.length) return; // 대답 안 함 — 다음에 다시
+          game.flags[ask.flag] = ask.values[i];
+          save();
+          game.notice = { text: ask.reply, t: 300 };
+          Speech.speak(ask.reply);
+        });
+      });
+      return;
+    }
     if (flavor) {
+      // B-4 처음 조사한 플레이버를 누적 기록 — 10·25·40개에 탐험 도전과제가 열린다.
+      if (!game.flags.flavorSeen) game.flags.flavorSeen = {};
+      const fkey = `${game.map}:${f.x},${f.y}`;
+      if (!game.flags.flavorSeen[fkey]) {
+        game.flags.flavorSeen[fkey] = true;
+        save();
+        const n = Object.keys(game.flags.flavorSeen).length;
+        // 10·40군데 마일스톤은 가벼운 축하 토스트, 25군데는 도전과제(explorer)로 이어진다.
+        if (n === 10) fanfare('✦ 10군데를 조사했어요 — 호기심 많은 발걸음');
+        else if (n === 40) fanfare('✦ 40군데 조사! 세상 구석구석을 아는 아이');
+        checkUnlocks(game.currentSlot); // 탐험 도전과제(25) 달성 순간 팡파르(B-1)
+      }
       startDialog(['* ' + flavor.text]);
       // 반디 동행 중이면 한마디 얹는다 — 대화가 닫힌 뒤 말풍선으로 보인다
       if (flavor.bandi && game.flags.bandiJoined && !game.flags.bandiRevealed) {
@@ -3919,8 +4034,10 @@
     const p = game.player;
     if (game.warpCooldownFrames > 0) {
       // 쿨다운 중 워프 칸에 들어섰다 — 자유 이동은 칸을 스치듯 지나므로,
-      // 쿨다운이 끝나는 프레임에 한 번 더 판정한다 (updateWorld에서 소비)
-      if (warpAt(game.map, p.x, p.y)) game.pendingWarpRecheck = true;
+      // 쿨다운이 끝나는 프레임에 한 번 더 판정한다 (updateWorld에서 소비).
+      // A-2: 예약 플래그는 '현재 칸이 워프인지'를 그대로 반영한다 — 워프 칸을 지나쳐
+      // 벗어난 뒤에도 true로 남아, 엉뚱한 칸에서 재판정되던 오류를 막는다.
+      game.pendingWarpRecheck = !!warpAt(game.map, p.x, p.y);
       return;
     }
     game.pendingWarpRecheck = false;
@@ -4046,13 +4163,28 @@
       game.flags.visited[w.to] = true;
       startDialog(dest.intro.slice());
     }
+    // U-3③ 파이널 직전(quietyard 진입) 반디 콜백 — 2장에서 저장한 답(bandiAnswer)을 기억해 준다.
+    // 기억해 주는 친구. 이 콜백이 나가면 같은 진입의 일반 조언은 덮지 않도록 bandiSaid를 찍는다.
+    if (w.to === 'quietyard' && game.flags.bandiJoined && !game.flags.bandiRevealed &&
+        game.flags.bandiAnswer && !game.flags.bandiRecalled) {
+      game.flags.bandiRecalled = true;
+      if (!game.flags.bandiSaid) game.flags.bandiSaid = {};
+      game.flags.bandiSaid.quietyard = true;
+      const recall = game.flags.bandiAnswer === 'together'
+        ? '반디: 전에 네가 "여럿이 있는 게 좋다"고 했지.\n…나도 그래. 그래서 여기까지 온 거야.'
+        : '반디: 전에 네가 "혼자가 편할 때도 있다"고 했지.\n…나도 그래. 그래도 지금은, 곁에 있을게.';
+      game.notice = { text: recall, t: 340 };
+      Speech.speak(recall);
+    }
     // 동행자 반디의 한 줄 조언 — 비차단 말풍선, 맵당 1회 (정체 공개 후에는 없음)
     if (game.flags.bandiJoined && !game.flags.bandiRevealed &&
         COMPANION_LINES[w.to] && !(game.flags.bandiSaid && game.flags.bandiSaid[w.to])) {
       if (!game.flags.bandiSaid) game.flags.bandiSaid = {};
       game.flags.bandiSaid[w.to] = true;
       // 침묵 루트에서는 반디도 점점 말을 잃는다 (무관심의 세계 — 고요 루트 정합)
-      const line = isColdRoute(game.flags) ? '반디: ……' : COMPANION_LINES[w.to];
+      // U-5 2회차(ng): 정체를 아는 플레이어에게 반디 대사가 재해석되도록 NG 테이블로 오버레이한다.
+      const base = (game.flags.ng && COMPANION_LINES_NG[w.to]) ? COMPANION_LINES_NG[w.to] : COMPANION_LINES[w.to];
+      const line = isColdRoute(game.flags) ? '반디: ……' : base;
       game.notice = { text: line, t: 300 };
       Speech.speak(line); // 읽어주기(TTS) 접근성 — 시각 말풍선과 동일 내용
     }
@@ -4114,9 +4246,10 @@
     if (f.seenPhoto1) lines.push('박사: "네가 주인의 방에서 본 사진…\n그게, 나와 영이였어."');
     if (f.seenPhoto2) lines.push('박사: "표본 창고 구석의 그 ×표 사진들도…\n영이 거였단다."');
     if (f.seenArticle) lines.push('박사: "송출되지 못한 그 기사도…\n영이 이야기였어."');
-    lines.push('박사: "네가 지금까지 모은 조각들…\n그게 다, 영이의 기억이야."');
     lines.push('박사: "…미안하다. 정말, 미안해."');
-    lines.push('박사: "…그 아이를, 찾아 주지 않겠니."');
+    // U-1 답안지 → 힌트 — "네가 모은 조각=영이의 기억"이라는 직접 연결 설명을 걷어내고,
+    // 아이가 스스로 잇도록 열린 질문으로 닫는다. (박사는 죄책감·0호·도망까지만 안다)
+    lines.push('박사: "…그 아이가 어디로 갔는지,\n나는 끝내 몰라."');
     save();
     startDialog(lines, '박사님');
   }
@@ -4428,8 +4561,15 @@
     if (b.mercyChoiceKind === 'mercy') lines.push(cfg.mercyLine);
     lines.push(cfg.clearLine);
     lines.push(cfg.afterLine);
+    appendRankLine(b, lines, b.persuadeId); // B-2 판정 한 줄 + 최고 등급 기록
     grantDiaryShard('ch' + n, lines, b.mercyChoiceKind); // 자비로 되돌렸다면 일기 조각(Q-2)
     lines.push(bandiBossLine('ch' + n, b.mercyChoiceKind, game.flags));
+    // U-3④ 첫 보스 클리어 후 한 곳에서 반디의 순수 농담 1개(교훈 0, 1회성).
+    // 침묵 루트에선 반디가 말을 잃으므로 농담도 접는다(톤 정합).
+    if (n === 1 && !game.flags.bandiJokeShown && !isColdRoute(game.flags)) {
+      game.flags.bandiJokeShown = true;
+      lines.push('반디: …있지. 담아가 모아 둔 것 중에\n내 흉내도 있었을까?\n…없었겠지. 나 이렇게 반짝이는데.');
+    }
     startDialog(lines, mon.name, () => Sound.playMapBgm(MAPS[cfg.map].song));
   }
 
@@ -4458,9 +4598,41 @@
       lines.push('💛 고요의 침묵 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!');
     }
     lines.push('☆ 가장 깊은 곳의 문이 열렸다 ☆\n…고요를 지나, 코어로 들어선다.');
+    appendRankLine(b, lines, b.persuadeId); // B-2 판정 한 줄 + 최고 등급 기록
     grantDiaryShard('goyo', lines, b.mercyChoiceKind); // 마지막 조각 — 서명 「— 영」이 드러난다
     lines.push(bandiBossLine('goyo', b.mercyChoiceKind, game.flags));
     startDialog(lines, mon.name, () => Sound.playMapBgm(MAPS.coreroom.song));
+  }
+
+  // B-2 배틀 등급 — 오답 문·피격(연습 파도 제외)으로 S/A/B를 산출한다.
+  const RANK_LINE = {
+    S: '판정: S — 완벽한 경청!',
+    A: '판정: A — 잘 들어 줬어.',
+    B: '판정: B — 마음을 되돌렸어.',
+  };
+  function battleRank(b) {
+    const wrong = b.rankWrong || 0, hits = b.rankHits || 0;
+    if (wrong === 0 && hits === 0) return 'S';
+    if (wrong <= 1 && hits <= 2) return 'A';
+    return 'B';
+  }
+  const RANK_ORDER = { S: 3, A: 2, B: 1 };
+  // 보스별 최고 등급을 슬롯 메타에 저장한다 (명예의 전당 S등급 수 부문에서 재사용).
+  function recordBossRank(slot, id, rank) {
+    try {
+      const m = getMeta(slot);
+      m.bossRank = m.bossRank || {};
+      if ((RANK_ORDER[rank] || 0) > (RANK_ORDER[m.bossRank[id]] || 0)) {
+        m.bossRank[id] = rank;
+        localStorage.setItem(metaKey(slot), JSON.stringify(m));
+      }
+    } catch (e) { /* 저장 불가 환경이면 무시 */ }
+  }
+  // 승리 대사 lines 뒤에 판정 한 줄을 얹고, 최고 등급을 기록한다.
+  function appendRankLine(b, lines, id) {
+    const rank = battleRank(b);
+    recordBossRank(game.currentSlot, id, rank);
+    lines.push(RANK_LINE[rank]);
   }
 
   function winBattle() {
@@ -4504,9 +4676,11 @@
     }
     if (mon.clear) lines.push(mon.clear);
     if (b.monId === 'bekkyeomon') {
+      appendRankLine(b, lines, b.persuadeId); // B-2 판정 한 줄 + 최고 등급 기록
       grantDiaryShard('prologue', lines, b.mercyChoiceKind); // 첫 일기 조각(Q-2) — 미스터리의 시작
       lines.push(bandiBossLine('prologue', b.mercyChoiceKind, game.flags));
     }
+    // 영이(최종)는 곧장 진엔딩으로 이어지는 감정 장면이라 판정 라벨을 얹지 않는다(톤 보존).
     if (b.monId === 'yeongi') {
       // 최종 엔딩 분기: 여정 전체의 자비 + 마지막 선택
       const endingId = computeEnding(b.mercyChoiceKind, game.flags.mercy);
@@ -4599,7 +4773,56 @@
       '반디: "나… 안내 도우미가 아니야.\n이 세계엔, 그런 거 없어."',
       '(작은 빛이 제단의 빛 속으로 녹아들고 —\n그 안에, 작은 아이가 서 있다.)',
       '"…처음부터, 나였어."',
-    ]);
+    ], null, () => startRevealBeat());
+  }
+
+  // U-2 반디 리빌 정지 비트 — "…처음부터, 나였어." 직후의 침묵.
+  //   • BGM을 끊고(Sound.stopSong) 침묵으로 둔다.
+  //   • 반디 동행 스프라이트가 어깨 옆에서 위로 떠오르며 사라진다(y 오프셋 + 페이드).
+  //   • 스킵 불가는 아니다 — Z로 넘길 수 있되, 기본은 90~120프레임 대기.
+  //   • reduceFx면 연출을 생략하고 마지막 대사만 낸다(광과민성 배려).
+  function startRevealBeat() {
+    Sound.stopSong(); // 곡을 끊고 침묵으로
+    if (game.reduceFx) { revealBeatFinalLine(); return; }
+    game.revealBeat = { t: 0 };
+    game.mode = 'revealbeat';
+  }
+  const REVEAL_BEAT_FRAMES = 108; // 90~120 사이 — 스킵하지 않으면 이만큼 기다린다
+  function updateRevealBeat() {
+    const rb = game.revealBeat;
+    if (!rb) { revealBeatFinalLine(); return; }
+    rb.t += 1;
+    // 기본은 대기, Z로 조기 종료 가능(스킵 불가 아님)
+    if (rb.t >= REVEAL_BEAT_FRAMES || justPressed('action')) {
+      game.revealBeat = null;
+      revealBeatFinalLine();
+    }
+  }
+  function revealBeatFinalLine() {
+    // 가면을 벗겠다는 마지막 한 줄 — 그 뒤에야 보스전(영이) 앞에 선다.
+    startDialog(['"…미안해. 이제, 가면을 벗을게."'], '영이');
+  }
+  function drawRevealBeat() {
+    drawWorld();
+    const rb = game.revealBeat;
+    if (!rb) return;
+    const prog = Math.min(1, rb.t / REVEAL_BEAT_FRAMES);
+    const { cx, cy } = camera();
+    const p = game.player;
+    // 어깨 옆 → 위로 떠오르며 사라진다
+    const sx = Math.round(p.px - cx + 16);
+    const sy = Math.round(p.py - cy - 18 - prog * 46);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - prog);
+    if (!game.reduceFx) {
+      const pulse = 0.14 + Math.sin(game.time / 18) * 0.05;
+      ctx.fillStyle = `rgba(255,220,130,${pulse * (1 - prog)})`;
+      ctx.beginPath();
+      ctx.arc(sx + 16, sy + 14, 15 + prog * 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    drawMon(ctx, 'bandi', sx, sy, 2);
+    ctx.restore();
   }
 
   // 교사 진단용 로그 — 마음 조각 배틀 개편판
@@ -4742,6 +4965,10 @@
       hitstop: 0,
       flinchT: 0, // 정답 직후 흠칫 표정 (N-1)
       attack: null,
+      // B-2 배틀 등급 집계 — 이 배틀에서의 오답 문 수·피격 수(연습 파도 제외).
+      // 승리 시 S(오답0·피격0) / A(오답≤1·피격≤2) / B(그 외)로 산출한다.
+      rankWrong: 0,
+      rankHits: 0,
     };
     game.flags.battleCount += 1;
     enterMenuPhase(game.battle);
@@ -4857,6 +5084,7 @@
       if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.max(0, (b.shrinkLevel || 0) - 1);
     } else {
       b.combo = 0; // 콤보(Q-5)는 오답에서 끊긴다
+      b.rankWrong = (b.rankWrong || 0) + 1; // B-2 등급 집계 — 오답 문 카운트
       b.gauge = clamp(b.gauge - 6, 0, b.gaugeMax);
       st.gateWrong += 1; st.backfire += 1;
       recordTopicResult(game.currentSlot, monTopic(b), false);
@@ -5174,7 +5402,10 @@
     // 그럴싸의 멈춤존(verify.slowT)이 살아 있으면 탄막 생성·이동이 절반 속도.
     const slowMul = (w.verify && w.verify.slowT > 0) ? 2 : 1;
     w.spawnTimer -= (w.t % slowMul === 0) ? 1 : 0;
-    if (w.spawnTimer <= 0 && w.t < w.dur - 40) {
+    // C-2 첫 배틀 규칙 하나씩 — 따라(프롤로그 튜토리얼)의 첫 파도는 탄막 없이
+    // 그림자 패턴만 익힌다. 2파도부터 탄막이 합류한다(첫인상 부담 완화).
+    const suppressBullets = b.prologueTutorial && b.waveCount === 1;
+    if (!suppressBullets && w.spawnTimer <= 0 && w.t < w.dur - 40) {
       const pat = currentPattern({ t: w.t, dur: w.dur }, b.attack);
       spawnBullets(arena, pat, arena.soul);
       // 담아: 미끼에 정보를 내준 만큼 다음 스폰이 「맞춤 광고 조준탄」이 된다
@@ -5200,7 +5431,7 @@
       bu.x > box.x - 24 && bu.x < box.x + box.w + 24 && bu.y > box.y - 24 && bu.y < box.y + box.h + 24);
 
     // 연습 파도에서는 피격이 없다 — 패턴을 안전하게 살펴보는 리허설
-    if (!w.practice && bulletHits(b, arena)) { w.hits += 1; if (b.playerHp <= 0) { persuadeExhaust(); return; } }
+    if (!w.practice && bulletHits(b, arena)) { w.hits += 1; b.rankHits = (b.rankHits || 0) + 1; if (b.playerHp <= 0) { persuadeExhaust(); return; } }
 
     // ── R라운드 행동 배틀 — 보스의 이름이 곧 패턴 (shaken·open에서 가동) ──
     if (patNow === 'parcel') updateParcel(b);
@@ -6700,6 +6931,8 @@
     { id: 'endingAll', cat: 'collect', name: '모든 결말', desc: '엔딩 네 가지를 모두 보았어요', check: (c) => c.endings >= 4 },
     { id: 'challengeDone', cat: 'challenge', name: '챌린지 도전', desc: '퀴즈 챌린지를 완주했어요', check: (c) => c.challengeRuns >= 1 },
     { id: 'challengePerfect', cat: 'challenge', name: '챌린지 만점', desc: '퀴즈 챌린지에서 만점!', check: (c) => c.challengeBest > 0 && c.challengeBest === c.challengeBestTotal },
+    // B-4 탐험 보상 밀도 — 처음 조사한 플레이버 누적(10·25·40개) 마일스톤. desc는 최종 단계를 안내.
+    { id: 'explorer', cat: 'collect', name: '구석구석 탐험가', desc: '이곳저곳 25군데 이상 조사했어요', check: (c) => c.flavorsSeen >= 25 },
   ];
   const ACH_CAT = {
     battle: { icon: '♥', color: '#e0453a' },
@@ -6720,6 +6953,7 @@
       dex: dexSeenCount(), dexTotal: DEX_ORDER.length, endings,
       challengeRuns: meta.challengeRuns || 0,
       challengeBest: meta.challengeBest || 0, challengeBestTotal: meta.challengeBestTotal || 0,
+      flavorsSeen: f.flavorSeen ? Object.keys(f.flavorSeen).length : 0, // B-4 처음 조사한 플레이버 수
     };
     // 도전과제 달성 개수 — 칭호/테마 해금 조건에서 사용 (위 필드만 참조하므로 순환 없음)
     ctx.achieved = ACHIEVEMENTS.filter((a) => a.check(ctx)).length;
@@ -8744,6 +8978,9 @@
       }
     }
 
+    // A-1 숨은 워프 마커 — 문틀·소용돌이를 타일 위, 엔티티 아래에 그린다(전 맵 일괄).
+    drawWarpMarkers(cx, cy);
+
     // 방탈출 물체 (단말·게시판·지우개·출구) — 타일 위, 엔티티 아래
     if (game.puzzleRun) drawPuzzleObjects(cx, cy);
     // 프롤로그 실험실 — 핵심 단서/보조 조사물/출구를 눈에 보이게 배치한다.
@@ -8857,6 +9094,68 @@
     drawAdStickers();
     drawSofaWarmth();
     drawIntroDim();
+    drawUnlockFlash();
+  }
+
+  // B-1 획득 순간 화면 연출 — 테마 강조색이 화면 가장자리에서 짧게 번져 사라진다.
+  // reduceFx면 unlockFlash가 애초에 0이라 아무것도 그리지 않는다(광과민성 배려).
+  function drawUnlockFlash() {
+    if (!game.unlockFlash || game.unlockFlash <= 0) return;
+    game.unlockFlash -= 1;
+    const t = game.unlockFlash / 24;
+    ctx.save();
+    ctx.globalAlpha = 0.28 * t;
+    ctx.fillStyle = themeAccent();
+    ctx.fillRect(0, 0, LW, LH);
+    ctx.restore();
+  }
+
+  // A-1 숨은 워프 시각화 — 데이터 수정 없이, 문·소용돌이 마커를 워프 칸 위에 그린다.
+  // reduceFx면 깜빡임 없이 고정. 색은 테마 강조색(themeAccent) 계열로 은은하게.
+  function drawWarpMarkers(cx, cy) {
+    const markers = hiddenWarpsOf(game.map);
+    if (!markers.length) return;
+    const blink = game.reduceFx ? 1 : (Math.floor(game.time / 20) % 2 ? 1 : 0.55); // 2프레임 깜빡임
+    const col = themeAccent();
+    ctx.save();
+    for (const mk of markers) {
+      const px = Math.round(mk.x * TS - cx), py = Math.round(mk.y * TS - cy);
+      const midx = px + TS / 2, midy = py + TS / 2;
+      if (mk.kind === 'swirl') {
+        // 같은 맵 내부 순간이동 — 소용돌이(◌) 링 두 겹
+        ctx.globalAlpha = 0.5 * blink;
+        ctx.strokeStyle = col; ctx.lineWidth = 2;
+        for (let r = 6; r <= 14; r += 5) {
+          const a0 = game.reduceFx ? 0 : game.time / 9;
+          ctx.beginPath();
+          ctx.arc(midx, midy, r, a0, a0 + Math.PI * 1.5);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 0.85 * blink;
+        ctx.fillStyle = col; ctx.font = fs(15, true); ctx.textAlign = 'center';
+        ctx.fillText('◌', midx, midy + 5);
+        ctx.textAlign = 'left';
+      } else {
+        // 다른 맵으로 가는 문 — 발광 아치/문틀 (픽셀풍)
+        ctx.globalAlpha = 0.22 * blink;
+        ctx.fillStyle = col;
+        ctx.fillRect(px + 6, py + 2, TS - 12, TS - 6); // 문 발광
+        ctx.globalAlpha = 0.9 * blink;
+        ctx.strokeStyle = col; ctx.lineWidth = 2;
+        // 문틀: 위 가로 + 양 세로 (바닥은 열어 둬 '드나드는 문' 느낌)
+        ctx.beginPath();
+        ctx.moveTo(px + 7, py + TS - 4);
+        ctx.lineTo(px + 7, py + 4);
+        ctx.lineTo(px + TS - 7, py + 4);
+        ctx.lineTo(px + TS - 7, py + TS - 4);
+        ctx.stroke();
+        ctx.globalAlpha = 0.95 * blink;
+        ctx.fillStyle = col; ctx.font = fs(12, true); ctx.textAlign = 'center';
+        ctx.fillText('▲', midx, midy + 4); // 들어가는 방향 힌트
+        ctx.textAlign = 'left';
+      }
+    }
+    ctx.restore();
   }
 
   // 새 게임 인트로 암전 — 컴퓨터실 장면(대화 첫 3줄) 동안 화면을 거의 가리고,
@@ -9093,7 +9392,14 @@
 
     // 하단 목적지 라벨
     const destName = onTargetMap ? (target.label || '이 지역') : ((MAPS[target.map] && MAPS[target.map].name) || '목표');
-    const label = onTargetMap ? `${destName} 쪽으로!` : `${destName}(으)로 가기`;
+    // A-2: 나침반이 '숨은 워프'(문틀·소용돌이 마커만 있는 칸)를 가리킬 때, 그 칸이
+    // 문임을 한마디로 알려 준다 — 예전엔 빈 타일을 가리켜 아이가 헤매던 문제를 없앤다.
+    let label = onTargetMap ? `${destName} 쪽으로!` : `${destName}(으)로 가기`;
+    if (!onTargetMap && isHiddenWarp(game.map, wp.x, wp.y)) {
+      label = hiddenWarpsOf(game.map).some((mk) => mk.x === wp.x && mk.y === wp.y && mk.kind === 'swirl')
+        ? `${destName}(으)로 — 소용돌이로 들어가자`
+        : `${destName}(으)로 — 빛나는 문으로`;
+    }
     ctx.font = fs(13, true);
     const tw = ctx.measureText(label).width;
     const bh = game.largeText ? 34 : 28;
@@ -9907,6 +10213,12 @@
         ctx.textAlign = 'right';
         ctx.fillText(`${prog}   ♥ ${sum.mercy}${streak ? '   🔥' + streak : ''}`, boxX + boxW - 18, y + 40);
         ctx.textAlign = 'left';
+        // B-3 오늘의 도전 미완료 배지 — 슬롯 화면에서 은은히 알려 준다(벌점·소멸 없음)
+        if (!dailyDoneToday(i)) {
+          ctx.fillStyle = themeAccent();
+          ctx.font = fs(12, true);
+          ctx.fillText('◷ 오늘의 도전', boxX + 18, y + 62);
+        }
       } else {
         // 신규 학생이 가장 먼저 골라야 하는 안내라 대비를 충분히 준다 (기존 #555는 2.8:1로 AA 미달)
         ctx.fillStyle = '#b7b2c8';
@@ -9971,10 +10283,36 @@
       ctx.font = fs(14);
       ctx.fillText('Z: 삭제   ·   X: 취소', LW / 2, 316);
     }
+
+    // U-5 두 번째 모험 선택 오버레이 — 클리어 슬롯에서 Z를 눌렀을 때
+    if (game.titleScreen === 'ngchoice') {
+      ctx.fillStyle = 'rgba(0,0,0,.8)';
+      ctx.fillRect(0, 0, LW, LH);
+      const sum = slotSummary(game.slotCursor);
+      utBox(LW / 2 - 220, 190, 440, 160, 6);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fff';
+      ctx.font = fs(18, true);
+      ctx.fillText(`슬롯 ${game.slotCursor + 1} "${sum ? sum.name : ''}" — 모험 완료`, LW / 2, 224);
+      ctx.font = fs(13);
+      ctx.fillStyle = '#888';
+      ctx.fillText('이 이야기를 어떻게 이어갈까요?', LW / 2, 250);
+      const opts = ['이어서 볼래 (후일담)', '★ 두 번째 모험 (처음부터)'];
+      for (let i = 0; i < opts.length; i++) {
+        const oy = 284 + i * 30;
+        const on = game.ngCursor === i;
+        ctx.fillStyle = on ? themeAccent() : '#b7b2c8';
+        ctx.font = fs(15, on);
+        ctx.fillText((on ? '▸ ' : '   ') + opts[i], LW / 2, oy);
+      }
+      ctx.fillStyle = '#777';
+      ctx.font = fs(12);
+      ctx.fillText('↑↓ 선택   ·   Z 결정   ·   X 취소', LW / 2, 340);
+    }
     ctx.textAlign = 'left';
   }
 
-  function startNewGame(slot, name) {
+  function startNewGame(slot, name, ng) {
     game.currentSlot = slot;
     game.playerName = name || '수호자';
     game.map = 'introlab';
@@ -9982,6 +10320,7 @@
     game.player.px = 14 * TS; game.player.py = 16 * TS;
     game.player.dir = 'up';
     game.flags = newFlags();
+    if (ng) game.flags.ng = true; // U-5 두 번째 모험(NG+) — 세이브 스키마 영향 없이 flags에만
     game.mode = 'world';
     save();
     recordPlayDay(slot);
@@ -10049,9 +10388,25 @@
     game.flags.defeated = Object.assign(newFlags().defeated, sf.defeated);
     game.mode = 'world';
     syncPuzzleRun(); // 방탈출 방 안에서 저장된 세이브면 퍼즐을 새로 시작
-    recordPlayDay(slot);
-    checkCosmeticUnlocks(slot);
+    const meta = recordPlayDay(slot);
+    checkUnlocks(slot);
+    surfaceDailyAndStreak(slot, meta); // B-3 오늘의 도전·스트릭 표면화 (checkUnlocks 뒤 — 알림 우선)
     Sound.playMapBgm(MAPS[game.map].song);
+  }
+
+  // B-3 일일 도전 표면화 — 월드 진입 시, 스트릭 마일스톤(3·7·14일) 축하가 있으면 먼저,
+  // 없고 오늘의 도전이 미완료면 도전 극장으로 이끄는 알림을 1회 띄운다. 벌점·소멸 없음.
+  function surfaceDailyAndStreak(slot, meta) {
+    const st = (meta && meta.streak) || 0;
+    if ([3, 7, 14].includes(st) && meta.lastMilestone !== st) {
+      meta.lastMilestone = st;
+      try { localStorage.setItem(metaKey(slot), JSON.stringify(meta)); } catch (e) { /* 무시 */ }
+      fanfare(`🔥 연속 출석 ${st}일! 대단해요.`);
+      return;
+    }
+    if (!dailyDoneToday(slot)) {
+      game.notice = { text: '◷ 오늘의 도전이 기다려요 — 도전 극장', t: 260 };
+    }
   }
 
   // 읽어주기 접근성 — 슬롯 화면에서 현재 커서 위치를 말로 알려 준다
@@ -10098,6 +10453,31 @@
       return;
     }
 
+    // U-5 두 번째 모험 선택 — 클리어(endingId 존재) 슬롯에서 Z를 누르면 뜬다.
+    //   0: 이어서 본다(후일담) / 1: 처음부터(2회차 NG+ — 대사 스왑만, 진행 초기화)
+    if (game.titleScreen === 'ngchoice') {
+      if (justPressed('up') || justPressed('down')) {
+        game.ngCursor = game.ngCursor ? 0 : 1;
+        Sound.blip();
+      } else if (justPressed('action')) {
+        const slot = game.slotCursor;
+        if (game.ngCursor === 1) {
+          const sum = slotSummary(slot); // 이름은 이어받아 NG+로 새로 시작
+          game.titleScreen = 'slots';
+          Sound.select();
+          startNewGame(slot, sum ? sum.name : '수호자', true);
+        } else {
+          game.titleScreen = 'slots';
+          Sound.select();
+          continueGame(slot);
+        }
+      } else if (justPressed('cancel') || justPressed('menu')) {
+        game.titleScreen = 'slots';
+        Sound.blip();
+      }
+      return;
+    }
+
     // slots 화면
     if (justPressed('menu')) { openDex('title'); return; }
     if (justPressed('up') || justPressed('down')) {
@@ -10112,8 +10492,16 @@
       return;
     }
     if (justPressed('action')) {
+      const sum = slotSummary(game.slotCursor);
+      // U-5 클리어(endingId 존재) 슬롯이면 "이어서 볼래? / 처음부터(2회차)" 선택을 먼저 연다
+      if (sum && sum.endingId) {
+        game.titleScreen = 'ngchoice';
+        game.ngCursor = 0;
+        Sound.select();
+        return;
+      }
       Sound.select();
-      if (slotSummary(game.slotCursor)) continueGame(game.slotCursor);
+      if (sum) continueGame(game.slotCursor);
       else showNameEntry();
     }
   }
@@ -10417,6 +10805,11 @@
         drawWorld();
         if (game.dialog) drawDialog();
         break;
+      case 'revealbeat': // U-2 반디 리빌 정지 비트 — 무입력 대기 + 반디 소멸 연출
+        updateRevealBeat();
+        if (game.mode === 'revealbeat') drawRevealBeat();
+        else { drawWorld(); if (game.dialog) drawDialog(); }
+        break;
       case 'battle':
         updateBattle();
         // 클리어/패배 처리 중 모드가 바뀌었을 수 있음
@@ -10626,6 +11019,7 @@
   window.__test = { // 테스트용 훅
     buildReportText, buildLearningSummary, recordTopicResult, countAchievements,
     migrateSlotV6, migrateSlotV7, migrateSlotV8,
+    loadSlot, writeSlot, slotSummary, // W-1 골든 세이브 픽스처·roundtrip 검증용
     buildBackupText, applyBackup, undoRestore, hasRestoreUndo,
     deleteSlot, undoDeleteSlot, hasDeletedSlot, buildAdaptivePool, buildDailyPool,
     recordPlayDay, recordDailyDone, getMeta, todayStr,
@@ -10652,6 +11046,10 @@
     battleObserve: () => (game.battle ? battleObserve(game.battle) : ''),
     // 파이널 「고요의 뜰」 — 맵별 어둠 단계 확인용
     QUIET_DIM_LEVEL,
+    // T라운드 신규 — 숨은 워프 마커·배틀 등급·획득 팡파르 검증용
+    isHiddenWarp, hiddenWarpsOf, checkUnlocks,
+    battleRank: () => (game.battle ? battleRank(game.battle) : null),
+    dailyDoneToday, surfaceDailyAndStreak,
   };
   frame();
 })();

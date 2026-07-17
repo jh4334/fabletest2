@@ -149,4 +149,113 @@ tap('z'); // 학급 모드 — 플래그 없는 슬롯을 미리 로드해도 �
 check('학급 모드 예외 없이 진입', g.mode !== 'teacher');
 check('flags가 새로 채워짐', !!g.flags && typeof g.flags.defeated === 'object');
 
+// ── W-1 세이브 마이그레이션 골든 픽스처 테스트 ──
+// v3·v5·v8 세대의 "골든 세이브"를 심고, loadSlot의 마이그레이션 사슬이 (a) 필수 플래그를
+// 모두 채우고 (b) talkedProf 파생 추론이 정확하며 (c) defeated 승계가 유지되고
+// (d) v9 미래 필드가 roundtrip에서 사라지지 않는지 검사한다.
+console.log('[W-1] 세이브 마이그레이션 골든 픽스처 (v3·v5·v8·v9 미래필드)');
+{
+  const T = windowObj.__test;
+  const put = (i, obj) => storage.set('ai-ethics-adventure-slot-' + i, JSON.stringify(obj));
+
+  // (v3 골든) — 옛 세대. V4~V8 사슬을 전부 거친다.
+  put(0, { v: 3, name: '골든3', map: 'village', x: 13, y: 16,
+    flags: { talkedProf: true, defeated: { bekkyeomon: true, sujipmon: true }, mercy: 5, visited: {} } });
+  const s3 = T.loadSlot(0);
+  check('W-1 v3→최신 버전 상승(v=8)', s3.v === 8);
+  check('W-1 v3 필수 플래그 채워짐(introClue1·prologueClosed·privacyLeak 정의)',
+    s3.flags.introClue1 !== undefined && s3.flags.prologueClosed !== undefined && s3.flags.privacyLeak === 0);
+  check('W-1 v3 talkedProf 파생 추론 — introClue1 = !!talkedProf = true', s3.flags.introClue1 === true);
+  check('W-1 v3 defeated 승계 유지', s3.flags.defeated.bekkyeomon === true && s3.flags.defeated.sujipmon === true);
+  check('W-1 v3 defeated 파생 — prologueClosed = !!defeated.bekkyeomon = true', s3.flags.prologueClosed === true);
+
+  // (v5 골든) — introClue*는 이미 있으나 ttaraFirstEncounter·privacy·prologueClosed 미정
+  put(1, { v: 5, name: '골든5', map: 'freestreet', x: 18, y: 21,
+    flags: { talkedProf: true, defeated: { bekkyeomon: true, sujipmon: true, pyeonhyangmon: true }, mercy: 8, visited: {},
+      introClue1: true, introClue2: true, introClue3: true, introDoorOpen: true, introForestTrace: true } });
+  const s5 = T.loadSlot(1);
+  check('W-1 v5→최신 버전 상승(v=8)', s5.v === 8);
+  check('W-1 v5 ttaraFirstEncounter 파생 = !!defeated.bekkyeomon = true', s5.flags.ttaraFirstEncounter === true);
+  check('W-1 v5 defeated 3인 승계 유지', s5.flags.defeated.pyeonhyangmon === true);
+  check('W-1 v5 privacy 필드 기본값 채워짐', s5.flags.privacyLeak === 0 && s5.flags.privacyRecoveryActive === false);
+
+  // (v8 골든) — 클리어 세이브. 필드 유지 + 이미 최신이라 변형 없음.
+  put(2, { v: 8, name: '골든8', map: 'village', x: 13, y: 16,
+    flags: { talkedProf: true, defeated: { bekkyeomon: true, sujipmon: true, pyeonhyangmon: true, hwangakmon: true, yuhokmon: true, hollimmon: true, finalboss: true, yeongi: true },
+      mercy: 8, visited: {}, introClue1: true, introForestTrace: true, ttaraFirstEncounter: true,
+      privacyLeak: 0, privacyRecovery: 0, privacyRecoveryActive: false, prologueClosed: true, forestClearingRead: true,
+      endingId: 'home' } });
+  const s8 = T.loadSlot(2);
+  check('W-1 v8 그대로 유지(v=8) + endingId 보존', s8.v === 8 && s8.flags.endingId === 'home');
+  check('W-1 v8 클리어 슬롯 요약 — done/endingId 노출', (() => { const sm = T.slotSummary(2); return sm && sm.done === true && sm.endingId === 'home'; })());
+
+  // (v9 미래 필드 roundtrip) — 알려지지 않은 상위·flags 필드가 load→write→load에서 살아남아야 한다.
+  // 마이그레이터가 손대지 않도록 각 세대 가드 플래그를 갖춰 v9를 '이미 최신'으로 통과시킨다.
+  put(0, { v: 9, name: '미래', map: 'village', x: 13, y: 16, futureTop: 'KEEP_ME',
+    flags: { talkedProf: true, defeated: {}, mercy: 0, visited: {},
+      introClue1: true, introForestTrace: true, ttaraFirstEncounter: true, privacyLeak: 0, prologueClosed: true,
+      futureFlag: 42 } });
+  const s9 = T.loadSlot(0);
+  // 참고: 마이그레이션 사슬은 v를 알려진 최신(8)으로 정규화하지만, '모르는 필드'는 지우지 않는다.
+  check('W-1 v9 미래 상위 필드 보존(load)', s9.futureTop === 'KEEP_ME');
+  check('W-1 v9 미래 flags 필드 보존(load)', s9.flags.futureFlag === 42);
+  T.writeSlot(0, s9); // roundtrip — 다시 저장 후 재로드
+  const s9b = T.loadSlot(0);
+  check('W-1 v9 roundtrip — 미래 필드가 사라지지 않음', s9b.futureTop === 'KEEP_ME' && s9b.flags.futureFlag === 42);
+
+  // 정리 — 다음 블록(U-5)이 슬롯을 재사용하므로 비운다
+  storage.delete('ai-ethics-adventure-slot-0');
+  storage.delete('ai-ethics-adventure-slot-1');
+  storage.delete('ai-ethics-adventure-slot-2');
+}
+
+// ── U-5 NG+ 타이틀 흐름 — 클리어 슬롯에서 두 번째 모험 선택 ──
+console.log('[U-5] NG+ 타이틀 흐름 — 클리어 슬롯 선택 → 이어보기 / 처음부터(2회차)');
+{
+  const T = windowObj.__test;
+  // 클리어 세이브를 슬롯 0에, 진행 중(미클리어) 세이브를 슬롯 1에 둔다
+  storage.set('ai-ethics-adventure-slot-0', JSON.stringify({ v: 8, name: '클리어아이', map: 'village', x: 13, y: 16,
+    flags: { talkedProf: true, defeated: { bekkyeomon: true, sujipmon: true, pyeonhyangmon: true, hwangakmon: true, yuhokmon: true, hollimmon: true, finalboss: true, yeongi: true },
+      mercy: 8, visited: {}, introClue1: true, introForestTrace: true, ttaraFirstEncounter: true,
+      privacyLeak: 0, prologueClosed: true, forestClearingRead: true, endingId: 'home' }, updatedAt: Date.now() }));
+  storage.set('ai-ethics-adventure-slot-1', JSON.stringify({ v: 8, name: '진행중아이', map: 'village', x: 13, y: 16,
+    flags: { talkedProf: true, defeated: { bekkyeomon: true }, mercy: 1, visited: {}, introClue1: true,
+      introForestTrace: true, ttaraFirstEncounter: true, privacyLeak: 0, prologueClosed: true }, updatedAt: Date.now() }));
+
+  // 클리어 슬롯에서 Z → 두 번째 모험 선택 화면
+  g.mode = 'title'; g.titleScreen = 'slots'; g.slotCursor = 0;
+  tap('z');
+  check('U-5 클리어 슬롯 Z → 선택 화면(ngchoice) 표시', g.titleScreen === 'ngchoice');
+
+  // "★ 두 번째 모험" (커서 1) 선택 → NG+ 새 게임 시작
+  tap('ArrowDown');
+  check('U-5 커서 이동 — 두 번째 모험(1)', g.ngCursor === 1);
+  tap('z');
+  check('U-5 처음부터(2회차) → flags.ng = true', g.flags.ng === true);
+  check('U-5 이름은 클리어 세이브에서 이어받음', g.playerName === '클리어아이');
+  check('U-5 새 모험 진행 초기화 — 프롤로그(defeated 없음)', g.currentSlot === 0 &&
+    !(g.flags.defeated && g.flags.defeated.yeongi));
+
+  // 취소 흐름 — ngchoice에서 X면 슬롯 화면으로 복귀
+  // (앞서 startNewGame이 슬롯 0을 새 NG 세이브로 덮어썼으므로 클리어 세이브를 다시 심는다)
+  storage.set('ai-ethics-adventure-slot-0', JSON.stringify({ v: 8, name: '클리어아이', map: 'village', x: 13, y: 16,
+    flags: { talkedProf: true, defeated: { bekkyeomon: true, sujipmon: true, pyeonhyangmon: true, hwangakmon: true, yuhokmon: true, hollimmon: true, finalboss: true, yeongi: true },
+      mercy: 8, visited: {}, introClue1: true, introForestTrace: true, ttaraFirstEncounter: true,
+      privacyLeak: 0, prologueClosed: true, forestClearingRead: true, endingId: 'home' }, updatedAt: Date.now() }));
+  g.mode = 'title'; g.titleScreen = 'slots'; g.slotCursor = 0; g.flags = null;
+  tap('z');
+  check('U-5 다시 클리어 슬롯 Z → ngchoice', g.titleScreen === 'ngchoice');
+  tap('x');
+  check('U-5 ngchoice에서 X → 슬롯 화면 복귀', g.titleScreen === 'slots');
+
+  // 정상(미클리어) 슬롯은 영향 없음 — Z가 곧장 이어하기(ngchoice 안 뜸)
+  g.mode = 'title'; g.titleScreen = 'slots'; g.slotCursor = 1;
+  tap('z');
+  check('U-5 미클리어 슬롯은 ngchoice 없이 바로 이어하기', g.titleScreen !== 'ngchoice' &&
+    (g.mode === 'world' || g.mode === 'dialog') && g.flags.ng !== true);
+
+  storage.delete('ai-ethics-adventure-slot-0');
+  storage.delete('ai-ethics-adventure-slot-1');
+}
+
 console.log(`\n✔ 슬롯 테스트 통과 (${passed}개 검사)`);
