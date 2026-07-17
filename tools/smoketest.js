@@ -2828,6 +2828,17 @@ for (let i = 1; i < SHRINE_WHISPERS.length; i++) {
   }
 }
 check('마지막 봉헌 → 정체 공개 대화 시작', g.mode === 'dialog');
+advanceDialog(); // "…처음부터, 나였어."까지 진행 → U-2 리빌 정지 비트로 이어진다
+// U-2 반디 리빌 정지 비트 — reduceFx가 아니면 무입력 대기(revealbeat) 모드로 들어가고,
+// Z로 조기 종료할 수 있으며(스킵 불가 아님), 그 뒤 "…가면을 벗을게" 한 줄이 나온다.
+if (!g.reduceFx) {
+  check('U-2 리빌 정지 비트 — 무입력 대기 모드 진입', g.mode === 'revealbeat');
+  step(30);
+  check('U-2 정지 비트는 기본 대기 — 30프레임 뒤에도 유지', g.mode === 'revealbeat');
+  tap('z'); // Z로 조기 종료(스킵 가능)
+  check('U-2 Z로 정지 비트 조기 종료 → 대사 복귀', g.mode === 'dialog');
+}
+check('U-2 리빌 직후 마지막 대사 "…가면을 벗을게"', g.mode === 'dialog' && /가면을 벗을게/.test(g.dialog.lines.join('\n')));
 advanceDialog();
 check('반디 정체 공개(bandiRevealed) — 동행 종료', g.flags.bandiRevealed === true);
 check('봉헌 퍼즐 완료(shrineDone=true, shrineIdx=8) — 영이 등장', g.flags.shrineDone === true &&
@@ -3401,6 +3412,85 @@ console.log('[T-C3] 대화 빨리감기 — Z 홀드 시 타자기 즉시완성 
   step(40); // 계속 홀드 → 남은 상자들도 자동으로 넘어가 대화 종료
   dispatch('keyup', { key: 'z' });
   check('홀드 유지 → 상자들이 자동 진행되어 대화 종료', g.mode === 'world' && g.dialog === null);
+}
+
+// ── U라운드 스토리 외과수술 — 데이터·소스 보증 검사 ──
+console.log('[U-1] 박사 고백 — 답안지에서 힌트로 (직접 연결 삭제 + 열린 질문)');
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
+  // startProfConfession 본문만 잘라 검사한다
+  const body = src.slice(src.indexOf('function startProfConfession'), src.indexOf('function updateWorld'));
+  check('U-1 "모은 조각=영이의 기억" 직접 연결 설명 삭제', !/모은 조각들[\s\S]*?영이의 기억/.test(body));
+  check('U-1 마지막은 열린 질문 "…어디로 갔는지, 나는 끝내 몰라"', /어디로 갔는지[\s\S]*?끝내 몰라/.test(body));
+  check('U-1 죄책감·0호·도망 맥락은 유지', /프로젝트 0호/.test(body) && /로그아웃해서 도망쳤단다/.test(body));
+}
+
+console.log('[U-2] 반디 리빌 정지 비트 — 소스 보증 (BGM 정지·reduceFx 생략)');
+{
+  check('U-2 정지 비트는 BGM을 끊는다(startRevealBeat → Sound.stopSong)',
+    /function startRevealBeat[\s\S]*?Sound\.stopSong\(\)/.test(gameSrcFinal));
+  check('U-2 reduceFx면 연출 생략하고 대사만', /if \(game\.reduceFx\) \{ revealBeatFinalLine\(\); return; \}/.test(gameSrcFinal));
+  check('U-2 기본은 90~120프레임 대기(Z-skippable)', /REVEAL_BEAT_FRAMES = 1\d\d/.test(gameSrcFinal) && /rb\.t >= REVEAL_BEAT_FRAMES \|\| justPressed\('action'\)/.test(gameSrcFinal));
+}
+
+console.log('[U-3] 반디 인물 순간 4개 — 데이터·소스');
+{
+  const { MAPS: M3 } = vm.runInContext('({ MAPS })', sandbox);
+  const benchFlavor = (M3.village.flavors || []).find((f) => f.bandi && /벤치/.test(f.text));
+  check('U-3① 마을 벤치 반디 잡담(교훈 0)', !!benchFlavor && /아무것도 안 해도/.test(benchFlavor.bandi));
+  const askFlavor = (M3.tiltstreet.flavors || []).find((f) => f.ask);
+  check('U-3② 반디 질문 플레이버 — 선택지 2개 + flags 저장', !!askFlavor &&
+    askFlavor.ask.options.length === 2 && askFlavor.ask.flag === 'bandiAnswer' &&
+    askFlavor.ask.values.length === 2 && /기억해 둘게/.test(askFlavor.ask.reply));
+  const isrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
+  check('U-3③ quietyard 진입 시 저장한 답 콜백', /w\.to === 'quietyard'[\s\S]*?bandiAnswer[\s\S]*?bandiRecalled/.test(isrc) && /전에 네가/.test(isrc));
+  check('U-3④ 첫 보스 클리어 후 반디 순수 농담 1회성', /bandiJokeShown/.test(isrc) && /내 흉내도 있었을까/.test(isrc));
+}
+
+console.log('[U-4] 보스 감정 템플릿 차별화 — 담아(버려짐)·반짝(존재)·루미(역할)');
+{
+  const { PERSUADE: P4 } = vm.runInContext('({ PERSUADE })', sandbox);
+  const banjjakFears = P4.yuhok_boss.claims.map((c) => (c.fragments || []).join(' ')).join(' | ');
+  const lumiFears = P4.hollim_boss.claims.map((c) => (c.fragments || []).join(' ')).join(' | ');
+  const damaFears = P4.sujipmon_boss.claims.map((c) => (c.fragments || []).join(' ')).join(' | ');
+  check('U-4 반짝 = 존재 증명 상실("불이 꺼지면, 내가 없는")', /불이 꺼지면[\s\S]*?내가 없는/.test(banjjakFears));
+  check('U-4 반짝 감정 주장에 "혼자 남는" 문구 제거', !/혼자 남는/.test(banjjakFears));
+  check('U-4 루미 = 역할 상실("문을 나가면, 나는 뭘 하면 되지")', /문을 나가면[\s\S]*?뭘 하면 되지/.test(lumiFears));
+  check('U-4 담아 = 원조(버려짐/혼자 남는) 유지', /혼자 남는/.test(damaFears));
+}
+
+console.log('[U-5] NG+ — 두 번째 모험 (대사 스왑 오버레이 + 타이틀 선택)');
+{
+  const { COMPANION_LINES: CL5, COMPANION_LINES_NG: NG5 } = vm.runInContext('({ COMPANION_LINES, COMPANION_LINES_NG })', sandbox);
+  const nk = Object.keys(NG5);
+  check('U-5 NG 오버레이 10~15개 핵심 맵', nk.length >= 10 && nk.length <= 15);
+  check('U-5 NG 키는 전부 원본 대사 있는 맵', nk.every((k) => !!CL5[k]));
+  check('U-5 NG 대사는 정체 재해석("정보는 아껴" → 내줬었거든)', /너무 많이 내줬었거든[\s\S]*?정보는 아껴/.test(NG5.freestreet));
+  // 타이틀 흐름 — 클리어(endingId) 슬롯에서 Z → ngchoice, "처음부터"면 startNewGame(...true)
+  const tsrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
+  check('U-5 클리어 슬롯 Z → 두 번째 모험 선택(ngchoice)', /sum && sum\.endingId[\s\S]*?titleScreen = 'ngchoice'/.test(tsrc));
+  check('U-5 처음부터 선택 → NG+ 새 게임(startNewGame(slot, ..., true))', /startNewGame\(slot, sum \? sum\.name : '수호자', true\)/.test(tsrc));
+  check('U-5 세이브 스키마 무영향 — flags.ng에만 반영', /if \(ng\) game\.flags\.ng = true;/.test(tsrc) && !/SAVE_VERSION = 9/.test(tsrc));
+}
+
+console.log('[U-5b] NG+ 오버레이 실제 적용 — 워프 시 반디 대사가 NG 버전으로 바뀐다');
+{
+  const { COMPANION_LINES: CLx, COMPANION_LINES_NG: NGx } = vm.runInContext('({ COMPANION_LINES, COMPANION_LINES_NG })', sandbox);
+  // 공통 셋업 — 반디 동행 중·정체 공개 전·냉담 루트 아님, freestreet 인트로는 억제
+  const warpToFreestreet = () => {
+    g.dialog = null; g.mode = 'world'; g.map = 'village';
+    g.flags.bandiJoined = true; g.flags.bandiRevealed = false; g.flags.mercy = 5;
+    g.flags.bandiSaid = {}; g.notice = { text: '', t: 0 };
+    g.warpCooldownFrames = 0; g.lastWarp = null; g.pendingWarpRecheck = false;
+    g.flags.visited = g.flags.visited || {}; g.flags.visited.freestreet = true;
+    setPos(24, 6, 'up'); hold('ArrowUp', 10);
+  };
+  g.flags.ng = true; warpToFreestreet();
+  check('U-5 2회차 워프로 freestreet 진입', g.map === 'freestreet');
+  check('U-5 NG 오버레이 적용 — 반디 대사가 NG 버전', !!g.notice && g.notice.text === NGx.freestreet);
+  g.flags.ng = false; warpToFreestreet();
+  check('U-5 일반 슬롯(ng=false)은 원본 반디 대사 — 무영향', g.map === 'freestreet' && !!g.notice && g.notice.text === CLx.freestreet);
+  g.flags.ng = false;
 }
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

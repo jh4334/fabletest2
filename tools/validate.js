@@ -497,6 +497,15 @@ if (process.argv.includes('--print')) {
     if (!MAPS[k]) err(`COMPANION_LINES '${k}'는 존재하지 않는 맵`);
     if (!/^반디: /.test(CL[k])) err(`COMPANION_LINES '${k}' 형식 오류 — '반디: '로 시작해야 함`);
   }
+  // U-5 NG+ 오버레이 — 키는 실제 맵 + '반디: '로 시작 + 10~15개 핵심 맵만 (원본 대사가 있는 맵)
+  const NG = vm.runInContext('COMPANION_LINES_NG', ctx);
+  const ngKeys = Object.keys(NG);
+  if (ngKeys.length < 10 || ngKeys.length > 15) err(`COMPANION_LINES_NG는 10~15개여야 함 (현재 ${ngKeys.length})`);
+  for (const k of ngKeys) {
+    if (!MAPS[k]) err(`COMPANION_LINES_NG '${k}'는 존재하지 않는 맵`);
+    if (!CL[k]) err(`COMPANION_LINES_NG '${k}'는 COMPANION_LINES에 원본 대사가 있어야 함`);
+    if (!/^반디: /.test(NG[k])) err(`COMPANION_LINES_NG '${k}' 형식 오류 — '반디: '로 시작해야 함`);
+  }
 }
 
 // N-2/N-5 설득 프로필 데이터 린트 — 전용 곡 존재, 관찰/예고 문법

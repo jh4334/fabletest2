@@ -178,6 +178,10 @@
       privacyRecovery: 0,   // 노출도 MAX 후 회복 목표 진행(지운 정보 조각 수)
       privacyRecoveryActive: false, // 노출도 5에서 즉시 실패 대신 회복 목표 발동
       flavorSeen: {},      // B-4 처음 조사한 플레이버 좌표('맵:x,y') — 탐험 도전과제용
+      bandiAnswer: null,   // U-3② 반디가 물은 질문에 고른 답('together'|'alone') — 파이널 직전 콜백용
+      bandiRecalled: false, // U-3③ 파이널 직전(quietyard 진입) 반디 콜백을 이미 봤는가
+      bandiJokeShown: false, // U-3④ 첫 보스 클리어 후 반디 순수 농담 1회성
+      ng: false,           // U-5 두 번째 모험(NG+) — 대사 스왑만, 난이도·보상 동일
     };
   }
 
@@ -3952,6 +3956,23 @@
     }
     // N-3 「모든 것을 조사할 수 있다」 — 맵별 조사 플레이버 (한 줄 관찰 + 마른 유머)
     const flavor = (MAPS[game.map].flavors || []).find((v) => v.x === f.x && v.y === f.y);
+    // U-3② 반디가 플레이어에게 되묻는 순간 — 아직 답하지 않았고 반디가 곁에 있을 때만.
+    // 두 선택지 중 무엇을 골라도 "…그렇구나. 기억해 둘게." — 답을 flags.bandiAnswer에 저장해
+    // 파이널 직전(quietyard)에서 반디가 콜백한다(U-3③). 답을 미루면 다음에 다시 물어본다.
+    if (flavor && flavor.ask && game.flags.bandiJoined && !game.flags.bandiRevealed &&
+        !game.flags[flavor.ask.flag]) {
+      const ask = flavor.ask;
+      startDialog(['* ' + flavor.text], null, () => {
+        startChoice(ask.q, ask.options.concat('(대답하지 않는다)'), (i) => {
+          if (i < 0 || i >= ask.options.length) return; // 대답 안 함 — 다음에 다시
+          game.flags[ask.flag] = ask.values[i];
+          save();
+          game.notice = { text: ask.reply, t: 300 };
+          Speech.speak(ask.reply);
+        });
+      });
+      return;
+    }
     if (flavor) {
       // B-4 처음 조사한 플레이버를 누적 기록 — 10·25·40개에 탐험 도전과제가 열린다.
       if (!game.flags.flavorSeen) game.flags.flavorSeen = {};
@@ -4142,13 +4163,28 @@
       game.flags.visited[w.to] = true;
       startDialog(dest.intro.slice());
     }
+    // U-3③ 파이널 직전(quietyard 진입) 반디 콜백 — 2장에서 저장한 답(bandiAnswer)을 기억해 준다.
+    // 기억해 주는 친구. 이 콜백이 나가면 같은 진입의 일반 조언은 덮지 않도록 bandiSaid를 찍는다.
+    if (w.to === 'quietyard' && game.flags.bandiJoined && !game.flags.bandiRevealed &&
+        game.flags.bandiAnswer && !game.flags.bandiRecalled) {
+      game.flags.bandiRecalled = true;
+      if (!game.flags.bandiSaid) game.flags.bandiSaid = {};
+      game.flags.bandiSaid.quietyard = true;
+      const recall = game.flags.bandiAnswer === 'together'
+        ? '반디: 전에 네가 "여럿이 있는 게 좋다"고 했지.\n…나도 그래. 그래서 여기까지 온 거야.'
+        : '반디: 전에 네가 "혼자가 편할 때도 있다"고 했지.\n…나도 그래. 그래도 지금은, 곁에 있을게.';
+      game.notice = { text: recall, t: 340 };
+      Speech.speak(recall);
+    }
     // 동행자 반디의 한 줄 조언 — 비차단 말풍선, 맵당 1회 (정체 공개 후에는 없음)
     if (game.flags.bandiJoined && !game.flags.bandiRevealed &&
         COMPANION_LINES[w.to] && !(game.flags.bandiSaid && game.flags.bandiSaid[w.to])) {
       if (!game.flags.bandiSaid) game.flags.bandiSaid = {};
       game.flags.bandiSaid[w.to] = true;
       // 침묵 루트에서는 반디도 점점 말을 잃는다 (무관심의 세계 — 고요 루트 정합)
-      const line = isColdRoute(game.flags) ? '반디: ……' : COMPANION_LINES[w.to];
+      // U-5 2회차(ng): 정체를 아는 플레이어에게 반디 대사가 재해석되도록 NG 테이블로 오버레이한다.
+      const base = (game.flags.ng && COMPANION_LINES_NG[w.to]) ? COMPANION_LINES_NG[w.to] : COMPANION_LINES[w.to];
+      const line = isColdRoute(game.flags) ? '반디: ……' : base;
       game.notice = { text: line, t: 300 };
       Speech.speak(line); // 읽어주기(TTS) 접근성 — 시각 말풍선과 동일 내용
     }
@@ -4210,9 +4246,10 @@
     if (f.seenPhoto1) lines.push('박사: "네가 주인의 방에서 본 사진…\n그게, 나와 영이였어."');
     if (f.seenPhoto2) lines.push('박사: "표본 창고 구석의 그 ×표 사진들도…\n영이 거였단다."');
     if (f.seenArticle) lines.push('박사: "송출되지 못한 그 기사도…\n영이 이야기였어."');
-    lines.push('박사: "네가 지금까지 모은 조각들…\n그게 다, 영이의 기억이야."');
     lines.push('박사: "…미안하다. 정말, 미안해."');
-    lines.push('박사: "…그 아이를, 찾아 주지 않겠니."');
+    // U-1 답안지 → 힌트 — "네가 모은 조각=영이의 기억"이라는 직접 연결 설명을 걷어내고,
+    // 아이가 스스로 잇도록 열린 질문으로 닫는다. (박사는 죄책감·0호·도망까지만 안다)
+    lines.push('박사: "…그 아이가 어디로 갔는지,\n나는 끝내 몰라."');
     save();
     startDialog(lines, '박사님');
   }
@@ -4527,6 +4564,12 @@
     appendRankLine(b, lines, b.persuadeId); // B-2 판정 한 줄 + 최고 등급 기록
     grantDiaryShard('ch' + n, lines, b.mercyChoiceKind); // 자비로 되돌렸다면 일기 조각(Q-2)
     lines.push(bandiBossLine('ch' + n, b.mercyChoiceKind, game.flags));
+    // U-3④ 첫 보스 클리어 후 한 곳에서 반디의 순수 농담 1개(교훈 0, 1회성).
+    // 침묵 루트에선 반디가 말을 잃으므로 농담도 접는다(톤 정합).
+    if (n === 1 && !game.flags.bandiJokeShown && !isColdRoute(game.flags)) {
+      game.flags.bandiJokeShown = true;
+      lines.push('반디: …있지. 담아가 모아 둔 것 중에\n내 흉내도 있었을까?\n…없었겠지. 나 이렇게 반짝이는데.');
+    }
     startDialog(lines, mon.name, () => Sound.playMapBgm(MAPS[cfg.map].song));
   }
 
@@ -4730,7 +4773,56 @@
       '반디: "나… 안내 도우미가 아니야.\n이 세계엔, 그런 거 없어."',
       '(작은 빛이 제단의 빛 속으로 녹아들고 —\n그 안에, 작은 아이가 서 있다.)',
       '"…처음부터, 나였어."',
-    ]);
+    ], null, () => startRevealBeat());
+  }
+
+  // U-2 반디 리빌 정지 비트 — "…처음부터, 나였어." 직후의 침묵.
+  //   • BGM을 끊고(Sound.stopSong) 침묵으로 둔다.
+  //   • 반디 동행 스프라이트가 어깨 옆에서 위로 떠오르며 사라진다(y 오프셋 + 페이드).
+  //   • 스킵 불가는 아니다 — Z로 넘길 수 있되, 기본은 90~120프레임 대기.
+  //   • reduceFx면 연출을 생략하고 마지막 대사만 낸다(광과민성 배려).
+  function startRevealBeat() {
+    Sound.stopSong(); // 곡을 끊고 침묵으로
+    if (game.reduceFx) { revealBeatFinalLine(); return; }
+    game.revealBeat = { t: 0 };
+    game.mode = 'revealbeat';
+  }
+  const REVEAL_BEAT_FRAMES = 108; // 90~120 사이 — 스킵하지 않으면 이만큼 기다린다
+  function updateRevealBeat() {
+    const rb = game.revealBeat;
+    if (!rb) { revealBeatFinalLine(); return; }
+    rb.t += 1;
+    // 기본은 대기, Z로 조기 종료 가능(스킵 불가 아님)
+    if (rb.t >= REVEAL_BEAT_FRAMES || justPressed('action')) {
+      game.revealBeat = null;
+      revealBeatFinalLine();
+    }
+  }
+  function revealBeatFinalLine() {
+    // 가면을 벗겠다는 마지막 한 줄 — 그 뒤에야 보스전(영이) 앞에 선다.
+    startDialog(['"…미안해. 이제, 가면을 벗을게."'], '영이');
+  }
+  function drawRevealBeat() {
+    drawWorld();
+    const rb = game.revealBeat;
+    if (!rb) return;
+    const prog = Math.min(1, rb.t / REVEAL_BEAT_FRAMES);
+    const { cx, cy } = camera();
+    const p = game.player;
+    // 어깨 옆 → 위로 떠오르며 사라진다
+    const sx = Math.round(p.px - cx + 16);
+    const sy = Math.round(p.py - cy - 18 - prog * 46);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - prog);
+    if (!game.reduceFx) {
+      const pulse = 0.14 + Math.sin(game.time / 18) * 0.05;
+      ctx.fillStyle = `rgba(255,220,130,${pulse * (1 - prog)})`;
+      ctx.beginPath();
+      ctx.arc(sx + 16, sy + 14, 15 + prog * 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    drawMon(ctx, 'bandi', sx, sy, 2);
+    ctx.restore();
   }
 
   // 교사 진단용 로그 — 마음 조각 배틀 개편판
@@ -10191,10 +10283,36 @@
       ctx.font = fs(14);
       ctx.fillText('Z: 삭제   ·   X: 취소', LW / 2, 316);
     }
+
+    // U-5 두 번째 모험 선택 오버레이 — 클리어 슬롯에서 Z를 눌렀을 때
+    if (game.titleScreen === 'ngchoice') {
+      ctx.fillStyle = 'rgba(0,0,0,.8)';
+      ctx.fillRect(0, 0, LW, LH);
+      const sum = slotSummary(game.slotCursor);
+      utBox(LW / 2 - 220, 190, 440, 160, 6);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fff';
+      ctx.font = fs(18, true);
+      ctx.fillText(`슬롯 ${game.slotCursor + 1} "${sum ? sum.name : ''}" — 모험 완료`, LW / 2, 224);
+      ctx.font = fs(13);
+      ctx.fillStyle = '#888';
+      ctx.fillText('이 이야기를 어떻게 이어갈까요?', LW / 2, 250);
+      const opts = ['이어서 볼래 (후일담)', '★ 두 번째 모험 (처음부터)'];
+      for (let i = 0; i < opts.length; i++) {
+        const oy = 284 + i * 30;
+        const on = game.ngCursor === i;
+        ctx.fillStyle = on ? themeAccent() : '#b7b2c8';
+        ctx.font = fs(15, on);
+        ctx.fillText((on ? '▸ ' : '   ') + opts[i], LW / 2, oy);
+      }
+      ctx.fillStyle = '#777';
+      ctx.font = fs(12);
+      ctx.fillText('↑↓ 선택   ·   Z 결정   ·   X 취소', LW / 2, 340);
+    }
     ctx.textAlign = 'left';
   }
 
-  function startNewGame(slot, name) {
+  function startNewGame(slot, name, ng) {
     game.currentSlot = slot;
     game.playerName = name || '수호자';
     game.map = 'introlab';
@@ -10202,6 +10320,7 @@
     game.player.px = 14 * TS; game.player.py = 16 * TS;
     game.player.dir = 'up';
     game.flags = newFlags();
+    if (ng) game.flags.ng = true; // U-5 두 번째 모험(NG+) — 세이브 스키마 영향 없이 flags에만
     game.mode = 'world';
     save();
     recordPlayDay(slot);
@@ -10334,6 +10453,31 @@
       return;
     }
 
+    // U-5 두 번째 모험 선택 — 클리어(endingId 존재) 슬롯에서 Z를 누르면 뜬다.
+    //   0: 이어서 본다(후일담) / 1: 처음부터(2회차 NG+ — 대사 스왑만, 진행 초기화)
+    if (game.titleScreen === 'ngchoice') {
+      if (justPressed('up') || justPressed('down')) {
+        game.ngCursor = game.ngCursor ? 0 : 1;
+        Sound.blip();
+      } else if (justPressed('action')) {
+        const slot = game.slotCursor;
+        if (game.ngCursor === 1) {
+          const sum = slotSummary(slot); // 이름은 이어받아 NG+로 새로 시작
+          game.titleScreen = 'slots';
+          Sound.select();
+          startNewGame(slot, sum ? sum.name : '수호자', true);
+        } else {
+          game.titleScreen = 'slots';
+          Sound.select();
+          continueGame(slot);
+        }
+      } else if (justPressed('cancel') || justPressed('menu')) {
+        game.titleScreen = 'slots';
+        Sound.blip();
+      }
+      return;
+    }
+
     // slots 화면
     if (justPressed('menu')) { openDex('title'); return; }
     if (justPressed('up') || justPressed('down')) {
@@ -10348,8 +10492,16 @@
       return;
     }
     if (justPressed('action')) {
+      const sum = slotSummary(game.slotCursor);
+      // U-5 클리어(endingId 존재) 슬롯이면 "이어서 볼래? / 처음부터(2회차)" 선택을 먼저 연다
+      if (sum && sum.endingId) {
+        game.titleScreen = 'ngchoice';
+        game.ngCursor = 0;
+        Sound.select();
+        return;
+      }
       Sound.select();
-      if (slotSummary(game.slotCursor)) continueGame(game.slotCursor);
+      if (sum) continueGame(game.slotCursor);
       else showNameEntry();
     }
   }
@@ -10653,6 +10805,11 @@
         drawWorld();
         if (game.dialog) drawDialog();
         break;
+      case 'revealbeat': // U-2 반디 리빌 정지 비트 — 무입력 대기 + 반디 소멸 연출
+        updateRevealBeat();
+        if (game.mode === 'revealbeat') drawRevealBeat();
+        else { drawWorld(); if (game.dialog) drawDialog(); }
+        break;
       case 'battle':
         updateBattle();
         // 클리어/패배 처리 중 모드가 바뀌었을 수 있음
@@ -10862,6 +11019,7 @@
   window.__test = { // 테스트용 훅
     buildReportText, buildLearningSummary, recordTopicResult, countAchievements,
     migrateSlotV6, migrateSlotV7, migrateSlotV8,
+    loadSlot, writeSlot, slotSummary, // W-1 골든 세이브 픽스처·roundtrip 검증용
     buildBackupText, applyBackup, undoRestore, hasRestoreUndo,
     deleteSlot, undoDeleteSlot, hasDeletedSlot, buildAdaptivePool, buildDailyPool,
     recordPlayDay, recordDailyDone, getMeta, todayStr,
