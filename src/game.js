@@ -82,7 +82,7 @@
     reduceFx: false,     // 화면 효과 줄이기(광과민성·모션 민감 배려)
     lowGraphics: false,  // 저사양 그래픽(백킹 해상도 1x + 무거운 효과 최소화)
     dashboard: { ret: 'title', cursor: 0, toast: 0 }, // 교사용 대시보드
-    leaderboard: { ret: 'title', cursor: 0, toast: 0, rows: [], files: 0 }, // Y-20 반 순위표(백업 여러 개 합산)
+    leaderboard: { ret: 'title', cursor: 0, toast: 0, rows: [], files: 0, skipped: 0 }, // Y-20 반 순위표(백업 여러 개 합산)
     classmode: { ret: 'world', sel: 0, confirm: false, toast: 0 }, // 수업 모드(챕터 바로 시작)
     prepost: null, // Y-18 사전/사후 점검 런타임 { ret, ch, kind, quizzes, idx, qCursor, choiceOrder, score, phase, feedback }
     report: { ret: 'world', slot: 0, toast: 0 }, // 교사용 학생 진단 리포트
@@ -885,7 +885,7 @@
     if (now > ack) {
       cos.ack = now; changed = true;
       if (ack > 0) { // 첫 진입(0→N)에는 시끄럽지 않게 조용히 넘어간다
-        game.notice = { text: '새 칭호·테마가 열렸어요! (메뉴 → 꾸미기)', t: 200 };
+        game.notice = { text: '새 칭호·테마가 열렸어요! (메뉴 → 기억의 방 → 꾸미기)', t: 200 };
         Sound.unlock();
       }
     }
@@ -5404,15 +5404,13 @@
         b.shake = 20;
         pushFloat(`✦ ${b.combo}연속으로 마음에 닿았다! (+4)`, true);
         if (b.combo === 3) pushFloat('반디: "…대단해. 전부\n제대로 듣고 있었구나."', true);
-        // Y-7 콤보 시각화 — 우상단 ×N 카운터를 켜고(오답 시 소거), blip 음정을 콤보만큼 올린다.
-        b.comboFx = { n: b.combo };
+        // Y-7 콤보 시각화 — blip 음정을 콤보만큼 올린다(×N 카운터는 b.combo를 직접 읽는다).
         Sound.blip(660 + b.combo * 90);
       }
       b.claimIdx += 1; // 다음 주장으로
       if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.max(0, (b.shrinkLevel || 0) - 1);
     } else {
-      b.combo = 0; // 콤보(Q-5)는 오답에서 끊긴다
-      b.comboFx = null; // Y-7 오답 시 ×N 카운터 소거
+      b.combo = 0; // 콤보(Q-5)는 오답에서 끊긴다 — ×N 카운터(Y-7)도 이 값으로 함께 꺼진다
       b.rankWrong = (b.rankWrong || 0) + 1; // B-2 등급 집계 — 오답 문 카운트
       b.gauge = clamp(b.gauge - 6, 0, b.gaugeMax);
       st.gateWrong += 1; st.backfire += 1;
@@ -6203,46 +6201,6 @@
       persuadeGaugeSync(b);
     }
   }
-  // 그럴싸(보스) open 페이즈 고유 기믹 — [진]/[낚] 헤드라인 조각이 60프레임 간격으로 번갈아
-  // 스폰된다(tempt의 최소 변형). [진] 접촉 = 게이지+6 + 누적 카운트(파도 넘어 영속, 3회째
-  // gaugeMax-2로 밀어줌). [낚] 접촉 = 게이지-4 + 화면 얼룩 플래시(피해·광고 딱지는 없음).
-  function updateTruth(b) {
-    const w = b.wave, tr = w.truth, arena = b.arena, box = arena.box;
-    if (!tr.obj) {
-      tr.spawnTimer -= 1;
-      if (tr.spawnTimer <= 0) {
-        tr.obj = {
-          x: box.x + 30 + Math.random() * (box.w - 60),
-          y: box.y + 30 + Math.random() * (box.h - 60),
-          kind: tr.nextKind,
-        };
-        tr.nextKind = tr.nextKind === 'real' ? 'bait' : 'real';
-      }
-      return;
-    }
-    const dx = tr.obj.x - arena.soul.x, dy = tr.obj.y - arena.soul.y;
-    if (dx * dx + dy * dy < (SOUL_R + 10) * (SOUL_R + 10)) {
-      if (tr.obj.kind === 'real') {
-        // [진] 접촉 — 게이지 +6, 파도 넘어 영속 카운트(최대 3, 3회째 만충 직전으로 밀어줌)
-        tr.caught = Math.min(3, tr.caught + 1);
-        b.truthCaught = tr.caught;
-        b.gauge = clamp(b.gauge + 6, 0, b.gaugeMax);
-        if (tr.caught >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2);
-        pushFloat((b.p.truthReply || '…어, 진짜였어?') + `\n(진짜를 알아챘다! ${tr.caught}/3)`, true);
-        Sound.correct();
-        persuadeGaugeSync(b);
-      } else {
-        // [낚] 접촉 — 게이지 -4 + 화면 얼룩(피해·광고 딱지는 없음)
-        b.gauge = clamp(b.gauge - 4, 0, b.gaugeMax);
-        b.flash = 12;
-        pushFloat('그럴싸: "…거봐, 그럴듯하지?"\n(낚였다… 마음이 식었다)', true);
-        Sound.bump();
-      }
-      tr.obj = null;
-      tr.spawnTimer = 60;
-    }
-  }
-
   // 하트가 다 닳으면 물러난다 — 단, 상대는 이야기를 절반쯤 기억한다
   function persuadeExhaust() {
     const b = game.battle;
@@ -6856,22 +6814,18 @@
     if (justPressed('cancel') || justPressed('menu')) { closeMemoryRoom(); return; }
     if (justPressed('action')) openMemoryItem(items[m.cursor]);
   }
-  // 허브 한 항목의 수집 수치 라벨
-  function memoryValueLabel(item) {
+  // 허브 한 항목의 수집 수치 라벨 — 무거운 집계(achievementCtx·buildLearningSummary·엔딩 수)는
+  // drawMemoryRoom이 프레임당 1회만 계산해 pre로 넘긴다(헤더와 행이 같은 값을 공유).
+  function memoryValueLabel(item, pre) {
     const slot = game.currentSlot;
     if (item === 'cards') return `${collectedCards(slot)}/${LEARN_CARDS.length}`;
     if (item === 'dex') return `${dexSeenCount()}/${DEX_ORDER.length}`;
     if (item === 'awards') return `${countAchievements(slot)}/${ACHIEVEMENTS.length}`;
     if (item === 'diary') return `${diaryCount()}/${DIARY_SHARDS.length}`;
     if (item === 'cosmetics') return `${unlockedCount(slot)}/${TITLES.length + THEMES.length}`;
-    if (item === 'halloffame') {
-      const es = getEndingsSeen();
-      const endN = ['home', 'dawn', 'farewell', 'silent'].filter((k) => es[k]).length;
-      const a = achievementCtx(slot);
-      return `엔딩 ${endN}/4 · S ${a.sRankCount}/${a.sRankTotal}`;
-    }
+    if (item === 'halloffame') return `엔딩 ${pre.endN}/4 · S ${pre.a.sRankCount}/${pre.a.sRankTotal}`;
     if (item === 'journal') {
-      const s = buildLearningSummary(slot);
+      const s = pre.learn;
       return s.attempted ? `${Math.round(s.overallRate * 100)}%` : '—';
     }
     return '';
@@ -6885,10 +6839,11 @@
     ctx.fillStyle = '#fff';
     ctx.font = fs(22, true);
     ctx.fillText('❖ 기억의 방', 24, 40);
-    // 수집률 요약 한 줄 (카드·수첩·도전과제·일기·엔딩·S등급)
+    // 수집률 요약 한 줄 (카드·수첩·도전과제·일기·엔딩·S등급) — 아래 행 라벨과 공유(pre)
     const es = getEndingsSeen();
     const endN = ['home', 'dawn', 'farewell', 'silent'].filter((k) => es[k]).length;
     const a = achievementCtx(slot);
+    const pre = { endN, a, learn: buildLearningSummary(slot) };
     ctx.fillStyle = warnColor();
     ctx.font = fs(13, true);
     ctx.fillText(`카드 ${collectedCards(slot)}/${LEARN_CARDS.length} · 수첩 ${dexSeenCount()}/${DEX_ORDER.length} · 도전과제 ${countAchievements(slot)}/${ACHIEVEMENTS.length} · 일기 ${diaryCount()}/${DIARY_SHARDS.length} · 엔딩 ${endN}/4 · S등급 ${a.sRankCount}/${a.sRankTotal}`, 24, 64);
@@ -6902,7 +6857,7 @@
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       drawChoiceLine(PAUSE_LABELS[item], boxX + 22, ty, i === game.memory.cursor);
-      const val = memoryValueLabel(item);
+      const val = memoryValueLabel(item, pre);
       if (val) {
         ctx.fillStyle = warnColor();
         ctx.font = fs(12);
@@ -7213,7 +7168,9 @@
     if (c.idx >= c.questions.length) {
       c.phase = 'result';
       recordChallengeResult(c.slot, c.score, c.questions.length);
-      if (c.daily) recordDailyDone(c.slot, c.score, c.questions.length);
+      // Y-10 내일 주제 티저 — 결과 화면이 떠 있는 동안 매 프레임 풀 전체를 셔플하지 않게,
+      // 완료 시점에 한 번만 계산해 캐시한다(날짜 시드라 값은 어차피 하루 동안 불변).
+      if (c.daily) { recordDailyDone(c.slot, c.score, c.questions.length); c.tomorrowTopic = tomorrowTopicLabel(c.slot); }
       checkCosmeticUnlocks(c.slot);
       Sound.badge();
       return;
@@ -7333,9 +7290,9 @@
       ctx.fillStyle = '#aaa';
       ctx.font = fs(16);
       ctx.fillText(msg, LW / 2, 270);
-      // Y-10 오늘의 도전 완료 화면에만 내일 주제 티저 1줄(날짜 시드로 미리 계산)
+      // Y-10 오늘의 도전 완료 화면에만 내일 주제 티저 1줄(완료 시점에 1회 계산·캐시)
       if (c.daily) {
-        const tmr = tomorrowTopicLabel(c.slot);
+        const tmr = c.tomorrowTopic;
         if (tmr) {
           ctx.fillStyle = themeAccent();
           ctx.font = fs(14, true);
@@ -8496,6 +8453,9 @@
       for (const t of Object.keys(stats)) { const e = stats[t]; if (e && e.total > 0) { totC += e.correct; totN += e.total; } }
       const sRank = Object.values(meta.bossRank || {}).filter((r) => r === 'S').length;
       rows.push({
+        // key — 같은 백업 파일(savedAt이 같음)의 같은 슬롯을 두 번 불러오면 중복으로 걸러낸다.
+        // (교사가 20명 반에서 같은 태블릿 백업을 실수로 재선택해도 이중 집계되지 않게)
+        key: (obj.savedAt || 0) + '|' + i + '|' + sanitizeName(slot.name),
         name: sanitizeName(slot.name), mercy: slot.flags.mercy || 0,
         attempted: totN, correct: totC, rate: totN ? totC / totN : 0, sRank,
         done: !!(slot.flags.defeated && slot.flags.defeated.yeongi),
@@ -8539,12 +8499,16 @@
         inp.removeEventListener('change', handler);
         const files = inp.files ? Array.from(inp.files) : [];
         if (!files.length) return;
-        let remaining = files.length, added = 0, okFiles = 0;
+        let remaining = files.length, added = 0, okFiles = 0, skipped = 0;
         const done = () => {
           game.leaderboard.files += okFiles;
-          game.leaderboard.toast = added > 0 ? 200 : -300; // 유효 백업 없으면 안내
+          game.leaderboard.skipped = skipped;
+          // 유효 백업 없으면 -300, 전부 이미 불러온 중복이면 -350으로 구분해 안내
+          game.leaderboard.toast = added > 0 ? 200 : (skipped > 0 ? -350 : -300);
           Sound.badge();
         };
+        // 이미 표에 있는 학생 행(key)은 건너뛴다 — 같은 파일 재선택 시 이중 집계 방지
+        const seen = new Set(game.leaderboard.rows.map((r) => r.key));
         files.forEach((file) => {
           const reader = new FileReader();
           reader.onload = () => {
@@ -8552,7 +8516,11 @@
             try { obj = JSON.parse(String(reader.result)); } catch (e) { obj = null; }
             if (obj && obj.app === 'ai-ethics-adventure') {
               const rows = backupSlotRows(obj);
-              if (rows.length) { game.leaderboard.rows.push(...rows); added += rows.length; okFiles += 1; }
+              const fresh = rows.filter((r) => !seen.has(r.key));
+              skipped += rows.length - fresh.length;
+              fresh.forEach((r) => seen.add(r.key));
+              if (fresh.length) { game.leaderboard.rows.push(...fresh); added += fresh.length; }
+              if (rows.length) okFiles += 1;
             }
             remaining -= 1; if (remaining === 0) done();
           };
@@ -8588,8 +8556,9 @@
       else if (item === 'export') {
         if (!lb.rows.length) { lb.toast = -300; Sound.badge(); return; }
         const ok = downloadLeaderboardCsv() || copyTextToClipboard(buildLeaderboardCsv());
+        lb.skipped = 0; // 내보내기 성공 토스트에 불러오기 중복 안내가 섞이지 않게
         lb.toast = ok ? 200 : -200; Sound.badge();
-      } else if (item === 'clear') { lb.rows = []; lb.files = 0; lb.toast = 0; Sound.blip(); }
+      } else if (item === 'clear') { lb.rows = []; lb.files = 0; lb.toast = 0; lb.skipped = 0; Sound.blip(); }
       else if (item === 'close') closeLeaderboard();
     }
   }
@@ -8667,7 +8636,12 @@
     ctx.textAlign = 'center';
     if (lb.toast > 0) {
       ctx.fillStyle = okColor(); ctx.font = fs(14, true);
-      ctx.fillText('✓ 처리했어요 (CSV는 엑셀·구글시트에서 열려요)', LW / 2, 508);
+      ctx.fillText(lb.skipped
+        ? `✓ 처리했어요 (이미 있던 ${lb.skipped}명은 중복이라 건너뛰었어요)`
+        : '✓ 처리했어요 (CSV는 엑셀·구글시트에서 열려요)', LW / 2, 508);
+    } else if (lb.toast === -350) {
+      ctx.fillStyle = warnColor(); ctx.font = fs(13, true);
+      ctx.fillText('이미 불러온 백업이에요 — 중복이라 표는 그대로예요.', LW / 2, 508);
     } else if (lb.toast === -300) {
       ctx.fillStyle = warnColor(); ctx.font = fs(13, true);
       ctx.fillText('불러올 학생 기록이 없어요 — 게임의 데이터 백업(.json)을 골라 주세요.', LW / 2, 508);
@@ -10637,9 +10611,9 @@
     }
 
     // Y-7 콤보 시각화 — 우상단 ×N 카운터(N≥2). 콤보가 클수록 밝아지고 글자가 커진다.
-    //   reduceFx면 연출 없이 텍스트만(광과민성 배려). 오답 시 b.comboFx가 지워져 사라진다.
-    if (b.comboFx && b.comboFx.n >= 2) {
-      const n = b.comboFx.n;
+    //   reduceFx면 연출 없이 텍스트만(광과민성 배려). 오답 시 b.combo가 0이 되어 사라진다.
+    if (b.combo >= 2) {
+      const n = b.combo;
       ctx.textAlign = 'right';
       if (game.reduceFx) {
         ctx.fillStyle = '#ffd644';
@@ -10841,7 +10815,6 @@
       plate: { x: box.x + box.w - 18, y: box.y + box.h / 2 }, junk: null, junkTimer: 160 };
   }
   function initTempt(b) { return { obj: null, resisted: b.temptResisted || 0, spawnTimer: 60 }; }
-  function initTruth(b) { return { obj: null, caught: b.truthCaught || 0, spawnTimer: 60, nextKind: 'real' }; }
   function initVerify(b) { return { obj: null, spawnTimer: 70, idx: b.verifyIdx || 0, judged: b.verifyJudged || 0, slowT: 0, stopCd: 0 }; }
   function initCozy(b) { return { doorT: 150, door: null, doorOpenT: 0, drainT: 0, exits: b.cozyExits || 0 }; }
   function initQuiet(b, box) { return { spot: { x: box.x + box.w / 2, y: box.y + 50 }, nearT: 0, warm: b.quietWarm || 0 }; }
@@ -10947,15 +10920,6 @@
       ctx.fillText(vf.carry.label, arena.soul.x, arena.soul.y - 15);
     }
   }
-  function drawTruth(b, box) {
-    const tr = b.wave.truth;
-    if (tr.obj) {
-      const isReal = tr.obj.kind === 'real';
-      ctx.fillStyle = isReal ? okColor() : badColor();
-      ctx.font = fs(14, true);
-      ctx.fillText(isReal ? '[진]' : '[낚]', tr.obj.x, tr.obj.y + 5);
-    }
-  }
   function drawShadow(b, box) {
     const sh = b.wave.shadow;
     const ghost = sh.trail.length >= patEase().shadowDelay ? sh.trail[0] : null;
@@ -11027,15 +10991,6 @@
       ctx.fillText('●', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
     }
   }
-  function drawTruthStatus(b, box) {
-    const caught = b.wave.truth.caught || 0;
-    ctx.font = fs(14);
-    for (let i = 0; i < 3; i++) {
-      ctx.fillStyle = i < caught ? okColor() : '#555';
-      ctx.fillText('●', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
-    }
-  }
-
   // 패턴 레지스트리 — 키는 data.js의 R_PATTERN_KEYS(화이트리스트)와 공유되는 단일 출처.
   // 'rotate'(영이 메타)는 실제 패턴이 아니라 이들을 순환할 뿐이라 여기 없다.
   const PATTERNS = {
@@ -11053,8 +11008,8 @@
       guide: '담요는 포근하지만 시간이 샌다 — 문이 열리면 나가자!' },
     quiet: { init: initQuiet, update: updateQuiet, draw: drawQuiet,
       guide: '…곁에 있어 주자. 어둠이 조금씩 걷힌다.' },
-    truth: { init: initTruth, update: updateTruth, draw: drawTruth, drawStatus: drawTruthStatus,
-      guide: '[진]만 잡자 — [낚]은 그럴듯한 가짜' }, // verify로 대체된 구 기믹(호환 유지)
+    // 구 [진]/[낚](truth) 기믹은 verify로 완전 대체되어 삭제 — 어떤 프로필도 쓸 수 없었다
+    // (R_PATTERN_KEYS 화이트리스트에 없어 validate가 작명 자체를 막는다).
   };
   // 조작 안내는 레지스트리에서 파생 — guide 문구의 단일 출처.
   const PATTERN_GUIDES = Object.fromEntries(Object.keys(PATTERNS).map((k) => [k, PATTERNS[k].guide]));

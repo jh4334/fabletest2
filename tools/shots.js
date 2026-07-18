@@ -2,44 +2,12 @@
 // 사용법: node tools/shots.js
 // v3: 마음 조각 배틀은 상태를 손으로 조립하지 않고, 키 입력을 흉내 내
 // 실제 배틀(따라 조우)을 구동해 찍는다 — 화면이 항상 실제 게임과 일치한다.
-const fs = require('fs');
-const path = require('path');
-const vm = require('vm');
-const { createCanvas } = require('canvas');
-
-const ROOT = path.join(__dirname, '..');
-const OUT = path.join(ROOT, 'shots');
-fs.mkdirSync(OUT, { recursive: true });
-
-// ---- DOM/환경 스텁 (node-canvas 백엔드) ----
-const mainCanvas = createCanvas(720, 528);
-mainCanvas.addEventListener = () => {};
-mainCanvas.removeEventListener = () => {};
-mainCanvas.focus = () => {};
-mainCanvas.blur = () => {};
-mainCanvas.setAttribute = () => {};
-mainCanvas.style = mainCanvas.style || {};
-function stubEl() {
-  return { style: {}, value: '', addEventListener() {}, removeEventListener() {},
-    focus() {}, blur() {}, classList: { add() {}, remove() {} } };
-}
-const listeners = {};
-let rafCb = null;
-const storage = new Map();
+// DOM/브라우저 스텁·vm 로더는 공용 모듈에서 가져온다 — onboarding-shots.js와 단일 출처
+const { createGameSandbox, v3Flags } = require('./lib/game-sandbox');
+const env = createGameSandbox();
+const { storage } = env;
 
 // ---- 타이틀/수첩을 보기 좋게 채워 둔다 (스크립트 로드 전에 심어야 함) ----
-function v3Flags(extra) {
-  return Object.assign({
-    talkedProf: true, bandiJoined: true, bandiRevealed: false, bandiSaid: {},
-    defeated: { bekkyeomon: true, sujipmon: true, pyeonhyangmon: true, hwangakmon: false,
-      yuhokmon: false, hollimmon: false, finalboss: false, yeongi: false },
-    mercyChoice: { bekkyeomon: 'mercy' },
-    chapter1Clear: true, chapter1Mercy: true,
-    chapter2Clear: true, chapter2Mercy: false,
-    mercy: 3, visited: {}, trueEnding: false, correctCount: 52, battleCount: 9,
-    evCards: ['ev_maker', 'ev_minimal', 'ev_footprint'], endingId: null,
-  }, extra || {});
-}
 storage.set('ai-ethics-adventure-slot-0', JSON.stringify({
   v: 3, name: '도도', map: 'rumorstreet', x: 14, y: 16, flags: v3Flags(), updatedAt: Date.now(),
 }));
@@ -57,45 +25,9 @@ const dexStore = {
 };
 storage.set('ai-ethics-adventure-dex', JSON.stringify(dexStore));
 
-const windowObj = {
-  addEventListener: (ev, fn) => { (listeners[ev] = listeners[ev] || []).push(fn); },
-  removeEventListener: () => {},
-  requestAnimationFrame: (cb) => { rafCb = cb; },
-};
-const sandbox = {
-  window: windowObj,
-  document: {
-    getElementById: (id) => (id === 'game' ? mainCanvas : stubEl()),
-    createElement: () => createCanvas(16, 16),
-    body: { classList: { add() {}, remove() {}, toggle() {} } },
-  },
-  localStorage: {
-    getItem: (k) => (storage.has(k) ? storage.get(k) : null),
-    setItem: (k, v) => storage.set(k, String(v)),
-    removeItem: (k) => storage.delete(k),
-  },
-  requestAnimationFrame: windowObj.requestAnimationFrame,
-  console, Math, Set, Map, JSON, Object, setTimeout, clearTimeout, Date,
-};
-vm.createContext(sandbox);
-for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/game.js']) {
-  vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
-}
-const g = windowObj.__game;
-const { QUIZZES } = vm.runInContext('({QUIZZES})', sandbox);
-
-function step(n = 1) { for (let i = 0; i < n; i++) { const cb = rafCb; rafCb = null; cb(); } }
-function dispatch(ev, obj) { for (const fn of (listeners[ev] || []).slice()) fn(Object.assign({ preventDefault() {} }, obj)); }
-function tap(key) { dispatch('keydown', { key }); step(2); dispatch('keyup', { key }); }
-function advanceDialog(max = 100) { for (let i = 0; i < max && g.mode === 'dialog'; i++) tap('z'); }
-function shot(name) {
-  step(1);
-  fs.writeFileSync(path.join(OUT, name), mainCanvas.toBuffer('image/png'));
-  console.log('  saved shots/' + name);
-}
-function setPlayer(x, y, dir) {
-  g.player.x = x; g.player.y = y; g.player.px = x * 48; g.player.py = y * 48; g.player.dir = dir || 'down';
-}
+const g = env.boot();
+const { QUIZZES } = env.run('({QUIZZES})');
+const { step, tap, advanceDialog, shot, setPlayer } = env;
 
 console.log('스크린샷 생성:');
 
