@@ -62,7 +62,13 @@ function dispatch(ev, obj) { for (const fn of (listeners[ev] || []).slice()) fn(
 function tap(key) { dispatch('keydown', { key }); step(2); dispatch('keyup', { key }); }
 function hold(key, n) { dispatch('keydown', { key }); step(n); dispatch('keyup', { key }); step(1); }
 function advanceDialog(max = 200) {
-  for (let i = 0; i < max && g.mode === 'dialog'; i++) { tap('z'); dialogTaps += 1; }
+  // X-1/X-2 반응 선택(정답 없음, game.choice.reaction 태그)은 0번을 골라 흘려보낸다.
+  // 태그 없는 선택창(퍼즐·관문 문답 등)에서는 멈춘다 — 각 호출부가 정답을 따로 고른다.
+  for (let i = 0; i < max; i++) {
+    if (g.mode === 'dialog') { tap('z'); dialogTaps += 1; continue; }
+    if (g.mode === 'choice' && g.choice && g.choice.reaction) { g.choice.cursor = 0; tap('z'); dialogTaps += 1; continue; }
+    break;
+  }
   if (g.mode === 'dialog') throw new Error('대화가 끝나지 않음');
 }
 function pickChoice(idx) {
@@ -148,7 +154,12 @@ function crudeWin() {
   //   닫힘 → 가만히 듣기(속마음 즉시 공개), 동요/열림 → 말 걸기 정답(잠기면 듣기),
   //   만충(spareReady) → 마음 안아 주기 → 자비.
   let guard = 0;
-  while (g.mode === 'battle' && guard++ < 20000) {
+  while ((g.mode === 'battle' || g.mode === 'choice') && guard++ < 20000) {
+    // X-1④ 영이 자비 선택 직전의 반응 선택(정답 없음) — 0번을 골라 진행한다.
+    if (g.mode === 'choice') {
+      if (g.choice && g.choice.reaction) { g.choice.cursor = 0; tap('z'); dialogTaps += 1; continue; }
+      break;
+    }
     const b = g.battle;
     if (b.phase === 'menu') {
       if (b.gauge >= b.gaugeMax) { b.menuIdx = 3; tap('z'); dialogTaps += 1; continue; } // 안아 주기
@@ -210,6 +221,7 @@ mark('1장 구역① 접수처 (무제공 클리어)');
 
 // ── 1장 구역② 게시판 광장 — 떠도는 사본 3개 회수 ──
 enterZone(28, 6, 'ArrowUp', 'boardplaza');
+step(1); if (g.mode !== 'world') advanceDialog(); // X-2 담아의 카드 부탁(광장 진입)을 흘려보낸다
 for (let i = 0; i < 3; i++) {
   const c = g.puzzleRun.copies.find((cc) => !cc.got);
   g.player.px = c.px; g.player.py = c.py;
@@ -317,6 +329,7 @@ mark('3장 보스 「그럴싸」 설득 배틀');
 
 // ── 4장 「반짝 아케이드」 ──
 enterZone(26, 10, 'ArrowRight', 'arcade');
+step(1); if (g.mode !== 'world') advanceDialog(); // X-2 반짝의 무대 부탁(아케이드 진입)을 흘려보낸다
 enterZone(6, 5, 'ArrowUp', 'roulettesquare');
 setPos(5, 4, 'up'); tap('z'); advanceDialog();                  // 룰렛(미끼) 체험 1회
 setPos(9, 7, 'up'); tap('z'); pickChoice(1); advanceDialog();   // 작은 글씨 「해지」

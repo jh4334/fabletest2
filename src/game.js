@@ -182,6 +182,12 @@
       bandiRecalled: false, // U-3③ 파이널 직전(quietyard 진입) 반디 콜백을 이미 봤는가
       bandiJokeShown: false, // U-3④ 첫 보스 클리어 후 반디 순수 농담 1회성
       ng: false,           // U-5 두 번째 모험(NG+) — 대사 스왑만, 난이도·보상 동일
+      playerVoice: {},     // X-1 주인공 반응 선택(정답 없음) — 순간별 고른 값(키→인덱스)
+      damaAsked: null,     // X-2 광장에서 담아의 카드 부탁에 고른 답('keep'|'think')
+      banjjakAsked: null,  // X-2 아케이드에서 반짝의 무대 부탁에 고른 답('watch'|'skip')
+      mercyGuideShown: false, // X-5 고요의 뜰 진입 시 반디의 회수 안내(1회)
+      epilogueAsked: false, // X-1⑤ home/dawn 엔딩 후 마을 에필로그 반응(1회)
+      classSession: false, // X-8 수업(차시) 모드 세션 — 수업 진입 경로에서만 true
     };
   }
 
@@ -2979,6 +2985,25 @@
     }
   }
 
+  // X-1/X-2 반응·요청 선택은 「정답 없는」 선택이라, 테스트/봇이 자동으로 흘려보낼 수 있도록
+  // game.choice.reaction 태그를 단다(퍼즐 선택창과 구분 — 봉헌·판별 등은 태그 없음).
+  function startReactionChoice(prompt, options, onPick) {
+    startChoice(prompt, options, onPick);
+    if (game.choice) game.choice.reaction = true;
+  }
+  // X-1 주인공 반응 선택 — 정답 없는 2지선다. 고른 값을 flags.playerVoice[key]에 저장하고,
+  // 선택에 따라 다음 한 줄(반디/영이/박사가 그 말을 받아 준다)이 분기한다. 스킵(X)하면
+  // 기본(0번) 분기로 둔다. 톤: 초등 눈높이, 마른 유머 + 따뜻함. (startChoice 재사용)
+  function startPlayerVoice(key, prompt, options, speaker, replies, then) {
+    startReactionChoice(prompt, options, (i) => {
+      const idx = (i < 0 || i >= options.length) ? 0 : i; // 스킵/취소 = 기본 분기
+      if (!game.flags.playerVoice) game.flags.playerVoice = {};
+      game.flags.playerVoice[key] = idx;
+      save();
+      startDialog([replies[idx]], speaker, then || null);
+    });
+  }
+
   // 3단계 점진 힌트 오버레이 (퍼즐 전용) — H(또는 메뉴▶힌트)로 열고, 누를 때마다 더 공개
   function openHint() {
     const run = game.puzzleRun;
@@ -4163,18 +4188,32 @@
       game.flags.visited[w.to] = true;
       startDialog(dest.intro.slice());
     }
-    // U-3③ 파이널 직전(quietyard 진입) 반디 콜백 — 2장에서 저장한 답(bandiAnswer)을 기억해 준다.
-    // 기억해 주는 친구. 이 콜백이 나가면 같은 진입의 일반 조언은 덮지 않도록 bandiSaid를 찍는다.
-    if (w.to === 'quietyard' && game.flags.bandiJoined && !game.flags.bandiRevealed &&
-        game.flags.bandiAnswer && !game.flags.bandiRecalled) {
-      game.flags.bandiRecalled = true;
-      if (!game.flags.bandiSaid) game.flags.bandiSaid = {};
-      game.flags.bandiSaid.quietyard = true;
-      const recall = game.flags.bandiAnswer === 'together'
-        ? '반디: 전에 네가 "여럿이 있는 게 좋다"고 했지.\n…나도 그래. 그래서 여기까지 온 거야.'
-        : '반디: 전에 네가 "혼자가 편할 때도 있다"고 했지.\n…나도 그래. 그래도 지금은, 곁에 있을게.';
-      game.notice = { text: recall, t: 340 };
-      Speech.speak(recall);
+    // 파이널 직전(quietyard 진입) 반디의 두 안내를 한 말풍선으로 묶는다:
+    //   • U-3③ 콜백 — 2장에서 저장한 답(bandiAnswer)을 기억해 준다(기억해 주는 친구).
+    //   • X-5 회수 안내 — 지금까지 안아 준 마음 수를 은유로 알려 주고, 7 미만이면 되돌아가
+    //     안아 줄 수 있는 마음이 남았음을 덧붙인다(강요 없음, 안내만 — home 엔딩 접근성).
+    if (w.to === 'quietyard' && game.flags.bandiJoined && !game.flags.bandiRevealed) {
+      let msg = '';
+      if (game.flags.bandiAnswer && !game.flags.bandiRecalled) {
+        game.flags.bandiRecalled = true;
+        msg = game.flags.bandiAnswer === 'together'
+          ? '반디: 전에 네가 "여럿이 있는 게 좋다"고 했지.\n…나도 그래. 그래서 여기까지 온 거야.'
+          : '반디: 전에 네가 "혼자가 편할 때도 있다"고 했지.\n…나도 그래. 그래도 지금은, 곁에 있을게.';
+      }
+      if (!game.flags.mercyGuideShown) {
+        game.flags.mercyGuideShown = true;
+        let guide = `반디: …너는 지금까지 ★${game.flags.mercy || 0}명의 마음을 안아 줬어.`;
+        if ((game.flags.mercy || 0) < 7) {
+          guide += '\n…아직, 돌아가서 안아 줄 수 있는\n마음이 남아 있어.';
+        }
+        msg = msg ? (msg + '\n\n' + guide) : guide;
+      }
+      if (msg) {
+        if (!game.flags.bandiSaid) game.flags.bandiSaid = {};
+        game.flags.bandiSaid.quietyard = true; // 같은 진입의 일반 조언이 덮지 않도록
+        game.notice = { text: msg, t: 380 };
+        Speech.speak(msg);
+      }
     }
     // 동행자 반디의 한 줄 조언 — 비차단 말풍선, 맵당 1회 (정체 공개 후에는 없음)
     if (game.flags.bandiJoined && !game.flags.bandiRevealed &&
@@ -4251,7 +4290,53 @@
     // 아이가 스스로 잇도록 열린 질문으로 닫는다. (박사는 죄책감·0호·도망까지만 안다)
     lines.push('박사: "…그 아이가 어디로 갔는지,\n나는 끝내 몰라."');
     save();
-    startDialog(lines, '박사님');
+    // X-1② 박사 고백 끝 — 주인공의 반응 한 번(정답 없음). 박사가 그 말을 받아 준다.
+    startDialog(lines, '박사님', () => {
+      startPlayerVoice('prof',
+        '박사님이 고개를 숙인 채, 네 대답을 기다린다.',
+        ['"박사님 잘못만은, 아니에요."', '"…그 아이, 제가 꼭 찾을게요."'],
+        '박사님',
+        ['박사: …고맙다.\n그렇게 말해 주니… 조금은, 숨이 쉬어지는구나.',
+          '박사: …그래. 너라면,\n…어쩌면, 찾을 수 있을지도 모르겠구나.']);
+    });
+  }
+
+  // X-2 「보스가 나에게 원하는 것」 — 담아(1장): 광장에서 카드를 부탁한다. 카드는 실제로
+  // 잃지 않고, 선택만 flags.damaAsked에 남아 보스전 인트로 대사 한 줄을 가른다.
+  function startDamaDemand() {
+    startDialog([
+      '상자 더미 뒤에서 담아가 빼꼼 나타난다.',
+      '담아: "…그 카드… 나 주면 안 돼?\n…딱 하나만. …잠깐만."',
+    ], '담아', () => {
+      startReactionChoice('담아가 조심스레 손을 내민다.\n(카드를 실제로 잃지는 않는다.)',
+        ['주지 않는다', '생각해 본다'], (i) => {
+          game.flags.damaAsked = (i === 1) ? 'think' : 'keep'; // 스킵/취소 = 기본(주지 않는다)
+          save();
+          const reply = game.flags.damaAsked === 'think'
+            ? '담아: …고민해 주는 거야?\n…그럼… 기다릴게. 조금만.'
+            : '담아: …치. …하긴, 함부로 주면 안 되지.\n…너, 좀 똑똑하다.';
+          game.notice = { text: reply, t: 300 };
+          Speech.speak(reply);
+        });
+    });
+  }
+  // X-2 — 반짝(4장): 아케이드 입구에서 무대를 봐 달라 부탁한다. 선택만 flags.banjjakAsked에 남는다.
+  function startBanjjakDemand() {
+    startDialog([
+      '네온 불빛 사이로 반짝이 폴짝 튀어나온다.',
+      '반짝: "저기, 너! 내 무대 봐 줄래?\n딱 한 번만! …응? 응?"',
+    ], '반짝', () => {
+      startReactionChoice('반짝이 반짝이는 눈으로 너를 본다.',
+        ['봐 준다', '그냥 간다'], (i) => {
+          game.flags.banjjakAsked = (i === 0) ? 'watch' : 'skip'; // 스킵/취소 = 기본(그냥 간다)
+          save();
+          const reply = game.flags.banjjakAsked === 'watch'
+            ? '반짝: …봐 줬어! 진짜 봐 줬어!\n(반짝이 무대 위에서 한 바퀴 돌았다.)'
+            : '반짝: …치. …다들 그냥 지나가더라.\n…괜찮아. 익숙해.';
+          game.notice = { text: reply, t: 300 };
+          Speech.speak(reply);
+        });
+    });
   }
 
   function updateWorld() {
@@ -4259,6 +4344,29 @@
     // 박사 고백 이벤트 — 조건이 갖춰지면(chapter3Clear && !profConfession) 마을에서 즉시 시작
     if (game.map === 'village' && game.flags.chapter3Clear && !game.flags.profConfession) {
       startProfConfession();
+      return;
+    }
+    // X-2 「보스가 나에게 원하는 것」 — 게시판 광장에서 담아가 카드를 부탁한다(카드는 실제로 잃지 않음).
+    if (game.map === 'boardplaza' && !game.flags.chapter1Clear && !game.flags.damaAsked) {
+      startDamaDemand();
+      return;
+    }
+    // X-2 — 반짝 아케이드 진입 시, 반짝이 무대를 봐 달라 부탁한다.
+    if (game.map === 'arcade' && !game.flags.chapter4Clear && !game.flags.banjjakAsked) {
+      startBanjjakDemand();
+      return;
+    }
+    // X-1⑤ home/dawn 엔딩 후 마을 에필로그 — 주인공의 반응 한 번(정답 없음).
+    if (game.map === 'village' && game.flags.trueEnding && !game.flags.epilogueAsked &&
+        (game.flags.endingId === 'home' || game.flags.endingId === 'dawn')) {
+      game.flags.epilogueAsked = true;
+      save();
+      startPlayerVoice('epilogue',
+        '창밖으로 아침 해가 든다.\n…이 이야기를, 너는 어떻게 기억할까?',
+        ['"…다들, 잘 지냈으면 좋겠어."', '"…또 만날 수 있을까."'],
+        null,
+        ['…네 바람처럼, 다들 저마다의 아침을\n맞고 있을 것이다.',
+          '…모르는 일이다. 하지만 기억하는 한,\n아주 멀지는 않다.']);
       return;
     }
     if (game.notice.t > 0) game.notice.t -= 1;
@@ -4487,7 +4595,8 @@
         b.mercyReply = choice.reply;
         b.mercyChoiceKind = choice.kind;
         if (choice.kind === 'mercy') {
-          game.flags.mercy += 1;
+          // X-6 재대결은 winRematch에서 자비를 상향 판정하므로 여기서 누적하지 않는다(중복 방지).
+          if (!b.rematch) game.flags.mercy += 1;
           Sound.badge();
         } else {
           Sound.select();
@@ -4539,12 +4648,15 @@
       afterLine: '루미가 현관문을\n스스로 열어 두었다.',
     },
   };
+  // X-8 40분 차시 모드 — 그 장의 보스를 클리어하면 마무리 안내 한 상자를 덧붙인다(수업 세션만).
+  const CLASS_END_LINE = '오늘 여기까지!\n다음 시간에 이어서 —\n저장은 자동으로 돼 있어요.';
   function winChapterBoss(n) {
     const b = game.battle;
     const mon = b.mon;
     const cfg = CHAPTER_WIN[n];
     game.flags['chapter' + n + 'Clear'] = true;
     game.flags['chapter' + n + 'Mercy'] = (b.mercyChoiceKind === 'mercy'); // 다음 장 콜백 인트로용
+    recordDexSeen(b.monId, b.mercyChoiceKind); // X-6 친구 수첩에 만남 기록(재대결 진입 대상)
     if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
     save();
     checkCosmeticUnlocks(game.currentSlot);
@@ -4570,6 +4682,7 @@
       game.flags.bandiJokeShown = true;
       lines.push('반디: …있지. 담아가 모아 둔 것 중에\n내 흉내도 있었을까?\n…없었겠지. 나 이렇게 반짝이는데.');
     }
+    if (game.flags.classSession) lines.push(CLASS_END_LINE); // X-8 차시 마무리 안내(수업 세션만)
     startDialog(lines, mon.name, () => Sound.playMapBgm(MAPS[cfg.map].song));
   }
 
@@ -4580,6 +4693,7 @@
     const mon = b.mon;
     game.flags.goyoClear = true;
     game.flags.goyoMercy = (b.mercyChoiceKind === 'mercy');
+    recordDexSeen(b.monId, b.mercyChoiceKind); // X-6 친구 수첩에 만남 기록(재대결 진입 대상)
     if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
     save();
     checkCosmeticUnlocks(game.currentSlot);
@@ -4601,6 +4715,7 @@
     appendRankLine(b, lines, b.persuadeId); // B-2 판정 한 줄 + 최고 등급 기록
     grantDiaryShard('goyo', lines, b.mercyChoiceKind); // 마지막 조각 — 서명 「— 영」이 드러난다
     lines.push(bandiBossLine('goyo', b.mercyChoiceKind, game.flags));
+    if (game.flags.classSession) lines.push(CLASS_END_LINE); // X-8 차시 마무리 안내(수업 세션만)
     startDialog(lines, mon.name, () => Sound.playMapBgm(MAPS.coreroom.song));
   }
 
@@ -4635,9 +4750,63 @@
     lines.push(RANK_LINE[rank]);
   }
 
+  // X-6 기억의 방 — 친구 수첩(dex)에서 만난 보스와 다시 이야기하기.
+  // monId(스프라이트/도감 키) → 설득 프로필 키. 보스별로 프로필 키가 다르므로 매핑이 필요하다.
+  const DEX_REMATCH = {
+    bekkyeomon: 'bekkyeomon', sujipmon: 'sujipmon_boss', pyeonhyangmon: 'pyeonhyang_boss',
+    hwangakmon: 'hwangak_boss', yuhokmon: 'yuhok_boss', hollimmon: 'hollim_boss',
+    finalboss: 'goyo_boss', yeongi: 'yeongi_boss',
+  };
+  const CHAPTER_MON_NUM = { sujipmon: 1, pyeonhyangmon: 2, hwangakmon: 3, yuhokmon: 4, hollimmon: 5 };
+  // 이 보스를 예전에 자비로 되돌렸는가 — 보스별 정식 마커(chapterNMercy·goyoMercy·mercyChoice)를 본다.
+  function bossWasSpared(monId) {
+    const f = game.flags;
+    if (monId === 'bekkyeomon') return !!(f.mercyChoice && f.mercyChoice.bekkyeomon === 'mercy');
+    if (monId === 'finalboss') return !!f.goyoMercy;
+    if (monId === 'yeongi') return !!(f.mercyChoice && f.mercyChoice.yeongi === 'mercy');
+    const n = CHAPTER_MON_NUM[monId];
+    return n ? !!f['chapter' + n + 'Mercy'] : false;
+  }
+  // 이 보스를 자비로 되돌렸음을 정식 마커에 상향 기록한다(회수 루프 — 하향은 없다).
+  function markBossSpared(monId) {
+    const f = game.flags;
+    if (monId === 'bekkyeomon') { if (!f.mercyChoice) f.mercyChoice = {}; f.mercyChoice.bekkyeomon = 'mercy'; }
+    else if (monId === 'finalboss') f.goyoMercy = true;
+    else if (monId === 'yeongi') { if (!f.mercyChoice) f.mercyChoice = {}; f.mercyChoice.yeongi = 'mercy'; }
+    else { const n = CHAPTER_MON_NUM[monId]; if (n) f['chapter' + n + 'Mercy'] = true; }
+  }
+  // X-6 재대결 승리 — 진행 플래그(chapterNClear 등)는 재부여하지 않는다. 등급과 자비만
+  // 갱신하고(자비는 비자비→자비 상향만, 이미 자비면 변화 없음 — 중복 카운트 방지) 수첩으로 복귀.
+  // 영이 재대결도 여기서 간단히 처리한다(엔딩 재계산 없이 수첩 복귀).
+  function winRematch() {
+    const b = game.battle;
+    if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
+    const wasSpared = bossWasSpared(b.monId);
+    const nowMercy = b.mercyChoiceKind === 'mercy';
+    const upgraded = nowMercy && !wasSpared;
+    if (upgraded) { game.flags.mercy += 1; markBossSpared(b.monId); } // 딱 1 상승
+    // dex 작별 표기도 상향만 (이미 mercy면 유지)
+    const seen = getDexSeen();
+    const prevKind = seen[b.monId] && seen[b.monId].mercy;
+    recordDexSeen(b.monId, nowMercy ? 'mercy' : (prevKind || b.mercyChoiceKind || null));
+    const ret = b.rematchRet || 'world';
+    const name = b.mon.name;
+    const lines = [b.mon.win || '…다시 이야기해 줘서, 고마워.'];
+    if (upgraded) lines.push('💛 되돌아와, 다시 마음을 안아 줬어요.\n(★ 안아 준 마음이 하나 늘었다)');
+    appendRankLine(b, lines, b.persuadeId); // 등급 갱신(최고 등급 기록)
+    save();
+    game.battle = null;
+    game.mode = 'world';
+    Sound.badge();
+    Sound.playMapBgm(MAPS[game.map].song);
+    startDialog(lines, name, () => openDex(ret));
+  }
+
   function winBattle() {
     const b = game.battle;
     const mon = b.mon;
+    // X-6 재대결(기억의 방)은 진행 플래그를 건드리지 않고 별도 처리한다 — 모든 승리 경로보다 앞.
+    if (b.rematch) { winRematch(); return; }
     // 챕터 보스 — 별도 진행 플래그(chapterNClear)로 처리한다
     if (b.persuadeId === 'sujipmon_boss') { winChapterBoss(1); return; }
     if (b.persuadeId === 'pyeonhyang_boss') { winChapterBoss(2); return; }
@@ -4693,6 +4862,17 @@
         game.endingType = 'true';
         game.endingT = 0;
         Sound.playMapBgm('ending');
+      });
+    } else if (b.monId === 'bekkyeomon') {
+      // X-1① 따라 배틀 승리 직후 — 주인공의 반응 한 번(정답 없음). 반디가 그 말을 받아 준다.
+      startDialog(lines, mon.name, () => {
+        Sound.playMapBgm(MAPS[game.map].song);
+        startPlayerVoice('ttara',
+          '따라의 하얀 종이들이 조용히 접혀 사라진다.\n…너는 따라에게 뭐라고 말해 줄까?',
+          ['"서툴러도, 네 그림은 네 거야."', '"…다음엔, 같이 그리자."'],
+          '반디',
+          ['반디: …응. 서툰 게, 제일 사람 같은 거래.\n(반디가 조금 웃었다.)',
+            '반디: …같이. 좋은 말이야.\n…나도, 끼워 줄 거지?']);
       });
     } else {
       startDialog(lines, mon.name, () => {
@@ -4800,7 +4980,15 @@
   }
   function revealBeatFinalLine() {
     // 가면을 벗겠다는 마지막 한 줄 — 그 뒤에야 보스전(영이) 앞에 선다.
-    startDialog(['"…미안해. 이제, 가면을 벗을게."'], '영이');
+    // X-1③ 반디 리빌 직후 — 주인공의 반응 한 번(정답 없음). 영이가 그 말을 받아 준다.
+    startDialog(['"…미안해. 이제, 가면을 벗을게."'], '영이', () => {
+      startPlayerVoice('reveal',
+        '가면이 스르르 벗겨진다.\n…너는 반디에게, 뭐라고 할까?',
+        ['"괜찮아. …계속, 알고 있었어."', '"…왜, 진작 말 안 했어."'],
+        '영이',
+        ['영이: …알고도, 곁에 있어 줬구나.\n…그 시간이, 나한텐 전부 진짜였어.',
+          '영이: …무서웠어.\n네가, 나를 지울까 봐. …미안해.']);
+    });
   }
   function drawRevealBeat() {
     drawWorld();
@@ -4855,6 +5043,16 @@
     // 콜백 인트로: 프로필 intro가 함수면 현재 플래그로 첫 대사를 분기한다 (없으면 기본 인트로)
     const introText = (typeof p.intro === 'function') ? p.intro(game.flags) : (p.intro || mon.intro);
     const lines = [introText];
+    // X-4 영이 메타 인식 — 세이브에 영향 없는 flags 조건 두 가지로 한 줄을 덧붙인다.
+    //   • 재도전(이전 조우에서 물러나 persuadeMemory가 남음): "…또 왔네. 몇 번이고…"
+    //   • 2회차(flags.ng): "…너, 이 이야기를 알고 있구나."
+    if (persuadeKey === 'yeongi_boss') {
+      if (game.flags.persuadeMemory && game.flags.persuadeMemory.yeongi_boss) {
+        lines.push('영이: "…또 왔네.\n몇 번이고, 다시 오는구나. …고마워."');
+      } else if (game.flags.ng) {
+        lines.push('영이: "…너, 이 이야기를 알고 있구나.\n그런데도, 와 줬네."');
+      }
+    }
     // 조우 시 증거 카드 지급은 프롤로그 튜토리얼(베껴몬)만을 위한 것 —
     // starterCards가 있는 프로필에서만 지급한다. 보스 카드는 방탈출 보상으로만 얻으므로
     // starterCards가 없어 여기서 지급되지 않는다.
@@ -5259,14 +5457,34 @@
     }
   }
   // 게이지 만충 → 마음의 선택(자비)으로. (mercy/mercyReply는 기존 그대로)
+  function enterMercyPhase(b) {
+    b.phase = 'mercy'; b.cursor = 0; Sound.badge();
+    if (game.tts) Speech.speak('마음의 선택. ' + b.mon.mercy.prompt);
+    if (!game.reduceFx) b.shake = 12; // 마음이 열리는 순간의 울림 (M-3)
+  }
   function persuadeTriumph() {
     const b = game.battle;
     if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
     b.arena.carrying = false;
     if (b.mon.mercy && !b.mercyDone) {
-      b.phase = 'mercy'; b.cursor = 0; Sound.badge();
-      if (game.tts) Speech.speak('마음의 선택. ' + b.mon.mercy.prompt);
-      if (!game.reduceFx) b.shake = 12; // 마음이 열리는 순간의 울림 (M-3)
+      // X-1④ 영이 자비 선택 직전(마음의 선택 프롬프트 앞) — 주인공의 반응 한 번.
+      // 배틀 모드로 복귀하며 고른 값을 저장하고, 영이의 답을 토스트로 보여 준 뒤 마음의 선택으로.
+      if (b.persuadeId === 'yeongi_boss' && !b.voiceAsked) {
+        b.voiceAsked = true;
+        const replies = ['영이: …혼자, 아니었구나. …그 말, 오래 기다렸어.',
+          '영이: …끝까지 들어 준 사람은, 네가 처음이야.'];
+        startReactionChoice('영이가 마지막으로 너를 바라본다.\n…너는 뭐라고 말해 줄까?',
+          ['"이제, 혼자 두지 않을게."', '"…네 이야기, 끝까지 들었어."'], (i) => {
+            const idx = (i < 0 || i > 1) ? 0 : i;
+            if (!game.flags.playerVoice) game.flags.playerVoice = {};
+            game.flags.playerVoice.yeongi = idx;
+            game.notice = { text: replies[idx], t: 320 };
+            if (game.tts) Speech.speak(replies[idx]);
+            enterMercyPhase(game.battle);
+          });
+        return;
+      }
+      enterMercyPhase(b);
     } else {
       winBattle();
     }
@@ -5974,7 +6192,24 @@
     if (justPressed('down')) { game.dex.cursor = (game.dex.cursor + 1) % n; Sound.blip(); }
     if (justPressed('left')) { game.dex.cursor = (game.dex.cursor + n - 5) % n; Sound.blip(); }
     if (justPressed('right')) { game.dex.cursor = (game.dex.cursor + 5) % n; Sound.blip(); }
-    if (justPressed('cancel') || justPressed('menu') || justPressed('action')) closeDex();
+    if (justPressed('cancel') || justPressed('menu')) { closeDex(); return; }
+    // X-6 Z — 만난 보스 위에서 누르면 재대결을 제안한다(만나지 않았으면 닫기).
+    if (justPressed('action')) {
+      const id = DEX_ORDER[game.dex.cursor];
+      const seen = getDexSeen();
+      if (seen[id] && seen[id].seen && DEX_REMATCH[id]) startDexRematch(id);
+      else closeDex();
+    }
+  }
+  // X-6 재대결 제안 — 「다시 이야기해 볼래?」 선택 → 실전 규칙의 설득 배틀 재시작(b.rematch).
+  function startDexRematch(id) {
+    const ret = game.dex.ret;
+    startChoice(`${monName(id)}와(과) 다시 이야기해 볼래?`, ['다시 이야기한다', '아니, 됐어'], (i) => {
+      if (i !== 0) { openDex(ret); return; } // 취소·아니 → 수첩으로 복귀
+      startPersuadeBattle(id, DEX_REMATCH[id]);
+      game.battle.rematch = true;      // 승리 시 진행 플래그 재부여 없이 수첩 복귀(winRematch)
+      game.battle.rematchRet = ret;
+    });
   }
 
   const MERCY_LABEL = {
@@ -6072,6 +6307,12 @@
       ctx.fillStyle = '#e0453a';
       ctx.font = fs(14);
       ctx.fillText(`작별 · ${mk ? MERCY_LABEL[mk] : '—'}`, panelX + 24, my);
+      // X-6 재대결 안내 — 만난 보스라면 Z로 다시 이야기할 수 있다.
+      if (DEX_REMATCH[id]) {
+        ctx.fillStyle = Math.floor(game.time / 30) % 2 === 0 ? '#ffd644' : '#8a7a2a';
+        ctx.font = fs(13, true);
+        ctx.fillText('Z · 다시 이야기해 볼래?', panelX + 24, my + 30);
+      }
     } else {
       ctx.fillStyle = '#666';
       ctx.font = fs(15);
@@ -6083,7 +6324,7 @@
     ctx.fillStyle = '#777';
     ctx.font = fs(13);
     ctx.textAlign = 'center';
-    ctx.fillText('↑↓←→ 넘기기 · X 또는 A로 닫기', LW / 2, 510);
+    ctx.fillText('↑↓←→ 넘기기 · Z 다시 이야기 · X로 닫기', LW / 2, 510);
     ctx.textAlign = 'left';
   }
 
@@ -7963,6 +8204,7 @@
     const flags = newFlags();
     flags.talkedProf = true;
     flags.bandiJoined = true; // 수업 점프는 오프닝(합류 연출) 이후 상태
+    flags.classSession = true; // X-8 수업(차시) 세션 — 수업 진입 경로에서만 켜진다(일반 세이브 오염 없음)
     return flags;
   }
   // 수업 모드 특별 항목 「1장 — 전부 공짜 거리」 (스테이지 번호가 아닌 방탈출 수업용)
@@ -9445,6 +9687,8 @@
     return chapterBadgeLabel(mapId, flags);
   }
 
+  // X-8 목표 배너 접두 — 수업(차시) 세션이면 "이번 시간 목표: ", 아니면 "목표: ".
+  function objectiveBannerPrefix() { return game.flags.classSession ? '이번 시간 목표: ' : '목표: '; }
   function drawHud() {
     // 스테이지 + 지역 이름 + 목표
     const m = MAPS[game.map];
@@ -9491,7 +9735,8 @@
     } else {
       objText = getObjective(game.flags, game.map);
     }
-    const obj = `목표: ${objText}`;
+    // X-8 수업 모드 — 목표 배너에 "이번 시간" 접두를 붙여 차시 목표임을 보여 준다.
+    const obj = objectiveBannerPrefix() + objText;
     const w = Math.max(ctx.measureText(obj).width, ctx.measureText(title).width) + 20;
     utBox(8, 8, w, 52, 4);
     ctx.fillStyle = '#ffd644';
@@ -11050,6 +11295,9 @@
     isHiddenWarp, hiddenWarpsOf, checkUnlocks,
     battleRank: () => (game.battle ? battleRank(game.battle) : null),
     dailyDoneToday, surfaceDailyAndStreak,
+    // X라운드 신규 — 재대결(기억의 방)·수업 배너·반응 선택 검증용
+    newFlags, openDex, getDexSeen, recordDexSeen, DEX_REMATCH, CLASS_END_LINE,
+    objectiveBannerPrefix, bossWasSpared,
   };
   frame();
 })();
