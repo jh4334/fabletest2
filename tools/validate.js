@@ -433,9 +433,13 @@ if (process.argv.includes('--print')) {
 // R라운드 패턴 데이터 린트 — pattern 키 오타는 '조용한 무패턴 배틀'이 되므로 화이트리스트로 잡는다.
 // verify는 원본 카드·조각 스키마까지, GATE_QUIZ/DIARY_SHARDS는 구조 무결성을 검사한다.
 (() => {
-  const { PERSUADE, GATE_QUIZ, DIARY_SHARDS } =
-    vm.runInContext('({ PERSUADE, GATE_QUIZ, DIARY_SHARDS })', ctx);
-  const R_PATTERNS = ['shadow', 'parcel', 'tilt', 'verify', 'tempt', 'cozy', 'quiet', 'rotate'];
+  const { PERSUADE, GATE_QUIZ, DIARY_SHARDS, R_PATTERN_KEYS } =
+    vm.runInContext('({ PERSUADE, GATE_QUIZ, DIARY_SHARDS, R_PATTERN_KEYS })', ctx);
+  // 화이트리스트는 data.js의 단일 출처(R_PATTERN_KEYS)에서 끌어온다 — game.js PATTERNS와 공유.
+  if (!Array.isArray(R_PATTERN_KEYS) || R_PATTERN_KEYS.length === 0) {
+    err('data.js R_PATTERN_KEYS 누락 — 패턴 화이트리스트 단일 출처가 없다');
+  }
+  const R_PATTERNS = R_PATTERN_KEYS || [];
   for (const [k, p] of Object.entries(PERSUADE)) {
     if (p.pattern && !R_PATTERNS.includes(p.pattern)) {
       err(`PERSUADE.${k}.pattern '${p.pattern}' — 미등록 패턴 (오타 시 무패턴 배틀이 된다)`);

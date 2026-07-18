@@ -144,7 +144,8 @@ check('타이틀로 복귀', g.mode === 'title');
 g.flags = null; g.titleScreen = 'slots'; g.slotCursor = 2; // 세션 미로드 상태 재현
 tap('t'); // 선생님 방
 check('선생님 방 진입', g.mode === 'teacher');
-tap('ArrowDown'); tap('ArrowDown'); // dashboard → report → classmode
+// dashboard → leaderboard → report → classmode (Y-20으로 leaderboard가 dashboard 뒤에 추가됨)
+tap('ArrowDown'); tap('ArrowDown'); tap('ArrowDown');
 tap('z'); // 학급 모드 — 플래그 없는 슬롯을 미리 로드해도 예외가 없어야 한다
 check('학급 모드 예외 없이 진입', g.mode !== 'teacher');
 check('flags가 새로 채워짐', !!g.flags && typeof g.flags.defeated === 'object');
@@ -286,6 +287,71 @@ console.log('[X-round] 세이브 스키마 — 신규 플래그 기본값·수�
   check('이슈6 일반 이어하기 진입 시 classSession 해제(배너 영구 잔존 방지)',
     (g.mode === 'world' || g.mode === 'dialog') && g.flags && g.flags.classSession === false);
   storage.delete('ai-ethics-adventure-slot-1');
+}
+
+// ── Y-17b 되돌리기 스냅샷 30일 자동 정리 (타임스탬프 필드) ──
+console.log('[Y-17b] 오래된 되돌리기 스냅샷 자동 정리 (SLOT_UNDO·BACKUP_UNDO)');
+{
+  const T = windowObj.__test;
+  const SLOT_UNDO = 'ai-ethics-adventure-deleted-slot';
+  const BACKUP_UNDO = 'ai-ethics-adventure-restore-undo';
+  const DAY = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  // (1) 신선한(오늘) 스냅샷은 유지된다
+  storage.set(SLOT_UNDO, JSON.stringify({ slot: 1, ts: now - DAY, 'ai-ethics-adventure-slot-1': '{}' }));
+  T.cleanStaleUndoSnapshots(now);
+  check('Y-17b 신선한(1일) SLOT_UNDO 스냅샷 유지', !!storage.get(SLOT_UNDO));
+
+  // (2) 30일 넘은 스냅샷은 지워진다
+  storage.set(SLOT_UNDO, JSON.stringify({ slot: 1, ts: now - 40 * DAY, 'ai-ethics-adventure-slot-1': '{}' }));
+  T.cleanStaleUndoSnapshots(now);
+  check('Y-17b 40일 지난 SLOT_UNDO 스냅샷 자동 삭제', !storage.get(SLOT_UNDO));
+
+  // (3) 타임스탬프 없는 구 스냅샷은 즉시 삭제하지 않고 지금 시각으로 도장만 찍는다(하위 호환)
+  storage.set(SLOT_UNDO, JSON.stringify({ slot: 2, 'ai-ethics-adventure-slot-2': '{}' }));
+  T.cleanStaleUndoSnapshots(now);
+  const stamped = JSON.parse(storage.get(SLOT_UNDO) || 'null');
+  check('Y-17b ts 없는 구 스냅샷은 보존 + 지금 시각으로 도장', stamped && stamped.ts === now);
+  // 도장 이후 다시 30일이 지나야 삭제된다
+  T.cleanStaleUndoSnapshots(now + 40 * DAY);
+  check('Y-17b 도장된 구 스냅샷도 30일 후엔 정리됨', !storage.get(SLOT_UNDO));
+
+  // (4) BACKUP_UNDO는 백업 텍스트(savedAt 포함)로 나이를 잰다
+  storage.set(BACKUP_UNDO, JSON.stringify({ app: 'ai-ethics-adventure', version: 1, savedAt: now - DAY, data: {} }));
+  T.cleanStaleUndoSnapshots(now);
+  check('Y-17b 신선한 BACKUP_UNDO 유지', !!storage.get(BACKUP_UNDO));
+  storage.set(BACKUP_UNDO, JSON.stringify({ app: 'ai-ethics-adventure', version: 1, savedAt: now - 40 * DAY, data: {} }));
+  T.cleanStaleUndoSnapshots(now);
+  check('Y-17b 40일 지난 BACKUP_UNDO 자동 삭제', !storage.get(BACKUP_UNDO));
+
+  // (5) deleteSlot이 새 스냅샷에 ts를 심는지 (스키마 변경 확인)
+  storage.set('ai-ethics-adventure-slot-1', JSON.stringify({ v: 8, name: '지울아이', flags: { defeated: {} } }));
+  T.deleteSlot(1);
+  const del = JSON.parse(storage.get(SLOT_UNDO) || 'null');
+  check('Y-17b deleteSlot 스냅샷에 ts 타임스탬프 존재', del && typeof del.ts === 'number');
+  storage.delete(SLOT_UNDO);
+  storage.delete('ai-ethics-adventure-slot-1');
+}
+
+// ── Y-17a 저장공간 쿼터 초과(QuotaExceededError) → noteStorageFail 경고 승격 ──
+console.log('[Y-17a] 쿼터 초과 모의 스토리지 — noteStorageFail 경고 승격');
+{
+  const T = windowObj.__test;
+  check('Y-17a 초기 상태 저장 가능(storageOk=true)', T.getStorageOk() === true);
+  // setItem이 QuotaExceededError를 던지는 국면을 흉내 낸다 (원래 구현 백업 후 교체)
+  const realSet = sandbox.localStorage.setItem;
+  sandbox.localStorage.setItem = () => {
+    const e = new Error('quota'); e.name = 'QuotaExceededError'; throw e;
+  };
+  // 저장 경로(writeSlot)는 실패를 삼키고 noteStorageFail로 승격해야 한다 — 크래시 없음
+  let threw = false;
+  try { T.writeSlot(0, { v: 8, name: '쿼터', flags: { defeated: {} } }); } catch (e) { threw = true; }
+  check('Y-17a 쿼터 초과에도 저장 경로가 예외를 던지지 않음', threw === false);
+  check('Y-17a noteStorageFail 승격 — storageOk=false', T.getStorageOk() === false);
+  // 안내 문구가 게임 notice로 뜬다(교사·학생에게 백업 유도)
+  check('Y-17a 저장 불가 안내 notice 표시', !!(g.notice && /저장되지 않/.test(g.notice.text)));
+  sandbox.localStorage.setItem = realSet; // 스토리지 원복
 }
 
 console.log(`\n✔ 슬롯 테스트 통과 (${passed}개 검사)`);

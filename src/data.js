@@ -3389,6 +3389,13 @@ const EVIDENCE_CARDS = {
   },
 };
 
+// R라운드 행동 배틀 — 인물의 이름이 곧 패턴. 여기 나열된 키만 PERSUADE.pattern에
+// 쓸 수 있다(오타 시 '조용한 무패턴 배틀'이 되므로 validate가 화이트리스트로 잡는다).
+// 'rotate'는 영이 전용 메타 값(지나온 패턴을 순환) — game.js의 PATTERNS 레지스트리와
+// 공유되는 단일 출처다(validate는 data만 로드하므로 키 목록을 여기에 둔다).
+// 참고: 'truth'는 verify로 대체된 구 기믹(코드 경로만 호환 유지) — 작명 가능한 값이 아니다.
+const R_PATTERN_KEYS = ['shadow', 'parcel', 'tilt', 'verify', 'tempt', 'cozy', 'quiet', 'rotate'];
+
 const PERSUADE = {
   bekkyeomon: {
     song: 'boss_ttara', // 전용 테마 (N-2)

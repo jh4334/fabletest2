@@ -82,7 +82,9 @@
     reduceFx: false,     // 화면 효과 줄이기(광과민성·모션 민감 배려)
     lowGraphics: false,  // 저사양 그래픽(백킹 해상도 1x + 무거운 효과 최소화)
     dashboard: { ret: 'title', cursor: 0, toast: 0 }, // 교사용 대시보드
+    leaderboard: { ret: 'title', cursor: 0, toast: 0, rows: [], files: 0 }, // Y-20 반 순위표(백업 여러 개 합산)
     classmode: { ret: 'world', sel: 0, confirm: false, toast: 0 }, // 수업 모드(챕터 바로 시작)
+    prepost: null, // Y-18 사전/사후 점검 런타임 { ret, ch, kind, quizzes, idx, qCursor, choiceOrder, score, phase, feedback }
     report: { ret: 'world', slot: 0, toast: 0 }, // 교사용 학생 진단 리포트
     quizedit: { ret: 'title', cursor: 0, toast: 0, confirm: false }, // 커스텀 퀴즈 편집·가져오기
     cards: { ret: 'title', slot: 0, scroll: 0 },     // 학습 카드 컬렉션
@@ -295,7 +297,9 @@
     // 되살리기 안전망 — 지우기 직전 이 슬롯의 모든 데이터를 스냅샷해 둔다.
     // 공용 태블릿에서 다른 학생의 세이브를 실수로 지워도 1회 복구할 수 있다.
     try {
-      const snap = { slot: i };
+      // ts — Y-17b 스냅샷 나이 표시(로드 시 30일 지나면 자동 정리). 구 스냅샷(ts 없음)은
+      // 삭제하지 않고 첫 로드 때 지금 시각으로 도장 찍는다(migrateSlotV3식 하위 호환).
+      const snap = { slot: i, ts: Date.now() };
       for (const k of slotAllKeys(i)) { const v = localStorage.getItem(k); if (v != null) snap[k] = v; }
       localStorage.setItem(SLOT_UNDO_KEY, JSON.stringify(snap));
     } catch (e) { /* 용량 부족 등이면 그냥 진행 */ }
@@ -1019,6 +1023,36 @@
   }
   function hasRestoreUndo() {
     try { return !!localStorage.getItem(BACKUP_UNDO_KEY); } catch (e) { return false; }
+  }
+  // Y-17b — 되돌리기 스냅샷(SLOT_UNDO·BACKUP_UNDO) 자동 정리. 로드 시 1회 호출한다.
+  //   30일 지난 스냅샷은 지운다(공용 기기의 오래된 삭제/복원 흔적이 무한정 쌓이지 않게).
+  //   타임스탬프가 없는 구 스냅샷은 '즉시 삭제'가 아니라 지금 시각으로 도장만 찍어 승계한다
+  //   (방금 만든 신선한 데이터를 잃지 않게 — migrateSlotV3식 하위 호환).
+  const UNDO_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30일
+  function cleanStaleUndoSnapshots(now) {
+    now = (typeof now === 'number') ? now : Date.now();
+    // SLOT_UNDO — JSON 스냅샷({ slot, ts, ...키 })
+    try {
+      const raw = localStorage.getItem(SLOT_UNDO_KEY);
+      if (raw) {
+        const snap = JSON.parse(raw);
+        if (snap && typeof snap.ts === 'number') {
+          if (now - snap.ts > UNDO_TTL_MS) localStorage.removeItem(SLOT_UNDO_KEY);
+        } else if (snap) {
+          snap.ts = now; // 구 스냅샷(ts 없음) — 첫 조우에 도장, 다음 로드부터 30일 계산
+          localStorage.setItem(SLOT_UNDO_KEY, JSON.stringify(snap));
+        }
+      }
+    } catch (e) { /* 손상/파싱 실패는 건드리지 않는다 */ }
+    // BACKUP_UNDO — 백업 텍스트(JSON, savedAt 포함). buildBackupText가 항상 savedAt을 넣는다.
+    try {
+      const raw = localStorage.getItem(BACKUP_UNDO_KEY);
+      if (raw) {
+        let ts = null;
+        try { const o = JSON.parse(raw); if (o && typeof o.savedAt === 'number') ts = o.savedAt; } catch (e2) { /* 무시 */ }
+        if (ts != null && now - ts > UNDO_TTL_MS) localStorage.removeItem(BACKUP_UNDO_KEY);
+      }
+    } catch (e) { /* 무시 */ }
   }
   // 텍스트를 클립보드에 복사 (가능한 환경에서). 성공 여부 반환.
   function copyTextToClipboard(text) {
@@ -4741,13 +4775,21 @@
       game.flags.bandiJokeShown = true;
       lines.push('반디: …있지. 담아가 모아 둔 것 중에\n내 흉내도 있었을까?\n…없었겠지. 나 이렇게 반짝이는데.');
     }
+    const wasClass = !!game.flags.classSession; // Y-18 사후 점검 제안 판단(리셋 전에 잡아 둔다)
     if (game.flags.classSession) {
       lines.push(CLASS_END_LINE); // X-8 차시 마무리 안내(수업 세션만)
       // 이슈6: 세션은 이 한 차시로 끝 — 안내를 보인 뒤 플래그를 내려 배너/안내가 슬롯에
       //        영구 잔존하지 않게 한다(다음에 일반 이어하기로 들어와도 깨끗).
       game.flags.classSession = false; save();
     }
-    startDialog(lines, mon.name, () => Sound.playMapBgm(MAPS[cfg.map].song));
+    // Y-18 — 수업 세션에서 사전 점검을 했던 장이면, 보스 클리어 대화가 끝난 뒤 같은 5문항으로
+    //   사후 점검을 제안한다(스킵 가능). 사전 기록이 없으면(옵트인 안 함) 제안하지 않는다.
+    const ppCh = PREPOST_CH_BY_N[n];
+    const offerPost = wasClass && ppCh && getPrepost(game.currentSlot, ppCh).pre;
+    startDialog(lines, mon.name, () => {
+      Sound.playMapBgm(MAPS[cfg.map].song);
+      if (offerPost) openPrepost('post', ppCh, 'world');
+    });
   }
 
   // 파이널 보스(고요) 클리어 — goyoClear 플래그 + 코어 개방 연출 후 코어로 입장.
@@ -5601,30 +5643,11 @@
       t: 0, dur: Math.round((b.p.waveDur || 300) * (game.difficulty === 'easy' ? 0.8 : 1)), spawnTimer: 30,
       // fragments는 폐지(듣기 즉시 공개) — 기믹·테스트 호환을 위해 빈 배열 유지
       fragments: [], fragTotal: 0, collected: 0, hits: 0,
-      // 담아(보스) open 페이즈 고유 기믹 — 「정보 꾸러미」 운반
-      // 배달 진행은 파도가 바뀌어도 이어진다 (한 파도 안에 3배달은 사실상 불가능하므로)
-      parcel: { obj: null, deliveries: b.parcelDeliveries || 0, spawnTimer: 90,
-        hole: { x: box.x + box.w - 18, y: box.y + box.h / 2 } },
-      // 기울(보스) open 페이즈 고유 기믹 — 기울어지는 상자: 「반례 구슬」을 저울 접시로 운반
-      tilt: { orb: null, deliveries: b.tiltDeliveries || 0, spawnTimer: 90,
-        drift: [0.9, 0.6, 0.3, 0][Math.min(b.tiltDeliveries || 0, 3)],
-        plate: { x: box.x + box.w - 18, y: box.y + box.h / 2 } },
-      // 반짝(보스) open 페이즈 고유 기믹 — 반짝이는 보상 아이템: 건드리면 역효과, 240프레임
-      // 버티면 소멸+보상. 버틴 횟수(resisted)는 파도가 바뀌어도 이어진다(최대 3).
-      tempt: { obj: null, resisted: b.temptResisted || 0, spawnTimer: 60 },
-      // 그럴싸(보스) open 페이즈 고유 기믹 — [진]/[낚] 헤드라인 조각이 60프레임 간격으로
-      // 번갈아 스폰된다. 잡은 [진] 개수(caught)는 파도가 바뀌어도 이어진다(최대 3).
-      truth: { obj: null, caught: b.truthCaught || 0, spawnTimer: 60, nextKind: 'real' },
-      // ── R라운드 행동 배틀 패턴 상태 ──
-      // 따라 「그림자 하트」 — 2초 전 위치를 따라오는 그림자. 새 길을 그리면 지침.
-      shadow: { trail: [], tired: b.shadowTired || 0, checkT: 60, refX: b.arena.soul.x, refY: b.arena.soul.y },
-      // 그럴싸 「검증 절차」 — [속보] 조각을 원본 카드와 대조해 참/거짓 구멍에 배달
-      verify: { obj: null, spawnTimer: 70, idx: b.verifyIdx || 0, judged: b.verifyJudged || 0, slowT: 0, stopCd: 0 },
-      // 루미 「포근한 방」 — 담요(중앙)·벽시계·가끔 열리는 문
-      cozy: { doorT: 150, door: null, doorOpenT: 0, drainT: 0, exits: b.cozyExits || 0 },
-      // 고요 「아무 말 없음」 — 희미한 존재 곁에 머무르면 어둠이 걷힌다
-      quiet: { spot: { x: box.x + box.w / 2, y: box.y + 50 }, nearT: 0, warm: b.quietWarm || 0 },
     };
+    // R라운드 행동 배틀의 패턴 하위 상태는 전부 레지스트리 init에서 만든다(Y-14).
+    // 파도마다 모든 패턴 상태를 초기화한다 — 영이(rotate)는 파도마다 다른 패턴을 쓰고,
+    // 누적 카운터(b.parcelDeliveries 등)와 미끼/함정 슬롯은 각 init이 승계·초기화한다.
+    for (const key of Object.keys(PATTERNS)) b.wave[key] = PATTERNS[key].init(b, box);
     // 연습 파도(R라운드) — 패턴이 '실제로 처음 등장하는' 파도가 무피해 리허설이 된다.
     // (closed 상태로 흘려보낸 파도에 연습권이 소모되지 않게 activePattern으로 판정)
     b.waveCount = (b.waveCount || 0) + 1;
@@ -5632,9 +5655,7 @@
     const apNow = activePattern(b);
     b.wave.practice = !b.practiceDone && !!apNow && apNow !== 'quiet';
     if (b.wave.practice) b.practiceDone = true;
-    // 담아 미끼·기울 편식 구슬 — 기존 기믹 상태에 함정 오브젝트 슬롯 추가
-    b.wave.parcel.decoy = null; b.wave.parcel.decoyTimer = 200;
-    b.wave.tilt.junk = null; b.wave.tilt.junkTimer = 160;
+    // (미끼/편식 함정 슬롯은 initParcel·initTilt에서 함께 초기화된다 — Y-15)
     // 공격 예고 (N-5) — 상대 턴 시작 플레이버 + 20프레임 숨 고르기
     if (b.p.announce && b.p.announce.length) {
       pushFloat(b.p.announce[b.turnCount % b.p.announce.length]);
@@ -5742,17 +5763,10 @@
     if (!w.practice && bulletHits(b, arena)) { w.hits += 1; b.rankHits = (b.rankHits || 0) + 1; if (b.playerHp <= 0) { persuadeExhaust(); return; } }
 
     // ── R라운드 행동 배틀 — 보스의 이름이 곧 패턴 (shaken·open에서 가동) ──
-    if (patNow === 'parcel') updateParcel(b);
-    if (tiltActive) updateTilt(b);
-    if (patNow === 'tempt') {
-      updateTempt(b);
-      if (!game.battle) return; // 접촉 피해로 탈진했으면 여기서 중단
-    }
-    if (patNow === 'verify') updateVerify(b);
-    if (patNow === 'truth') updateTruth(b); // (구 그럴싸 기믹 — verify로 대체, 호환 유지)
-    if (patNow === 'shadow') updateShadow(b);
-    if (patNow === 'cozy') updateCozy(b);
-    if (patNow === 'quiet') updateQuiet(b);
+    // 패턴별 로직은 레지스트리로 통합(Y-14) — 파도마다 활성 패턴은 하나뿐이므로
+    // 원래의 if 체인과 동작이 완전히 같다. tempt 접촉 피해 등으로 탈진하면 아래 방어로 중단.
+    const activeP = patNow && PATTERNS[patNow];
+    if (activeP && activeP.update) activeP.update(b);
     if (!game.battle) return; // 패턴 처리 중 탈진 가능성 방어
 
     // 게이지 만충 — 탄막 턴을 바로 끝내고 내 턴으로 (「마음 안아 주기」 마무리)
@@ -6648,6 +6662,7 @@
     diary: '✉ 낡은 일기',
     halloffame: '🏆 명예의 전당',
     dashboard: '▤ 교사용 대시보드',
+    leaderboard: '🏅 반 순위표 (백업 모으기)',
     report: '🩺 학생 진단 리포트',
     classmode: '▶ 수업 모드 (챕터 시작)',
     awards: '☆ 도전과제',
@@ -6909,7 +6924,7 @@
   // 학생이 보는 화면에는 교사 어휘·기능이 노출되지 않는다(스텔스 교육 원칙).
   // 각 항목은 기존 화면(대시보드·리포트·수업 모드·커스텀 퀴즈·수료증)을 그대로 재사용하되,
   // ret에 'teacher'를 넘겨 닫을 때 이 방으로 되돌아오게 한다.
-  const TEACHER_ITEMS = ['dashboard', 'report', 'classmode', 'quizedit', 'cert', 'close'];
+  const TEACHER_ITEMS = ['dashboard', 'leaderboard', 'report', 'classmode', 'quizedit', 'cert', 'close'];
 
   function openTeacherRoom() {
     game.teacherCursor = 0;
@@ -6931,6 +6946,7 @@
     if (justPressed('action')) {
       const item = TEACHER_ITEMS[game.teacherCursor];
       if (item === 'dashboard') openDashboard('teacher');
+      else if (item === 'leaderboard') openLeaderboard('teacher');
       else if (item === 'report') openReport('teacher');
       else if (item === 'classmode') openClassMode('teacher');
       else if (item === 'quizedit') openQuizEdit('teacher');
@@ -8273,6 +8289,7 @@
   function buildClassCsv() {
     const header = ['슬롯', '이름', '칭호', '진행', '완주', '푼 문제', '정답 수',
       '정답률(%)', '복습 노트', '도전과제', '안아준 마음', '연속 출석(일)',
+      '사전(%)', '사후(%)', '향상도(%p)', // Y-18 수업 효과 측정(사전/사후 점검)
       '개념별 성취(정답/시도)', '자비 선택(프롤로그·1~5장)', '엔딩'];
     const lines = [header.map(csvCell).join(',')];
     for (let i = 0; i < SLOT_COUNT; i++) {
@@ -8302,6 +8319,16 @@
       const endingStr = flags.trueEnding
         ? '집으로(따뜻)'
         : (flags.defeated?.yeongi ? '완주' : '진행 중');
+      // Y-18 — 사전/사후 점검 집계(장 전체 합산). 향상도 = 사후% − 사전%(둘 다 있을 때만).
+      const pp = meta.prepost || {};
+      let preC = 0, preN = 0, postC = 0, postN = 0;
+      for (const ch of Object.keys(pp)) {
+        if (pp[ch].pre) { preC += pp[ch].pre.score; preN += pp[ch].pre.total; }
+        if (pp[ch].post) { postC += pp[ch].post.score; postN += pp[ch].post.total; }
+      }
+      const prePct = preN ? Math.round(preC / preN * 100) : '';
+      const postPct = postN ? Math.round(postC / postN * 100) : '';
+      const improvePct = (preN && postN) ? (postPct - prePct) : '';
       lines.push([
         i + 1,
         sum.name,
@@ -8315,6 +8342,9 @@
         countAchievements(i) + '/' + ACHIEVEMENTS.length,
         sum.mercy,
         meta.streak || 0,
+        prePct,
+        postPct,
+        improvePct,
         conceptStats,
         mercyStr,
         endingStr,
@@ -8441,6 +8471,216 @@
     ctx.textAlign = 'left';
   }
 
+  // ---------- Y-20 반 순위표 (여러 기기 백업 합산) ----------
+  // 여러 기기의 데이터 백업(.json)을 차례로 불러와 학생별 이름·자비·정답률·S등급 수를 한 표로
+  // 모은다. 로컬 저장소는 전혀 건드리지 않고(표시 전용), 서버·네트워크도 쓰지 않는다(개인정보 보호).
+  const LEADERBOARD_ITEMS = ['load', 'export', 'clear', 'close'];
+  const LEADERBOARD_LABELS = {
+    load: '＋ 백업 파일 불러오기 (여러 개 가능)',
+    export: '⇩ 순위표 CSV 내보내기',
+    clear: '↺ 표 비우기',
+    close: '닫기',
+  };
+  // 백업 객체에서 슬롯(학생)별 요약 행을 뽑는다 — localStorage를 읽거나 쓰지 않는다.
+  function backupSlotRows(obj) {
+    const rows = [];
+    const data = (obj && obj.data) || {};
+    for (let i = 0; i < SLOT_COUNT; i++) {
+      const sraw = data[slotKey(i)];
+      if (!sraw) continue;
+      let slot; try { slot = JSON.parse(sraw); } catch (e) { continue; }
+      if (!slot || !slot.flags) continue;
+      let stats = {}; try { stats = JSON.parse(data[statsKey(i)] || '{}') || {}; } catch (e) { stats = {}; }
+      let meta = {}; try { meta = JSON.parse(data[metaKey(i)] || '{}') || {}; } catch (e) { meta = {}; }
+      let totC = 0, totN = 0;
+      for (const t of Object.keys(stats)) { const e = stats[t]; if (e && e.total > 0) { totC += e.correct; totN += e.total; } }
+      const sRank = Object.values(meta.bossRank || {}).filter((r) => r === 'S').length;
+      rows.push({
+        name: sanitizeName(slot.name), mercy: slot.flags.mercy || 0,
+        attempted: totN, correct: totC, rate: totN ? totC / totN : 0, sRank,
+        done: !!(slot.flags.defeated && slot.flags.defeated.yeongi),
+      });
+    }
+    return rows;
+  }
+  // 반 대항전 순위 — S등급 수 → 정답률 → 자비 순.
+  function leaderboardSorted() {
+    return game.leaderboard.rows.slice().sort((a, b) =>
+      b.sRank - a.sRank || b.rate - a.rate || b.mercy - a.mercy);
+  }
+  function buildLeaderboardCsv() {
+    const header = ['순위', '이름', '안아준 마음', '푼 문제', '정답 수', '정답률(%)', 'S등급 수', '완주'];
+    const rows = leaderboardSorted();
+    const lines = [header.map(csvCell).join(',')];
+    rows.forEach((r, i) => {
+      lines.push([i + 1, r.name, r.mercy, r.attempted, r.correct,
+        r.attempted ? Math.round(r.rate * 100) : '', r.sRank, r.done ? 'Y' : 'N'].map(csvCell).join(','));
+    });
+    return lines.join('\r\n');
+  }
+  function downloadLeaderboardCsv() {
+    try {
+      const text = '﻿' + buildLeaderboardCsv(); // 엑셀 한글 깨짐 방지 BOM
+      const a = document.createElement('a');
+      a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(text);
+      a.download = 'ai-ethics-leaderboard-' + todayStr() + '.csv';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      return true;
+    } catch (e) { return false; }
+  }
+  // 백업 파일 열기 UI 재사용 — 여러 파일을 한 번에(또는 반복 호출로) 차례로 읽어 행을 누적한다.
+  function importLeaderboardFiles() {
+    try {
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = 'application/json,.json';
+      inp.multiple = true;
+      const handler = () => {
+        inp.removeEventListener('change', handler);
+        const files = inp.files ? Array.from(inp.files) : [];
+        if (!files.length) return;
+        let remaining = files.length, added = 0, okFiles = 0;
+        const done = () => {
+          game.leaderboard.files += okFiles;
+          game.leaderboard.toast = added > 0 ? 200 : -300; // 유효 백업 없으면 안내
+          Sound.badge();
+        };
+        files.forEach((file) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            let obj = null;
+            try { obj = JSON.parse(String(reader.result)); } catch (e) { obj = null; }
+            if (obj && obj.app === 'ai-ethics-adventure') {
+              const rows = backupSlotRows(obj);
+              if (rows.length) { game.leaderboard.rows.push(...rows); added += rows.length; okFiles += 1; }
+            }
+            remaining -= 1; if (remaining === 0) done();
+          };
+          reader.onerror = () => { remaining -= 1; if (remaining === 0) done(); };
+          reader.readAsText(file);
+        });
+      };
+      inp.addEventListener('change', handler);
+      inp.click();
+      return true;
+    } catch (e) { game.leaderboard.toast = -200; return false; }
+  }
+  function openLeaderboard(ret) {
+    const lb = game.leaderboard;
+    lb.ret = ret; lb.cursor = 0; lb.toast = 0;
+    game.mode = 'leaderboard';
+    Sound.select();
+  }
+  function closeLeaderboard() { game.mode = game.leaderboard.ret; Sound.select(); }
+  function updateLeaderboard() {
+    const lb = game.leaderboard;
+    if (lb.toast > 0) lb.toast -= 1; else if (lb.toast < 0) lb.toast += 1;
+    const n = LEADERBOARD_ITEMS.length;
+    if (justPressed('up') || justPressed('down')) {
+      lb.cursor = justPressed('up') ? (lb.cursor + n - 1) % n : (lb.cursor + 1) % n;
+      Sound.blip();
+      if (game.tts) Speech.speak(LEADERBOARD_LABELS[LEADERBOARD_ITEMS[lb.cursor]] || '');
+    }
+    if (justPressed('cancel') || justPressed('menu')) { closeLeaderboard(); return; }
+    if (justPressed('action')) {
+      const item = LEADERBOARD_ITEMS[lb.cursor];
+      if (item === 'load') importLeaderboardFiles();
+      else if (item === 'export') {
+        if (!lb.rows.length) { lb.toast = -300; Sound.badge(); return; }
+        const ok = downloadLeaderboardCsv() || copyTextToClipboard(buildLeaderboardCsv());
+        lb.toast = ok ? 200 : -200; Sound.badge();
+      } else if (item === 'clear') { lb.rows = []; lb.files = 0; lb.toast = 0; Sound.blip(); }
+      else if (item === 'close') closeLeaderboard();
+    }
+  }
+  function drawLeaderboard() {
+    const lb = game.leaderboard;
+    ctx.fillStyle = '#0b0e1a'; ctx.fillRect(0, 0, LW, LH);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff'; ctx.font = fs(21, true);
+    ctx.fillText('🏅 반 순위표', 24, 36);
+    ctx.fillStyle = '#8a90a6'; ctx.font = fs(12);
+    ctx.fillText('여러 기기의 데이터 백업(.json)을 불러와 학생별 성취를 한 표로 모아요.', 24, 56);
+    ctx.fillStyle = '#667088';
+    ctx.fillText('※ 네트워크 없이 이 기기에서만 표시하고, 저장하지 않아요(개인정보 보호).', 24, 74);
+
+    // 메뉴 (세로 4항목)
+    let my = 104;
+    for (let i = 0; i < LEADERBOARD_ITEMS.length; i++) {
+      drawChoiceLine(LEADERBOARD_LABELS[LEADERBOARD_ITEMS[i]], 40, my, i === lb.cursor);
+      my += 26;
+    }
+    // 불러온 현황
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#8a90a6'; ctx.font = fs(12);
+    ctx.fillText(`불러온 백업 ${lb.files}개 · 학생 ${lb.rows.length}명`, LW - 24, 116);
+    ctx.textAlign = 'left';
+
+    // 표 헤더
+    const rows = leaderboardSorted();
+    const cols = [
+      { x: 30, label: '순위', align: 'left' },
+      { x: 66, label: '이름', align: 'left' },
+      { x: 330, label: '안아준 마음', align: 'right' },
+      { x: 470, label: '정답률', align: 'right' },
+      { x: 560, label: 'S등급', align: 'right' },
+      { x: 640, label: '완주', align: 'right' },
+    ];
+    let ty = 232;
+    ctx.fillStyle = '#9aa0b6'; ctx.font = fs(12, true);
+    for (const c of cols) { ctx.textAlign = c.align; ctx.fillText(c.label, c.x, ty); }
+    ctx.strokeStyle = '#2a3050'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(24, ty + 6); ctx.lineTo(LW - 24, ty + 6); ctx.stroke();
+    ty += 26;
+
+    if (!rows.length) {
+      ctx.textAlign = 'center'; ctx.fillStyle = '#667088'; ctx.font = fs(14);
+      ctx.fillText('아직 불러온 백업이 없어요 — 「백업 파일 불러오기」로 시작하세요.', LW / 2, 300);
+    }
+    const visible = Math.min(rows.length, 11); // 화면에 들어가는 만큼만
+    for (let i = 0; i < visible; i++) {
+      const r = rows[i];
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : String(i + 1);
+      ctx.font = fs(13);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = i < 3 ? themeAccent() : '#c8ccdc';
+      ctx.fillText(medal, cols[0].x, ty);
+      ctx.fillStyle = '#fff'; ctx.font = fs(14, i < 3);
+      ctx.fillText(r.name + (r.done ? '' : ''), cols[1].x, ty);
+      ctx.font = fs(13);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#e0453a'; ctx.fillText('♥ ' + r.mercy, cols[2].x, ty);
+      ctx.fillStyle = r.attempted ? (r.rate >= 0.8 ? okColor() : r.rate >= 0.6 ? warnColor() : badColor()) : '#667088';
+      ctx.fillText(r.attempted ? Math.round(r.rate * 100) + '%' : '—', cols[3].x, ty);
+      ctx.fillStyle = r.sRank ? '#ffd644' : '#667088';
+      ctx.fillText(String(r.sRank), cols[4].x, ty);
+      ctx.fillStyle = r.done ? okColor() : '#667088';
+      ctx.fillText(r.done ? '완주' : '진행', cols[5].x, ty);
+      ty += 22;
+    }
+    if (rows.length > visible) {
+      ctx.textAlign = 'left'; ctx.fillStyle = '#667088'; ctx.font = fs(11);
+      ctx.fillText(`…외 ${rows.length - visible}명 (CSV로 전체 내보내기)`, cols[1].x, ty + 2);
+    }
+
+    // 토스트
+    ctx.textAlign = 'center';
+    if (lb.toast > 0) {
+      ctx.fillStyle = okColor(); ctx.font = fs(14, true);
+      ctx.fillText('✓ 처리했어요 (CSV는 엑셀·구글시트에서 열려요)', LW / 2, 508);
+    } else if (lb.toast === -300) {
+      ctx.fillStyle = warnColor(); ctx.font = fs(13, true);
+      ctx.fillText('불러올 학생 기록이 없어요 — 게임의 데이터 백업(.json)을 골라 주세요.', LW / 2, 508);
+    } else if (lb.toast < 0) {
+      ctx.fillStyle = badColor(); ctx.font = fs(13, true);
+      ctx.fillText('이 환경에서는 할 수 없어요 (브라우저에서 시도해 주세요)', LW / 2, 508);
+    } else {
+      ctx.fillStyle = '#667088'; ctx.font = fs(12);
+      ctx.fillText('↑↓ 선택 · Z 실행 · X 닫기', LW / 2, 508);
+    }
+    ctx.textAlign = 'left';
+  }
+
   // ---------- 수업 모드 (챕터 바로 시작) ----------
   // 선생님이 오늘 수업할 챕터부터 바로 시작하게 해 준다.
   // 수업 기본 상태 flags — 새 모험 + 박사 대화 완료 (각 챕터 항목이 chapterNClear를 얹는다)
@@ -8464,6 +8704,11 @@
   // 파이널 「고요의 뜰 → 코어」 수업 특별 항목 (sel = -5)
   const FINAL_SEL = -5;
   const MIN_SEL = FINAL_SEL; // 선택기 하한
+  // Y-18 — 수업 선택기 값 → 사전/사후 세트 장 키. 파이널(FINAL_SEL)은 세트 없음(null).
+  function classSelToChKey(sel) {
+    return sel === TRACE_SEL ? 'trace' : sel === TILT_SEL ? 'tilt' : sel === RUMOR_SEL ? 'rumor'
+      : sel === ARCADE_SEL ? 'arcade' : sel === COZY_SEL ? 'cozy' : null;
+  }
   // 지금 슬롯의 진행(chapterNClear)에 맞는 특별 항목을 고른다 — 「선생님 방」을 열 때
   // 커서가 실제 진행에 가까운 장에서 시작하게 한다(v1 숫자 스테이지는 더 이상 쓰지 않는다).
   function classSelForFlags(flags) {
@@ -8615,6 +8860,10 @@
         else if (cm.sel === TILT_SEL) applyTiltStreetClass();
         else if (cm.sel === TRACE_SEL) applyTraceRoomClass();
         cm.confirm = false;
+        // Y-18 — 그 장에 사전/사후 세트가 있으면 수업 시작 직전 옵트인 사전 점검을 연다(스킵 가능).
+        // 파이널 등 세트가 없는 항목은 기존대로 적용 안내(toast) 후 월드로.
+        const chKey = classSelToChKey(cm.sel);
+        if (chKey && PREPOST_CH[chKey]) { openPrepost('pre', chKey, cm.ret); return; }
         cm.toast = 90;
         Sound.badge();
         return;
@@ -8715,6 +8964,184 @@
       ctx.fillText('※ 미리 「데이터 백업」을 해 두면 안전해요.', LW / 2, 388);
     }
     ctx.textAlign = 'left';
+  }
+
+  // ---------- Y-18 사전/사후 점검 (수업 효과 측정) ----------
+  // 수업 시작 시 옵트인 사전 점검 5문항(그 장 주제 고정 세트) → 슬롯 메타에 저장,
+  // 장 보스 클리어 후 같은 문항으로 사후 점검 → 향상도를 CSV에 담는다. 전부 로컬·스킵 가능.
+  // 저장 스키마 변경(meta.prepost) — 없던 슬롯은 그냥 빈 값으로 취급(하위 호환).
+  const PREPOST_CH = {
+    trace: { n: 1, label: '1장 · 개인정보·동의', topics: ['privacy', 'consent', 'footprint', 'copyright', 'identity'] },
+    tilt: { n: 2, label: '2장 · 경청·편향', topics: ['listen', 'bias', 'filterbubble', 'balance', 'emotion'] },
+    rumor: { n: 3, label: '3장 · 가짜 정보 분별', topics: ['fake', 'rumor', 'genai', 'deepfake', 'transparency'] },
+    arcade: { n: 4, label: '4장 · 절제·다크패턴', topics: ['balance', 'footprint', 'saving', 'persuasion', 'safety'] },
+    cozy: { n: 5, label: '5장 · 관계·책임', topics: ['manners', 'emotion', 'responsibility', 'safety', 'excuse'] },
+  };
+  const PREPOST_CH_BY_N = { 1: 'trace', 2: 'tilt', 3: 'rumor', 4: 'arcade', 5: 'cozy' };
+  const PREPOST_LEN = 5;
+  // 그 장 주제에서 고정 순서로 5문항을 뽑는다(사전·사후가 반드시 같은 세트가 되도록 결정론적).
+  function prepostQuizzes(chKey) {
+    const spec = PREPOST_CH[chKey];
+    if (!spec) return [];
+    const out = [];
+    // 1차 — 각 주제의 첫 문제 하나씩
+    for (const t of spec.topics) {
+      const arr = QUIZZES[t];
+      if (arr && arr.length && out.length < PREPOST_LEN) out.push(Object.assign({ topic: t }, arr[0]));
+    }
+    // 2차 — 5개가 안 차면 같은 주제의 다음 문제로 결정론적으로 채운다
+    for (let round = 1; out.length < PREPOST_LEN && round < 6; round++) {
+      for (const t of spec.topics) {
+        const arr = QUIZZES[t] || [];
+        if (arr[round] && out.length < PREPOST_LEN) out.push(Object.assign({ topic: t }, arr[round]));
+      }
+    }
+    return out.slice(0, PREPOST_LEN);
+  }
+  // meta.prepost[ch] = { pre: {score,total,at}, post: {...} } — 슬롯 메타에 저장(백업에 자동 포함).
+  function getPrepost(slot, ch) {
+    const m = getMeta(slot);
+    return (m.prepost && m.prepost[ch]) || {};
+  }
+  function recordPrepost(slot, ch, kind, score, total) {
+    try {
+      const m = getMeta(slot);
+      m.prepost = m.prepost || {};
+      m.prepost[ch] = m.prepost[ch] || {};
+      m.prepost[ch][kind] = { score, total, at: Date.now() };
+      localStorage.setItem(metaKey(slot), JSON.stringify(m));
+    } catch (e) { /* 저장 불가 환경이면 무시 — 표시는 그대로 진행 */ }
+  }
+  function openPrepost(kind, ch, ret) {
+    const quizzes = prepostQuizzes(ch);
+    if (!quizzes.length) { game.mode = ret; return; } // 세트가 없으면(파이널 등) 그냥 건너뛴다
+    game.prepost = { ret, ch, kind, quizzes, idx: 0, qCursor: 0, choiceOrder: null, score: 0, phase: 'intro', feedback: null };
+    game.mode = 'prepost';
+    Sound.select();
+  }
+  function startPrepostQ() {
+    const pp = game.prepost;
+    const m = pp.quizzes[pp.idx];
+    pp.choiceOrder = shuffled(m.a.map((_, i) => i));
+    pp.qCursor = 0; pp.feedback = null; pp.phase = 'question';
+    speakQuiz(m.q, pp.choiceOrder.map((ai) => m.a[ai]));
+  }
+  function finishPrepost() {
+    const pp = game.prepost;
+    pp.phase = 'done';
+    recordPrepost(game.currentSlot, pp.ch, pp.kind, pp.score, pp.quizzes.length);
+    Sound.badge();
+  }
+  function updatePrepost() {
+    const pp = game.prepost;
+    if (!pp) { game.mode = 'world'; return; }
+    if (pp.phase === 'intro') {
+      if (justPressed('action')) { startPrepostQ(); Sound.select(); return; }
+      if (justPressed('cancel') || justPressed('menu')) { game.mode = pp.ret; game.prepost = null; Sound.select(); } // 건너뛰기(스킵 가능)
+      return;
+    }
+    if (pp.phase === 'question') {
+      const m = pp.quizzes[pp.idx];
+      const len = m.a.length;
+      if (justPressed('up')) { pp.qCursor = (pp.qCursor + len - 1) % len; Sound.blip(); }
+      if (justPressed('down')) { pp.qCursor = (pp.qCursor + 1) % len; Sound.blip(); }
+      if (justPressed('action')) {
+        const correct = pp.choiceOrder[pp.qCursor] === m.c;
+        if (correct) pp.score += 1;
+        pp.feedback = { correct, why: m.why };
+        pp.phase = 'feedback';
+        speakFeedback(correct, m.why);
+        Sound[correct ? 'correct' : 'wrong']();
+      }
+      return;
+    }
+    if (pp.phase === 'feedback') {
+      if (justPressed('action') || justPressed('cancel')) {
+        pp.idx += 1;
+        if (pp.idx >= pp.quizzes.length) finishPrepost();
+        else startPrepostQ();
+        Sound.select();
+      }
+      return;
+    }
+    if (pp.phase === 'done') {
+      if (justPressed('action') || justPressed('cancel') || justPressed('menu')) {
+        const ret = pp.ret; game.prepost = null; game.mode = ret; Sound.select();
+      }
+      return;
+    }
+  }
+  function drawPrepost() {
+    const pp = game.prepost;
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, LW, LH);
+    if (!pp) return;
+    const spec = PREPOST_CH[pp.ch] || { label: '' };
+    const kindLabel = pp.kind === 'pre' ? '사전 점검' : '사후 점검';
+    ctx.textAlign = 'left'; ctx.fillStyle = '#ffd644'; ctx.font = fs(15, true);
+    ctx.fillText(`${kindLabel} · ${spec.label}`, 24, 34);
+
+    if (pp.phase === 'intro') {
+      ctx.fillStyle = '#fff'; ctx.font = fs(18, true);
+      ctx.textAlign = 'center';
+      ctx.fillText(pp.kind === 'pre' ? '수업 전, 5문항으로 지금 실력을 확인해요' : '수업 후, 같은 5문항으로 얼마나 늘었는지 봐요', LW / 2, 200);
+      ctx.fillStyle = '#aaa'; ctx.font = fs(14);
+      ctx.fillText('정답을 몰라도 괜찮아요 — 성적이 아니라 성장 기록이에요.', LW / 2, 236);
+      ctx.fillText('건너뛰어도 수업 진행에는 아무 영향이 없어요.', LW / 2, 262);
+      ctx.fillStyle = '#fff'; ctx.font = fs(15, true);
+      ctx.fillText('Z: 5문항 풀기   ·   X: 건너뛰기', LW / 2, 320);
+      ctx.textAlign = 'left';
+      return;
+    }
+    if (pp.phase === 'done') {
+      const total = pp.quizzes.length;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fff'; ctx.font = fs(20, true);
+      ctx.fillText(`${kindLabel} 결과 — ${pp.score} / ${total}`, LW / 2, 180);
+      const prev = getPrepost(game.currentSlot, pp.ch);
+      if (pp.kind === 'post' && prev.pre) {
+        const prePct = Math.round(prev.pre.score / prev.pre.total * 100);
+        const postPct = Math.round(pp.score / total * 100);
+        const diff = postPct - prePct;
+        ctx.fillStyle = '#aaa'; ctx.font = fs(15);
+        ctx.fillText(`사전 ${prePct}%  →  사후 ${postPct}%`, LW / 2, 224);
+        ctx.fillStyle = diff > 0 ? okColor() : diff < 0 ? warnColor() : '#aaa';
+        ctx.font = fs(17, true);
+        ctx.fillText(diff >= 0 ? `향상도 +${diff}%p 🌱` : `향상도 ${diff}%p`, LW / 2, 258);
+      } else if (pp.kind === 'pre') {
+        ctx.fillStyle = '#aaa'; ctx.font = fs(14);
+        ctx.fillText('수업이 끝나면 같은 문항으로 다시 확인해요.', LW / 2, 224);
+      }
+      ctx.fillStyle = '#777'; ctx.font = fs(13);
+      ctx.fillText('Z / X: 계속', LW / 2, 320);
+      ctx.textAlign = 'left';
+      return;
+    }
+    // question / feedback — 진행 표시 + 문제/선택지(배틀 퀴즈와 같은 형태)
+    const m = pp.quizzes[pp.idx];
+    ctx.textAlign = 'right'; ctx.fillStyle = '#888'; ctx.font = fs(13);
+    ctx.fillText(`${pp.idx + 1} / ${pp.quizzes.length}`, LW - 24, 34);
+    ctx.textAlign = 'left';
+    const qMaxW = LW - 24 - 56, cMaxW = LW - 24 - 72, gap = 6;
+    const boxY = 70;
+    utBox(12, boxY, LW - 24, LH - boxY - 16, 8);
+    ctx.fillStyle = '#fff'; ctx.font = fs(16);
+    let ty = drawQuestionText(m.q, 34, boxY + 30, qMaxW, lh(24)) + lh(10);
+    if (pp.phase === 'question') {
+      for (let i = 0; i < pp.choiceOrder.length; i++) {
+        ty += drawChoiceWrapped(`${i + 1}. ${m.a[pp.choiceOrder[i]]}`, 38, ty, i === pp.qCursor, cMaxW, lh(22)) + gap;
+      }
+      ctx.fillStyle = '#777'; ctx.font = fs(12); ctx.textAlign = 'center';
+      ctx.fillText('↑↓ 고르기 · Z 결정', LW / 2, LH - 26); ctx.textAlign = 'left';
+    } else if (pp.phase === 'feedback') {
+      ctx.fillStyle = pp.feedback.correct ? okColor() : badColor();
+      ctx.font = fs(18, true);
+      ctx.fillText(pp.feedback.correct ? '○ 정답!' : '✕ 아쉬워요', 38, ty + lh(6));
+      ty += lh(30);
+      ctx.fillStyle = '#ddd'; ctx.font = fs(14);
+      ty = drawQuestionText(pp.feedback.why, 38, ty, cMaxW, lh(22));
+      ctx.fillStyle = '#777'; ctx.font = fs(12); ctx.textAlign = 'center';
+      ctx.fillText('Z: 다음', LW / 2, LH - 26); ctx.textAlign = 'left';
+    }
   }
 
   // ---------- 교사용 학생 진단 리포트 (U3) ----------
@@ -9053,6 +9480,43 @@
     const lines = layoutLine(text, maxW);
     for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], x, y + i * lineH);
     return lines.length;
+  }
+
+  // Y-13 — 큰 글씨 모드 오버플로 실렌더 검사(테스트 훅).
+  // 데이터의 대사/주장/조사 플레이버 문자열을 현재 폰트(fs 배율 반영)로 실제 줄바꿈해,
+  // 어떤 줄도 대화 상자 폭(dialogMaxW)을 넘지 않는지 measureText 실값으로 확인한다.
+  // layoutLine이 charBreak로 강제 접기 때문에 정상이면 overCount=0이어야 한다.
+  // 넘치는 문구가 나오면 그 원문을 돌려 줘, 데이터에서 줄바꿈을 손보게 한다.
+  function checkTextOverflow() {
+    const dialogMaxW = LW - 24 - 48; // drawDialog·drawQuestionText가 쓰는 폭
+    const texts = [];
+    const pushT = (t) => { if (t && typeof t === 'string') texts.push(t); };
+    // 설득 배틀 — 인물의 주장·힌트·마음말·패턴 응답(전부 상자에 그려지는 대사)
+    for (const p of Object.values(PERSUADE)) {
+      for (const c of (p.claims || [])) { pushT(c.text); pushT(c.hint); pushT(c.fragment); pushT(c.mercyReply); }
+      ['mercy', 'shadowReply', 'parcelReply', 'tiltReply', 'temptReply', 'gazeReply',
+        'truthReply', 'doorReply', 'nearReply', 'junkReply', 'decoyReply'].forEach((k) => pushT(p[k]));
+    }
+    // 맵 조사 플레이버·기억의 별·소품 조사문(조사 시 대화 상자에 뜨는 문장)
+    for (const m of Object.values(MAPS)) {
+      for (const fl of (m.flavors || [])) { pushT(fl.text); pushT(fl.bandi); }
+      if (m.star) pushT(m.star.text);
+    }
+    for (const list of Object.values(MAP_PROPS || {})) for (const p of list) pushT(p.text);
+    ctx.font = fs(16); // drawDialog 본문 폰트(큰 글씨면 TF 배율이 실린다)
+    let worst = null, worstW = 0;
+    const over = [];
+    for (const t of texts) {
+      for (const part of String(t).split('\n')) {
+        for (const ln of layoutLine(part, dialogMaxW)) {
+          const w = ctx.measureText(ln).width;
+          if (w > worstW) { worstW = w; worst = ln; }
+          if (w > dialogMaxW + 0.5) over.push({ line: ln, w: Math.round(w) });
+        }
+      }
+    }
+    return { dialogMaxW: Math.round(dialogMaxW), worstW: Math.round(worstW), worst,
+      overCount: over.length, over: over.slice(0, 5), sampled: texts.length };
   }
 
   // wrapText와 같은 규칙으로 줄 수만 센다(그리지 않음). 박스 높이를 미리 잡을 때 쓴다.
@@ -10355,16 +10819,245 @@
 
   // 마음 조각 배틀 — 상대 턴(탄막 회피 + 듣기 턴의 조각 줍기)을 한 상자 안에서 그린다.
   // R라운드 — 패턴별 조작 안내 한 줄 (연습 파도에는 접두어가 붙는다)
-  const PATTERN_GUIDES = {
-    shadow: '그림자가 내 길을 따라온다 — 같은 길을 돌지 말자!',
-    parcel: '내 정보 꾸러미를 ↩에 돌려주자 · 공짜 🎁는 미끼!',
-    tilt: '밝은 반례 구슬만 ⚖ 접시로 — 어두운 편식 구슬은 함정',
-    verify: '🛑에 멈춰 원본과 대조 → 조각을 참/거짓 구멍에!',
-    tempt: '곁에서 확률표를 읽자 — 멀리서 버텨도 돼!',
-    cozy: '담요는 포근하지만 시간이 샌다 — 문이 열리면 나가자!',
-    quiet: '…곁에 있어 주자. 어둠이 조금씩 걷힌다.',
-    truth: '[진]만 잡자 — [낚]은 그럴듯한 가짜',
+  // ── Y-14/Y-15 패턴 레지스트리 ──
+  // R라운드 행동 배틀의 init(파도 초기 상태)·update(로직)·draw(주 오브젝트)·
+  // drawStatus(파도 시간 바 아래 표시)·guide(조작 안내)를 패턴별로 한곳에 모은다.
+  // enterWave·updateWave·drawPersuadeArena의 분기가 전부 이 표를 참조하게 해,
+  // 새 패턴 추가/수정이 한 항목으로 끝나고 오타로 인한 분기 누락이 생기지 않게 한다.
+  // (update/draw 로직 자체는 기존 함수를 그대로 재사용 — 동작 완전 동일.)
+
+  // init(b, box): 파도가 시작될 때의 패턴별 하위 상태. 누적 카운터(b.parcelDeliveries 등)는
+  // 파도를 넘어 이어지므로 여기서 승계한다. 미끼/함정 슬롯도 함께 초기화한다.
+  function initShadow(b) {
+    return { trail: [], tired: b.shadowTired || 0, checkT: 60, refX: b.arena.soul.x, refY: b.arena.soul.y };
+  }
+  function initParcel(b, box) {
+    return { obj: null, deliveries: b.parcelDeliveries || 0, spawnTimer: 90,
+      hole: { x: box.x + box.w - 18, y: box.y + box.h / 2 }, decoy: null, decoyTimer: 200 };
+  }
+  function initTilt(b, box) {
+    return { orb: null, deliveries: b.tiltDeliveries || 0, spawnTimer: 90,
+      drift: [0.9, 0.6, 0.3, 0][Math.min(b.tiltDeliveries || 0, 3)],
+      plate: { x: box.x + box.w - 18, y: box.y + box.h / 2 }, junk: null, junkTimer: 160 };
+  }
+  function initTempt(b) { return { obj: null, resisted: b.temptResisted || 0, spawnTimer: 60 }; }
+  function initTruth(b) { return { obj: null, caught: b.truthCaught || 0, spawnTimer: 60, nextKind: 'real' }; }
+  function initVerify(b) { return { obj: null, spawnTimer: 70, idx: b.verifyIdx || 0, judged: b.verifyJudged || 0, slowT: 0, stopCd: 0 }; }
+  function initCozy(b) { return { doorT: 150, door: null, doorOpenT: 0, drainT: 0, exits: b.cozyExits || 0 }; }
+  function initQuiet(b, box) { return { spot: { x: box.x + box.w / 2, y: box.y + 50 }, nearT: 0, warm: b.quietWarm || 0 }; }
+
+  // draw(b, box): 주 오브젝트 그리기 — 호출부에서 textAlign='center'가 걸린 상태로 진입한다.
+  function drawParcel(b, box) {
+    const arena = b.arena;
+    const pc = b.wave.parcel;
+    ctx.fillStyle = '#7bd1f0';
+    ctx.fillRect(pc.hole.x - 9, pc.hole.y - 9, 18, 18);
+    ctx.fillStyle = '#000'; ctx.font = fs(11);
+    ctx.fillText('↩', pc.hole.x, pc.hole.y + 4);
+    if (pc.obj) { ctx.fillStyle = '#f0c060'; ctx.font = fs(16); ctx.fillText('▣', pc.obj.x, pc.obj.y + 5); }
+    if (arena.carrying) { ctx.fillStyle = '#f0c060'; ctx.font = fs(13); ctx.fillText('▣', arena.soul.x + 10, arena.soul.y - 8); }
+    if (pc.decoy) {
+      const tw = !game.reduceFx && Math.floor(game.time / 8) % 2 === 0;
+      ctx.fillStyle = tw ? '#fff2a8' : '#ffd644'; ctx.font = fs(16);
+      ctx.fillText('🎁', pc.decoy.x, pc.decoy.y + 5);
+      ctx.font = fs(10); ctx.fillText('공짜!', pc.decoy.x, pc.decoy.y - 12);
+    }
+  }
+  function drawTilt(b, box) {
+    const arena = b.arena;
+    const tl = b.wave.tilt;
+    ctx.fillStyle = '#e0a53a';
+    ctx.fillRect(tl.plate.x - 9, tl.plate.y - 9, 18, 18);
+    ctx.fillStyle = '#000'; ctx.font = fs(11);
+    ctx.fillText('⚖', tl.plate.x, tl.plate.y + 4);
+    ctx.fillStyle = '#e0a53a'; ctx.font = fs(10);
+    ctx.fillText('저울 접시', tl.plate.x, tl.plate.y - 16);
+    if (tl.orb) {
+      ctx.fillStyle = '#8ecbff'; ctx.font = fs(16); ctx.fillText('◍', tl.orb.x, tl.orb.y + 5);
+      ctx.font = fs(10); ctx.fillText('반례', tl.orb.x, tl.orb.y - 12);
+    }
+    if (arena.carrying) { ctx.fillStyle = '#8ecbff'; ctx.font = fs(13); ctx.fillText('◍', arena.soul.x + 10, arena.soul.y - 8); }
+    if (tl.junk) { // 반례(◍)와 다른 글리프(▼) — 색만으로 구분하지 않는다
+      ctx.fillStyle = '#6b5a86'; ctx.font = fs(15); ctx.fillText('▼', tl.junk.x, tl.junk.y + 5);
+      ctx.font = fs(11, true); ctx.fillText('편식', tl.junk.x, tl.junk.y - 12);
+    }
+  }
+  function drawTempt(b, box) {
+    const tp = b.wave.tempt;
+    if (tp.obj) {
+      const near = !game.reduceFx && tp.obj.age > 180 && Math.floor(game.time / 6) % 2 === 0;
+      ctx.fillStyle = near ? '#fff2a8' : '#ffd644';
+      ctx.font = fs(18);
+      ctx.fillText('✧', tp.obj.x, tp.obj.y + 6);
+      ctx.font = fs(9);
+      ctx.fillStyle = '#9a93b0';
+      ctx.fillText('레전드 1.5%', tp.obj.x, tp.obj.y + 20);
+      ctx.fillStyle = near ? '#fff2a8' : '#ffd644';
+      ctx.font = fs(10);
+      ctx.fillText('지금 누르면 대박!', tp.obj.x, tp.obj.y - 12);
+      if (tp.obj.gazeT > 0) { // 응시 진행 링
+        ctx.strokeStyle = '#8ecbff'; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(tp.obj.x, tp.obj.y, 26, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (tp.obj.gazeT / patEase().gaze));
+        ctx.stroke();
+      }
+    }
+  }
+  function drawVerify(b, box) {
+    const arena = b.arena;
+    const vf = b.wave.verify;
+    // 원본 카드 (상자 위)
+    ctx.fillStyle = 'rgba(123,209,240,0.14)';
+    ctx.fillRect(box.x + box.w / 2 - 120, box.y - 30, 240, 20);
+    ctx.fillStyle = '#7bd1f0'; ctx.font = fs(13, true);
+    ctx.fillText(b.p.verifyCard || '원본 기록', box.x + box.w / 2, box.y - 15);
+    // 판정 구멍
+    ctx.fillStyle = okColor();
+    ctx.fillRect(box.x + 7, box.y + box.h / 2 - 9, 18, 18);
+    ctx.fillStyle = '#000'; ctx.font = fs(10, true); ctx.fillText('참', box.x + 16, box.y + box.h / 2 + 4);
+    ctx.fillStyle = badColor();
+    ctx.fillRect(box.x + box.w - 25, box.y + box.h / 2 - 9, 18, 18);
+    ctx.fillStyle = '#000'; ctx.fillText('거짓', box.x + box.w - 16, box.y + box.h / 2 + 4);
+    // 멈춤존 (하단 중앙) — 쿨다운은 줄어드는 링 + '쉬는 중' 표시로 알린다
+    const szx = box.x + box.w / 2, szy = box.y + box.h - 15;
+    ctx.fillStyle = vf.stopCd > 0 ? '#444' : '#e0453a';
+    ctx.font = fs(13);
+    ctx.fillText('🛑', szx, szy + 3);
+    if (vf.stopCd > 0) {
+      ctx.strokeStyle = '#666'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(szx, szy, 13, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (vf.stopCd / 240));
+      ctx.stroke();
+      ctx.fillStyle = '#888'; ctx.font = fs(9);
+      ctx.fillText('쉬는 중…', szx, szy - 18);
+    }
+    if (vf.slowT > 0) {
+      ctx.fillStyle = 'rgba(142,203,255,0.7)'; ctx.font = fs(11);
+      ctx.fillText('…세상이 느려졌다', szx, szy - 18);
+    }
+    // 조각(딱지 포함) — 들고 있으면 하트 옆에
+    if (vf.obj) {
+      ctx.fillStyle = '#fff'; ctx.font = fs(12, true);
+      ctx.fillText('[속보]', vf.obj.x, vf.obj.y - 10);
+      ctx.font = fs(13, true); ctx.fillStyle = '#ffd644';
+      ctx.fillText(vf.obj.piece.label, vf.obj.x, vf.obj.y + 7);
+    }
+    if (arena.carrying && vf.carry) {
+      ctx.fillStyle = '#ffd644'; ctx.font = fs(13, true);
+      ctx.fillText(vf.carry.label, arena.soul.x, arena.soul.y - 15);
+    }
+  }
+  function drawTruth(b, box) {
+    const tr = b.wave.truth;
+    if (tr.obj) {
+      const isReal = tr.obj.kind === 'real';
+      ctx.fillStyle = isReal ? okColor() : badColor();
+      ctx.font = fs(14, true);
+      ctx.fillText(isReal ? '[진]' : '[낚]', tr.obj.x, tr.obj.y + 5);
+    }
+  }
+  function drawShadow(b, box) {
+    const sh = b.wave.shadow;
+    const ghost = sh.trail.length >= patEase().shadowDelay ? sh.trail[0] : null;
+    if (ghost) {
+      ctx.fillStyle = 'rgba(160,160,180,0.55)';
+      ctx.font = fs(17);
+      ctx.fillText('♥', ghost.x, ghost.y + 6);
+      ctx.font = fs(9); ctx.fillStyle = '#9a93b0';
+      ctx.fillText('그림자', ghost.x, ghost.y - 12);
+    }
+    ctx.font = fs(14);
+    for (let i = 0; i < 3; i++) {
+      ctx.fillStyle = i < (sh.tired || 0) ? '#8ecbff' : '#555';
+      ctx.fillText('●', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
+    }
+  }
+  function drawCozy(b, box) {
+    const arena = b.arena;
+    const cz = b.wave.cozy;
+    ctx.fillStyle = 'rgba(224,165,131,0.16)';
+    ctx.beginPath(); ctx.arc(box.x + box.w / 2, box.y + box.h / 2, 42, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e0a583'; ctx.font = fs(10);
+    ctx.fillText('담요', box.x + box.w / 2, box.y + box.h / 2 + 3);
+    if (cz.door) {
+      const blink = !game.reduceFx && cz.doorOpenT < 30 && Math.floor(game.time / 5) % 2 === 0;
+      ctx.fillStyle = blink ? '#fff' : '#8ecbff'; ctx.font = fs(15, true);
+      ctx.fillText('🚪', cz.door.x, cz.door.y + 5);
+      ctx.font = fs(9); ctx.fillText('열림!', cz.door.x, cz.door.y - 12);
+    }
+    // 벽시계 — 담요 안이면 바늘이 빨리 돈다
+    const cxk = box.x + box.w + 26, cyk = box.y + 16;
+    ctx.strokeStyle = '#e0a583'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(cxk, cyk, 10, 0, Math.PI * 2); ctx.stroke();
+    const spd = cz.inBlanket ? 6 : 60;
+    const ang = (game.time / spd) % (Math.PI * 2);
+    ctx.beginPath(); ctx.moveTo(cxk, cyk);
+    ctx.lineTo(cxk + Math.sin(ang) * 8, cyk - Math.cos(ang) * 8); ctx.stroke();
+    ctx.font = fs(14);
+    for (let i = 0; i < 3; i++) {
+      ctx.fillStyle = i < (cz.exits || 0) ? '#8ecbff' : '#555';
+      ctx.fillText('●', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
+    }
+  }
+  function drawQuiet(b, box) {
+    const q = b.wave.quiet;
+    const glow = q.near ? 0.5 + Math.sin(game.time / 10) * 0.15 : 0.22;
+    ctx.fillStyle = `rgba(200,210,255,${glow})`;
+    ctx.font = fs(15);
+    ctx.fillText('◌', q.spot.x, q.spot.y + 5);
+    if (q.near) { ctx.font = fs(9); ctx.fillStyle = '#8ecbff'; ctx.fillText('…곁', q.spot.x, q.spot.y - 12); }
+    ctx.font = fs(14);
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = i < (q.warm || 0) ? '#8ecbff' : '#555';
+      ctx.fillText('●', box.x + box.w - 96 + i * 18, box.y + box.h + 34);
+    }
+  }
+
+  // drawStatus(b, box): 파도 시간 바 아래의 진행 표시 — 호출부에서 textAlign='left'인 상태로 진입한다.
+  function drawTiltStatus(b, box) {
+    const tiltFrac = b.wave.tilt.drift / 0.9;
+    ctx.fillStyle = '#333'; ctx.fillRect(box.x, box.y + box.h + 22, box.w, 4);
+    ctx.fillStyle = '#e0a53a'; ctx.fillRect(box.x, box.y + box.h + 22, box.w * 0.5 * tiltFrac, 4);
+  }
+  function drawTemptStatus(b, box) {
+    const resisted = b.wave.tempt.resisted || 0;
+    ctx.font = fs(14);
+    for (let i = 0; i < 3; i++) {
+      ctx.fillStyle = i < resisted ? '#333' : '#ffd644';
+      ctx.fillText('●', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
+    }
+  }
+  function drawTruthStatus(b, box) {
+    const caught = b.wave.truth.caught || 0;
+    ctx.font = fs(14);
+    for (let i = 0; i < 3; i++) {
+      ctx.fillStyle = i < caught ? okColor() : '#555';
+      ctx.fillText('●', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
+    }
+  }
+
+  // 패턴 레지스트리 — 키는 data.js의 R_PATTERN_KEYS(화이트리스트)와 공유되는 단일 출처.
+  // 'rotate'(영이 메타)는 실제 패턴이 아니라 이들을 순환할 뿐이라 여기 없다.
+  const PATTERNS = {
+    shadow: { init: initShadow, update: updateShadow, draw: drawShadow,
+      guide: '그림자가 내 길을 따라온다 — 같은 길을 돌지 말자!' },
+    parcel: { init: initParcel, update: updateParcel, draw: drawParcel,
+      guide: '내 정보 꾸러미를 ↩에 돌려주자 · 공짜 🎁는 미끼!' },
+    tilt: { init: initTilt, update: updateTilt, draw: drawTilt, drawStatus: drawTiltStatus,
+      guide: '밝은 반례 구슬만 ⚖ 접시로 — 어두운 편식 구슬은 함정' },
+    verify: { init: initVerify, update: updateVerify, draw: drawVerify,
+      guide: '🛑에 멈춰 원본과 대조 → 조각을 참/거짓 구멍에!' },
+    tempt: { init: initTempt, update: updateTempt, draw: drawTempt, drawStatus: drawTemptStatus,
+      guide: '곁에서 확률표를 읽자 — 멀리서 버텨도 돼!' },
+    cozy: { init: initCozy, update: updateCozy, draw: drawCozy,
+      guide: '담요는 포근하지만 시간이 샌다 — 문이 열리면 나가자!' },
+    quiet: { init: initQuiet, update: updateQuiet, draw: drawQuiet,
+      guide: '…곁에 있어 주자. 어둠이 조금씩 걷힌다.' },
+    truth: { init: initTruth, update: updateTruth, draw: drawTruth, drawStatus: drawTruthStatus,
+      guide: '[진]만 잡자 — [낚]은 그럴듯한 가짜' }, // verify로 대체된 구 기믹(호환 유지)
   };
+  // 조작 안내는 레지스트리에서 파생 — guide 문구의 단일 출처.
+  const PATTERN_GUIDES = Object.fromEntries(Object.keys(PATTERNS).map((k) => [k, PATTERNS[k].guide]));
   function drawPersuadeArena(b) {
     const arena = b.arena, box = arena.box;
     // 인물의 외침 + 조작 안내 — 패턴이 있으면 패턴 안내가 우선
@@ -10415,6 +11108,7 @@
 
     // 고요(보스) — 어둠 속에서 하트 주변만 보인다(탄막은 어둠 밖에서 날아든다)
     const patDraw = b.phase === 'wave' ? activePattern(b) : null;
+    const activeD = patDraw && PATTERNS[patDraw]; // Y-14 패턴별 그리기 디스패치
     if ((patDraw === 'quiet' || (b.p.openMechanic === 'dark' && b.pState === 'open')) && b.phase === 'wave') drawDarkArenaVignette(b);
 
     if (b.phase === 'wave') {
@@ -10427,205 +11121,18 @@
         ctx.textAlign = 'left';
       }
       ctx.textAlign = 'center';
-      // 담아(보스) 정보 꾸러미 + 돌려주기 구멍 + 공짜 선물 미끼
-      if (patDraw === 'parcel') {
-        const pc = b.wave.parcel;
-        ctx.fillStyle = '#7bd1f0';
-        ctx.fillRect(pc.hole.x - 9, pc.hole.y - 9, 18, 18);
-        ctx.fillStyle = '#000'; ctx.font = fs(11);
-        ctx.fillText('↩', pc.hole.x, pc.hole.y + 4);
-        if (pc.obj) { ctx.fillStyle = '#f0c060'; ctx.font = fs(16); ctx.fillText('▣', pc.obj.x, pc.obj.y + 5); }
-        if (arena.carrying) { ctx.fillStyle = '#f0c060'; ctx.font = fs(13); ctx.fillText('▣', arena.soul.x + 10, arena.soul.y - 8); }
-        if (pc.decoy) {
-          const tw = !game.reduceFx && Math.floor(game.time / 8) % 2 === 0;
-          ctx.fillStyle = tw ? '#fff2a8' : '#ffd644'; ctx.font = fs(16);
-          ctx.fillText('🎁', pc.decoy.x, pc.decoy.y + 5);
-          ctx.font = fs(10); ctx.fillText('공짜!', pc.decoy.x, pc.decoy.y - 12);
-        }
-      }
-      // 기울(보스) 반례 구슬 + 저울 접시 + 편식 구슬(함정)
-      if (patDraw === 'tilt') {
-        const tl = b.wave.tilt;
-        ctx.fillStyle = '#e0a53a';
-        ctx.fillRect(tl.plate.x - 9, tl.plate.y - 9, 18, 18);
-        ctx.fillStyle = '#000'; ctx.font = fs(11);
-        ctx.fillText('⚖', tl.plate.x, tl.plate.y + 4);
-        ctx.fillStyle = '#e0a53a'; ctx.font = fs(10);
-        ctx.fillText('저울 접시', tl.plate.x, tl.plate.y - 16);
-        if (tl.orb) {
-          ctx.fillStyle = '#8ecbff'; ctx.font = fs(16); ctx.fillText('◍', tl.orb.x, tl.orb.y + 5);
-          ctx.font = fs(10); ctx.fillText('반례', tl.orb.x, tl.orb.y - 12);
-        }
-        if (arena.carrying) { ctx.fillStyle = '#8ecbff'; ctx.font = fs(13); ctx.fillText('◍', arena.soul.x + 10, arena.soul.y - 8); }
-        if (tl.junk) { // 반례(◍)와 다른 글리프(▼) — 색만으로 구분하지 않는다
-          ctx.fillStyle = '#6b5a86'; ctx.font = fs(15); ctx.fillText('▼', tl.junk.x, tl.junk.y + 5);
-          ctx.font = fs(11, true); ctx.fillText('편식', tl.junk.x, tl.junk.y - 12);
-        }
-      }
-      // 반짝(보스) 대박 버튼 — 곁에서 확률표를 읽으면(응시 링) 빛이 꺼진다
-      if (patDraw === 'tempt') {
-        const tp = b.wave.tempt;
-        if (tp.obj) {
-          const near = !game.reduceFx && tp.obj.age > 180 && Math.floor(game.time / 6) % 2 === 0;
-          ctx.fillStyle = near ? '#fff2a8' : '#ffd644';
-          ctx.font = fs(18);
-          ctx.fillText('✧', tp.obj.x, tp.obj.y + 6);
-          ctx.font = fs(9);
-          ctx.fillStyle = '#9a93b0';
-          ctx.fillText('레전드 1.5%', tp.obj.x, tp.obj.y + 20);
-          ctx.fillStyle = near ? '#fff2a8' : '#ffd644';
-          ctx.font = fs(10);
-          ctx.fillText('지금 누르면 대박!', tp.obj.x, tp.obj.y - 12);
-          if (tp.obj.gazeT > 0) { // 응시 진행 링
-            ctx.strokeStyle = '#8ecbff'; ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(tp.obj.x, tp.obj.y, 26, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (tp.obj.gazeT / patEase().gaze));
-            ctx.stroke();
-          }
-        }
-      }
-      // 그럴싸(보스) 「검증 절차」 — 원본 카드·[속보] 조각·참/거짓 구멍·멈춤존
-      if (patDraw === 'verify') {
-        const vf = b.wave.verify;
-        // 원본 카드 (상자 위)
-        ctx.fillStyle = 'rgba(123,209,240,0.14)';
-        ctx.fillRect(box.x + box.w / 2 - 120, box.y - 30, 240, 20);
-        ctx.fillStyle = '#7bd1f0'; ctx.font = fs(13, true);
-        ctx.fillText(b.p.verifyCard || '원본 기록', box.x + box.w / 2, box.y - 15);
-        // 판정 구멍
-        ctx.fillStyle = okColor();
-        ctx.fillRect(box.x + 7, box.y + box.h / 2 - 9, 18, 18);
-        ctx.fillStyle = '#000'; ctx.font = fs(10, true); ctx.fillText('참', box.x + 16, box.y + box.h / 2 + 4);
-        ctx.fillStyle = badColor();
-        ctx.fillRect(box.x + box.w - 25, box.y + box.h / 2 - 9, 18, 18);
-        ctx.fillStyle = '#000'; ctx.fillText('거짓', box.x + box.w - 16, box.y + box.h / 2 + 4);
-        // 멈춤존 (하단 중앙) — 쿨다운은 줄어드는 링 + '쉬는 중' 표시로 알린다
-        const szx = box.x + box.w / 2, szy = box.y + box.h - 15;
-        ctx.fillStyle = vf.stopCd > 0 ? '#444' : '#e0453a';
-        ctx.font = fs(13);
-        ctx.fillText('🛑', szx, szy + 3);
-        if (vf.stopCd > 0) {
-          ctx.strokeStyle = '#666'; ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(szx, szy, 13, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (vf.stopCd / 240));
-          ctx.stroke();
-          ctx.fillStyle = '#888'; ctx.font = fs(9);
-          ctx.fillText('쉬는 중…', szx, szy - 18);
-        }
-        if (vf.slowT > 0) {
-          ctx.fillStyle = 'rgba(142,203,255,0.7)'; ctx.font = fs(11);
-          ctx.fillText('…세상이 느려졌다', szx, szy - 18);
-        }
-        // 조각(딱지 포함) — 들고 있으면 하트 옆에
-        if (vf.obj) {
-          ctx.fillStyle = '#fff'; ctx.font = fs(12, true);
-          ctx.fillText('[속보]', vf.obj.x, vf.obj.y - 10);
-          ctx.font = fs(13, true); ctx.fillStyle = '#ffd644';
-          ctx.fillText(vf.obj.piece.label, vf.obj.x, vf.obj.y + 7);
-        }
-        if (arena.carrying && vf.carry) {
-          ctx.fillStyle = '#ffd644'; ctx.font = fs(13, true);
-          ctx.fillText(vf.carry.label, arena.soul.x, arena.soul.y - 15);
-        }
-      }
-      // (구) [진]/[낚] 잡기 — verify 미사용 프로필 호환
-      if (patDraw === 'truth') {
-        const tr = b.wave.truth;
-        if (tr.obj) {
-          const isReal = tr.obj.kind === 'real';
-          ctx.fillStyle = isReal ? okColor() : badColor();
-          ctx.font = fs(14, true);
-          ctx.fillText(isReal ? '[진]' : '[낚]', tr.obj.x, tr.obj.y + 5);
-        }
-      }
-      // 따라 「그림자 하트」
-      if (patDraw === 'shadow') {
-        const sh = b.wave.shadow;
-        const ghost = sh.trail.length >= patEase().shadowDelay ? sh.trail[0] : null;
-        if (ghost) {
-          ctx.fillStyle = 'rgba(160,160,180,0.55)';
-          ctx.font = fs(17);
-          ctx.fillText('♥', ghost.x, ghost.y + 6);
-          ctx.font = fs(9); ctx.fillStyle = '#9a93b0';
-          ctx.fillText('그림자', ghost.x, ghost.y - 12);
-        }
-        ctx.font = fs(14);
-        for (let i = 0; i < 3; i++) {
-          ctx.fillStyle = i < (sh.tired || 0) ? '#8ecbff' : '#555';
-          ctx.fillText('●', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
-        }
-      }
-      // 루미 「포근한 방」 — 담요·문·벽시계
-      if (patDraw === 'cozy') {
-        const cz = b.wave.cozy;
-        ctx.fillStyle = 'rgba(224,165,131,0.16)';
-        ctx.beginPath(); ctx.arc(box.x + box.w / 2, box.y + box.h / 2, 42, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#e0a583'; ctx.font = fs(10);
-        ctx.fillText('담요', box.x + box.w / 2, box.y + box.h / 2 + 3);
-        if (cz.door) {
-          const blink = !game.reduceFx && cz.doorOpenT < 30 && Math.floor(game.time / 5) % 2 === 0;
-          ctx.fillStyle = blink ? '#fff' : '#8ecbff'; ctx.font = fs(15, true);
-          ctx.fillText('🚪', cz.door.x, cz.door.y + 5);
-          ctx.font = fs(9); ctx.fillText('열림!', cz.door.x, cz.door.y - 12);
-        }
-        // 벽시계 — 담요 안이면 바늘이 빨리 돈다
-        const cxk = box.x + box.w + 26, cyk = box.y + 16;
-        ctx.strokeStyle = '#e0a583'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(cxk, cyk, 10, 0, Math.PI * 2); ctx.stroke();
-        const spd = cz.inBlanket ? 6 : 60;
-        const ang = (game.time / spd) % (Math.PI * 2);
-        ctx.beginPath(); ctx.moveTo(cxk, cyk);
-        ctx.lineTo(cxk + Math.sin(ang) * 8, cyk - Math.cos(ang) * 8); ctx.stroke();
-        ctx.font = fs(14);
-        for (let i = 0; i < 3; i++) {
-          ctx.fillStyle = i < (cz.exits || 0) ? '#8ecbff' : '#555';
-          ctx.fillText('●', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
-        }
-      }
-      // 고요 「아무 말 없음」 — 희미한 존재 (곁에 있으면 밝아진다)
-      if (patDraw === 'quiet') {
-        const q = b.wave.quiet;
-        const glow = q.near ? 0.5 + Math.sin(game.time / 10) * 0.15 : 0.22;
-        ctx.fillStyle = `rgba(200,210,255,${glow})`;
-        ctx.font = fs(15);
-        ctx.fillText('◌', q.spot.x, q.spot.y + 5);
-        if (q.near) { ctx.font = fs(9); ctx.fillStyle = '#8ecbff'; ctx.fillText('…곁', q.spot.x, q.spot.y - 12); }
-        ctx.font = fs(14);
-        for (let i = 0; i < 5; i++) {
-          ctx.fillStyle = i < (q.warm || 0) ? '#8ecbff' : '#555';
-          ctx.fillText('●', box.x + box.w - 96 + i * 18, box.y + box.h + 34);
-        }
-      }
+      // 패턴별 주 오브젝트 그리기 — 레지스트리 디스패치(Y-14). textAlign='center' 상태.
+      if (activeD && activeD.draw) activeD.draw(b, box);
       ctx.textAlign = 'left';
       // 남은 파도 시간 바
       const frac = Math.max(0, 1 - b.wave.t / b.wave.dur);
       ctx.fillStyle = '#333'; ctx.fillRect(box.x, box.y + box.h + 12, box.w, 6);
       ctx.fillStyle = '#ffd644'; ctx.fillRect(box.x, box.y + box.h + 12, box.w * frac, 6);
-      // 기울기 바 — 상자가 왼쪽으로 얼마나 기울어 있는지(왼쪽부터 채워지는 게이지)
-      if (patDraw === 'tilt') {
-        const tiltFrac = b.wave.tilt.drift / 0.9;
-        ctx.fillStyle = '#333'; ctx.fillRect(box.x, box.y + box.h + 22, box.w, 4);
-        ctx.fillStyle = '#e0a53a'; ctx.fillRect(box.x, box.y + box.h + 22, box.w * 0.5 * tiltFrac, 4);
-      }
-      // 반짝(보스) 조명 표시 — 버틴 횟수(resisted)만큼 조명이 하나씩 꺼진다
-      if (patDraw === 'tempt') {
-        const resisted = b.wave.tempt.resisted || 0;
-        ctx.font = fs(14);
-        for (let i = 0; i < 3; i++) {
-          ctx.fillStyle = i < resisted ? '#333' : '#ffd644';
-          ctx.fillText('●', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
-        }
-      }
-      // 그럴싸(보스) [진] 적중 표시 — 잡은 개수(caught)만큼 불이 들어온다
-      if (patDraw === 'truth') {
-        const caught = b.wave.truth.caught || 0;
-        ctx.font = fs(14);
-        for (let i = 0; i < 3; i++) {
-          ctx.fillStyle = i < caught ? okColor() : '#555';
-          ctx.fillText('●', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
-        }
-      }
+      // 파도 시간 바 아래 진행 표시 — 패턴별 drawStatus 디스패치(Y-14). textAlign='left' 상태.
+      // (기울기 바·반짝 조명·[진] 적중 표시가 각 패턴 drawStatus로 옮겨졌다.)
+      if (activeD && activeD.drawStatus) activeD.drawStatus(b, box);
       // 루미(보스) 축소 단계 표시 — 상자가 좁아진 단계만큼 채워지는 게이지(포근한 색)
+      // 이 표시는 특정 패턴이 아니라 shrink 기믹(루미) 전반에 걸린다 — 레지스트리 밖에 둔다.
       if (patDraw === 'cozy' || (b.p.openMechanic === 'shrink' && b.pState === 'open')) {
         const lvl = b.shrinkLevel || 0;
         ctx.fillStyle = '#333'; ctx.fillRect(box.x, box.y + box.h + 22, box.w, 4);
@@ -11391,9 +11898,17 @@
         updateDashboard();
         drawDashboard();
         break;
+      case 'leaderboard':
+        updateLeaderboard();
+        drawLeaderboard();
+        break;
       case 'classmode':
         updateClassMode();
         drawClassMode();
+        break;
+      case 'prepost':
+        updatePrepost();
+        drawPrepost();
         break;
       case 'report':
         updateReport();
@@ -11507,6 +12022,7 @@
   } catch (e) { /* 무시 */ }
 
   probeStorage(); // 저장 가능 여부 확인 (불가하면 타이틀에 경고 표시)
+  cleanStaleUndoSnapshots(); // Y-17b 오래된(30일+) 되돌리기 스냅샷 자동 정리
   // 새 버전 준비 알림 (index.html 서비스워커 감시가 호출) — 다음에 월드로 나올 때 안내
   window.__onNewVersion = () => {
     try {
@@ -11535,6 +12051,8 @@
     migrateSlotV6, migrateSlotV7, migrateSlotV8,
     loadSlot, writeSlot, slotSummary, // W-1 골든 세이브 픽스처·roundtrip 검증용
     buildBackupText, applyBackup, undoRestore, hasRestoreUndo,
+    cleanStaleUndoSnapshots, noteStorageFail, UNDO_TTL_MS, // Y-17 쿼터·스냅샷 정리 검증용
+    checkTextOverflow, // Y-13 큰 글씨 오버플로 실렌더 검사용
     deleteSlot, undoDeleteSlot, hasDeletedSlot, buildAdaptivePool, buildDailyPool,
     recordPlayDay, recordDailyDone, getMeta, todayStr,
     unlockedCount, getCosmetic, setCosmetic, achievementCtx,
@@ -11542,6 +12060,8 @@
     collectedCards, cardUnlocked, buildCertText, LEARN_CARDS, HOF_CATS,
     sanitizeName, probeStorage, getStorageOk: () => storageOk,
     buildClassCsv, csvCell, setupClassBaseFlags, classSelForFlags,
+    backupSlotRows, buildLeaderboardCsv, openLeaderboard, // Y-20 반 순위표 검증용
+    prepostQuizzes, openPrepost, recordPrepost, getPrepost, classSelToChKey, PREPOST_CH, // Y-18 사전/사후 점검
     applyTraceRoomClass, applyTiltStreetClass, applyRumorStreetClass,
     applyArcadeClass, applyCozyhomeClass, applyFinalClass,
     getPuzzleLog, writePuzzleLog, nextWaypoint, currentObjective: () => getObjective(game.flags, game.map), // 나침반/HUD 경로 — E2E가 '화살표 따라가기'를 재현할 때 사용
@@ -11559,6 +12079,8 @@
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록
     persuadeAvail: () => (game.battle ? availableClaims(game.battle).map((c) => c.text) : []),
     activePattern: () => (game.battle ? activePattern(game.battle) : null), // R라운드 검증용
+    patternKeys: () => Object.keys(PATTERNS), // Y-14 레지스트리 키(화이트리스트 정합성 검증용)
+    patternGuide: (k) => PATTERN_GUIDES[k], // Y-14 파생 guide 확인용
     battleObserve: () => (game.battle ? battleObserve(game.battle) : ''),
     // 파이널 「고요의 뜰」 — 맵별 어둠 단계 확인용
     QUIET_DIM_LEVEL,

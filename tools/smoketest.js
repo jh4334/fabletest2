@@ -734,7 +734,7 @@ const pauseIdx = (name) => vm.runInContext('window.__test.pauseItems()', sandbox
 check('일시정지 메뉴에 교사 항목 없음', !PAUSE_ORDER.includes('dashboard') && !PAUSE_ORDER.includes('report') &&
   !PAUSE_ORDER.includes('classmode') && !PAUSE_ORDER.includes('quizedit') && !PAUSE_ORDER.includes('cert'));
 check('일시정지 메뉴에 백업은 남음', PAUSE_ORDER.includes('backup'));
-check('선생님 방 항목 구성', TEACHER_ITEMS.join(',') === 'dashboard,report,classmode,quizedit,cert,close');
+check('선생님 방 항목 구성', TEACHER_ITEMS.join(',') === 'dashboard,leaderboard,report,classmode,quizedit,cert,close');
 // Y-8 도감(친구 수첩)은 「기억의 방」 허브 하위로 옮겨졌다 — 허브를 거쳐 연다.
 const memIdx = (name) => vm.runInContext('window.__test.memoryItems()', sandbox).indexOf(name);
 while (g.pauseCursor !== pauseIdx('memoryroom')) tap('ArrowDown');
@@ -948,9 +948,11 @@ const csv = T.buildClassCsv();
 const csvLines = csv.split('\r\n');
 check('CSV가 CRLF 줄바꿈 사용', csv.includes('\r\n'));
 check('CSV 헤더 행 존재', csvLines[0].startsWith('슬롯,이름,'));
-check('CSV 헤더 15개 열', csvLines[0].split(',').length === 15);
+check('CSV 헤더 18개 열(Y-18 사전/사후/향상도 3열 추가)', csvLines[0].split(',').length === 18);
 check('CSV 헤더에 연구용 지표 3열 포함', csvLines[0].includes('개념별 성취') &&
   csvLines[0].includes('자비 선택') && csvLines[0].includes('엔딩'));
+check('CSV 헤더에 Y-18 사전/사후/향상도 열 포함',
+  csvLines[0].includes('사전(%)') && csvLines[0].includes('사후(%)') && csvLines[0].includes('향상도(%p)'));
 // C4: CSV 수식 주입 방어 — 위험 문자로 시작하는 셀은 '로 고정
 check('=로 시작하는 값은 앞에 \' 부착', T.csvCell('=cmd()') === "'=cmd()");
 check('+로 시작하는 값도 방어', T.csvCell('+1+1') === "'+1+1");
@@ -960,7 +962,7 @@ check('일반 값은 그대로', T.csvCell('수호자') === '수호자');
 check('쉼표 포함 값은 따옴표로만(수식 아님)', T.csvCell('가,나') === '"가,나"');
 check('CSV 행 = 헤더 + 슬롯 3개', csvLines.length === 4);
 check('CSV 슬롯1 행이 슬롯 번호로 시작', csvLines[1].startsWith('1,'));
-check('CSV 슬롯1(데이터 있음) 15개 열', csvLines[1].split(',').length === 15);
+check('CSV 슬롯1(데이터 있음) 18개 열', csvLines[1].split(',').length === 18);
 
 console.log('[37] 적응형(맞춤) 학습 — 약점 집중 출제');
 const adaptive = T.buildAdaptivePool(0, 8);
@@ -3798,6 +3800,105 @@ console.log('[Y-1~Y-12] Y라운드 — 스토리·플레이 심화 (상실 비�
   for (const id of Object.keys(MY)) for (const fl of (MY[id].flavors || [])) if (fl.ngOnly) ng += 1;
   check('Y-12 ngOnly 플레이버 5개', ng === 5);
   check('Y-12 interact가 ngOnly를 flags.ng에서만 노출', /!v\.ngOnly \|\| game\.flags\.ng/.test(gsrc));
+}
+
+// ── Y-13~Y-20 2부(기술·교사) — 패턴 레지스트리 정합성 · 반 순위표 집계 ──
+console.log('[Y-14·Y-20] 패턴 레지스트리 정합성 · 반 순위표 집계');
+{
+  const T = windowObj.__test;
+  const { R_PATTERN_KEYS } = vm.runInContext('({ R_PATTERN_KEYS })', sandbox);
+  const gsrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
+
+  // Y-14 data.js가 패턴 화이트리스트의 단일 출처를 노출한다
+  check('Y-14 R_PATTERN_KEYS 단일 출처 존재', Array.isArray(R_PATTERN_KEYS) &&
+    R_PATTERN_KEYS.join(',') === 'shadow,parcel,tilt,verify,tempt,cozy,quiet,rotate');
+  // Y-14 game.js PATTERNS 레지스트리 키 ↔ 화이트리스트 정합
+  const pk = T.patternKeys();
+  check('Y-14 레지스트리에 8개 구체 패턴(truth 포함, rotate 제외)',
+    pk.length === 8 && pk.includes('truth') && !pk.includes('rotate'));
+  check('Y-14 rotate 제외 모든 화이트리스트 패턴이 레지스트리에 구현됨',
+    R_PATTERN_KEYS.filter((k) => k !== 'rotate').every((k) => pk.includes(k)));
+  // Y-14 PATTERN_GUIDES가 레지스트리에서 파생(단일 출처)
+  check('Y-14 guide는 레지스트리에서 파생', /Object\.fromEntries\(Object\.keys\(PATTERNS\)/.test(gsrc) &&
+    typeof T.patternGuide('shadow') === 'string' && T.patternGuide('shadow').length > 0);
+  // Y-14 영이(rotate) 순환 시퀀스가 전부 레지스트리 키
+  const rotSeq = (gsrc.match(/ROTATE_SEQ = \[([^\]]*)\]/) || [])[1] || '';
+  const rotKeys = rotSeq.split(',').map((s) => s.replace(/['\s]/g, '')).filter(Boolean);
+  check('Y-14 ROTATE_SEQ 전부 레지스트리 키', rotKeys.length > 0 && rotKeys.every((k) => pk.includes(k)));
+  // Y-14 updateWave·draw 분기가 레지스트리 디스패치로 통합됨(개별 if 체인 제거 확인)
+  check('Y-14 updateWave 레지스트리 디스패치', /activeP && activeP\.update/.test(gsrc));
+  check('Y-14 draw 레지스트리 디스패치', /activeD && activeD\.draw/.test(gsrc) && /activeD && activeD\.drawStatus/.test(gsrc));
+  check('Y-14 enterWave가 레지스트리 init로 파도 상태 구성',
+    /for \(const key of Object\.keys\(PATTERNS\)\) b\.wave\[key\] = PATTERNS\[key\]\.init/.test(gsrc));
+
+  // Y-18 사전/사후 점검 — 세트 결정론성·매핑·저장·CSV
+  const preTrace = T.prepostQuizzes('trace');
+  check('Y-18 장별 사전/사후 세트 5문항', preTrace.length === 5 && T.prepostQuizzes('tilt').length === 5 &&
+    T.prepostQuizzes('rumor').length === 5 && T.prepostQuizzes('arcade').length === 5 && T.prepostQuizzes('cozy').length === 5);
+  check('Y-18 사전=사후 동일 세트(결정론적)',
+    JSON.stringify(T.prepostQuizzes('trace').map((q) => q.q)) === JSON.stringify(preTrace.map((q) => q.q)));
+  check('Y-18 파이널 등 세트 없는 항목은 빈 배열', T.prepostQuizzes('final').length === 0);
+  check('Y-18 수업 선택기 값 → 장 키 매핑', T.classSelToChKey(0) === 'trace' && T.classSelToChKey(-1) === 'tilt' &&
+    T.classSelToChKey(-4) === 'cozy' && T.classSelToChKey(-5) === null);
+  // 저장·조회 왕복(슬롯 메타)
+  windowObj.__game.currentSlot = 0;
+  T.recordPrepost(0, 'trace', 'pre', 2, 5);
+  T.recordPrepost(0, 'trace', 'post', 4, 5);
+  const ppRec = T.getPrepost(0, 'trace');
+  check('Y-18 사전/사후 점수 슬롯 메타 저장·조회', ppRec.pre && ppRec.pre.score === 2 && ppRec.post && ppRec.post.score === 4);
+  // CSV에 사전/사후/향상도가 실제로 실린다 — 슬롯 0에 세이브가 있어야 행이 생긴다
+  storage.set('ai-ethics-adventure-slot-0', JSON.stringify({ v: 8, name: '측정아이', flags: { defeated: {}, mercy: 1 } }));
+  const csv18 = T.buildClassCsv().split('\r\n');
+  const h18 = csv18[0].split(',');
+  const iPre = h18.indexOf('사전(%)'), iPost = h18.indexOf('사후(%)'), iImp = h18.indexOf('향상도(%p)');
+  const row0 = csv18[1].split(',');
+  check('Y-18 CSV에 사전 40% · 사후 80% · 향상도 +40 반영',
+    row0[iPre] === '40' && row0[iPost] === '80' && row0[iImp] === '40');
+  storage.delete('ai-ethics-adventure-slot-0');
+  storage.delete('ai-ethics-adventure-meta-0');
+
+  // Y-20 반 순위표 — 백업 객체에서 학생 행 집계(로컬 저장소 무접촉)
+  const mkBackup = (slots) => ({ app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(),
+    data: (() => {
+      const d = {};
+      slots.forEach((s, i) => {
+        d['ai-ethics-adventure-slot-' + i] = JSON.stringify({ v: 8, name: s.name,
+          flags: { mercy: s.mercy, defeated: s.done ? { yeongi: true } : {} } });
+        d['ai-ethics-adventure-stats-' + i] = JSON.stringify(s.stats || {});
+        d['ai-ethics-adventure-meta-' + i] = JSON.stringify({ bossRank: s.ranks || {} });
+      });
+      return d;
+    })() });
+
+  const bkA = mkBackup([
+    { name: '가온', mercy: 8, done: true, stats: { privacy: { correct: 9, total: 10 } }, ranks: { sujipmon: 'S', pyeonhyangmon: 'S' } },
+    { name: '나래', mercy: 3, done: false, stats: { fake: { correct: 2, total: 8 } }, ranks: {} },
+  ]);
+  const bkB = mkBackup([
+    { name: '다온', mercy: 5, done: false, stats: { bias: { correct: 6, total: 10 } }, ranks: { hwangakmon: 'S' } },
+  ]);
+
+  const rowsA = T.backupSlotRows(bkA);
+  check('Y-20 백업A에서 학생 2명 집계', rowsA.length === 2);
+  const gaon = rowsA.find((r) => r.name === '가온');
+  check('Y-20 이름·자비·정답률·S등급·완주 추출', gaon && gaon.mercy === 8 &&
+    Math.round(gaon.rate * 100) === 90 && gaon.sRank === 2 && gaon.done === true);
+  check('Y-20 빈 슬롯/없는 스탯은 0으로 안전 처리', rowsA.find((r) => r.name === '나래').sRank === 0);
+
+  // 순위표에 두 백업을 차례로 합산 → CSV 정렬·헤더 검증
+  const lb = windowObj.__game.leaderboard;
+  lb.rows = []; lb.files = 0;
+  lb.rows.push(...T.backupSlotRows(bkA)); lb.files += 1;
+  lb.rows.push(...T.backupSlotRows(bkB)); lb.files += 1;
+  check('Y-20 여러 백업 합산 — 학생 3명', lb.rows.length === 3);
+  const csv = T.buildLeaderboardCsv();
+  const clines = csv.split('\r\n');
+  check('Y-20 CSV 헤더(순위·이름·자비·정답률·S등급 포함)',
+    /순위/.test(clines[0]) && /이름/.test(clines[0]) && /안아준 마음/.test(clines[0]) &&
+    /정답률\(%\)/.test(clines[0]) && /S등급 수/.test(clines[0]));
+  check('Y-20 CSV 학생 행 3개(헤더 제외)', clines.length === 4);
+  check('Y-20 순위 정렬 — S등급 최다(가온) 1위', clines[1].split(',')[1] === '가온');
+  lb.rows = []; lb.files = 0; // 정리
 }
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
