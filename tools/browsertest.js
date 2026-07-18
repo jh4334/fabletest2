@@ -11,9 +11,9 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-let chromium;
+let chromium, webkit;
 try {
-  ({ chromium } = require('playwright'));
+  ({ chromium, webkit } = require('playwright'));
 } catch (e) {
   console.error('playwright 패키지가 없습니다. `npm install -D playwright` 후 다시 실행하세요.');
   process.exit(2);
@@ -173,7 +173,57 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
     await page.keyboard.press('Escape');
     await page.waitForTimeout(300); // 일시정지 메뉴 렌더
     check('큰 글씨: 렌더 유지(프레임 크래시 없음)', (await page.evaluate(() => window.__game.mode)) !== undefined && errors.length === 0);
+
+    // Y-13 큰 글씨 오버플로 실렌더 검사 — 데이터의 최장 대사/주장/조사 플레이버를 실제
+    // 폰트(1.25×)로 줄바꿈해, 어떤 줄도 대화 상자 폭을 넘지 않는지 measureText 실값으로 본다.
+    const ov = await page.evaluate(() => { window.__game.largeText = true; return window.__test.checkTextOverflow(); });
+    check(`Y-13 큰 글씨: 대사/주장 표본 충분히 수집(${ov.sampled}개)`, ov.sampled > 100);
+    check(`Y-13 큰 글씨: 최장 줄폭이 상자 폭 안(${ov.worstW}/${ov.dialogMaxW}px)`, ov.worstW <= ov.dialogMaxW);
+    check(`Y-13 큰 글씨: 상자 밖으로 넘치는 대사 0건(넘침 ${ov.overCount}건)`, ov.overCount === 0);
+    if (ov.overCount) ov.over.forEach((o) => console.log(`     · 넘침(${o.w}px): ${o.line}`));
+
     await page.screenshot({ path: path.join(shotsDir, 'browser-largetext.png') });
+    await ctx.close();
+  }
+
+  // Y-18·Y-20 새 교사 화면 렌더 — 반 순위표·사전/사후 점검이 실브라우저에서 크래시 없이 그려지는지
+  {
+    console.log('[teacher-screens] Y-18 사전/사후 점검 · Y-20 반 순위표 렌더');
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+    page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push('console.error: ' + m.text()); });
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    // 반 순위표 — 백업 두 개를 합산 상태로 넣고 화면을 연다
+    const lbMode = await page.evaluate(() => {
+      const g = window.__game, T = window.__test;
+      const mk = (name, mercy, done) => ({ app: 'ai-ethics-adventure', version: 1, data: {
+        'ai-ethics-adventure-slot-0': JSON.stringify({ v: 8, name, flags: { mercy, defeated: done ? { yeongi: true } : {} } }),
+        'ai-ethics-adventure-stats-0': JSON.stringify({ privacy: { correct: 7, total: 10 } }),
+        'ai-ethics-adventure-meta-0': JSON.stringify({ bossRank: { sujipmon: 'S' } }),
+      } });
+      g.leaderboard.rows = T.backupSlotRows(mk('가온', 8, true)).concat(T.backupSlotRows(mk('나래', 3, false)));
+      g.leaderboard.files = 2;
+      T.openLeaderboard('title');
+      return g.mode;
+    });
+    await page.waitForTimeout(300);
+    check('Y-20 반 순위표 진입', lbMode === 'leaderboard');
+    check('Y-20 반 순위표 렌더 크래시 없음', (await page.evaluate(() => window.__game.mode)) === 'leaderboard');
+    await page.screenshot({ path: path.join(shotsDir, 'browser-leaderboard.png') });
+    // 사전/사후 점검 — 사전 점검을 열어 인트로→문제→피드백까지 실제로 진행해 본다
+    const ppMode = await page.evaluate(() => { window.__test.openPrepost('pre', 'trace', 'title'); return window.__game.mode; });
+    await page.waitForTimeout(200);
+    check('Y-18 사전 점검 진입(인트로)', ppMode === 'prepost' && (await page.evaluate(() => window.__game.prepost.phase)) === 'intro');
+    await page.keyboard.press('z'); await page.waitForTimeout(150); // 인트로 → 문제
+    const qPhase = await page.evaluate(() => window.__game.prepost && window.__game.prepost.phase);
+    check('Y-18 사전 점검 문제 진행', qPhase === 'question');
+    await page.keyboard.press('z'); await page.waitForTimeout(150); // 문제 → 피드백
+    check('Y-18 사전 점검 렌더 크래시 없음', (await page.evaluate(() => window.__game.mode)) === 'prepost' && errors.length === 0);
+    await page.screenshot({ path: path.join(shotsDir, 'browser-prepost.png') });
+    errors.slice(0, 6).forEach((e) => console.log('     · ' + e));
     await ctx.close();
   }
 
@@ -259,6 +309,50 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
   }
 
   await browser.close();
+
+  // Y-16 WebKit(Safari 엔진) 핵심 5검사 — 로컬 옵션. webkit 바이너리가 있으면 실행하고,
+  // 없으면(대부분의 CI/이 환경) 명시적 스킵 로그만 남긴다(실패 아님). CI 잡은 추가하지 않는다.
+  // 검사: 모듈 로드 · 캔버스 존재 · 월드 진입 · 렌더 후 월드 유지 · 콘솔/페이지 에러 0
+  // (오프라인 폴백은 서비스워커 편차가 커 WebKit 검사에서 제외한다.)
+  let wkBrowser = null;
+  try {
+    wkBrowser = await webkit.launch();
+  } catch (e) {
+    console.log('[webkit] ⏭ WebKit 미설치 — 스킵(실패 아님).');
+    console.log('        설치하려면: npx playwright install webkit');
+  }
+  if (wkBrowser) {
+    console.log('[webkit] Safari 엔진 핵심 5검사');
+    try {
+      const ctx = await wkBrowser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+      const page = await ctx.newPage();
+      const errors = [];
+      page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+      page.on('console', (m) => {
+        if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push('console.error: ' + m.text());
+      });
+      await page.goto(base, { waitUntil: 'load' });
+      let loaded = false;
+      try { await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 }); loaded = true; } catch (e2) { /* below */ }
+      await page.waitForTimeout(400);
+      check('WebKit: 게임 모듈 로드', loaded);
+      check('WebKit: 캔버스(#game) 존재', !!(await page.$('#game')));
+      const entered = await page.evaluate(() => {
+        window.__test.applyTiltStreetClass();
+        window.__game.mode = 'world';
+        return window.__game.mode === 'world';
+      });
+      await page.waitForTimeout(400);
+      check('WebKit: 월드 진입', entered);
+      check('WebKit: 렌더 후 월드 유지(프레임 크래시 없음)', (await page.evaluate(() => window.__game.mode)) === 'world');
+      check('WebKit: 콘솔/페이지 에러 없음', errors.length === 0);
+      errors.slice(0, 6).forEach((e) => console.log('     · ' + e));
+      await ctx.close();
+    } finally {
+      await wkBrowser.close();
+    }
+  }
+
   server.close();
 
   console.log(`\n브라우저 스모크: ${pass} 통과 / ${fail} 실패`);

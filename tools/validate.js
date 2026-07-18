@@ -75,6 +75,8 @@ for (const [id, m] of Object.entries(MAPS)) {
       err(`${id} 플레이버 (${fl.x},${fl.y})가 워프 칸과 겹침 (조사 불가)`);
     }
     if (!fl.text || fl.text.length < 4) err(`${id} 플레이버 (${fl.x},${fl.y}) 텍스트가 비었거나 너무 짧음`);
+    // Y-12 ngOnly 필드는 있으면 반드시 boolean true (interact가 flags.ng로만 노출)
+    if ('ngOnly' in fl && fl.ngOnly !== true) err(`${id} 플레이버 (${fl.x},${fl.y}) ngOnly는 true여야 함`);
   }
   // 기억의 별(N-4) — 걸어갈 수 있는 칸 + 워프 칸 금지 (조사하려면 인접해야 한다)
   if (m.star) {
@@ -86,6 +88,13 @@ for (const [id, m] of Object.entries(MAPS)) {
     }
     if (!st.text) err(`${id} 기억의 별 텍스트 없음`);
   }
+}
+
+// Y-12 NG+ 전용 플레이버(ngOnly) — 2회차에서만 노출되는 숨은 조사점이 최소 5개 있어야 한다
+{
+  let ngOnly = 0;
+  for (const m of Object.values(MAPS)) for (const fl of (m.flavors || [])) if (fl.ngOnly) ngOnly += 1;
+  if (ngOnly < 5) err(`NG+ 전용 플레이버(ngOnly)가 ${ngOnly}개 — 최소 5개 필요`);
 }
 
 // 4. 도달 가능성 (BFS, 배지 게이트 무시)
@@ -424,9 +433,13 @@ if (process.argv.includes('--print')) {
 // R라운드 패턴 데이터 린트 — pattern 키 오타는 '조용한 무패턴 배틀'이 되므로 화이트리스트로 잡는다.
 // verify는 원본 카드·조각 스키마까지, GATE_QUIZ/DIARY_SHARDS는 구조 무결성을 검사한다.
 (() => {
-  const { PERSUADE, GATE_QUIZ, DIARY_SHARDS } =
-    vm.runInContext('({ PERSUADE, GATE_QUIZ, DIARY_SHARDS })', ctx);
-  const R_PATTERNS = ['shadow', 'parcel', 'tilt', 'verify', 'tempt', 'cozy', 'quiet', 'rotate'];
+  const { PERSUADE, GATE_QUIZ, DIARY_SHARDS, R_PATTERN_KEYS } =
+    vm.runInContext('({ PERSUADE, GATE_QUIZ, DIARY_SHARDS, R_PATTERN_KEYS })', ctx);
+  // 화이트리스트는 data.js의 단일 출처(R_PATTERN_KEYS)에서 끌어온다 — game.js PATTERNS와 공유.
+  if (!Array.isArray(R_PATTERN_KEYS) || R_PATTERN_KEYS.length === 0) {
+    err('data.js R_PATTERN_KEYS 누락 — 패턴 화이트리스트 단일 출처가 없다');
+  }
+  const R_PATTERNS = R_PATTERN_KEYS || [];
   for (const [k, p] of Object.entries(PERSUADE)) {
     if (p.pattern && !R_PATTERNS.includes(p.pattern)) {
       err(`PERSUADE.${k}.pattern '${p.pattern}' — 미등록 패턴 (오타 시 무패턴 배틀이 된다)`);

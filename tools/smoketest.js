@@ -724,7 +724,7 @@ console.log('[27] 설정·일시정지 메뉴');
 check('월드 상태', g.mode === 'world');
 tap('x');
 check('설정 메뉴 열림', g.mode === 'pause');
-check('초기 커서 0 (수호자 일지)', g.pauseCursor === 0);
+check('초기 커서 0 (기억의 방)', g.pauseCursor === 0);
 // 교사 전용 항목(dashboard·report·classmode·quizedit·cert)은 「선생님 방」으로 옮겨져
 // 더 이상 학생용 일시정지 메뉴에 없다(스텔스 교육 원칙) — 아래 [41]/[46]/[52]에서 확인.
 const { PAUSE_ITEMS: PAUSE_ORDER, TEACHER_ITEMS } = vm.runInContext('window.__test', sandbox);
@@ -734,12 +734,19 @@ const pauseIdx = (name) => vm.runInContext('window.__test.pauseItems()', sandbox
 check('일시정지 메뉴에 교사 항목 없음', !PAUSE_ORDER.includes('dashboard') && !PAUSE_ORDER.includes('report') &&
   !PAUSE_ORDER.includes('classmode') && !PAUSE_ORDER.includes('quizedit') && !PAUSE_ORDER.includes('cert'));
 check('일시정지 메뉴에 백업은 남음', PAUSE_ORDER.includes('backup'));
-check('선생님 방 항목 구성', TEACHER_ITEMS.join(',') === 'dashboard,report,classmode,quizedit,cert,close');
-while (g.pauseCursor !== pauseIdx('dex')) tap('ArrowDown');
+check('선생님 방 항목 구성', TEACHER_ITEMS.join(',') === 'dashboard,leaderboard,report,classmode,quizedit,cert,close');
+// Y-8 도감(친구 수첩)은 「기억의 방」 허브 하위로 옮겨졌다 — 허브를 거쳐 연다.
+const memIdx = (name) => vm.runInContext('window.__test.memoryItems()', sandbox).indexOf(name);
+while (g.pauseCursor !== pauseIdx('memoryroom')) tap('ArrowDown');
 tap('z');
-check('설정에서 도감 열림', g.mode === 'dex' && g.dex.ret === 'pause');
+check('Y-8 기억의 방 허브 열림', g.mode === 'memoryroom' && g.memory.ret === 'pause');
+while (g.memory.cursor !== memIdx('dex')) tap('ArrowDown');
+tap('z');
+check('Y-8 허브에서 도감 열림(ret=memoryroom)', g.mode === 'dex' && g.dex.ret === 'memoryroom');
 tap('x');
-check('도감 닫고 설정으로 복귀', g.mode === 'pause');
+check('Y-8 도감 닫고 기억의 방으로 복귀', g.mode === 'memoryroom');
+tap('x');
+check('기억의 방 닫고 설정으로 복귀', g.mode === 'pause');
 while (g.pauseCursor !== pauseIdx('textspeed')) tap('ArrowDown');
 const speedBefore = g.textSpeed;
 tap('z');
@@ -941,9 +948,11 @@ const csv = T.buildClassCsv();
 const csvLines = csv.split('\r\n');
 check('CSV가 CRLF 줄바꿈 사용', csv.includes('\r\n'));
 check('CSV 헤더 행 존재', csvLines[0].startsWith('슬롯,이름,'));
-check('CSV 헤더 15개 열', csvLines[0].split(',').length === 15);
+check('CSV 헤더 18개 열(Y-18 사전/사후/향상도 3열 추가)', csvLines[0].split(',').length === 18);
 check('CSV 헤더에 연구용 지표 3열 포함', csvLines[0].includes('개념별 성취') &&
   csvLines[0].includes('자비 선택') && csvLines[0].includes('엔딩'));
+check('CSV 헤더에 Y-18 사전/사후/향상도 열 포함',
+  csvLines[0].includes('사전(%)') && csvLines[0].includes('사후(%)') && csvLines[0].includes('향상도(%p)'));
 // C4: CSV 수식 주입 방어 — 위험 문자로 시작하는 셀은 '로 고정
 check('=로 시작하는 값은 앞에 \' 부착', T.csvCell('=cmd()') === "'=cmd()");
 check('+로 시작하는 값도 방어', T.csvCell('+1+1') === "'+1+1");
@@ -953,7 +962,7 @@ check('일반 값은 그대로', T.csvCell('수호자') === '수호자');
 check('쉼표 포함 값은 따옴표로만(수식 아님)', T.csvCell('가,나') === '"가,나"');
 check('CSV 행 = 헤더 + 슬롯 3개', csvLines.length === 4);
 check('CSV 슬롯1 행이 슬롯 번호로 시작', csvLines[1].startsWith('1,'));
-check('CSV 슬롯1(데이터 있음) 15개 열', csvLines[1].split(',').length === 15);
+check('CSV 슬롯1(데이터 있음) 18개 열', csvLines[1].split(',').length === 18);
 
 console.log('[37] 적응형(맞춤) 학습 — 약점 집중 출제');
 const adaptive = T.buildAdaptivePool(0, 8);
@@ -3499,11 +3508,12 @@ console.log('[U-3] 반디 인물 순간 4개 — 데이터·소스');
 console.log('[U-4] 보스 감정 템플릿 차별화 — 담아(버려짐)·반짝(존재)·루미(역할)');
 {
   const { PERSUADE: P4 } = vm.runInContext('({ PERSUADE })', sandbox);
-  const banjjakFears = P4.yuhok_boss.claims.map((c) => (c.fragments || []).join(' ')).join(' | ');
-  const lumiFears = P4.hollim_boss.claims.map((c) => (c.fragments || []).join(' ')).join(' | ');
-  const damaFears = P4.sujipmon_boss.claims.map((c) => (c.fragments || []).join(' ')).join(' | ');
-  check('U-4 반짝 = 존재 증명 상실("불이 꺼지면, 내가 없는")', /불이 꺼지면[\s\S]*?내가 없는/.test(banjjakFears));
-  check('U-4 반짝 감정 주장에 "혼자 남는" 문구 제거', !/혼자 남는/.test(banjjakFears));
+  // Y-2에서 fragments는 '힌트에 없는 새 정보(감각·과거)'로 재작성됐다 — 감정 차별화 축은 hint로 검사한다.
+  const banjjakFears = P4.yuhok_boss.claims.map((c) => (c.hint || '')).join(' | ');
+  const lumiFears = P4.hollim_boss.claims.map((c) => (c.hint || '')).join(' | ');
+  const damaFears = P4.sujipmon_boss.claims.map((c) => (c.hint || '')).join(' | ');
+  check('U-4 반짝 = 존재 증명 상실("불이 꺼지면, 없는 것")', /불이 꺼지면[\s\S]*?없는 것/.test(banjjakFears));
+  check('U-4 반짝 감정 주장(힌트)에 "혼자 남는" 문구 없음', !/혼자 남는/.test(banjjakFears));
   check('U-4 루미 = 역할 상실("문을 나가면, 나는 뭘 하면 되지")', /문을 나가면[\s\S]*?뭘 하면 되지/.test(lumiFears));
   check('U-4 담아 = 원조(버려짐/혼자 남는) 유지', /혼자 남는/.test(damaFears));
 }
@@ -3683,6 +3693,212 @@ console.log('[X-1~X-8] X라운드 — 반응 선택·정서 아크·메타·회�
   check('이슈4 dawn 엔딩 후 마을 에필로그 반응 선택 등장(trueEnding=false여도)',
     g.mode === 'choice' && g.choice.reaction === true && /어떻게 기억할까/.test(g.choice.prompt));
   g.choice.cursor = 0; tap('z'); advanceDialog();
+}
+
+console.log('[Y-1~Y-12] Y라운드 — 스토리·플레이 심화 (상실 비트·조각·친구 잡담·기억의 방 등)');
+{
+  const T = windowObj.__test;
+  const P = vm.runInContext('({ PERSUADE })', sandbox).PERSUADE;
+  const { DIARY_SHARDS: DS, FRIEND_CHATS: FC, MONSTERS: MON, MAP_PROPS: MP, MAPS: MY } =
+    vm.runInContext('({ DIARY_SHARDS, FRIEND_CHATS, MONSTERS, MAP_PROPS, MAPS })', sandbox);
+  const gsrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
+
+  // Y-1 상실 체험 비트 — 리빌 이후 "……" 말풍선(조언 자리) 1회
+  check('Y-1 리빌 뒤 "……" 상실 비트 말풍선', /reveal[\s\S]*?game\.notice = \{ text: '……'/.test(gsrc));
+
+  // Y-2 fragments가 힌트를 복제하지 않고 새 정보를 담는다 (전 보스 전 주장)
+  let dupFound = false, fragCount = 0;
+  for (const k of Object.keys(P)) for (const c of (P[k].claims || [])) {
+    const hint = (c.hint || '').replace(/\s/g, '');
+    for (const fr of (c.fragments || [])) {
+      fragCount += 1;
+      const f = fr.replace(/[…\s]/g, '');
+      if (f.length >= 6 && hint.includes(f)) dupFound = true;
+    }
+  }
+  check('Y-2 fragments 재작성 — 힌트 문구 복제 없음(새 정보)', !dupFound && fragCount >= 40);
+
+  // Y-3 영이 mercy는 새 결('따뜻한 게 데이터가 아니면')로 교체, win은 데이터 농담 유지
+  check('Y-3 영이 mercy 대사 교체(따뜻한 게 데이터가 아니면)',
+    /따뜻한 게\n?데이터가 아니면/.test(MON.yeongi.mercy.options[0].reply));
+  check('Y-3 영이 mercy에서 "온도가 없는데" 중복 농담 제거', !/온도가 없는데/.test(MON.yeongi.mercy.options[0].reply));
+  check('Y-3 win의 데이터 농담은 유지(프로그램되어 있지 않은데)', /프로그램되어[\s]?있지 않은데/.test(MON.yeongi.win));
+
+  // Y-4 FRIEND_CHATS — 전 자비 보스 6종, 각 3개, 첫 대사는 기존 고정 인사
+  const fcKeys = Object.keys(FC);
+  check('Y-4 FRIEND_CHATS 6개 보스', fcKeys.length === 6);
+  check('Y-4 각 친구 잡담 3개 + 첫 대사 고정 인사 유지',
+    fcKeys.every((k) => FC[k].length === 3 && /정말 고마워/.test(FC[k][0])));
+  // 순환 동작 — friendChatIdx가 0→1→2→0으로 돈다
+  {
+    g.flags = g.flags || {}; g.flags.friendChatIdx = {};
+    const cyc = [];
+    for (let i = 0; i < 4; i++) {
+      const idx = g.flags.friendChatIdx.bekkyeomon || 0;
+      cyc.push(idx);
+      g.flags.friendChatIdx.bekkyeomon = (idx + 1) % FC.bekkyeomon.length;
+    }
+    check('Y-4 friendChatIdx 순환(0→1→2→0)', cyc.join('') === '0120');
+  }
+
+  // Y-5 DIARY_SHARDS 7개 전부 ngNote(영이 덧말) 보유
+  check('Y-5 일기 7조각 전부 ngNote', DS.length === 7 && DS.every((s) => typeof s.ngNote === 'string' && s.ngNote.length > 2));
+  check('Y-5 drawDiary가 flags.ng에서 ngNote를 그린다', /flags\.ng && s\.ngNote/.test(gsrc));
+
+  // Y-6 프롤로그 캐비닛 청각 복선 — blip 1320(반디 음정)
+  const cab = (MP.introlab || []).find((p) => p.label === '잠긴 캐비닛');
+  check('Y-6 캐비닛 blip 1320(반디 음정 복선)', !!cab && cab.blip === 1320);
+  check('Y-6 prop.blip을 조사 시 재생', /if \(prop\.blip\) Sound\.blip\(prop\.blip\)/.test(gsrc));
+
+  // Y-7 콤보 시각화 — comboFx 설정/오답 소거 + drawBattle 렌더 + reduceFx 텍스트만
+  check('Y-7 콤보 발생 시 comboFx 설정', /b\.comboFx = \{ n: b\.combo \}/.test(gsrc));
+  check('Y-7 오답 시 comboFx 소거', /b\.comboFx = null;/.test(gsrc));
+  check('Y-7 우상단 ×N 카운터 렌더', /b\.comboFx && b\.comboFx\.n >= 2/.test(gsrc) && gsrc.includes("'×' + n"));
+
+  // Y-8 기억의 방 — 일시정지 다이어트 + 허브 하위 항목 + 요약(6종)
+  const pItems = T.PAUSE_ITEMS;
+  check('Y-8 일시정지 메뉴에 기억의 방', pItems.includes('memoryroom'));
+  check('Y-8 수집 계열은 일시정지 최상위에서 빠짐', !pItems.includes('journal') && !pItems.includes('cards') &&
+    !pItems.includes('dex') && !pItems.includes('halloffame') && !pItems.includes('awards') && !pItems.includes('cosmetics'));
+  const mItems = T.memoryItems();
+  check('Y-8 기억의 방 하위 항목(일지·조각·수첩·도전과제·꾸미기·전당·닫기)',
+    ['journal', 'cards', 'dex', 'awards', 'cosmetics', 'halloffame', 'close'].every((k) => mItems.includes(k)));
+  check('Y-8 허브 요약 6종(카드·수첩·도전과제·일기·엔딩·S등급)',
+    /카드 .*수첩 .*도전과제 .*일기 .*엔딩 .*S등급/.test(gsrc));
+
+  // Y-9 완벽한 경청자 — 칭호 + achievementCtx S등급 진행
+  check('Y-9 「완벽한 경청자」 칭호 추가', T.TITLES.some((t) => t.id === 'listener' && t.name === '완벽한 경청자'));
+  {
+    const actx = T.achievementCtx(g.currentSlot != null ? g.currentSlot : 0);
+    check('Y-9 achievementCtx에 sRankCount/sRankTotal(=8)', actx.sRankTotal === 8 && typeof actx.sRankCount === 'number');
+  }
+  check('Y-9 재대결 승리 후 checkCosmeticUnlocks 호출', /appendRankLine\(b, lines, b\.persuadeId\); \/\/ 등급[\s\S]*?checkCosmeticUnlocks/.test(gsrc));
+
+  // Y-10 내일 예고 — tomorrowTopicLabel이 주제 라벨을 돌려준다
+  {
+    const lbl = T.tomorrowTopicLabel(0);
+    check('Y-10 내일 도전 주제 티저 계산', typeof lbl === 'string' && lbl.length > 0);
+    check('Y-10 완료 화면에 내일 주제 티저 렌더', /내일의 도전 주제/.test(gsrc));
+  }
+
+  // Y-11 별빛 클리어 — noHint 표식 기록/집계
+  check('Y-11 recordPuzzleClear noHint 표식', /if \(noHint\) e\.noHint = true/.test(gsrc));
+  {
+    // 힌트 없이 클리어 → starlitClearCount 증가
+    const slot = 0;
+    const before = T.starlitClearCount(slot);
+    const log = T.getPuzzleLog(slot);
+    log.__ytest_star = { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 0, noHint: true };
+    T.writePuzzleLog(slot, log);
+    check('Y-11 별빛 클리어 집계 증가', T.starlitClearCount(slot) === before + 1);
+    delete log.__ytest_star; T.writePuzzleLog(slot, log);
+  }
+  check('Y-11 힌트 열면 별빛 자격 소멸(usedHint)', /run\.usedHint = true;/.test(gsrc));
+
+  // Y-12 NG+ 숨은 플레이버 — 5개 ngOnly + interact가 ng 아니면 무시
+  let ng = 0;
+  for (const id of Object.keys(MY)) for (const fl of (MY[id].flavors || [])) if (fl.ngOnly) ng += 1;
+  check('Y-12 ngOnly 플레이버 5개', ng === 5);
+  check('Y-12 interact가 ngOnly를 flags.ng에서만 노출', /!v\.ngOnly \|\| game\.flags\.ng/.test(gsrc));
+}
+
+// ── Y-13~Y-20 2부(기술·교사) — 패턴 레지스트리 정합성 · 반 순위표 집계 ──
+console.log('[Y-14·Y-20] 패턴 레지스트리 정합성 · 반 순위표 집계');
+{
+  const T = windowObj.__test;
+  const { R_PATTERN_KEYS } = vm.runInContext('({ R_PATTERN_KEYS })', sandbox);
+  const gsrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
+
+  // Y-14 data.js가 패턴 화이트리스트의 단일 출처를 노출한다
+  check('Y-14 R_PATTERN_KEYS 단일 출처 존재', Array.isArray(R_PATTERN_KEYS) &&
+    R_PATTERN_KEYS.join(',') === 'shadow,parcel,tilt,verify,tempt,cozy,quiet,rotate');
+  // Y-14 game.js PATTERNS 레지스트리 키 ↔ 화이트리스트 정합
+  const pk = T.patternKeys();
+  check('Y-14 레지스트리에 8개 구체 패턴(truth 포함, rotate 제외)',
+    pk.length === 8 && pk.includes('truth') && !pk.includes('rotate'));
+  check('Y-14 rotate 제외 모든 화이트리스트 패턴이 레지스트리에 구현됨',
+    R_PATTERN_KEYS.filter((k) => k !== 'rotate').every((k) => pk.includes(k)));
+  // Y-14 PATTERN_GUIDES가 레지스트리에서 파생(단일 출처)
+  check('Y-14 guide는 레지스트리에서 파생', /Object\.fromEntries\(Object\.keys\(PATTERNS\)/.test(gsrc) &&
+    typeof T.patternGuide('shadow') === 'string' && T.patternGuide('shadow').length > 0);
+  // Y-14 영이(rotate) 순환 시퀀스가 전부 레지스트리 키
+  const rotSeq = (gsrc.match(/ROTATE_SEQ = \[([^\]]*)\]/) || [])[1] || '';
+  const rotKeys = rotSeq.split(',').map((s) => s.replace(/['\s]/g, '')).filter(Boolean);
+  check('Y-14 ROTATE_SEQ 전부 레지스트리 키', rotKeys.length > 0 && rotKeys.every((k) => pk.includes(k)));
+  // Y-14 updateWave·draw 분기가 레지스트리 디스패치로 통합됨(개별 if 체인 제거 확인)
+  check('Y-14 updateWave 레지스트리 디스패치', /activeP && activeP\.update/.test(gsrc));
+  check('Y-14 draw 레지스트리 디스패치', /activeD && activeD\.draw/.test(gsrc) && /activeD && activeD\.drawStatus/.test(gsrc));
+  check('Y-14 enterWave가 레지스트리 init로 파도 상태 구성',
+    /for \(const key of Object\.keys\(PATTERNS\)\) b\.wave\[key\] = PATTERNS\[key\]\.init/.test(gsrc));
+
+  // Y-18 사전/사후 점검 — 세트 결정론성·매핑·저장·CSV
+  const preTrace = T.prepostQuizzes('trace');
+  check('Y-18 장별 사전/사후 세트 5문항', preTrace.length === 5 && T.prepostQuizzes('tilt').length === 5 &&
+    T.prepostQuizzes('rumor').length === 5 && T.prepostQuizzes('arcade').length === 5 && T.prepostQuizzes('cozy').length === 5);
+  check('Y-18 사전=사후 동일 세트(결정론적)',
+    JSON.stringify(T.prepostQuizzes('trace').map((q) => q.q)) === JSON.stringify(preTrace.map((q) => q.q)));
+  check('Y-18 파이널 등 세트 없는 항목은 빈 배열', T.prepostQuizzes('final').length === 0);
+  check('Y-18 수업 선택기 값 → 장 키 매핑', T.classSelToChKey(0) === 'trace' && T.classSelToChKey(-1) === 'tilt' &&
+    T.classSelToChKey(-4) === 'cozy' && T.classSelToChKey(-5) === null);
+  // 저장·조회 왕복(슬롯 메타)
+  windowObj.__game.currentSlot = 0;
+  T.recordPrepost(0, 'trace', 'pre', 2, 5);
+  T.recordPrepost(0, 'trace', 'post', 4, 5);
+  const ppRec = T.getPrepost(0, 'trace');
+  check('Y-18 사전/사후 점수 슬롯 메타 저장·조회', ppRec.pre && ppRec.pre.score === 2 && ppRec.post && ppRec.post.score === 4);
+  // CSV에 사전/사후/향상도가 실제로 실린다 — 슬롯 0에 세이브가 있어야 행이 생긴다
+  storage.set('ai-ethics-adventure-slot-0', JSON.stringify({ v: 8, name: '측정아이', flags: { defeated: {}, mercy: 1 } }));
+  const csv18 = T.buildClassCsv().split('\r\n');
+  const h18 = csv18[0].split(',');
+  const iPre = h18.indexOf('사전(%)'), iPost = h18.indexOf('사후(%)'), iImp = h18.indexOf('향상도(%p)');
+  const row0 = csv18[1].split(',');
+  check('Y-18 CSV에 사전 40% · 사후 80% · 향상도 +40 반영',
+    row0[iPre] === '40' && row0[iPost] === '80' && row0[iImp] === '40');
+  storage.delete('ai-ethics-adventure-slot-0');
+  storage.delete('ai-ethics-adventure-meta-0');
+
+  // Y-20 반 순위표 — 백업 객체에서 학생 행 집계(로컬 저장소 무접촉)
+  const mkBackup = (slots) => ({ app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(),
+    data: (() => {
+      const d = {};
+      slots.forEach((s, i) => {
+        d['ai-ethics-adventure-slot-' + i] = JSON.stringify({ v: 8, name: s.name,
+          flags: { mercy: s.mercy, defeated: s.done ? { yeongi: true } : {} } });
+        d['ai-ethics-adventure-stats-' + i] = JSON.stringify(s.stats || {});
+        d['ai-ethics-adventure-meta-' + i] = JSON.stringify({ bossRank: s.ranks || {} });
+      });
+      return d;
+    })() });
+
+  const bkA = mkBackup([
+    { name: '가온', mercy: 8, done: true, stats: { privacy: { correct: 9, total: 10 } }, ranks: { sujipmon: 'S', pyeonhyangmon: 'S' } },
+    { name: '나래', mercy: 3, done: false, stats: { fake: { correct: 2, total: 8 } }, ranks: {} },
+  ]);
+  const bkB = mkBackup([
+    { name: '다온', mercy: 5, done: false, stats: { bias: { correct: 6, total: 10 } }, ranks: { hwangakmon: 'S' } },
+  ]);
+
+  const rowsA = T.backupSlotRows(bkA);
+  check('Y-20 백업A에서 학생 2명 집계', rowsA.length === 2);
+  const gaon = rowsA.find((r) => r.name === '가온');
+  check('Y-20 이름·자비·정답률·S등급·완주 추출', gaon && gaon.mercy === 8 &&
+    Math.round(gaon.rate * 100) === 90 && gaon.sRank === 2 && gaon.done === true);
+  check('Y-20 빈 슬롯/없는 스탯은 0으로 안전 처리', rowsA.find((r) => r.name === '나래').sRank === 0);
+
+  // 순위표에 두 백업을 차례로 합산 → CSV 정렬·헤더 검증
+  const lb = windowObj.__game.leaderboard;
+  lb.rows = []; lb.files = 0;
+  lb.rows.push(...T.backupSlotRows(bkA)); lb.files += 1;
+  lb.rows.push(...T.backupSlotRows(bkB)); lb.files += 1;
+  check('Y-20 여러 백업 합산 — 학생 3명', lb.rows.length === 3);
+  const csv = T.buildLeaderboardCsv();
+  const clines = csv.split('\r\n');
+  check('Y-20 CSV 헤더(순위·이름·자비·정답률·S등급 포함)',
+    /순위/.test(clines[0]) && /이름/.test(clines[0]) && /안아준 마음/.test(clines[0]) &&
+    /정답률\(%\)/.test(clines[0]) && /S등급 수/.test(clines[0]));
+  check('Y-20 CSV 학생 행 3개(헤더 제외)', clines.length === 4);
+  check('Y-20 순위 정렬 — S등급 최다(가온) 1위', clines[1].split(',')[1] === '가온');
+  lb.rows = []; lb.files = 0; // 정리
 }
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
