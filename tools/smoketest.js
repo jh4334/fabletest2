@@ -3750,10 +3750,10 @@ console.log('[Y-1~Y-12] Y라운드 — 스토리·플레이 심화 (상실 비�
   check('Y-6 캐비닛 blip 1320(반디 음정 복선)', !!cab && cab.blip === 1320);
   check('Y-6 prop.blip을 조사 시 재생', /if \(prop\.blip\) Sound\.blip\(prop\.blip\)/.test(gsrc));
 
-  // Y-7 콤보 시각화 — comboFx 설정/오답 소거 + drawBattle 렌더 + reduceFx 텍스트만
-  check('Y-7 콤보 발생 시 comboFx 설정', /b\.comboFx = \{ n: b\.combo \}/.test(gsrc));
-  check('Y-7 오답 시 comboFx 소거', /b\.comboFx = null;/.test(gsrc));
-  check('Y-7 우상단 ×N 카운터 렌더', /b\.comboFx && b\.comboFx\.n >= 2/.test(gsrc) && gsrc.includes("'×' + n"));
+  // Y-7 콤보 시각화 — ×N 카운터는 b.combo를 직접 읽는다(리뷰 반영: comboFx 잉여 상태 제거)
+  check('Y-7 우상단 ×N 카운터는 b.combo 직접 판독', /if \(b\.combo >= 2\)/.test(gsrc) && gsrc.includes("'×' + n"));
+  check('Y-7 comboFx 잉여 상태가 남아 있지 않다', !gsrc.includes('comboFx'));
+  check('Y-7 콤보 blip 음정 상승', /Sound\.blip\(660 \+ b\.combo \* 90\)/.test(gsrc));
 
   // Y-8 기억의 방 — 일시정지 다이어트 + 허브 하위 항목 + 요약(6종)
   const pItems = T.PAUSE_ITEMS;
@@ -3814,8 +3814,9 @@ console.log('[Y-14·Y-20] 패턴 레지스트리 정합성 · 반 순위표 집�
     R_PATTERN_KEYS.join(',') === 'shadow,parcel,tilt,verify,tempt,cozy,quiet,rotate');
   // Y-14 game.js PATTERNS 레지스트리 키 ↔ 화이트리스트 정합
   const pk = T.patternKeys();
-  check('Y-14 레지스트리에 8개 구체 패턴(truth 포함, rotate 제외)',
-    pk.length === 8 && pk.includes('truth') && !pk.includes('rotate'));
+  // 리뷰 반영: 구 [진]/[낚](truth) 기믹은 도달 불가 죽은 코드라 레지스트리에서 삭제됐다
+  check('Y-14 레지스트리에 7개 구체 패턴(truth·rotate 없음)',
+    pk.length === 7 && !pk.includes('truth') && !pk.includes('rotate'));
   check('Y-14 rotate 제외 모든 화이트리스트 패턴이 레지스트리에 구현됨',
     R_PATTERN_KEYS.filter((k) => k !== 'rotate').every((k) => pk.includes(k)));
   // Y-14 PATTERN_GUIDES가 레지스트리에서 파생(단일 출처)

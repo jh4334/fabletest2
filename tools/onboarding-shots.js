@@ -1,43 +1,12 @@
 // Y-19 교사 온보딩 스크린샷 생성기 — 핵심 6장면(타이틀·방탈출·듣기·패턴·자비·리포트)을
 // node-canvas로 실제 게임 화면을 렌더해 PNG로 저장한다. docs/교사-온보딩-5분.md가 이 경로를 참조한다.
 // 사용법: node tools/onboarding-shots.js   (네트워크 불필요 — 로컬 렌더)
-const fs = require('fs');
-const path = require('path');
-const vm = require('vm');
-const { createCanvas } = require('canvas');
+// DOM/브라우저 스텁·vm 로더는 공용 모듈에서 가져온다 — shots.js와 단일 출처
+const { createGameSandbox, v3Flags } = require('./lib/game-sandbox');
+const env = createGameSandbox();
+const { storage } = env;
 
-const ROOT = path.join(__dirname, '..');
-const OUT = path.join(ROOT, 'shots');
-fs.mkdirSync(OUT, { recursive: true });
-
-// ---- DOM/환경 스텁 (shots.js와 같은 방식) ----
-const mainCanvas = createCanvas(720, 528);
-mainCanvas.addEventListener = () => {};
-mainCanvas.removeEventListener = () => {};
-mainCanvas.focus = () => {};
-mainCanvas.blur = () => {};
-mainCanvas.setAttribute = () => {};
-mainCanvas.style = mainCanvas.style || {};
-function stubEl() {
-  return { style: {}, value: '', addEventListener() {}, removeEventListener() {},
-    focus() {}, blur() {}, classList: { add() {}, remove() {} } };
-}
-const listeners = {};
-let rafCb = null;
-const storage = new Map();
-
-function v3Flags(extra) {
-  return Object.assign({
-    talkedProf: true, bandiJoined: true, bandiRevealed: false, bandiSaid: {},
-    defeated: { bekkyeomon: true, sujipmon: true, pyeonhyangmon: true, hwangakmon: false,
-      yuhokmon: false, hollimmon: false, finalboss: false, yeongi: false },
-    mercyChoice: { bekkyeomon: 'mercy' },
-    chapter1Clear: true, chapter1Mercy: true,
-    chapter2Clear: true, chapter2Mercy: false,
-    mercy: 3, visited: {}, trueEnding: false, correctCount: 52, battleCount: 9,
-    evCards: ['ev_maker', 'ev_minimal', 'ev_footprint'], endingId: null,
-  }, extra || {});
-}
+// ---- 세이브 시드 (스크립트 로드 전에 심어야 함) ----
 storage.set('ai-ethics-adventure-slot-0', JSON.stringify({
   v: 3, name: '도도', map: 'freestreet', x: 18, y: 21, flags: v3Flags(), updatedAt: Date.now(),
 }));
@@ -47,44 +16,8 @@ storage.set('ai-ethics-adventure-slot-1', JSON.stringify({
 }));
 storage.set('ai-ethics-adventure-endings', JSON.stringify({ home: true }));
 
-const windowObj = {
-  addEventListener: (ev, fn) => { (listeners[ev] = listeners[ev] || []).push(fn); },
-  removeEventListener: () => {},
-  requestAnimationFrame: (cb) => { rafCb = cb; },
-};
-const sandbox = {
-  window: windowObj,
-  document: {
-    getElementById: (id) => (id === 'game' ? mainCanvas : stubEl()),
-    createElement: () => createCanvas(16, 16),
-    body: { classList: { add() {}, remove() {}, toggle() {} } },
-  },
-  localStorage: {
-    getItem: (k) => (storage.has(k) ? storage.get(k) : null),
-    setItem: (k, v) => storage.set(k, String(v)),
-    removeItem: (k) => storage.delete(k),
-  },
-  requestAnimationFrame: windowObj.requestAnimationFrame,
-  console, Math, Set, Map, JSON, Object, setTimeout, clearTimeout, Date,
-};
-vm.createContext(sandbox);
-for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/game.js']) {
-  vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
-}
-const g = windowObj.__game;
-
-function step(n = 1) { for (let i = 0; i < n; i++) { const cb = rafCb; rafCb = null; cb(); } }
-function dispatch(ev, obj) { for (const fn of (listeners[ev] || []).slice()) fn(Object.assign({ preventDefault() {} }, obj)); }
-function tap(key) { dispatch('keydown', { key }); step(2); dispatch('keyup', { key }); }
-function advanceDialog(max = 100) { for (let i = 0; i < max && g.mode === 'dialog'; i++) tap('z'); }
-function shot(name) {
-  step(1);
-  fs.writeFileSync(path.join(OUT, name), mainCanvas.toBuffer('image/png'));
-  console.log('  saved shots/' + name);
-}
-function setPlayer(x, y, dir) {
-  g.player.x = x; g.player.y = y; g.player.px = x * 48; g.player.py = y * 48; g.player.dir = dir || 'down';
-}
+const g = env.boot();
+const { step, dispatch, tap, advanceDialog, shot, setPlayer } = env;
 
 console.log('온보딩 스크린샷 생성 (6장면):');
 
