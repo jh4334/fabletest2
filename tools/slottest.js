@@ -258,4 +258,24 @@ console.log('[U-5] NG+ 타이틀 흐름 — 클리어 슬롯 선택 → 이어�
   storage.delete('ai-ethics-adventure-slot-1');
 }
 
+console.log('[X-round] 세이브 스키마 — 신규 플래그 기본값·수업 세션 무누출·반응 선택 보존');
+{
+  const T = windowObj.__test;
+  const nf = T.newFlags();
+  check('X 신규 플래그 기본값(playerVoice/{}·damaAsked·banjjakAsked·classSession/false 등)',
+    nf.playerVoice && Object.keys(nf.playerVoice).length === 0 && nf.damaAsked === null &&
+    nf.banjjakAsked === null && nf.classSession === false && nf.mercyGuideShown === false &&
+    nf.epilogueAsked === false);
+  check('X-8 classSession은 수업 진입에서만(setupClassBaseFlags=true, newFlags=false, 일반 세이브 무누출)',
+    T.setupClassBaseFlags().classSession === true && T.newFlags().classSession === false);
+  // 반응 선택·요청 플래그가 세이브에 실려 왕복 보존되는지(writeSlot→loadSlot roundtrip).
+  const save = { v: 9, name: '수호자', map: 'village', x: 13, y: 16,
+    flags: Object.assign(T.newFlags(), { playerVoice: { ttara: 1, yeongi: 0 }, damaAsked: 'think', banjjakAsked: 'watch' }) };
+  T.writeSlot(2, save);
+  const loaded = T.loadSlot(2);
+  check('X 반응/요청 선택 플래그 세이브 왕복 보존', loaded.flags.playerVoice.ttara === 1 &&
+    loaded.flags.playerVoice.yeongi === 0 && loaded.flags.damaAsked === 'think' && loaded.flags.banjjakAsked === 'watch');
+  storage.delete('ai-ethics-adventure-slot-2');
+}
+
 console.log(`\n✔ 슬롯 테스트 통과 (${passed}개 검사)`);

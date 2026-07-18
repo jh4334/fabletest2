@@ -89,8 +89,15 @@ function setPos(x, y, dir) {
   g.player.px = x * 48; g.player.py = y * 48;
   if (dir) g.player.dir = dir;
 }
-function advanceDialog(max = 100) {
-  for (let i = 0; i < max && g.mode === 'dialog'; i++) tap('z');
+// X-1/X-2 반응 선택(정답 없음, game.choice.reaction 태그)은 0번을 골라 흘려보낸다.
+// 퍼즐/봉헌 등 태그 없는 선택창에서는 멈춘다(오작동 방지). advanceDialog는 대사와
+// 반응 선택을 함께 처리하되, 태그 없는 선택창을 만나면 조용히 멈춘다.
+function advanceDialog(max = 120) {
+  for (let i = 0; i < max; i++) {
+    if (g.mode === 'dialog') { tap('z'); continue; }
+    if (g.mode === 'choice' && g.choice && g.choice.reaction) { g.choice.cursor = 0; tap('z'); continue; }
+    break;
+  }
   if (g.mode === 'dialog') throw new Error('대화가 끝나지 않음');
 }
 let passed = 0;
@@ -382,6 +389,8 @@ tap('z');
 check('승리 대화', g.mode === 'dialog');
 check('승리 대화에 반디의 한마디 포함', g.dialog.lines.some((l) => /^반디:/.test(l)));
 advanceDialog();
+// X-1① 따라 승리 직후 반응 선택(정답 없음)이 자동 처리되어 playerVoice.ttara에 남는다.
+check('X-1① 따라 승리 직후 반응 선택 저장(playerVoice.ttara)', g.flags.playerVoice && g.flags.playerVoice.ttara === 0);
 check('베껴몬 깨우침(설득)', g.flags.defeated.bekkyeomon === true);
 check('프롤로그 마무리 컷신 완료 플래그', g.flags.prologueClosed === true);
 check('프롤로그 마무리 후 1장 거리 입구로 자연 진입', g.map === 'freestreet' && g.player.x === 18 && g.player.y === 21 && g.player.dir === 'up');
@@ -1402,6 +1411,20 @@ check('재클리어로 clears 증가', plog.traces.clears >= 2);
 console.log('[68b] 구역② 새김의 게시판 광장 — 사본 3개 회수 (금고 사본은 회수 불가)');
 g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(28, 6, 'up');
 hold('ArrowUp', 14);
+// X-2 「보스가 나에게 원하는 것」 — 광장 진입 시 담아가 카드를 부탁한다(카드는 실제로 잃지 않음).
+check('X-2 담아 등장(광장 진입)', g.map === 'boardplaza' && g.mode === 'dialog' &&
+  g.dialog.lines.some((l) => /주면 안 돼/.test(l)));
+const evBeforeDama = (g.flags.evCards || []).slice();
+while (g.mode === 'dialog') tap('z'); // 담아 대사 → 카드 부탁 선택창
+check('X-2 카드 부탁 선택창(주지 않는다/생각해 본다)', g.mode === 'choice' && g.choice.options.length === 2);
+g.choice.cursor = 0; tap('z'); // 주지 않는다
+check('X-2 damaAsked=keep 저장 + 카드 실제 손실 없음', g.flags.damaAsked === 'keep' &&
+  g.flags.evCards.length === evBeforeDama.length);
+{
+  const P = vm.runInContext('PERSUADE', sandbox);
+  check('X-2 보스전 인트로가 damaAsked로 분기(keep 한 줄)', /지킬 줄 아는 애/.test(P.sujipmon_boss.intro({ damaAsked: 'keep' })) &&
+    !/지킬 줄 아는 애/.test(P.sujipmon_boss.intro({})));
+}
 check('구역① 클리어 후 광장 입장', g.map === 'boardplaza' && !!g.puzzleRun && g.puzzleRun.id === 'copies');
 check('떠도는 사본 3개', g.puzzleRun.copies.length === 3 && g.puzzleRun.collected === 0);
 // 새김에게 말 걸기 — 네 번째 사본(금고 안)은 회수 불가라고 말해 준다
@@ -2170,6 +2193,8 @@ check('복선 미반영 — seenPhoto2 없으면 해당 줄 없음', !g.dialog.l
 check('복선 반영 — seenArticle 있음', g.dialog.lines.some((l) => /송출되지 못한 그 기사/.test(l)));
 check('profConfession 즉시 기록(재진입 방지)', g.flags.profConfession === true);
 advanceDialog();
+// X-1② 박사 고백 끝 반응 선택(정답 없음)이 자동 처리되어 playerVoice.prof에 남는다.
+check('X-1② 박사 고백 끝 반응 선택 저장(playerVoice.prof)', g.flags.playerVoice && g.flags.playerVoice.prof === 0);
 check('getObjective — 영이의 조각을 따라가자 분기', getObjective(g.flags).includes('영이의 조각'));
 setPos(5, 12, 'left'); tap('z');
 check('박사 대사 갱신(고백 이후)', g.mode === 'dialog' && g.dialog.lines.some((l) => /영이의 흔적/.test(l)));
@@ -2223,6 +2248,14 @@ g.flags.chapter3Clear = true; g.flags.gateQuiz3 = true; // 관문 문답(Q-4)은
 g.dialog = null; g.mode = 'world'; setPos(26, 10, 'right'); hold('ArrowRight', 12);
 check('chapter3Clear 후 아케이드 진입 — 서쪽 입구에서 오른쪽을 바라봄',
   g.map === 'arcade' && g.player.x === 1 && g.player.y === 10 && g.player.dir === 'right');
+// X-2 「보스가 나에게 원하는 것」 — 아케이드 진입 시 반짝이 무대를 봐 달라 부탁한다.
+check('X-2 반짝 등장(아케이드 진입)', g.mode === 'dialog' && g.dialog.lines.some((l) => /무대 봐/.test(l)));
+while (g.mode === 'dialog') tap('z');
+check('X-2 무대 부탁 선택창(봐 준다/그냥 간다)', g.mode === 'choice' && g.choice.options.length === 2);
+g.choice.cursor = 0; tap('z'); // 봐 준다
+check('X-2 banjjakAsked=watch 저장 + 보스 인트로 분기', g.flags.banjjakAsked === 'watch' &&
+  /봐 줬지/.test(vm.runInContext('PERSUADE', sandbox).yuhok_boss.intro({ banjjakAsked: 'watch' })) &&
+  !/봐 줬지/.test(vm.runInContext('PERSUADE', sandbox).yuhok_boss.intro({})));
 
 console.log('[85] 아케이드 정문 — 열쇠 0/2일 때 잠김');
 g.dialog = null; g.mode = 'world'; setPos(18, 2, 'up'); hold('ArrowUp', 12);
@@ -2741,8 +2774,10 @@ check('침묵 루트 강화 — 자비 0(≤2, v2 침묵 엔딩 임계값과 동
 check('침묵 루트 함수 직접 확인 — gaugeMax/waveBulletMul', PERSUADE.goyo_boss.gaugeMax({ mercy: 2 }) === 140 &&
   PERSUADE.goyo_boss.gaugeMax({ mercy: 3 }) === 100 &&
   PERSUADE.goyo_boss.waveBulletMul({ mercy: 2 }) === 1.15 && PERSUADE.goyo_boss.waveBulletMul({ mercy: 3 }) === 1.0);
-check('주장① "…아무도, 대답하지 않았어" / 카드(ev_answer)', g.battle.p.claims[0].text.includes('아무도') &&
-  g.battle.p.claims[0].text.includes('대답하지 않았어') && g.battle.p.claims[0].counters.includes('ev_answer'));
+// X-3 고요 정서 아크 — 1번 주장부터 조용한 고백형("무서워"). 카드(ev_answer)·gateLabel은 그대로.
+check('주장① "…무서워. 조용히 있었던 거야" / 카드(ev_answer)', g.battle.p.claims[0].text.includes('무서워') &&
+  g.battle.p.claims[0].text.includes('조용히') && g.battle.p.claims[0].counters.includes('ev_answer') &&
+  g.battle.p.claims[0].gateLabel === '대답하기');
 check('주장② "…너도, 갈 거잖아" / 카드(ev_offstage)', g.battle.p.claims[1].text.includes('너도') &&
   g.battle.p.claims[1].text.includes('갈 거잖아') && g.battle.p.claims[1].counters.includes('ev_offstage'));
 check('주장③ "…왜, 아직 있어?" / best=empathy·unlockAt 60', g.battle.p.claims[2].text.includes('왜') &&
@@ -2840,6 +2875,8 @@ if (!g.reduceFx) {
 }
 check('U-2 리빌 직후 마지막 대사 "…가면을 벗을게"', g.mode === 'dialog' && /가면을 벗을게/.test(g.dialog.lines.join('\n')));
 advanceDialog();
+// X-1③ 반디 리빌 직후 반응 선택(정답 없음)이 자동 처리되어 playerVoice.reveal에 남는다.
+check('X-1③ 리빌 직후 반응 선택 저장(playerVoice.reveal)', g.flags.playerVoice && g.flags.playerVoice.reveal === 0);
 check('반디 정체 공개(bandiRevealed) — 동행 종료', g.flags.bandiRevealed === true);
 check('봉헌 퍼즐 완료(shrineDone=true, shrineIdx=8) — 영이 등장', g.flags.shrineDone === true &&
   g.flags.shrineIdx === SHRINE_WHISPERS.length);
@@ -2893,7 +2930,11 @@ battleMenuPick(3); // 다시 안아 주기 → 관문 재도전
 g.battle.subIdx = g.battle.sub.options.findIndex((o) => o.correct); tap('z'); // 정답
 check('관문 정답 → 눈을 마주친다', g.battle.phase === 'react' && g.battle.finalGateDone === true);
 advanceReact();
-battleMenuPick(3); // 관문 통과 후 안아 주기
+battleMenuPick(3); // 관문 통과 후 안아 주기 → X-1④ 반응 선택 → 마음의 선택
+// X-1④ 영이 자비 선택 직전, 주인공의 반응 한 번(정답 없음). 영이가 그 말을 받아 준다.
+check('X-1④ 자비 직전 반응 선택창(2지선다)', g.mode === 'choice' && g.choice.options.length === 2);
+g.choice.cursor = 0; tap('z');
+check('X-1④ 선택이 playerVoice.yeongi에 저장', g.flags.playerVoice && g.flags.playerVoice.yeongi === 0);
 check('안아 주기 → 마음의 선택(영이 기존 mercy 그대로 재사용)', g.battle.phase === 'mercy' &&
   g.battle.mon.mercy.prompt.includes('이만 사라져야 할까'));
 while (g.battle.cursor !== 0) tap('ArrowDown'); // "함께 돌아가자"(mercy)
@@ -3491,6 +3532,114 @@ console.log('[U-5b] NG+ 오버레이 실제 적용 — 워프 시 반디 대사�
   g.flags.ng = false; warpToFreestreet();
   check('U-5 일반 슬롯(ng=false)은 원본 반디 대사 — 무영향', g.map === 'freestreet' && !!g.notice && g.notice.text === CLx.freestreet);
   g.flags.ng = false;
+}
+
+console.log('[X-1~X-8] X라운드 — 반응 선택·정서 아크·메타·회수·재대결·수업 모드');
+{
+  const T = windowObj.__test;
+  const P = vm.runInContext('PERSUADE', sandbox);
+
+  // X-1 반응 선택 4곳(따라·박사·리빌·영이)은 각 순간의 검사에서 개별 확인했다.
+  // (에필로그(⑤)는 마을 복귀 후 트리거 — 아래에서 별도 확인.)
+
+  // X-3 그럴싸 — 앞 세 주장 okLine은 허세를 유지([반론]/[해명]/[속보], 인정 안 함),
+  //          마지막(④) okLine에서만 [정정]으로 스스로 꺾인다.
+  const hw = P.hwangak_boss.claims;
+  check('X-3 그럴싸 ①~③ okLine 허세 유지(정정 없음)',
+    /\[반론\]/.test(hw[0].okLine) && /\[해명\]/.test(hw[1].okLine) && /\[속보\]/.test(hw[2].okLine) &&
+    !/정정/.test(hw[0].okLine) && !/정정/.test(hw[1].okLine));
+  check('X-3 그럴싸 ④에서만 [정정] 자기 선언', /정정/.test(hw[3].okLine));
+  // X-3 고요 — 세 주장 모두 두려움의 결(카드 게이트·best는 그대로).
+  const gy = P.goyo_boss.claims;
+  check('X-3 고요 세 주장 모두 두려움의 결 + 게이트 유지',
+    /무서/.test(gy[0].text) && /무서/.test(gy[1].text) && /무서/.test(gy[2].text) &&
+    gy[0].counters.includes('ev_answer') && gy[1].counters.includes('ev_offstage') && gy[2].best === 'empathy');
+
+  // X-8 수업 모드 — classSession 플래그와 목표 배너 접두, 일반 세이브 무오염.
+  check('X-8 수업 기본 플래그에 classSession=true', T.setupClassBaseFlags().classSession === true);
+  check('X-8 일반 새 세이브에는 classSession=false(누출 방지)', T.newFlags().classSession === false);
+  T.applyArcadeClass();
+  check('X-8 수업 진입(applyArcadeClass) → classSession + 배너 접두 "이번 시간 목표: "',
+    g.flags.classSession === true && T.objectiveBannerPrefix() === '이번 시간 목표: ');
+  check('X-8 수업 세션에서 보스 클리어 마무리 문구 존재', /다음 시간에 이어서/.test(T.CLASS_END_LINE));
+  g.flags.classSession = false;
+  check('X-8 일반 세션 배너 접두는 "목표: "', T.objectiveBannerPrefix() === '목표: ');
+
+  // X-5 고요의 뜰 진입 — 반디의 회수 안내(★N명 + 7 미만이면 덧붙임).
+  g.dialog = null; g.mode = 'world';
+  g.flags.bandiRevealed = false; g.flags.bandiJoined = true;
+  g.flags.mercyGuideShown = false; g.flags.bandiAnswer = null;
+  g.flags.mercy = 3; g.flags.visited = g.flags.visited || {}; g.flags.visited.quietyard = true;
+  g.flags.chapter5Clear = true; // 뜰 문(needFlag chapter5Clear) 개방 — 앞선 수업 점프로 꺼졌을 수 있어 명시
+  g.flags.gateQuiz1 = g.flags.gateQuiz2 = g.flags.gateQuiz3 = g.flags.gateQuiz4 = g.flags.gateQuiz5 = true; // 관문 문답 통과 처리
+  g.notice = { text: '', t: 0 };
+  g.map = 'cozyhome'; g.warpCooldownFrames = 0; g.pendingWarpRecheck = false;
+  setPos(31, 19, 'down'); hold('ArrowDown', 14);
+  check('X-5 고요의 뜰 진입 시 회수 안내(★3명)', g.map === 'quietyard' && !!g.notice &&
+    /★3명/.test(g.notice.text) && /돌아가서 안아 줄 수 있는/.test(g.notice.text));
+  check('X-5 안내는 1회성(mercyGuideShown 기록)', g.flags.mercyGuideShown === true);
+
+  // X-4 영이 메타 인식 — 재도전(persuadeMemory)/2회차(ng) 인트로 한 줄.
+  g.dialog = null; g.mode = 'world'; g.battle = null; g.map = 'coreroom';
+  g.flags.defeated.yeongi = false; g.flags.shrineDone = true; g.flags.bandiRevealed = true;
+  g.flags.persuadeMemory = { yeongi_boss: { gauge: 10, state: 'shaken' } };
+  g.flags.ng = false;
+  setPos(7, 5, 'up'); tap('z');
+  check('X-4 영이 재도전 인트로 — "몇 번이고" 한 줄', g.mode === 'dialog' &&
+    g.dialog.lines.some((l) => /몇 번이고/.test(l)));
+  g.dialog = null; g.mode = 'world'; g.battle = null;
+  g.flags.persuadeMemory = {}; g.flags.ng = true;
+  setPos(7, 5, 'up'); tap('z');
+  check('X-4 2회차(ng) 인트로 — "이 이야기를 알고 있구나" 한 줄', g.mode === 'dialog' &&
+    g.dialog.lines.some((l) => /알고 있구나/.test(l)));
+  g.dialog = null; g.mode = 'world'; g.battle = null; g.flags.ng = false; g.flags.defeated.yeongi = true;
+
+  // X-1⑤ home/dawn 엔딩 후 마을 에필로그 반응 선택(정답 없음).
+  g.dialog = null; g.mode = 'world'; g.battle = null; g.map = 'village';
+  g.flags.trueEnding = true; g.flags.endingId = 'home'; g.flags.epilogueAsked = false;
+  g.flags.profConfession = true; g.flags.chapter3Clear = false; // 박사 고백이 먼저 끼어들지 않게
+  setPos(13, 16, 'down'); step(2);
+  check('X-1⑤ 엔딩 후 마을 에필로그 반응 선택 등장', g.mode === 'choice' && g.choice.reaction === true &&
+    /어떻게 기억할까/.test(g.choice.prompt));
+  g.choice.cursor = 0; tap('z');
+  check('X-1⑤ epilogueAsked 기록 + playerVoice.epilogue 저장',
+    g.flags.epilogueAsked === true && g.flags.playerVoice.epilogue === 0);
+  advanceDialog();
+
+  // X-6 기억의 방 — 담아(sujipmon) 재대결. 예전 '비자비' 상태로 꾸민다.
+  g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(18, 21, 'up');
+  T.recordDexSeen('sujipmon', 'neutral'); // 만난 기록(비자비)
+  g.flags.chapter1Clear = true; g.flags.chapter1Mercy = false; // 클리어됨·비자비
+  g.flags.evCards = ['ev_minimal', 'ev_footprint']; g.flags.mercy = 3;
+  const mercyBeforeRematch = g.flags.mercy;
+  T.openDex('world'); g.dex.cursor = DEX_ORDER.indexOf('sujipmon');
+  tap('z');
+  check('X-6 수첩에서 만난 보스 위 Z → 재대결 제안', g.mode === 'choice' &&
+    /다시 이야기/.test(g.choice.prompt) && g.choice.options.length === 2);
+  g.choice.cursor = 0; tap('z'); // 다시 이야기한다
+  check('X-6 재대결 배틀 시작(b.rematch, sujipmon_boss)', g.mode === 'battle' &&
+    g.battle.rematch === true && g.battle.persuadeId === 'sujipmon_boss' && g.battle.monId === 'sujipmon');
+  check('X-6 재대결 진입 시 진행 플래그 불변(chapter1Clear)', g.flags.chapter1Clear === true);
+  g.battle.gauge = g.battle.gaugeMax; step(1);
+  battleMenuPick(3); // 안아 주기 → 마음의 선택(담아는 반응 선택 없음)
+  check('X-6 안아 주기 → 마음의 선택', g.battle.phase === 'mercy');
+  while (g.battle.cursor !== 0) tap('ArrowDown');
+  tap('z'); tap('z'); // 자비 → mercyReply → winRematch
+  check('X-6 재대결 승리 대화 + 판정(등급) 라인', g.mode === 'dialog' &&
+    g.dialog.lines.some((l) => /판정:/.test(l)));
+  check('X-6 승리 후에도 진행 플래그 재부여 없음(chapter1Clear 그대로)', g.flags.chapter1Clear === true);
+  check('X-6 비자비→자비 상향 — flags.mercy +1 + chapter1Mercy 상향', g.flags.mercy === mercyBeforeRematch + 1 &&
+    g.flags.chapter1Mercy === true);
+  check('X-6 dex 작별이 자비로 상향', T.getDexSeen().sujipmon.mercy === 'mercy');
+  advanceDialog();
+  check('X-6 승리 후 친구 수첩으로 복귀', g.mode === 'dex');
+  // 중복 카운트 방지 — 이미 자비인 보스를 다시 재대결해도 flags.mercy 불변
+  const mercyAfterUpgrade = g.flags.mercy;
+  g.dex.cursor = DEX_ORDER.indexOf('sujipmon'); tap('z'); g.choice.cursor = 0; tap('z');
+  g.battle.gauge = g.battle.gaugeMax; step(1); battleMenuPick(3);
+  while (g.battle.cursor !== 0) tap('ArrowDown'); tap('z'); tap('z');
+  check('X-6 이미 자비면 재대결해도 flags.mercy 불변(중복 카운트 방지)', g.flags.mercy === mercyAfterUpgrade);
+  advanceDialog();
 }
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);
