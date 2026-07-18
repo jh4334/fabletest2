@@ -75,6 +75,8 @@ for (const [id, m] of Object.entries(MAPS)) {
       err(`${id} 플레이버 (${fl.x},${fl.y})가 워프 칸과 겹침 (조사 불가)`);
     }
     if (!fl.text || fl.text.length < 4) err(`${id} 플레이버 (${fl.x},${fl.y}) 텍스트가 비었거나 너무 짧음`);
+    // Y-12 ngOnly 필드는 있으면 반드시 boolean true (interact가 flags.ng로만 노출)
+    if ('ngOnly' in fl && fl.ngOnly !== true) err(`${id} 플레이버 (${fl.x},${fl.y}) ngOnly는 true여야 함`);
   }
   // 기억의 별(N-4) — 걸어갈 수 있는 칸 + 워프 칸 금지 (조사하려면 인접해야 한다)
   if (m.star) {
@@ -86,6 +88,13 @@ for (const [id, m] of Object.entries(MAPS)) {
     }
     if (!st.text) err(`${id} 기억의 별 텍스트 없음`);
   }
+}
+
+// Y-12 NG+ 전용 플레이버(ngOnly) — 2회차에서만 노출되는 숨은 조사점이 최소 5개 있어야 한다
+{
+  let ngOnly = 0;
+  for (const m of Object.values(MAPS)) for (const fl of (m.flavors || [])) if (fl.ngOnly) ngOnly += 1;
+  if (ngOnly < 5) err(`NG+ 전용 플레이버(ngOnly)가 ${ngOnly}개 — 최소 5개 필요`);
 }
 
 // 4. 도달 가능성 (BFS, 배지 게이트 무시)

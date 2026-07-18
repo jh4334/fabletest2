@@ -724,7 +724,7 @@ console.log('[27] 설정·일시정지 메뉴');
 check('월드 상태', g.mode === 'world');
 tap('x');
 check('설정 메뉴 열림', g.mode === 'pause');
-check('초기 커서 0 (수호자 일지)', g.pauseCursor === 0);
+check('초기 커서 0 (기억의 방)', g.pauseCursor === 0);
 // 교사 전용 항목(dashboard·report·classmode·quizedit·cert)은 「선생님 방」으로 옮겨져
 // 더 이상 학생용 일시정지 메뉴에 없다(스텔스 교육 원칙) — 아래 [41]/[46]/[52]에서 확인.
 const { PAUSE_ITEMS: PAUSE_ORDER, TEACHER_ITEMS } = vm.runInContext('window.__test', sandbox);
@@ -735,11 +735,18 @@ check('일시정지 메뉴에 교사 항목 없음', !PAUSE_ORDER.includes('dash
   !PAUSE_ORDER.includes('classmode') && !PAUSE_ORDER.includes('quizedit') && !PAUSE_ORDER.includes('cert'));
 check('일시정지 메뉴에 백업은 남음', PAUSE_ORDER.includes('backup'));
 check('선생님 방 항목 구성', TEACHER_ITEMS.join(',') === 'dashboard,report,classmode,quizedit,cert,close');
-while (g.pauseCursor !== pauseIdx('dex')) tap('ArrowDown');
+// Y-8 도감(친구 수첩)은 「기억의 방」 허브 하위로 옮겨졌다 — 허브를 거쳐 연다.
+const memIdx = (name) => vm.runInContext('window.__test.memoryItems()', sandbox).indexOf(name);
+while (g.pauseCursor !== pauseIdx('memoryroom')) tap('ArrowDown');
 tap('z');
-check('설정에서 도감 열림', g.mode === 'dex' && g.dex.ret === 'pause');
+check('Y-8 기억의 방 허브 열림', g.mode === 'memoryroom' && g.memory.ret === 'pause');
+while (g.memory.cursor !== memIdx('dex')) tap('ArrowDown');
+tap('z');
+check('Y-8 허브에서 도감 열림(ret=memoryroom)', g.mode === 'dex' && g.dex.ret === 'memoryroom');
 tap('x');
-check('도감 닫고 설정으로 복귀', g.mode === 'pause');
+check('Y-8 도감 닫고 기억의 방으로 복귀', g.mode === 'memoryroom');
+tap('x');
+check('기억의 방 닫고 설정으로 복귀', g.mode === 'pause');
 while (g.pauseCursor !== pauseIdx('textspeed')) tap('ArrowDown');
 const speedBefore = g.textSpeed;
 tap('z');
@@ -3499,11 +3506,12 @@ console.log('[U-3] 반디 인물 순간 4개 — 데이터·소스');
 console.log('[U-4] 보스 감정 템플릿 차별화 — 담아(버려짐)·반짝(존재)·루미(역할)');
 {
   const { PERSUADE: P4 } = vm.runInContext('({ PERSUADE })', sandbox);
-  const banjjakFears = P4.yuhok_boss.claims.map((c) => (c.fragments || []).join(' ')).join(' | ');
-  const lumiFears = P4.hollim_boss.claims.map((c) => (c.fragments || []).join(' ')).join(' | ');
-  const damaFears = P4.sujipmon_boss.claims.map((c) => (c.fragments || []).join(' ')).join(' | ');
-  check('U-4 반짝 = 존재 증명 상실("불이 꺼지면, 내가 없는")', /불이 꺼지면[\s\S]*?내가 없는/.test(banjjakFears));
-  check('U-4 반짝 감정 주장에 "혼자 남는" 문구 제거', !/혼자 남는/.test(banjjakFears));
+  // Y-2에서 fragments는 '힌트에 없는 새 정보(감각·과거)'로 재작성됐다 — 감정 차별화 축은 hint로 검사한다.
+  const banjjakFears = P4.yuhok_boss.claims.map((c) => (c.hint || '')).join(' | ');
+  const lumiFears = P4.hollim_boss.claims.map((c) => (c.hint || '')).join(' | ');
+  const damaFears = P4.sujipmon_boss.claims.map((c) => (c.hint || '')).join(' | ');
+  check('U-4 반짝 = 존재 증명 상실("불이 꺼지면, 없는 것")', /불이 꺼지면[\s\S]*?없는 것/.test(banjjakFears));
+  check('U-4 반짝 감정 주장(힌트)에 "혼자 남는" 문구 없음', !/혼자 남는/.test(banjjakFears));
   check('U-4 루미 = 역할 상실("문을 나가면, 나는 뭘 하면 되지")', /문을 나가면[\s\S]*?뭘 하면 되지/.test(lumiFears));
   check('U-4 담아 = 원조(버려짐/혼자 남는) 유지', /혼자 남는/.test(damaFears));
 }
@@ -3683,6 +3691,113 @@ console.log('[X-1~X-8] X라운드 — 반응 선택·정서 아크·메타·회�
   check('이슈4 dawn 엔딩 후 마을 에필로그 반응 선택 등장(trueEnding=false여도)',
     g.mode === 'choice' && g.choice.reaction === true && /어떻게 기억할까/.test(g.choice.prompt));
   g.choice.cursor = 0; tap('z'); advanceDialog();
+}
+
+console.log('[Y-1~Y-12] Y라운드 — 스토리·플레이 심화 (상실 비트·조각·친구 잡담·기억의 방 등)');
+{
+  const T = windowObj.__test;
+  const P = vm.runInContext('({ PERSUADE })', sandbox).PERSUADE;
+  const { DIARY_SHARDS: DS, FRIEND_CHATS: FC, MONSTERS: MON, MAP_PROPS: MP, MAPS: MY } =
+    vm.runInContext('({ DIARY_SHARDS, FRIEND_CHATS, MONSTERS, MAP_PROPS, MAPS })', sandbox);
+  const gsrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
+
+  // Y-1 상실 체험 비트 — 리빌 이후 "……" 말풍선(조언 자리) 1회
+  check('Y-1 리빌 뒤 "……" 상실 비트 말풍선', /reveal[\s\S]*?game\.notice = \{ text: '……'/.test(gsrc));
+
+  // Y-2 fragments가 힌트를 복제하지 않고 새 정보를 담는다 (전 보스 전 주장)
+  let dupFound = false, fragCount = 0;
+  for (const k of Object.keys(P)) for (const c of (P[k].claims || [])) {
+    const hint = (c.hint || '').replace(/\s/g, '');
+    for (const fr of (c.fragments || [])) {
+      fragCount += 1;
+      const f = fr.replace(/[…\s]/g, '');
+      if (f.length >= 6 && hint.includes(f)) dupFound = true;
+    }
+  }
+  check('Y-2 fragments 재작성 — 힌트 문구 복제 없음(새 정보)', !dupFound && fragCount >= 40);
+
+  // Y-3 영이 mercy는 새 결('따뜻한 게 데이터가 아니면')로 교체, win은 데이터 농담 유지
+  check('Y-3 영이 mercy 대사 교체(따뜻한 게 데이터가 아니면)',
+    /따뜻한 게\n?데이터가 아니면/.test(MON.yeongi.mercy.options[0].reply));
+  check('Y-3 영이 mercy에서 "온도가 없는데" 중복 농담 제거', !/온도가 없는데/.test(MON.yeongi.mercy.options[0].reply));
+  check('Y-3 win의 데이터 농담은 유지(프로그램되어 있지 않은데)', /프로그램되어[\s]?있지 않은데/.test(MON.yeongi.win));
+
+  // Y-4 FRIEND_CHATS — 전 자비 보스 6종, 각 3개, 첫 대사는 기존 고정 인사
+  const fcKeys = Object.keys(FC);
+  check('Y-4 FRIEND_CHATS 6개 보스', fcKeys.length === 6);
+  check('Y-4 각 친구 잡담 3개 + 첫 대사 고정 인사 유지',
+    fcKeys.every((k) => FC[k].length === 3 && /정말 고마워/.test(FC[k][0])));
+  // 순환 동작 — friendChatIdx가 0→1→2→0으로 돈다
+  {
+    g.flags = g.flags || {}; g.flags.friendChatIdx = {};
+    const cyc = [];
+    for (let i = 0; i < 4; i++) {
+      const idx = g.flags.friendChatIdx.bekkyeomon || 0;
+      cyc.push(idx);
+      g.flags.friendChatIdx.bekkyeomon = (idx + 1) % FC.bekkyeomon.length;
+    }
+    check('Y-4 friendChatIdx 순환(0→1→2→0)', cyc.join('') === '0120');
+  }
+
+  // Y-5 DIARY_SHARDS 7개 전부 ngNote(영이 덧말) 보유
+  check('Y-5 일기 7조각 전부 ngNote', DS.length === 7 && DS.every((s) => typeof s.ngNote === 'string' && s.ngNote.length > 2));
+  check('Y-5 drawDiary가 flags.ng에서 ngNote를 그린다', /flags\.ng && s\.ngNote/.test(gsrc));
+
+  // Y-6 프롤로그 캐비닛 청각 복선 — blip 1320(반디 음정)
+  const cab = (MP.introlab || []).find((p) => p.label === '잠긴 캐비닛');
+  check('Y-6 캐비닛 blip 1320(반디 음정 복선)', !!cab && cab.blip === 1320);
+  check('Y-6 prop.blip을 조사 시 재생', /if \(prop\.blip\) Sound\.blip\(prop\.blip\)/.test(gsrc));
+
+  // Y-7 콤보 시각화 — comboFx 설정/오답 소거 + drawBattle 렌더 + reduceFx 텍스트만
+  check('Y-7 콤보 발생 시 comboFx 설정', /b\.comboFx = \{ n: b\.combo \}/.test(gsrc));
+  check('Y-7 오답 시 comboFx 소거', /b\.comboFx = null;/.test(gsrc));
+  check('Y-7 우상단 ×N 카운터 렌더', /b\.comboFx && b\.comboFx\.n >= 2/.test(gsrc) && gsrc.includes("'×' + n"));
+
+  // Y-8 기억의 방 — 일시정지 다이어트 + 허브 하위 항목 + 요약(6종)
+  const pItems = T.PAUSE_ITEMS;
+  check('Y-8 일시정지 메뉴에 기억의 방', pItems.includes('memoryroom'));
+  check('Y-8 수집 계열은 일시정지 최상위에서 빠짐', !pItems.includes('journal') && !pItems.includes('cards') &&
+    !pItems.includes('dex') && !pItems.includes('halloffame') && !pItems.includes('awards') && !pItems.includes('cosmetics'));
+  const mItems = T.memoryItems();
+  check('Y-8 기억의 방 하위 항목(일지·조각·수첩·도전과제·꾸미기·전당·닫기)',
+    ['journal', 'cards', 'dex', 'awards', 'cosmetics', 'halloffame', 'close'].every((k) => mItems.includes(k)));
+  check('Y-8 허브 요약 6종(카드·수첩·도전과제·일기·엔딩·S등급)',
+    /카드 .*수첩 .*도전과제 .*일기 .*엔딩 .*S등급/.test(gsrc));
+
+  // Y-9 완벽한 경청자 — 칭호 + achievementCtx S등급 진행
+  check('Y-9 「완벽한 경청자」 칭호 추가', T.TITLES.some((t) => t.id === 'listener' && t.name === '완벽한 경청자'));
+  {
+    const actx = T.achievementCtx(g.currentSlot != null ? g.currentSlot : 0);
+    check('Y-9 achievementCtx에 sRankCount/sRankTotal(=8)', actx.sRankTotal === 8 && typeof actx.sRankCount === 'number');
+  }
+  check('Y-9 재대결 승리 후 checkCosmeticUnlocks 호출', /appendRankLine\(b, lines, b\.persuadeId\); \/\/ 등급[\s\S]*?checkCosmeticUnlocks/.test(gsrc));
+
+  // Y-10 내일 예고 — tomorrowTopicLabel이 주제 라벨을 돌려준다
+  {
+    const lbl = T.tomorrowTopicLabel(0);
+    check('Y-10 내일 도전 주제 티저 계산', typeof lbl === 'string' && lbl.length > 0);
+    check('Y-10 완료 화면에 내일 주제 티저 렌더', /내일의 도전 주제/.test(gsrc));
+  }
+
+  // Y-11 별빛 클리어 — noHint 표식 기록/집계
+  check('Y-11 recordPuzzleClear noHint 표식', /if \(noHint\) e\.noHint = true/.test(gsrc));
+  {
+    // 힌트 없이 클리어 → starlitClearCount 증가
+    const slot = 0;
+    const before = T.starlitClearCount(slot);
+    const log = T.getPuzzleLog(slot);
+    log.__ytest_star = { done: true, clears: 1, hintsUsed: {}, wrongTries: 0, timeFrames: 0, noHint: true };
+    T.writePuzzleLog(slot, log);
+    check('Y-11 별빛 클리어 집계 증가', T.starlitClearCount(slot) === before + 1);
+    delete log.__ytest_star; T.writePuzzleLog(slot, log);
+  }
+  check('Y-11 힌트 열면 별빛 자격 소멸(usedHint)', /run\.usedHint = true;/.test(gsrc));
+
+  // Y-12 NG+ 숨은 플레이버 — 5개 ngOnly + interact가 ng 아니면 무시
+  let ng = 0;
+  for (const id of Object.keys(MY)) for (const fl of (MY[id].flavors || [])) if (fl.ngOnly) ng += 1;
+  check('Y-12 ngOnly 플레이버 5개', ng === 5);
+  check('Y-12 interact가 ngOnly를 flags.ng에서만 노출', /!v\.ngOnly \|\| game\.flags\.ng/.test(gsrc));
 }
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

@@ -806,6 +806,19 @@
     return pool.slice(0, n);
   }
 
+  // Y-10 내일의 도전 티저 — buildDailyPool 로직을 '내일 날짜' 시드로 재사용해 주제만 미리 계산한다.
+  //   문제 자체를 보여 주진 않고, 내일 풀에서 가장 잦은 주제 라벨 하나만 살짝 귀띔한다.
+  function tomorrowTopicLabel(slot, day) {
+    const tmr = day || todayStr(new Date(Date.now() + 86400000));
+    const pool = buildDailyPool(slot, tmr);
+    if (!pool.length) return null;
+    const cnt = {};
+    for (const q of pool) { const t = q._topic; if (t) cnt[t] = (cnt[t] || 0) + 1; }
+    let best = null, bn = -1;
+    for (const t in cnt) if (cnt[t] > bn) { bn = cnt[t]; best = t; }
+    return best ? (TOPIC_LABEL[best] || best) : null;
+  }
+
   // ---------- 수집·꾸미기 보상 (칭호 · 테마) ----------
   // 학생(슬롯)마다 따로 모으고 고른다. 해금 조건은 도전과제와 같은 학습 컨텍스트로 판정.
   const COSMETIC_KEY = 'ai-ethics-adventure-cosmetic';
@@ -824,6 +837,8 @@
     { id: 'collector', name: '마음 기록가', desc: '친구 수첩 절반 이상 채우기', check: (c) => c.dex > 0 && c.dex * 2 >= c.dexTotal },
     { id: 'champion', name: '챌린지 챔피언', desc: '퀴즈 챌린지 만점', check: (c) => c.challengeBest > 0 && c.challengeBest === c.challengeBestTotal },
     { id: 'master', name: '마음의 수호자', desc: '엔딩 보고 도전과제 8개 달성', check: (c) => c.endings >= 1 && c.achieved >= 8 },
+    // Y-9 전 재대결 상대 S등급 — 완벽하게 들어 준 경청자에게. 상점이 아니라 기존 해금 방식.
+    { id: 'listener', name: '완벽한 경청자', desc: '모든 재대결 상대 S등급', check: (c) => c.sRankTotal > 0 && c.sRankCount >= c.sRankTotal },
   ];
   const THEMES = [
     { id: 'classic', name: '클래식', color: '#ffd644', desc: '기본 노란빛', check: () => true },
@@ -883,6 +898,15 @@
         const a = ACHIEVEMENTS.find((x) => x.id === newAch[newAch.length - 1]);
         if (a) fanfare(`☆ 도전과제 달성! 「${a.name}」`);
       }
+    }
+
+    // ── Y-9 「완벽한 경청자」 — 전 재대결 상대 S등급 달성 순간 전용 팡파르(기존 해금 위에 얹음) ──
+    const listenerNow = TITLES.some((t) => t.id === 'listener' && t.check(ctx0));
+    if (cos.ackListener === undefined) {
+      cos.ackListener = listenerNow; changed = true; // 첫 확인 — 기준선만 조용히 기록
+    } else if (listenerNow && !cos.ackListener) {
+      cos.ackListener = true; changed = true;
+      fanfare('🏆 「완벽한 경청자」 — 모든 마음을 S로 들어 줬어요!');
     }
 
     // ── 배움 카드(기억 조각) 해금 순간 팡파르 ──
@@ -1863,12 +1887,19 @@
     puzzleEntry(log, id).wrongTries += 1;
     writePuzzleLog(slot, log);
   }
-  function recordPuzzleClear(id, frames) {
+  function recordPuzzleClear(id, frames, noHint) {
     const slot = game.currentSlot;
     const log = getPuzzleLog(slot);
     const e = puzzleEntry(log, id);
     e.done = true; e.clears += 1; e.timeFrames += frames;
+    // Y-11 별빛 클리어 — 힌트 없이 빠져나오면 표식을 남긴다(한 번 얻으면 유지 — 벌 없이 상찬만)
+    if (noHint) e.noHint = true;
     writePuzzleLog(slot, log);
+  }
+  // Y-11 별빛 클리어 수 — 힌트 없이 빠져나온 방(noHint 표식) 개수
+  function starlitClearCount(slot) {
+    const log = getPuzzleLog(slot);
+    return Object.keys(log).filter((id) => log[id] && log[id].done && log[id].noHint).length;
   }
   // 방을 클리어한 적이 있는지 (금고문 개방 판정 등)
   function isPuzzleCleared(id) {
@@ -2880,7 +2911,8 @@
     const isS4 = S4_ZONE_PUZZLES.includes(run.id);
     const isS5 = S5_ZONE_PUZZLES.includes(run.id);
     const locksBefore = isS2 ? s2ClearCount() : isS1 ? s1LockCount() : 0;
-    recordPuzzleClear(run.id, run.timeFrames);
+    const starlit = !run.usedHint; // Y-11 이 런에서 힌트를 한 번도 안 열었으면 별빛 클리어
+    recordPuzzleClear(run.id, run.timeFrames, starlit);
     // 접수처에서 내보낸 정보 최고치를 기록 (보스 콜백 인트로 분기용) — 이전 최고치와 비교해 유지
     if (puz.type === 'traces') {
       game.flags.traceGiven = Math.max(game.flags.traceGiven || 0, run.maxBoard || 0);
@@ -2903,6 +2935,8 @@
     const lines = (puz.clearLines || ['방을 빠져나왔다.']).slice();
     // 보상 카드와 잠금/진행 안내를 한 상자로 묶는다 — 클리어 꼬리 상자 다이어트
     const tail = fresh.map((id) => `◆ 증거 카드 「${EVIDENCE_CARDS[id].title}」 획득!`);
+    // Y-11 별빛 클리어 — 힌트 없이 빠져나온 방이면 즉시 표식을 알려 준다(힌트 사용 벌 없음)
+    if (starlit) tail.push('✧ 별빛 클리어 — 힌트 없이 빠져나왔다!');
     const locks = isS2 ? s2ClearCount() : isS1 ? s1LockCount() : 0;
     if ((isS1 || isS2) && locks > locksBefore) {
       if (isS2) {
@@ -3008,6 +3042,7 @@
   function openHint() {
     const run = game.puzzleRun;
     if (!run) return;
+    run.usedHint = true; // Y-11 이 방에서 힌트를 한 번이라도 열면 '별빛 클리어' 자격이 사라진다
     const step = puzzleStep(run);
     game.hint = { step, level: 1, hints: (run.puzzle.hints[step] || []).slice() };
     game.hintRet = game.mode;
@@ -3865,6 +3900,20 @@
     if (friend) {
       const fm = MONSTERS[friend.id];
       const dex = MONSTER_DEX[friend.id];
+      // Y-4 친구 잡담 회전 — FRIEND_CHATS가 있으면 2~3개 대사를 순환한다.
+      //   [0]은 기존 고정 인사(첫 대사로 유지)이며, 그 순번에만 배운 점(learn)을 함께 들려준다.
+      const chats = FRIEND_CHATS[friend.id];
+      if (chats && chats.length) {
+        if (!game.flags.friendChatIdx) game.flags.friendChatIdx = {};
+        const idx = game.flags.friendChatIdx[friend.id] || 0;
+        const lines = [chats[idx]];
+        if (idx === 0 && dex && dex.learn) lines.push(`이제 나도 알아 —\n${dex.learn}`);
+        game.flags.friendChatIdx[friend.id] = (idx + 1) % chats.length; // 다음 잡담으로 순환
+        save();
+        startDialog(lines, fm.name);
+        return;
+      }
+      // 폴백(FRIEND_CHATS 미정의) — 기존 고정 대사
       const lines = [`네 덕분에 마음을 되찾았어.\n정말 고마워!`];
       if (dex && dex.learn) lines.push(`이제 나도 알아 —\n${dex.learn}`);
       startDialog(lines, fm.name);
@@ -3897,6 +3946,9 @@
       } else {
         lines.push(prop.text);
       }
+      // Y-6 청각 복선 — prop.blip이 있으면 그 음정을 낸다(프로젝트 0호 캐비닛 = 1320,
+      //   반디/영이 목소리와 같은 음). 대사 상자가 뜨기 직전에 한 번 울린다.
+      if (prop.blip) Sound.blip(prop.blip);
       // 스토리 복선 등 — 조사 지점에 flag가 있으면 플래그를 남긴다 (예: seenPhoto1)
       if (prop.flag && !game.flags[prop.flag]) {
         game.flags[prop.flag] = true; save();
@@ -3980,7 +4032,9 @@
       return;
     }
     // N-3 「모든 것을 조사할 수 있다」 — 맵별 조사 플레이버 (한 줄 관찰 + 마른 유머)
-    const flavor = (MAPS[game.map].flavors || []).find((v) => v.x === f.x && v.y === f.y);
+    // Y-12 ngOnly 플레이버는 2회차(flags.ng)에서만 매칭된다 — 아니면 없는 셈 치고 일반 타일로 흐른다.
+    const flavor = (MAPS[game.map].flavors || []).find((v) =>
+      v.x === f.x && v.y === f.y && (!v.ngOnly || game.flags.ng));
     // U-3② 반디가 플레이어에게 되묻는 순간 — 아직 답하지 않았고 반디가 곁에 있을 때만.
     // 두 선택지 중 무엇을 골라도 "…그렇구나. 기억해 둘게." — 답을 flags.bandiAnswer에 저장해
     // 파이널 직전(quietyard)에서 반디가 콜백한다(U-3③). 답을 미루면 다음에 다시 물어본다.
@@ -4820,6 +4874,7 @@
     if (upgraded) lines.push('💛 되돌아와, 다시 마음을 안아 줬어요.\n(★ 안아 준 마음이 하나 늘었다)');
     appendRankLine(b, lines, b.persuadeId); // 등급 갱신(최고 등급 기록)
     save();
+    checkCosmeticUnlocks(game.currentSlot); // Y-9 재대결로 S등급이 채워지면 「완벽한 경청자」 팡파르
     game.battle = null;
     game.mode = 'world';
     Sound.badge();
@@ -5012,7 +5067,12 @@
         ['"괜찮아. …계속, 알고 있었어."', '"…왜, 진작 말 안 했어."'],
         '영이',
         ['영이: …알고도, 곁에 있어 줬구나.\n…그 시간이, 나한텐 전부 진짜였어.',
-          '영이: …무서웠어.\n네가, 나를 지울까 봐. …미안해.']);
+          '영이: …무서웠어.\n네가, 나를 지울까 봐. …미안해.'],
+        // Y-1 상실 체험 비트 — 반디가 사라진 뒤, 코어룸을 홀로 걷는 짧은 구간.
+        //   동행 스프라이트는 bandiRevealed로 이미 숨겨져 있고(부재 자체가 연출 — reduceFx 무관),
+        //   맵 진입 조언 말풍선 자리에는 이제 "……"만 뜬다. 영이(7,4) 앞에 스스로 걸어가
+        //   말을 걸 때에만 마지막 배틀이 시작된다(기존 코어룸→영이 동선을 그대로 유지).
+        () => { game.notice = { text: '……', t: 240 }; });
     });
   }
   function drawRevealBeat() {
@@ -5302,11 +5362,15 @@
         b.shake = 20;
         pushFloat(`✦ ${b.combo}연속으로 마음에 닿았다! (+4)`, true);
         if (b.combo === 3) pushFloat('반디: "…대단해. 전부\n제대로 듣고 있었구나."', true);
+        // Y-7 콤보 시각화 — 우상단 ×N 카운터를 켜고(오답 시 소거), blip 음정을 콤보만큼 올린다.
+        b.comboFx = { n: b.combo };
+        Sound.blip(660 + b.combo * 90);
       }
       b.claimIdx += 1; // 다음 주장으로
       if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.max(0, (b.shrinkLevel || 0) - 1);
     } else {
       b.combo = 0; // 콤보(Q-5)는 오답에서 끊긴다
+      b.comboFx = null; // Y-7 오답 시 ×N 카운터 소거
       b.rankWrong = (b.rankWrong || 0) + 1; // B-2 등급 집계 — 오답 문 카운트
       b.gauge = clamp(b.gauge - 6, 0, b.gaugeMax);
       st.gateWrong += 1; st.backfire += 1;
@@ -6558,21 +6622,27 @@
   // 교사 전용 기능(대시보드·리포트·수업 모드·커스텀 퀴즈·수료증)은 「선생님 방」으로
   // 옮겨졌다 — 학생 표면(일시정지 메뉴)에는 교사 어휘가 보이지 않는다(스텔스 교육 원칙).
   // 단, 데이터 백업은 학생도 쓰는 기능이라 그대로 남겨 둔다.
-  const PAUSE_ITEMS = ['journal', 'cards', 'halloffame', 'awards', 'cosmetics',
-    'challenge', 'review', 'dex', 'backup', 'difficulty', 'textspeed', 'tts',
+  // Y-8 일시정지 메뉴 다이어트 — 수집 계열(일지·조각·수첩·도전과제·꾸미기·전당·일기)은
+  //   「기억의 방」 허브 하위로 옮겼다. 여기에는 허브 진입점(memoryroom)과 활동·설정만 남는다.
+  const PAUSE_ITEMS = ['memoryroom', 'challenge', 'review',
+    'backup', 'difficulty', 'textspeed', 'tts',
     'largetext', 'colorblind', 'reducefx', 'lowgraphics', 'volume', 'mute', 'help', 'close'];
   // 방탈출 중에는 「힌트」 항목을 맨 위에 붙인다 (터치 기기에서 H키 대체).
-  // 「낡은 일기」(Q-2)는 첫 조각을 줍기 전에는 목록에 없다 — 미스터리는 주운 뒤부터.
   function pauseItems() {
-    let items = game.puzzleRun ? ['hint'].concat(PAUSE_ITEMS) : PAUSE_ITEMS;
-    if (diaryCount() > 0) {
-      items = items.slice();
-      items.splice(items.indexOf('cards') + 1, 0, 'diary');
-    }
+    return game.puzzleRun ? ['hint'].concat(PAUSE_ITEMS) : PAUSE_ITEMS;
+  }
+  // Y-8 「기억의 방」 하위 항목 — 각 항목은 기존 화면을 그대로 연다(허브만 새로 만든다).
+  //   「낡은 일기」(Q-2)는 첫 조각을 줍기 전에는 목록에 없다 — 미스터리는 주운 뒤부터.
+  const MEMORY_ITEMS_BASE = ['journal', 'cards', 'dex', 'awards', 'cosmetics', 'halloffame'];
+  function memoryItems() {
+    const items = MEMORY_ITEMS_BASE.slice();
+    if (diaryCount() > 0) items.splice(items.indexOf('cards') + 1, 0, 'diary');
+    items.push('close');
     return items;
   }
   const PAUSE_LABELS = {
     hint: '💡 힌트',
+    memoryroom: '❖ 기억의 방',
     journal: '◆ 모험 일지',
     cards: '📚 기억 조각',
     diary: '✉ 낡은 일기',
@@ -6658,6 +6728,7 @@
     if (justPressed('action')) {
       const item = items[game.pauseCursor];
       if (item === 'hint') { const had = game.puzzleRun; closePause(); if (had) openHint(); }
+      else if (item === 'memoryroom') openMemoryRoom('pause'); // Y-8 기억의 방 허브로
       else if (item === 'journal') openJournal('pause');
       else if (item === 'cards') openCards('pause');
       else if (item === 'diary') openDiary('pause');
@@ -6734,6 +6805,102 @@
     ctx.font = fs(12);
     ctx.textAlign = 'center';
     ctx.fillText('↑↓ 선택 · Z 결정 · X 닫기', LW / 2, boxY + boxH - 12);
+    ctx.textAlign = 'left';
+  }
+
+  // ---------- Y-8 「기억의 방」 갤러리 허브 ----------
+  // 한 화면에 수집률 요약(카드·수첩·도전과제·일기·엔딩·S등급)을 보여 주고,
+  // 항목을 고르면 기존 화면(일지·조각·수첩·도전과제·꾸미기·전당·일기)으로 이동한다.
+  // 새로 만드는 건 이 허브뿐 — 개별 화면은 전부 재사용한다(ret='memoryroom'으로 복귀).
+  function openMemoryRoom(ret) {
+    game.memory = { ret: ret || 'pause', cursor: 0 };
+    game.mode = 'memoryroom';
+    Sound.select();
+  }
+  function closeMemoryRoom() {
+    game.mode = (game.memory && game.memory.ret) || 'pause';
+    Sound.select();
+  }
+  // 허브에서 각 항목을 열 때의 라우팅 — 전부 기존 open* 재사용
+  function openMemoryItem(item) {
+    if (item === 'close') { closeMemoryRoom(); return; }
+    if (item === 'journal') openJournal('memoryroom');
+    else if (item === 'cards') openCards('memoryroom');
+    else if (item === 'dex') openDex('memoryroom');
+    else if (item === 'awards') openAwards('memoryroom');
+    else if (item === 'cosmetics') openCosmetics('memoryroom');
+    else if (item === 'diary') openDiary('memoryroom');
+    else if (item === 'halloffame') openHof('memoryroom');
+  }
+  function updateMemoryRoom() {
+    const m = game.memory;
+    const items = memoryItems();
+    const n = items.length;
+    if (justPressed('up')) { m.cursor = (m.cursor + n - 1) % n; Sound.blip(); }
+    if (justPressed('down')) { m.cursor = (m.cursor + 1) % n; Sound.blip(); }
+    if (justPressed('cancel') || justPressed('menu')) { closeMemoryRoom(); return; }
+    if (justPressed('action')) openMemoryItem(items[m.cursor]);
+  }
+  // 허브 한 항목의 수집 수치 라벨
+  function memoryValueLabel(item) {
+    const slot = game.currentSlot;
+    if (item === 'cards') return `${collectedCards(slot)}/${LEARN_CARDS.length}`;
+    if (item === 'dex') return `${dexSeenCount()}/${DEX_ORDER.length}`;
+    if (item === 'awards') return `${countAchievements(slot)}/${ACHIEVEMENTS.length}`;
+    if (item === 'diary') return `${diaryCount()}/${DIARY_SHARDS.length}`;
+    if (item === 'cosmetics') return `${unlockedCount(slot)}/${TITLES.length + THEMES.length}`;
+    if (item === 'halloffame') {
+      const es = getEndingsSeen();
+      const endN = ['home', 'dawn', 'farewell', 'silent'].filter((k) => es[k]).length;
+      const a = achievementCtx(slot);
+      return `엔딩 ${endN}/4 · S ${a.sRankCount}/${a.sRankTotal}`;
+    }
+    if (item === 'journal') {
+      const s = buildLearningSummary(slot);
+      return s.attempted ? `${Math.round(s.overallRate * 100)}%` : '—';
+    }
+    return '';
+  }
+  function drawMemoryRoom() {
+    drawWorld();
+    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+    ctx.fillRect(0, 0, LW, LH);
+    const slot = game.currentSlot;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff';
+    ctx.font = fs(22, true);
+    ctx.fillText('❖ 기억의 방', 24, 40);
+    // 수집률 요약 한 줄 (카드·수첩·도전과제·일기·엔딩·S등급)
+    const es = getEndingsSeen();
+    const endN = ['home', 'dawn', 'farewell', 'silent'].filter((k) => es[k]).length;
+    const a = achievementCtx(slot);
+    ctx.fillStyle = warnColor();
+    ctx.font = fs(13, true);
+    ctx.fillText(`카드 ${collectedCards(slot)}/${LEARN_CARDS.length} · 수첩 ${dexSeenCount()}/${DEX_ORDER.length} · 도전과제 ${countAchievements(slot)}/${ACHIEVEMENTS.length} · 일기 ${diaryCount()}/${DIARY_SHARDS.length} · 엔딩 ${endN}/4 · S등급 ${a.sRankCount}/${a.sRankTotal}`, 24, 64);
+
+    const items = memoryItems();
+    const boxW = 420, rowH = 40;
+    const boxX = Math.round(LW / 2 - boxW / 2), boxY = 84;
+    const boxH = 20 + items.length * rowH;
+    utBox(boxX, boxY, boxW, boxH, 8);
+    let ty = boxY + 34;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      drawChoiceLine(PAUSE_LABELS[item], boxX + 22, ty, i === game.memory.cursor);
+      const val = memoryValueLabel(item);
+      if (val) {
+        ctx.fillStyle = warnColor();
+        ctx.font = fs(12);
+        ctx.textAlign = 'right';
+        ctx.fillText(val, boxX + boxW - 22, ty);
+        ctx.textAlign = 'left';
+      }
+      ty += rowH;
+    }
+    ctx.fillStyle = '#777';
+    ctx.font = fs(12);
+    ctx.textAlign = 'center';
+    ctx.fillText('↑↓ 선택 · Z 열기 · X 닫기', LW / 2, boxY + boxH + 22);
     ctx.textAlign = 'left';
   }
 
@@ -6850,6 +7017,8 @@
     const endN = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
     lines.push(`발견 엔딩: ${endN}/4 · 친구 수첩: ${dexSeenCount()}/${DEX_ORDER.length}`);
     lines.push(`복습 노트 남은 문제: ${mistakeCount(slot)}개`);
+    const starlit = starlitClearCount(slot); // Y-11 힌트 없이 빠져나온 방 수(별빛 클리어)
+    if (starlit) lines.push(`별빛 클리어(힌트 없이 방 탈출): ${starlit}개`);
     const rm = getMeta(slot);
     if (rm.streak || rm.bestStreak) lines.push(`연속 출석: ${rm.streak || 0}일 (최고 ${rm.bestStreak || 0}일)`);
     return lines.join('\n');
@@ -6903,7 +7072,8 @@
     const jm = getMeta(slot);
     ctx.fillStyle = '#888';
     ctx.font = fs(13);
-    ctx.fillText(`발견 엔딩 ${endN}/4  ·  친구 수첩 ${dexSeenCount()}/${DEX_ORDER.length}  ·  복습 노트 ${mistakeCount(slot)}개`, 24, 88);
+    const starlit = starlitClearCount(slot); // Y-11 힌트 없이 빠져나온 방 수
+    ctx.fillText(`발견 엔딩 ${endN}/4  ·  친구 수첩 ${dexSeenCount()}/${DEX_ORDER.length}  ·  복습 노트 ${mistakeCount(slot)}개${starlit ? `  ·  ✧ 별빛 클리어 ${starlit}개` : ''}`, 24, 88);
     if (jm.streak || jm.bestStreak) {
       ctx.fillStyle = themeAccent();
       ctx.fillText(`🔥 연속 출석 ${jm.streak || 0}일 (최고 ${jm.bestStreak || 0}일)`, 24, 106);
@@ -7147,9 +7317,18 @@
       ctx.fillStyle = '#aaa';
       ctx.font = fs(16);
       ctx.fillText(msg, LW / 2, 270);
+      // Y-10 오늘의 도전 완료 화면에만 내일 주제 티저 1줄(날짜 시드로 미리 계산)
+      if (c.daily) {
+        const tmr = tomorrowTopicLabel(c.slot);
+        if (tmr) {
+          ctx.fillStyle = themeAccent();
+          ctx.font = fs(14, true);
+          ctx.fillText(`◷ 내일의 도전 주제: ${tmr}`, LW / 2, 300);
+        }
+      }
       ctx.fillStyle = '#777';
       ctx.font = fs(13);
-      ctx.fillText('Z 또는 X로 돌아가기', LW / 2, 330);
+      ctx.fillText('Z 또는 X로 돌아가기', LW / 2, 336);
       ctx.textAlign = 'left';
       return;
     }
@@ -7240,6 +7419,10 @@
     const defeatedCount = f.defeated ? Object.keys(f.defeated).filter((k) => f.defeated[k]).length : 0;
     const endSeen = getEndingsSeen();
     const endings = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
+    // Y-9 재대결 대상 보스(DEX_REMATCH 8종)의 최고 등급이 전부 S인지 — 「완벽한 경청자」 조건.
+    const bossRank = meta.bossRank || {};
+    const rematchIds = Object.keys(DEX_REMATCH);
+    const sRankCount = rematchIds.filter((id) => bossRank[DEX_REMATCH[id]] === 'S').length;
     const ctx = {
       attempted: s.attempted, strongTopics: s.strongTopics, perfectTopic: s.perfectTopic,
       mercy: f.mercy || 0, defeatedCount,
@@ -7247,6 +7430,7 @@
       challengeRuns: meta.challengeRuns || 0,
       challengeBest: meta.challengeBest || 0, challengeBestTotal: meta.challengeBestTotal || 0,
       flavorsSeen: f.flavorSeen ? Object.keys(f.flavorSeen).length : 0, // B-4 처음 조사한 플레이버 수
+      sRankCount, sRankTotal: rematchIds.length, // Y-9 재대결 S등급 진행 (n/8)
     };
     // 도전과제 달성 개수 — 칭호/테마 해금 조건에서 사용 (위 필드만 참조하므로 순환 없음)
     ctx.achieved = ACHIEVEMENTS.filter((a) => a.check(ctx)).length;
@@ -7655,6 +7839,14 @@
           if (!line) { ty += lh(9); continue; }
           ctx.fillText(line, x + 78, ty);
           ty += lh(19);
+        }
+        // Y-5 NG+ 회차 — 정체를 아는 영이의 덧말을 조각 아래 회색 한 줄로 얹는다(재해석 층)
+        if (game.flags.ng && s.ngNote) {
+          ctx.fillStyle = '#6b7280';
+          ctx.font = fs(11);
+          ctx.fillText(s.ngNote, x + 78, y + rowH - 12);
+          ctx.fillStyle = '#ddd';
+          ctx.font = fs(13);
         }
       } else {
         ctx.fillText('…아직 찾지 못한 조각.', x + 78, y + 54);
@@ -9980,6 +10172,24 @@
       ctx.fillRect(0, 0, LW, LH);
     }
 
+    // Y-7 콤보 시각화 — 우상단 ×N 카운터(N≥2). 콤보가 클수록 밝아지고 글자가 커진다.
+    //   reduceFx면 연출 없이 텍스트만(광과민성 배려). 오답 시 b.comboFx가 지워져 사라진다.
+    if (b.comboFx && b.comboFx.n >= 2) {
+      const n = b.comboFx.n;
+      ctx.textAlign = 'right';
+      if (game.reduceFx) {
+        ctx.fillStyle = '#ffd644';
+        ctx.font = fs(20, true);
+        ctx.fillText('×' + n, LW - 20, 46);
+      } else {
+        const g = Math.round(150 + Math.min(1, n * 0.14) * 105); // 콤보가 클수록 밝게
+        ctx.fillStyle = `rgb(255,${g},80)`;
+        ctx.font = fs(18 + Math.min(n, 6) * 3, true);
+        ctx.fillText('×' + n, LW - 20, 48);
+      }
+      ctx.textAlign = 'left';
+    }
+
     // 마음 조각 배틀 — 탄막 턴 (공간 행동)
     if (b.isPersuade && b.phase === 'wave') { drawPersuadeArena(b); ctx.restore(); return; }
 
@@ -11136,6 +11346,10 @@
         updatePause();
         drawPause();
         break;
+      case 'memoryroom': // Y-8 기억의 방 갤러리 허브
+        updateMemoryRoom();
+        drawMemoryRoom();
+        break;
       case 'teacher':
         updateTeacherRoom();
         drawTeacherRoom();
@@ -11340,6 +11554,8 @@
     srLiveText: () => (srLiveEl ? srLiveEl.textContent : null), // aria-live 미러 검증용
     chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
     pauseItems, diaryCount, // 낡은 일기(Q-2) — 동적 메뉴 검증용
+    // Y라운드 신규 — 기억의 방 허브·내일 티저·별빛 클리어 검증용
+    memoryItems, openMemoryRoom, tomorrowTopicLabel, starlitClearCount, TITLES,
     // 설득 배틀 순환 풀 확인용 (unlockAt 검증) — 현재 배틀의 등장 가능한 주장 텍스트 목록
     persuadeAvail: () => (game.battle ? availableClaims(game.battle).map((c) => c.text) : []),
     activePattern: () => (game.battle ? activePattern(game.battle) : null), // R라운드 검증용
