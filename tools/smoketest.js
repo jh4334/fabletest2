@@ -1676,6 +1676,7 @@ check('배달 3회 → 게이지 +10 및 만충 직전(≥108, gaugeMax 110-2)',
 // ── 승리 → chapter1Clear + 마을 복귀 ──
 g.battle.gauge = g.battle.gaugeMax; step(1); // 게이지 만충 → 내 턴 + spareReady
 check('게이지 만충 → 내 턴 + 이름 노랗게(spareReady)', g.battle.phase === 'menu' && g.battle.spareReady === true);
+g.flags.classSession = true; // 이슈6: 수업 세션에서 보스 클리어 시 마무리 안내 후 세션이 꺼져야 한다
 battleMenuPick(3); // 마음 안아 주기
 check('안아 주기 → 마음의 선택', g.battle.phase === 'mercy');
 while (g.battle.cursor !== 0) tap('ArrowDown');
@@ -1683,7 +1684,10 @@ tap('z'); // 자비 선택 → 응답
 check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z'); // 응답 닫기 → 승리 처리
 check('승리 대화 시작', g.mode === 'dialog');
+check('이슈6 수업 세션 보스 클리어 대화에 마무리 안내(CLASS_END_LINE) 포함',
+  g.dialog.lines.some((l) => /다음 시간에 이어서/.test(l)));
 advanceDialog();
+check('이슈6 수업 세션 보스 클리어 후 classSession 해제(배너 영구 잔존 방지)', g.flags.classSession === false);
 check('1장 클리어 플래그', g.flags.chapter1Clear === true);
 check('일기 조각 ②(Q-2) — 자비 승리로 획득', g.flags.diaryShards && g.flags.diaryShards.ch1 === true &&
   Object.keys(g.flags.diaryShards).length === 1);
@@ -2935,6 +2939,10 @@ battleMenuPick(3); // 관문 통과 후 안아 주기 → X-1④ 반응 선택 �
 check('X-1④ 자비 직전 반응 선택창(2지선다)', g.mode === 'choice' && g.choice.options.length === 2);
 g.choice.cursor = 0; tap('z');
 check('X-1④ 선택이 playerVoice.yeongi에 저장', g.flags.playerVoice && g.flags.playerVoice.yeongi === 0);
+// 이슈3: 영이의 답은 game.notice(월드 전용, drawBattle 미표시) 대신 배틀 네이티브 react로 보인다.
+check('X-1④ 영이 답이 배틀 react로 표시(notice 아님)', g.mode === 'battle' && g.battle.phase === 'react' &&
+  /혼자, 아니었구나|끝까지 들어 준/.test(g.battle.react.text) && g.battle.afterReact === 'mercy');
+advanceReact(); // 영이 답 react → 마음의 선택
 check('안아 주기 → 마음의 선택(영이 기존 mercy 그대로 재사용)', g.battle.phase === 'mercy' &&
   g.battle.mon.mercy.prompt.includes('이만 사라져야 할까'));
 while (g.battle.cursor !== 0) tap('ArrowDown'); // "함께 돌아가자"(mercy)
@@ -3640,6 +3648,41 @@ console.log('[X-1~X-8] X라운드 — 반응 선택·정서 아크·메타·회�
   while (g.battle.cursor !== 0) tap('ArrowDown'); tap('z'); tap('z');
   check('X-6 이미 자비면 재대결해도 flags.mercy 불변(중복 카운트 방지)', g.flags.mercy === mercyAfterUpgrade);
   advanceDialog();
+
+  // 이슈5: 수첩 Z 재대결 확정 창의 기본 커서는 안전값 '아니, 됐어'(1) — Z 닫기 습관 오조작 방지.
+  g.mode = 'world'; g.dialog = null; g.battle = null;
+  T.openDex('world'); g.dex.cursor = DEX_ORDER.indexOf('sujipmon'); tap('z');
+  check('이슈5 재대결 확정 창 기본 커서 = 아니, 됐어(1)', g.mode === 'choice' && g.choice.cursor === 1);
+  tap('z'); // 기본값(취소) 확정 → 배틀 안 열리고 수첩 복귀
+  check('이슈5 기본값 Z → 재대결 안 열리고 수첩 복귀', g.mode === 'dex' && !g.battle);
+
+  // 이슈2: 공용 수첩(seen)엔 남아 있지만 '지금 슬롯'에선 못 만난 아이 → 재대결 대신 안내.
+  //        (다른 학생이 깬 아이로 재대결을 열면 현재 슬롯의 자비/진행이 오염되고 스포일러가 샌다.)
+  g.mode = 'world'; g.dialog = null; g.battle = null;
+  T.recordDexSeen('yeongi', 'mercy'); // 다른 슬롯에서 클리어된 것처럼 공용 수첩에만 기록
+  g.flags.defeated.yeongi = false; delete g.flags.mercyChoice; g.flags.goyoMercy = false; // 현재 슬롯에선 미클리어
+  T.openDex('world'); g.dex.cursor = DEX_ORDER.indexOf('yeongi'); g.dex.hint = null; tap('z');
+  check('이슈2 공용 수첩만 있고 현재 슬롯 미클리어 → 재대결 차단 + 안내(슬롯 오염 방지)',
+    g.mode === 'dex' && !g.battle && g.dex.hint && /아직 만나지 못한/.test(g.dex.hint.text));
+
+  // 이슈1: 타이틀(이어하기 전)엔 flags가 null — 수첩 Z가 startPersuadeBattle의 persuadeMemory
+  //        접근에서 크래시했다. 이제 크래시 대신 안내만 띄운다(공용 수첩 seen엔 sujipmon이 있다).
+  const savedFlags = g.flags;
+  g.mode = 'title'; g.dialog = null; g.battle = null; g.flags = null;
+  T.openDex('title'); g.dex.cursor = DEX_ORDER.indexOf('sujipmon'); g.dex.hint = null;
+  tap('z');
+  check('이슈1 타이틀(flags=null) 수첩 Z → 크래시 없이 안내(재대결 안 열림)',
+    g.mode === 'dex' && !g.battle && g.dex.hint && /이어하기 후에/.test(g.dex.hint.text));
+  g.flags = savedFlags;
+
+  // 이슈4: dawn 엔딩도 마을 에필로그가 떠야 한다(예전엔 trueEnding 조건 때문에 dawn 분기가 죽어 있었다).
+  g.dialog = null; g.mode = 'world'; g.battle = null; g.choice = null; g.map = 'village';
+  g.flags.trueEnding = false; g.flags.endingId = 'dawn'; g.flags.epilogueAsked = false;
+  g.flags.profConfession = true; g.flags.chapter3Clear = false; // 박사 고백이 먼저 끼어들지 않게
+  setPos(13, 16, 'down'); step(2);
+  check('이슈4 dawn 엔딩 후 마을 에필로그 반응 선택 등장(trueEnding=false여도)',
+    g.mode === 'choice' && g.choice.reaction === true && /어떻게 기억할까/.test(g.choice.prompt));
+  g.choice.cursor = 0; tap('z'); advanceDialog();
 }
 
 console.log(`\n✔ 스모크 테스트 통과 (${passed}개 검사)`);

@@ -276,6 +276,16 @@ console.log('[X-round] 세이브 스키마 — 신규 플래그 기본값·수�
   check('X 반응/요청 선택 플래그 세이브 왕복 보존', loaded.flags.playerVoice.ttara === 1 &&
     loaded.flags.playerVoice.yeongi === 0 && loaded.flags.damaAsked === 'think' && loaded.flags.banjjakAsked === 'watch');
   storage.delete('ai-ethics-adventure-slot-2');
+
+  // 이슈6: classSession=true로 저장된 슬롯을 '일반 이어하기'로 열면 세션 플래그가 꺼져야 한다
+  //        (수업 배너·마무리 안내가 슬롯에 영구 잔존하지 않게). 미클리어 슬롯이라 ngchoice 없이 바로 진입.
+  storage.set('ai-ethics-adventure-slot-1', JSON.stringify({ v: 9, name: '수업아이', map: 'village', x: 13, y: 16,
+    flags: Object.assign(T.newFlags(), { talkedProf: true, prologueClosed: true, classSession: true }), updatedAt: Date.now() }));
+  g.mode = 'title'; g.titleScreen = 'slots'; g.slotCursor = 1; g.flags = null;
+  tap('z'); // 슬롯 1 이어하기(미클리어) → continueGame
+  check('이슈6 일반 이어하기 진입 시 classSession 해제(배너 영구 잔존 방지)',
+    (g.mode === 'world' || g.mode === 'dialog') && g.flags && g.flags.classSession === false);
+  storage.delete('ai-ethics-adventure-slot-1');
 }
 
 console.log(`\n✔ 슬롯 테스트 통과 (${passed}개 검사)`);
