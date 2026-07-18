@@ -4357,7 +4357,8 @@
       return;
     }
     // X-1⑤ home/dawn 엔딩 후 마을 에필로그 — 주인공의 반응 한 번(정답 없음).
-    if (game.map === 'village' && game.flags.trueEnding && !game.flags.epilogueAsked &&
+    // 이슈4: trueEnding은 home에서만 참이라 dawn 분기가 죽어 있었다 — endingId로만 게이트한다.
+    if (game.map === 'village' && !game.flags.epilogueAsked &&
         (game.flags.endingId === 'home' || game.flags.endingId === 'dawn')) {
       game.flags.epilogueAsked = true;
       save();
@@ -4574,7 +4575,11 @@
         const after = b.afterReact;
         b.react = null;
         Sound.select();
-        if (b.gauge >= b.gaugeMax || after === 'menu') {
+        if (after === 'mercy') {
+          // 이슈3: 반응 대사(예: 영이의 답)를 읽어 준 뒤 곧장 마음의 선택으로. 게이지 만충
+          //        경로보다 먼저 처리해 enterMenuPhase로 새지 않게 한다.
+          enterMercyPhase(b);
+        } else if (b.gauge >= b.gaugeMax || after === 'menu') {
           // 게이지 만충이면 탄막 턴 없이 곧장 내 턴 — 「마음 안아 주기」 마무리로
           if (after === 'menu' && b.gauge < b.gaugeMax) { b.phase = 'menu'; b.sub = null; }
           else enterMenuPhase(b);
@@ -4682,7 +4687,12 @@
       game.flags.bandiJokeShown = true;
       lines.push('반디: …있지. 담아가 모아 둔 것 중에\n내 흉내도 있었을까?\n…없었겠지. 나 이렇게 반짝이는데.');
     }
-    if (game.flags.classSession) lines.push(CLASS_END_LINE); // X-8 차시 마무리 안내(수업 세션만)
+    if (game.flags.classSession) {
+      lines.push(CLASS_END_LINE); // X-8 차시 마무리 안내(수업 세션만)
+      // 이슈6: 세션은 이 한 차시로 끝 — 안내를 보인 뒤 플래그를 내려 배너/안내가 슬롯에
+      //        영구 잔존하지 않게 한다(다음에 일반 이어하기로 들어와도 깨끗).
+      game.flags.classSession = false; save();
+    }
     startDialog(lines, mon.name, () => Sound.playMapBgm(MAPS[cfg.map].song));
   }
 
@@ -4715,7 +4725,11 @@
     appendRankLine(b, lines, b.persuadeId); // B-2 판정 한 줄 + 최고 등급 기록
     grantDiaryShard('goyo', lines, b.mercyChoiceKind); // 마지막 조각 — 서명 「— 영」이 드러난다
     lines.push(bandiBossLine('goyo', b.mercyChoiceKind, game.flags));
-    if (game.flags.classSession) lines.push(CLASS_END_LINE); // X-8 차시 마무리 안내(수업 세션만)
+    if (game.flags.classSession) {
+      lines.push(CLASS_END_LINE); // X-8 차시 마무리 안내(수업 세션만)
+      // 이슈6: 세션 종료 — 안내를 보인 뒤 플래그를 내려 배너/안내가 영구 잔존하지 않게 한다.
+      game.flags.classSession = false; save();
+    }
     startDialog(lines, mon.name, () => Sound.playMapBgm(MAPS.coreroom.song));
   }
 
@@ -4766,6 +4780,17 @@
     if (monId === 'yeongi') return !!(f.mercyChoice && f.mercyChoice.yeongi === 'mercy');
     const n = CHAPTER_MON_NUM[monId];
     return n ? !!f['chapter' + n + 'Mercy'] : false;
+  }
+  // 이 보스를 '지금 슬롯'에서 실제로 만나 클리어했는가 — 공용 수첩(seen)은 슬롯을 넘나들어
+  // 다른 학생이 깬 아이도 보이므로, 재대결은 현재 슬롯 진행 플래그로 한 번 더 잠근다.
+  function bossClearedInSlot(monId) {
+    const f = game.flags;
+    if (!f) return false;
+    if (monId === 'bekkyeomon') return !!(f.defeated && f.defeated.bekkyeomon);
+    if (monId === 'finalboss') return !!f.goyoClear;
+    if (monId === 'yeongi') return !!(f.defeated && f.defeated.yeongi);
+    const n = CHAPTER_MON_NUM[monId];
+    return n ? !!f['chapter' + n + 'Clear'] : false;
   }
   // 이 보스를 자비로 되돌렸음을 정식 마커에 상향 기록한다(회수 루프 — 하향은 없다).
   function markBossSpared(monId) {
@@ -5478,9 +5503,10 @@
             const idx = (i < 0 || i > 1) ? 0 : i;
             if (!game.flags.playerVoice) game.flags.playerVoice = {};
             game.flags.playerVoice.yeongi = idx;
-            game.notice = { text: replies[idx], t: 320 };
-            if (game.tts) Speech.speak(replies[idx]);
-            enterMercyPhase(game.battle);
+            // 이슈3: game.notice는 drawBattle에서 안 그려진다(월드 전용) — 배틀 네이티브
+            //        반응(react)으로 영이의 답을 보여 준 뒤 마음의 선택으로 넘어간다.
+            if (game.notice) game.notice.t = 0; // 혹시 남아 있을 월드 토스트 정리
+            setReact(game.battle, replies[idx], 'mercy');
           });
         return;
       }
@@ -6177,6 +6203,7 @@
   function openDex(ret) {
     game.dex.ret = ret;
     game.dex.cursor = 0;
+    game.dex.hint = null; // 이전에 띄운 재대결 안내가 남아 있지 않게 초기화
     game.mode = 'dex';
     Sound.select();
   }
@@ -6188,6 +6215,7 @@
 
   function updateDex() {
     const n = DEX_ORDER.length;
+    if (game.dex.hint && game.dex.hint.t > 0) game.dex.hint.t -= 1; // 재대결 안내 토스트 카운트다운
     if (justPressed('up')) { game.dex.cursor = (game.dex.cursor + n - 1) % n; Sound.blip(); }
     if (justPressed('down')) { game.dex.cursor = (game.dex.cursor + 1) % n; Sound.blip(); }
     if (justPressed('left')) { game.dex.cursor = (game.dex.cursor + n - 5) % n; Sound.blip(); }
@@ -6197,12 +6225,22 @@
     if (justPressed('action')) {
       const id = DEX_ORDER[game.dex.cursor];
       const seen = getDexSeen();
-      if (seen[id] && seen[id].seen && DEX_REMATCH[id]) startDexRematch(id);
-      else closeDex();
+      // 공용 수첩에 기록조차 없으면(정말로 못 만난 아이) 그냥 닫는다.
+      if (!(seen[id] && seen[id].seen && DEX_REMATCH[id])) { closeDex(); return; }
+      // 이슈1: 이어하기 전(타이틀)에는 flags가 없다 — startPersuadeBattle의 persuadeMemory
+      //        접근이 크래시나므로, 재대결 대신 부드러운 안내만 띄운다.
+      if (!game.flags) { game.dex.hint = { text: '이어하기 후에 다시 이야기할 수 있어요', t: 220 }; Sound.blip(); return; }
+      // 이슈2: 공용 수첩(seen)은 슬롯을 넘나든다 — 다른 학생이 깬 아이로 재대결을 열면
+      //        현재 슬롯의 자비/진행이 오염되고 스포일러가 샌다. '지금 슬롯'에서 만난 아이만 허용.
+      if (!(bossWasSpared(id) || bossClearedInSlot(id))) {
+        game.dex.hint = { text: '아직 만나지 못한 아이예요', t: 220 }; Sound.blip(); return;
+      }
+      startDexRematch(id);
     }
   }
   // X-6 재대결 제안 — 「다시 이야기해 볼래?」 선택 → 실전 규칙의 설득 배틀 재시작(b.rematch).
   function startDexRematch(id) {
+    if (!game.flags) return; // 이슈1: flags 없는 타이틀 문맥에선 재대결 진입 금지(방어)
     const ret = game.dex.ret;
     startChoice(`${monName(id)}와(과) 다시 이야기해 볼래?`, ['다시 이야기한다', '아니, 됐어'], (i) => {
       if (i !== 0) { openDex(ret); return; } // 취소·아니 → 수첩으로 복귀
@@ -6210,6 +6248,8 @@
       game.battle.rematch = true;      // 승리 시 진행 플래그 재부여 없이 수첩 복귀(winRematch)
       game.battle.rematchRet = ret;
     });
+    // 이슈5: Z 습관(닫기 대신 재대결 확정)로 인한 오조작 방지 — 안전한 기본값 '아니, 됐어'.
+    if (game.choice) game.choice.cursor = 1;
   }
 
   const MERCY_LABEL = {
@@ -6307,17 +6347,29 @@
       ctx.fillStyle = '#e0453a';
       ctx.font = fs(14);
       ctx.fillText(`작별 · ${mk ? MERCY_LABEL[mk] : '—'}`, panelX + 24, my);
-      // X-6 재대결 안내 — 만난 보스라면 Z로 다시 이야기할 수 있다.
+      // X-6 재대결 안내 — 만난 보스라면 Z로 다시 이야기할 수 있다. (이슈5: 닫기 키도 함께 안내)
       if (DEX_REMATCH[id]) {
         ctx.fillStyle = Math.floor(game.time / 30) % 2 === 0 ? '#ffd644' : '#8a7a2a';
         ctx.font = fs(13, true);
         ctx.fillText('Z · 다시 이야기해 볼래?', panelX + 24, my + 30);
+        ctx.fillStyle = '#888';
+        ctx.font = fs(12);
+        ctx.fillText('닫기 · X', panelX + 24, my + 50);
       }
     } else {
       ctx.fillStyle = '#666';
       ctx.font = fs(15);
       ctx.fillText('아직 만나지 못한 마음입니다.', panelX + 24, 300);
       ctx.fillText('모험에서 깨우치면 기록됩니다.', panelX + 24, 326);
+    }
+
+    // 재대결 안내 토스트(이슈1·2) — dex 화면엔 game.notice가 안 그려지므로 여기서 직접 띄운다.
+    if (game.dex.hint && game.dex.hint.t > 0) {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffd644';
+      ctx.font = fs(14, true);
+      ctx.fillText(game.dex.hint.text, LW / 2, 486);
+      ctx.textAlign = 'left';
     }
 
     // 푸터
@@ -10631,6 +10683,9 @@
     const sf = s.flags || {};
     game.flags = Object.assign(newFlags(), sf);
     game.flags.defeated = Object.assign(newFlags().defeated, sf.defeated);
+    // 이슈6: 일반 이어하기는 수업(차시) 세션이 아니다 — 옛 세이브에 남은 classSession을 내려
+    //        '이번 시간 목표' 배너/CLASS_END_LINE이 잘못 붙는 것을 막는다.
+    game.flags.classSession = false;
     game.mode = 'world';
     syncPuzzleRun(); // 방탈출 방 안에서 저장된 세이브면 퍼즐을 새로 시작
     const meta = recordPlayDay(slot);
@@ -11297,7 +11352,7 @@
     dailyDoneToday, surfaceDailyAndStreak,
     // X라운드 신규 — 재대결(기억의 방)·수업 배너·반응 선택 검증용
     newFlags, openDex, getDexSeen, recordDexSeen, DEX_REMATCH, CLASS_END_LINE,
-    objectiveBannerPrefix, bossWasSpared,
+    objectiveBannerPrefix, bossWasSpared, bossClearedInSlot,
   };
   frame();
 })();
