@@ -1611,6 +1611,13 @@ check('닫힘 — 말 걸기가 반응 대사로 막힘', g.battle.phase === 're
 advanceReact();
 check('막힌 뒤에도 상대 턴은 온다', g.battle.phase === 'wave');
 
+// ── closed: 증거도 같은 규칙 — 듣기 전엔 카드도 닿지 않는다 (듣기 우회 방지) ──
+g.battle.phase = 'menu'; g.battle.pState = 'closed'; g.battle.gauge = 0;
+battleMenuPick(1);
+check('닫힘 — 증거 보여주기도 반응 대사로 막힘', g.battle.phase === 'react' && /듣지 못했다/.test(g.battle.react.text));
+check('닫힘 — 증거 차단 시 게이지 변화 없음', g.battle.gauge === 0);
+advanceReact();
+
 // ── best='rebut'(동의 범위 되묻기): 열림 정답 응답 +32 ──
 g.battle.pState = 'open'; g.battle.gauge = 55; g.battle.claimIdx = 2;
 check('현재 주장 = 동의 범위(best=rebut)', /동의한 거/.test(TH.persuadeAvail()[g.battle.claimIdx % TH.persuadeAvail().length]));

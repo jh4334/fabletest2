@@ -197,7 +197,9 @@ for (const [topic, list] of Object.entries(QUIZZES)) {
 for (const [id, mon] of Object.entries(MONSTERS)) {
   // 인물 핵심 필드 스키마 (v3: 퀴즈 배틀 폐지 — hp/topic 요구 없음, 설득 배틀은 PERSUADE가 담당)
   if (!isStr(mon.name)) err(`인물 ${id}: name이 비었거나 문자열이 아님`);
-  if (!isStr(mon.intro)) err(`인물 ${id}: intro가 비었거나 문자열이 아님`);
+  // intro는 문자열 또는 문자열 배열(대화 상자 여러 개로 나누는 긴 인트로) 허용
+  const introOk = isStr(mon.intro) || (Array.isArray(mon.intro) && mon.intro.length > 0 && mon.intro.every(isStr));
+  if (!introOk) err(`인물 ${id}: intro가 비었거나 문자열/문자열 배열이 아님`);
   if (!isStr(mon.win)) err(`인물 ${id}: win이 비었거나 문자열이 아님`);
 
   // 통일성: 모든 배틀 인물은 '마음의 선택'을 가진다

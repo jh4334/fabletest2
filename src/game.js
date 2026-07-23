@@ -4274,7 +4274,10 @@
     const dest = MAPS[w.to];
     if (dest.intro && !game.flags.visited[w.to]) {
       game.flags.visited[w.to] = true;
-      startDialog(dest.intro.slice());
+      let introLines = dest.intro.slice();
+      // 터치 기기엔 H 키가 없다 — 힌트 안내를 화면의 「힌트」 버튼으로 바꿔 준다
+      if (isTouchDevice) introLines = introLines.map((t) => t.replace('막히면 H', '막히면 「힌트」 버튼'));
+      startDialog(introLines);
     }
     // 파이널 직전(quietyard 진입) 반디의 두 안내를 한 말풍선으로 묶는다:
     //   • U-3③ 콜백 — 2장에서 저장한 답(bandiAnswer)을 기억해 준다(기억해 주는 친구).
@@ -5169,7 +5172,7 @@
     Sound.encounter();
     // 콜백 인트로: 프로필 intro가 함수면 현재 플래그로 첫 대사를 분기한다 (없으면 기본 인트로)
     const introText = (typeof p.intro === 'function') ? p.intro(game.flags) : (p.intro || mon.intro);
-    const lines = [introText];
+    const lines = [].concat(introText); // 문자열·배열(여러 상자) 인트로 모두 수용
     // X-4 영이 메타 인식 — 세이브에 영향 없는 flags 조건 두 가지로 한 줄을 덧붙인다.
     //   • 재도전(이전 조우에서 물러나 persuadeMemory가 남음): "…또 왔네. 몇 번이고…"
     //   • 2회차(flags.ng): "…너, 이 이야기를 알고 있구나."
@@ -5446,6 +5449,12 @@
       return;
     }
     if (idx === 1) { // 증거 보여주기
+      // 카드는 무기가 아니라 '들은 이야기에 대는 대답' — 닫힌 마음엔 말처럼 카드도 닿지 않는다
+      if (b.pState === 'closed') {
+        Sound.select();
+        setReact(b, '* 아직 아무 이야기도 듣지 못했다.\n어떤 카드를 보여 줘야 할지 모르겠어.\n(먼저 「가만히 듣기」로 속마음을 듣자)', 'wave');
+        return;
+      }
       const owned = ownedCards();
       if (!owned.length) { setReact(b, '* 보여 줄 증거 카드가 아직 없다.\n(방탈출 구역에서 카드를 모으자)', 'menu'); return; }
       b.sub = { kind: 'evidence', options: owned.map((id) => ({ id, label: EVIDENCE_CARDS[id].title })) };
