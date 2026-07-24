@@ -30,6 +30,7 @@ const GAME_ART = (() => {
   load('map_ch4', 'assets/art/maps/ch4-sparkle-arcade.png');
   load('map_ch5', 'assets/art/maps/ch5-cozy-loop.png');
   load('map_final', 'assets/art/maps/finale-memory-core.png');
+  load('map_archive_v5', 'assets/art/maps/v5-project-zero-archive.png');
 
   function ready(id) {
     const image = images[id];
@@ -94,6 +95,28 @@ const GAME_ART = (() => {
   const TEXTURED_GROUND = new Set(['G', 'P', 'F', 'S', 'B', 'C', 'M', 'Z', 'E', 'I',
     '2', '4', 'A', '1', '5', '6', '7', '8', '9']);
 
+  // v5 핵심 허브는 기존 타일 위에 색만 입히지 않는다. 한 장으로 설계한 방사형
+  // 보관소 원화를 월드 좌표에 고정해 그려, 카메라가 움직여도 코어·회랑·게이트의
+  // 공간 관계가 유지된다. introlab과 village는 각각 '첫 복구실'과 '복구 허브'로
+  // 같은 장소의 다른 층이라는 설정이다.
+  function drawMapBackdrop(ctx, mapId, cameraX, cameraY, worldW, worldH) {
+    if (!['introlab', 'village'].includes(mapId) || !ready('map_archive_v5')) return false;
+    const image = images.map_archive_v5;
+    const targetRatio = worldW / worldH;
+    const sourceRatio = image.naturalWidth / image.naturalHeight;
+    let sx = 0, sy = 0, sw = image.naturalWidth, sh = image.naturalHeight;
+    if (sourceRatio > targetRatio) {
+      sw = Math.round(sh * targetRatio);
+      sx = Math.round((image.naturalWidth - sw) / 2);
+    } else if (sourceRatio < targetRatio) {
+      sh = Math.round(sw / targetRatio);
+      sy = Math.round((image.naturalHeight - sh) / 2);
+    }
+    ctx.drawImage(image, sx, sy, sw, sh,
+      Math.round(-cameraX), Math.round(-cameraY), worldW, worldH);
+    return true;
+  }
+
   // v4 맵 아트 패스. 한 장의 색 필터가 아니라, 각 챕터 전용 512px 원화에서
   // 좌표가 이어지는 64px 조각을 잘라 실제 지면으로 사용한다. 충돌 데이터는 그대로라
   // 기존 세이브와 퍼즐 동선은 보존되지만 플레이 화면은 장마다 완전히 달라진다.
@@ -147,5 +170,5 @@ const GAME_ART = (() => {
     return true;
   }
 
-  return { ready, drawPlayer, drawBandi, drawBoss, drawMapGround, drawVillageRock };
+  return { ready, drawPlayer, drawBandi, drawBoss, drawMapBackdrop, drawMapGround, drawVillageRock };
 })();

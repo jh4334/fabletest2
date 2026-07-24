@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
-<meta name="description" content="화면 속으로 떨어진 아이의 미스터리 어드벤처. 굳어 버린 아이들의 마음을 열어 주며, 잊혀진 이야기와 만나는 여정.">
+<meta name="description" content="삭제 직전 남겨진 마지막 질문의 백업이 되어, AI 안전의 여섯 약속과 영이의 선택권을 복구하는 미스터리 어드벤처.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="마음의 문">
-<meta property="og:description" content="화면 속에서, 누군가 기다리고 있다 — 굳어 버린 아이들의 마음을 여는 미스터리 어드벤처.">
+<meta property="og:description" content="프로젝트 0호 삭제 보관소에서 경계·의심·불확실성·멈춤·거리·거절을 되찾는 미스터리 어드벤처.">
 <meta property="og:image" content="icons/icon-512.png">
 <meta name="twitter:card" content="summary">
 <meta name="mobile-web-app-capable" content="yes">
@@ -39,6 +39,119 @@
     max-width: 100%;
     max-height: 100%;
     outline: none;
+  }
+
+  /* ---- v5 시작 버전 게이트 — 매 새로고침마다 최신 세계를 명확히 확인 ---- */
+  #version-gate {
+    display: none;
+    position: fixed; inset: 0;
+    z-index: 180;
+    align-items: center; justify-content: center;
+    overflow: auto;
+    padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right))
+      max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+    color: #f8f4df;
+    background:
+      linear-gradient(rgba(5, 6, 17, .46), rgba(5, 6, 17, .82)),
+      url('assets/art/maps/v5-project-zero-archive.png') center / cover no-repeat;
+  }
+  #version-gate::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at 50% 46%, rgba(77, 220, 255, .12), transparent 40%);
+    box-shadow: inset 0 0 90px rgba(0, 0, 0, .86);
+    pointer-events: none;
+  }
+  .version-card {
+    position: relative;
+    width: min(760px, 94vw);
+    border: 2px solid #b99b4b;
+    outline: 1px solid rgba(94, 222, 255, .42);
+    outline-offset: -9px;
+    background: linear-gradient(180deg, rgba(9, 12, 27, .94), rgba(6, 7, 18, .97));
+    box-shadow: 0 22px 80px #000, inset 0 0 40px rgba(56, 151, 190, .12);
+    padding: clamp(24px, 5vh, 44px) clamp(18px, 5vw, 54px) clamp(20px, 4vh, 34px);
+    text-align: center;
+  }
+  .version-card::before, .version-card::after {
+    content: '◆';
+    position: absolute; top: 12px;
+    color: #d1b966; font-size: 13px;
+  }
+  .version-card::before { left: 15px; }
+  .version-card::after { right: 15px; }
+  .version-build {
+    position: absolute; top: 12px; right: 38px;
+    color: #7edff5; font: 700 11px/1 monospace; letter-spacing: 1px;
+  }
+  .version-kicker {
+    color: #78d8ee;
+    font-size: clamp(11px, 1.8vw, 14px);
+    font-weight: 700;
+    letter-spacing: .3em;
+  }
+  .version-number {
+    margin-top: 7px;
+    color: #fff8c9;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(38px, 8vw, 76px);
+    line-height: .95;
+    letter-spacing: .04em;
+    text-shadow: 0 0 24px rgba(102, 222, 255, .32);
+  }
+  .version-title {
+    margin-top: 14px;
+    font-size: clamp(18px, 3vw, 27px);
+    font-weight: 800;
+    letter-spacing: .12em;
+  }
+  .version-rebuilt {
+    margin-top: 6px;
+    color: #c5af60;
+    font: 800 clamp(11px, 2vw, 14px)/1.2 monospace;
+    letter-spacing: .2em;
+  }
+  .version-copy {
+    margin: 17px auto 0;
+    max-width: 610px;
+    color: #b9c7da;
+    font-size: clamp(12px, 1.8vw, 15px);
+    line-height: 1.65;
+  }
+  .promise-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(58px, 1fr));
+    gap: 8px;
+    margin: clamp(18px, 3.4vh, 28px) auto 0;
+    max-width: 630px;
+  }
+  .promise {
+    min-height: 72px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 6px;
+    border: 1px solid rgba(112, 210, 232, .35);
+    background: rgba(22, 35, 57, .58);
+    color: #dcebf2;
+    font-size: 12px;
+  }
+  .promise b { color: #f3d879; font-size: 20px; line-height: 1; }
+  #version-go {
+    margin-top: clamp(18px, 3.4vh, 28px);
+    min-height: 48px;
+    padding: 12px 28px;
+    border: 1px solid #e6d486;
+    background: linear-gradient(#fff4be, #c8a94e);
+    color: #12111b;
+    font: 800 clamp(13px, 2vw, 16px)/1 'Malgun Gothic', sans-serif;
+    cursor: pointer;
+    box-shadow: 0 0 22px rgba(221, 199, 109, .2);
+  }
+  #version-go:focus-visible { outline: 3px solid #72ddf3; outline-offset: 4px; }
+  .version-foot { margin-top: 12px; color: #75859c; font: 11px/1.4 monospace; }
+  @media (max-width: 680px), (max-height: 560px) {
+    .promise-grid { grid-template-columns: repeat(3, 1fr); max-width: 390px; }
+    .promise { min-height: 54px; }
+    .version-copy { margin-top: 10px; }
   }
 
   /* ---- 터치 컨트롤 (모바일/태블릿) ---- */
@@ -165,7 +278,7 @@
     flex-direction: column;
     align-items: center; justify-content: center;
     gap: 18px; text-align: center;
-    z-index: 100;
+    z-index: 200;
     font-size: 20px;
   }
   #rotate-hint .ico { font-size: 64px; animation: rot 1.8s ease-in-out infinite; }
@@ -266,6 +379,26 @@
   <div class="load-title">마음의 문</div>
   <div class="load-sub">불러오는 중…</div>
 </div>
+<section id="version-gate" role="dialog" aria-modal="true" aria-labelledby="version-heading" aria-describedby="version-desc">
+  <div class="version-card">
+    <div class="version-build">V5-20260724-A</div>
+    <div class="version-kicker">PROJECT ZERO ARCHIVE</div>
+    <h1 class="version-number" id="version-heading">VERSION 5.0</h1>
+    <div class="version-title">삭제된 여섯 약속</div>
+    <div class="version-rebuilt">WORLD &amp; STORY REBUILT</div>
+    <p class="version-copy" id="version-desc">낡은 마을을 걷는 이야기는 끝났습니다. 이제 당신은 영이가 남긴 마지막 질문의 백업이 되어, 방사형 복구 보관소의 여섯 게이트를 엽니다.</p>
+    <div class="promise-grid" aria-label="되찾아야 할 여섯 약속">
+      <div class="promise"><b>◈</b><span>경계</span></div>
+      <div class="promise"><b>?</b><span>의심</span></div>
+      <div class="promise"><b>△</b><span>불확실성</span></div>
+      <div class="promise"><b>Ⅱ</b><span>멈춤</span></div>
+      <div class="promise"><b>↔</b><span>거리</span></div>
+      <div class="promise"><b>×</b><span>거절</span></div>
+    </div>
+    <button id="version-go" type="button">새 세계 확인하기 · Z / SPACE</button>
+    <div class="version-foot">BUILD 5.0.0 · MAP AND NARRATIVE FULL REBUILD</div>
+  </div>
+</section>
 <div id="wrap">
   <canvas id="game" width="720" height="528" tabindex="0" role="application" aria-label="마음의 문 게임 화면. 방향키로 이동, Z 또는 스페이스로 결정합니다."></canvas>
 </div>
@@ -302,11 +435,47 @@
   <small>인터넷 연결을 확인한 뒤 다시 시도해 주세요.<br>처음 한 번만 연결되면, 이후에는 오프라인에서도 실행됩니다.</small>
   <button onclick="location.reload()">다시 시도</button>
 </div>
-<script src="src/art.js?v=4.0.0-storymap"></script>
-<script src="src/sprites.js?v=4.0.0-storymap"></script>
-<script src="src/audio.js?v=4.0.0-storymap"></script>
-<script src="src/data.js?v=4.0.0-storymap"></script>
-<script src="src/game.js?v=4.0.0-storymap"></script>
+<script>
+  // 게임 키 핸들러보다 먼저 설치해 버전 확인 전 입력이 뒤 화면으로 새지 않게 한다.
+  (function () {
+    var gate = document.getElementById('version-gate');
+    var go = document.getElementById('version-go');
+    var active = false;
+    function dismissVersionGate() {
+      if (!active) return;
+      active = false;
+      gate.style.display = 'none';
+      gate.dataset.dismissed = '1';
+      var canvas = document.getElementById('game');
+      if (canvas) canvas.focus();
+    }
+    window.__dismissVersionGate = dismissVersionGate;
+    window.addEventListener('keydown', function (e) {
+      if (!active) return;
+      if (e.key === 'z' || e.key === 'Z' || e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        dismissVersionGate();
+      }
+    }, true);
+    if (go) go.addEventListener('click', dismissVersionGate);
+    var showWhenReady = setInterval(function () {
+      if (!window.__game) return;
+      clearInterval(showWhenReady);
+      var loading = document.getElementById('loading');
+      if (loading) loading.style.display = 'none';
+      gate.style.display = 'flex';
+      gate.dataset.ready = '1';
+      active = true;
+      if (go) go.focus();
+    }, 50);
+  })();
+</script>
+<script src="src/art.js?v=5.0.0-worldrebuild"></script>
+<script src="src/sprites.js?v=5.0.0-worldrebuild"></script>
+<script src="src/audio.js?v=5.0.0-worldrebuild"></script>
+<script src="src/data.js?v=5.0.0-worldrebuild"></script>
+<script src="src/game.js?v=5.0.0-worldrebuild"></script>
 <script>
   // 첫 로딩 감시: 게임이 일정 시간 안에 시작되지 않으면(스크립트 누락·네트워크 실패)
   // 검은 화면 대신 안내와 '다시 시도' 버튼을 보여 준다.

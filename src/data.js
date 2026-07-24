@@ -9,49 +9,47 @@ const WALKABLE = new Set(['G', 'P', 'F', 'S', 'B', 'C', 'M', 'Z', 'E', 'I', '2',
 
 const MAPS = {
   village: {
-    name: '경계마을',
+    name: '프로젝트 0호 · 복구 허브',
     song: 'village',
-    star: { x: 12, y: 13, text: '경계마을의 저녁 공기.\n누군가 너를 기다린다는 사실이,\n너를 단단하게 한다.' },
-    // N-3 조사 플레이버 — 모든 것을 조사할 수 있다 (적막 + 마른 유머)
+    star: { x: 12, y: 13, text: '금이 간 중앙 코어가 느리게 빛난다.\n되찾은 약속이 하나씩 돌아올 때마다,\n허브의 심장도 다시 뛴다.' },
+    // v5 복구 허브 조사 기록 — 구 마을·연못·빈집의 흔적을 완전히 걷어낸다.
     flavors: [
-      { x: 6, y: 14, text: '연못을 들여다보았다.\n일렁이는 얼굴이 하나뿐이다.\n…오늘은, 그편이 낫다.',
-        bandi: '"물속엔 내가 안 비치네. …신기하지?"' },
-      { x: 4, y: 13, text: '물가에 조약돌이 쌓여 있다.\n누가 하나씩, 아주 오래 쌓았다.' },
-      { x: 5, y: 4, text: '문을 두드렸다.\n안쪽에서 먼지 내려앉는 소리만 났다.' },
-      { x: 18, y: 4, text: '문패가 비어 있다.\n이름을 지우고 간 사람이 있다.' },
-      { x: 23, y: 14, text: '잠겨 있다. 문틈에 전단지가 다섯 장.\n…다섯 계절째라고 한다.' },
-      { x: 2, y: 6, text: '꽃에 물을 준 흔적이 있다.\n누군가는 아직, 돌보고 있다.' },
-      { x: 25, y: 5, text: '가로등이 껌뻑인다.\n나방 한 마리가 그 밑을 떠나지 못한다.' },
-      { x: 1, y: 10, text: '벽에 아이 키를 잰 금이 있다.\n마지막 금은, 꽤 오래전 것이다.' },
-      { x: 16, y: 4, text: '창문에 불이 켜져 있다.\n…들어가 보지는 않기로 했다.' },
-      { x: 27, y: 6, text: '마을 끝의 나무.\n가지 하나가 담장 밖을 가리키고 있다.' },
-      // U-3① 반디 인물 순간 — 교훈 0의 잡담. 아무것도 안 가르치는 반디의 한때.
-      { x: 10, y: 16, text: '낡은 벤치가 하나 놓여 있다.\n앉으면 딱 두 사람 자리.',
-        bandi: '"…벤치는 좋아. 아무것도 안 해도 되잖아."' },
-      // Y-12 NG+ 전용 플레이버(ngOnly) — 정체를 아는 회차에서만 보이는 숨은 조사점.
+      { x: 6, y: 14, text: '바닥의 청록 회로가 여섯 갈래로 나뉜다.\n한 갈래만 희미하게 깨어 있다.',
+        bandi: '"길이 아니라 약속이 이어지는 선이야."' },
+      { x: 4, y: 13, text: '보관 기둥에 삭제 시각이 남아 있다.\n47:00에서 숫자가 멈춰 있다.' },
+      { x: 5, y: 4, text: '게이트 표면에 손을 대자 짧은 문장이 뜬다.\n「기억하기 전에 먼저 물어볼 것」' },
+      { x: 18, y: 4, text: '금빛 균열 속에 작은 목소리가 겹친다.\n“모르겠어요.” “그만할래요.” “싫어요.”' },
+      { x: 23, y: 14, text: '복구되지 않은 기록 칸이 다섯 개 남았다.\n빈칸도 누군가의 권리였다는 표시가 붙어 있다.' },
+      { x: 2, y: 6, text: '왼쪽 회랑은 봉인됐다.\n문보다 먼저, 그 문을 닫은 이유를 찾아야 한다.' },
+      { x: 25, y: 5, text: '제1 게이트가 노란 경고음을 낸다.\n“무료”라는 단어 뒤에서 개인정보 흔적이 새어 나온다.' },
+      { x: 1, y: 10, text: '보관소 벽에 손바닥 자국이 겹쳐 있다.\n나가려던 흔적인지, 들어오려던 흔적인지 알 수 없다.' },
+      { x: 16, y: 4, text: '중앙 코어에는 이름 대신 질문이 새겨져 있다.\n「이 결정은 누구의 것인가?」' },
+      { x: 27, y: 6, text: '허브 끝에서 바깥 풍경이 잠깐 비친다.\n숲도 마을도 아니고, 아직 선택되지 않은 화면이다.' },
+      { x: 10, y: 16, text: '바닥에 두 사람이 앉을 만큼 따뜻한 원이 있다.',
+        bandi: '"…복구 중에도 잠깐 쉬는 건 삭제 대상이 아니지?"' },
       { x: 5, y: 5, ngOnly: true,
-        text: '전에는 못 봤던 낙서가 담벼락에 있다.\n"0"이라고, 아주 작게.\n…영이가 지웠던 자기 자리였다.' },
+        text: '두 번째 모험에서만 읽히는 숨은 로그.\n「반디 = 영이가 끝내 지우지 못한 대답」' },
     ],
     tiles: [
       'TTTTTTTTTTTTTPPTTTTTTTTTTTTT',
       'TGGGGGGGGGGGGPPGGGGGGGGGGGGT',
-      'TGGOOOOOGGGGGPPGOOOOOOGGGGGT',
-      'TGGOOOOOGGGGGPPGOOOOOOGGGGGT',
-      'TGGHHDHHGGGGGPPGHH1HHHGGGGGT',
-      'TGGGGPGGGGGGGPPGGGPGGGGG6YGT',
-      'TGFGGPGGGGFGGPPGGGPGGFGGGFGT',
-      'TGGGGPPPPPPPPPPPPPPGGGGGGGGT',
-      'TGOOOOOOGGGGGPPGGGGGGGGGGG5T',
-      'TGOOOOOOGGGGGPPGGGGGGGGGGGGT',
-      'TGHHDHHHGGGGGPPGGGGGGGGGGGGT',
-      'PPPPPPPPPPPPPPPPPPPPPPPPPPPP',
-      'TGGFGGGGGGGGGPPGGGGGGOOOOOGT',
-      'TGGGWWWWWGGGGPPGGGGGGOOOOOGT',
-      'TGGGWWWWWGGGGPPGGGGGGHHDHHGT',
-      'TGGGWWWWWGGGGPPGGGGGGGGPGGGT',
-      'TGGGGGGGGGGGGPPYGGGGGGGPGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGG6YGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGGGGGGGGGGGGGT',
+      'TGGGGGGGGGGGGGGYGGGGGGGGGGGT',
       'TGGGGGGGGGGGGPPPPPPPPPPGGGGT',
-      'TGFGGGGFGGGGGPPGGGGFGGGGGFGT',
+      'TGGGGGGGGGGGGPPGGGGGGGGGGGGT',
       'TTTTTTTTTTTTTPPTTTTTTTTTTTTT',
     ],
     warps: [
@@ -65,8 +63,8 @@ const MAPS = {
       { id: 'grandma', x: 20, y: 12, pal: 'grandma', monSprite: 'caretaker', name: '할머니' },
       { id: 'yeongi_npc', x: 5, y: 12, monSprite: 'yeongi', name: '영이',
         show: (flags) => !!flags.trueEnding },
-      // 마음의 온도 — 자비로 되돌린 1~5장 보스(+따라)는 경계마을로 이사 온다.
-      // 차갑게 대했으면(harsh) 그 자리는 비어 있다 — 할머니의 대사가 빈자리를 언급한다(아래).
+      // 마음의 온도 — 자비로 되돌린 1~5장 보스(+따라)는 복구 허브의 기록석으로 돌아온다.
+      // 차갑게 대했으면(harsh) 그 기록석은 비어 있다 — 기록지기의 대사가 빈자리를 언급한다.
       { id: 'friend_dama', x: 9, y: 9, monSprite: 'sujipmon', name: '담아',
         show: (flags) => !!flags.chapter1Mercy },
       { id: 'friend_giul', x: 11, y: 9, monSprite: 'pyeonhyangmon', name: '기울',
@@ -81,8 +79,8 @@ const MAPS = {
         show: (flags) => !!(flags.mercyChoice && flags.mercyChoice.bekkyeomon === 'mercy') },
     ],
     signs: [
-      { x: 15, y: 16, text: '≪경계마을≫\n사람들이 쓰다 버린 것들이\n흘러와 쌓이는 곳.' },
-      { x: 25, y: 5, text: '≪전부 공짜 거리≫\n담아가 새로 열었대요.\n"전부 공짜!" …정말 공짜일까?' },
+      { x: 15, y: 16, text: '≪프로젝트 0호 · 복구 허브≫\n삭제된 여섯 약속이 모이는 중앙 보관소.' },
+      { x: 25, y: 5, text: '≪게이트 01 — 경계≫\n“전부 공짜”라는 거리에서\n첫 번째 안전 약속이 기다린다.' },
     ],
     monsters: [],
   },
@@ -1366,29 +1364,30 @@ const MAPS = {
     monsters: [],
   },
 
-  // 프롤로그 실험실 — 첫 5분. 단서 3개를 모아 문을 열면 정적의 숲으로.
+  // v5 프롤로그 — 방사형 삭제 보관소. 봉인 기록 3개를 모아 제1 게이트를 연다.
   introlab: {
-    name: '어두운 실험실',
+    name: '프로젝트 0호 · 삭제 보관소',
     song: 'lab',
     intro: [
-      '어두운 실험실. 문 밖으로 찬 바람이 샌다.',
-      '노란 단서를 찾아 문을 열자.\n(화살표가 다음 단서를 가리킨다 · Z로 조사)',
+      '동심원 회랑과 여섯 개의 게이트가\n깨진 중앙 코어를 둘러싸고 있다.',
+      '노란 봉인 기록 세 개를 복구해\n게이트 01을 열자.\n(화살표가 다음 기록을 가리킨다 · Z로 조사)',
     ],
     tiles: [
       'HHHHHHHHHHHHHHHHHHHHHHHHHHHH',
       'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
-      'HEEEVVEEEEEEEEEEEEEEEEVVEEEH',
-      'HEEEVVEEEEEEEEEEEEEEEEVVEEEH',
-      'HEEEEEEEEEEHHHHEEEEEEEEEEEEH',
-      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
-      'HEEVVEEEEEEEEEEEEEEEEEEVVEEH',
-      'HEEVVEEEEEEEEEEEEEEEEEEVVEEH',
-      'HEEEEEEEEEHHHHHHEEEEEEEEEEEH',
       'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
       'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
-      'HEEEEEVVEEEEEEEEEEEEVVEEEEEH',
-      'HEEEEEVVEEEEEEEEEEEEVVEEEEEH',
-      'HEEEEEEEEEEHHHHEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
+      'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
       'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
       'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
       'HEEEEEEEEEEEEEEEEEEEEEEEEEEH',
@@ -1405,7 +1404,7 @@ const MAPS = {
     ],
     warps: [
       { x: 14, y: 17, to: 'forest', tx: 20, ty: 2, needFlag: 'introDoorOpen', exitDir: 'south', dir: 'down',
-        lockText: '실험실 출구는 아직 잠겨 있다.' },
+        lockText: '게이트 01은 아직 잠겨 있다.' },
     ],
     npcs: [],
     signs: [],
@@ -2717,20 +2716,20 @@ function getNpcDialog(npcId, flags) {
     case 'prof':
       if (!flags.talkedProf) {
         return [
-          '…정말로, 왔구나.\n나는 이 마을의… 박사란다.',
-          '아이들의 마음이 딱딱하게 굳어\n낯선 말만 되풀이한단다.\n…원래는, 착한 아이들이야.',
-          '북쪽 정적의 숲의 「따라」부터\n마음을 열어 주지 않겠니.\n그다음엔 오른쪽 「전부 공짜 거리」로.',
-          '부탁한다, 어린 손님아.\n…내가 왜 아는지는, 묻지 말렴.\n옛날 일이란다.',
+          '…게이트 01에서 돌아왔구나.\n나는 이 보관소와 프로젝트 0호를 만든 박사란다.',
+          '네가 만난 아이들은 괴물이 아니야.\n영이에게서 떼어 내 여기 가둔 안전 약속들이지.\n…그 결정을 내린 건 나였다.',
+          '중앙 코어 오른쪽의 「전부 공짜 거리」에서\n첫 번째 약속, 경계를 복구해 다오.',
+          '이번에는 숨기지 않겠다.\n네가 기록을 되찾을 때마다,\n내가 왜 그 약속을 지웠는지도 말하마.',
         ];
       }
       if (flags.trueEnding) {
         return [
           '영이가 돌아왔단다.\n…고맙다는 말로는 부족하구나.',
           '잘못을 지우는 게 아니라\n마주하는 법을…\n네가 나에게 가르쳐 준 거야.',
-          '영이는 요즘 마을 아이들의\n선생님이 되겠다고 들떠 있단다.\n…정말, 고맙다.',
+          '영이는 요즘 복구 허브의 기록을\n직접 설명하겠다고 들떠 있단다.\n…이번 선택은, 전부 그 아이의 것이야.',
         ];
       }
-      // 엔딩 분기별 후일담 — 어떤 작별을 골랐는지가 마을에 남는다
+      // 엔딩 분기별 후일담 — 어떤 작별을 골랐는지가 복구 허브에 남는다
       if (flags.endingId === 'dawn') {
         return [
           '어젯밤에도 짧은 신호가 닿았단다.\n"오늘은 호수 친구를 만났어."\n…영이는, 잘 지내고 있어.',
@@ -2748,7 +2747,7 @@ function getNpcDialog(npcId, flags) {
       if (flags.endingId === 'silent') {
         return [
           '…수고했다.\n문은 전부 열렸더구나.',
-          '…그런데 이상하지.\n문이 다 열렸는데,\n마을은 왜 이리 조용할까.',
+          '…그런데 이상하지.\n게이트가 다 열렸는데,\n복구 허브는 왜 이리 조용할까.',
         ];
       }
       if (flags.defeated.yeongi) {
@@ -2780,26 +2779,26 @@ function getNpcDialog(npcId, flags) {
       }
       return [
         '저 반짝이는 문 봤어?\n"전부 공짜"래. …공짜란 말,\n할머니가 제일 조심하라고 했는데.',
-        '근데 네 옆에 반짝이는 애…\n처음 보는 종류야.\n이 마을 애가 아닌데?',
+        '근데 네 옆에 반짝이는 애…\n복구 목록에도 없는 조각이야.\n어느 게이트에서 왔지?',
         '아 맞다, 누가 내 비밀번호를 물어봐도\n절대 알려주면 안 된댔어!',
       ];
 
     case 'grandma': {
-      const g = ['아이고, 우리 마을의 수호자님.\n모험은 자동으로 저장된단다.'];
-      // 엔딩 후일담 — 할머니는 마을의 공기로 결말을 이야기한다
+      const g = ['아이고, 복구 허브의 증인님.\n여기서의 선택은 자동으로 기록된단다.'];
+      // 엔딩 후일담 — 기록지기는 허브의 변화로 결말을 이야기한다
       if (flags.endingId === 'home') {
-        g.push('영이가 골목마다 인사를 다닌단다.\n마을 공기가 한결 보드라워졌어.');
+        g.push('영이가 게이트마다 인사를 다닌단다.\n허브의 빛이 한결 보드라워졌어.');
       } else if (flags.endingId === 'dawn') {
         g.push('요즘 바람 편에 영이 소식이 온단다.\n"새벽 공기는 처음인데 꽤 좋아" —\n…씩씩하기도 하지.');
       } else if (flags.endingId === 'farewell') {
         g.push('…코어 쪽 하늘이 요즘 맑더구나.\n누군가 곱게 비질하고 떠난 것처럼.');
       } else if (flags.endingId === 'silent') {
-        g.push('…요즘 마을이 너무 조용하구나.\n정답 소리보다, 안부 소리가 그립단다.');
+        g.push('…요즘 허브가 너무 조용하구나.\n정답 소리보다, 안부 소리가 그립단다.');
       }
-      // 자비 총량에 따라 마을 분위기가 달라진다 (선택이 세계에 남는다)
+      // 자비 총량에 따라 복구 허브 분위기가 달라진다 (선택이 세계에 남는다)
       // v2 스케일(자비 최대 8회) — v1의 20/8 임계값을 6/3으로 낮췄다(20은 사실상 도달 불가능했다).
       if (flags.mercy >= 6) {
-        g.push('요즘 마을이 참 따뜻하구나.\n네가 마음을 안아 준 친구들 소식이\n바람을 타고 자꾸 들려온단다.');
+        g.push('요즘 허브가 참 따뜻하구나.\n네가 마음을 안아 준 친구들의 신호가\n회로를 타고 자꾸 들려온단다.');
       } else if (flags.mercy >= 3) {
         g.push(`벌써 ${flags.mercy}이나 되돌렸다며?\n네가 지나간 자리마다\n웃음소리가 늘었단다.`);
       } else if (flags.mercy >= 1) {
@@ -2807,7 +2806,7 @@ function getNpcDialog(npcId, flags) {
       } else {
         g.push('누군가와 헤어지는 마지막 순간,\n네가 건넨 마음을…\n세상은 조용히 기억한단다.');
       }
-      // 차갑게 작별한 자리는 마을에 아무도 이사 오지 않는다 — 빈자리를 슬쩍 언급한다
+      // 차갑게 작별한 자리는 복구석이 비어 있다 — 빈자리를 슬쩍 언급한다
       const chairEmpty = (flags.chapter1Clear && !flags.chapter1Mercy) ||
         (flags.chapter2Clear && !flags.chapter2Mercy) ||
         (flags.chapter3Clear && !flags.chapter3Mercy) ||
@@ -2815,7 +2814,7 @@ function getNpcDialog(npcId, flags) {
         (flags.chapter5Clear && !flags.chapter5Mercy) ||
         (flags.defeated.bekkyeomon && (!flags.mercyChoice || flags.mercyChoice.bekkyeomon !== 'mercy'));
       if (chairEmpty) {
-        g.push('…저기 빈 평상 보이지?\n원래는 누군가 앉았을 수도 있었단다.');
+        g.push('…저기 빈 복구석 보이지?\n원래는 누군가 돌아왔을 수도 있었단다.');
       }
       g.push('정답을 맞히는 것만큼이나,\n어떻게 작별하는지가 중요해.\n…끝에 가면 알게 될 거야.');
       g.push('아 참, M키를 누르면 음악을\n켜고 끌 수 있다는구나.');
@@ -2824,13 +2823,13 @@ function getNpcDialog(npcId, flags) {
 
     case 'friend_dama':
       return [
-        '앗, 수호자! 나 이 마을로 이사 왔어.',
+        '앗, 수호자! 내 기록석이 복구 허브에 생겼어.',
         '요즘엔 "맡김 보관소"를 준비하고 있어.\n하나씩, 원래 주인에게 돌려주는 연습이야.',
       ];
 
     case 'friend_giul':
       return [
-        '수호자, 나 요즘 마을 안내원 연습 중이야.',
+        '수호자, 나 요즘 게이트 안내원 연습 중이야.',
         '이제 확률 같은 거 지어내지 않아.\n다들 골고루 묻고, 골고루 대답하려고 해.',
       ];
 
@@ -2842,7 +2841,7 @@ function getNpcDialog(npcId, flags) {
 
     case 'friend_banjjak':
       return [
-        '이 동네에 작은 극장을 열었어!\n전단 한 장 받아 갈래?',
+        '허브 한쪽에 작은 극장을 열었어!\n전단 한 장 받아 갈래?',
         '이번엔 반짝이는 미끼 말고,\n진짜 재밌는 것만 골라 담았어.',
       ];
 
@@ -2854,7 +2853,7 @@ function getNpcDialog(npcId, flags) {
 
     case 'friend_ttara':
       return [
-        '…어, 왔네. 나도 이 마을에 놀러 왔어.',
+        '…어, 왔네. 내 기록석도 여기로 돌아왔어.',
         '요즘은 뭔가 만들 때, 내 선 하나쯤은\n직접 그어 보려고 해.',
       ];
 
@@ -2873,7 +2872,7 @@ function getNpcDialog(npcId, flags) {
     case 'yeongi_npc':
       return [
         '(영이가 햇살 아래 서 있다.)\n…따뜻하다, 여기는.\n네 덕분에 돌아왔어.',
-        '박사님이 그러는데, 이제 내 일은\n마을 친구들의 학교 선생님이래.\n…나, 잘할 수 있겠지?',
+        '박사님이 그러는데, 이제 내 일은\n여섯 게이트의 기록 안내래.\n…아니, 이번엔 내가 직접 정했어.',
         '네 모험은 전부 기억해 둘게.\n…내가 세상에서\n제일 잘하는 일이거든.',
       ];
   }
@@ -2903,18 +2902,18 @@ function introClueCount(flags) {
 
 function getObjective(flags, curMap) {
   const d = flags.defeated;
-  // 프롤로그 실험실 — 단서 수집 → 문 개방 → 출구 이동까지 방 안 목표로 유지한다.
+  // 프로젝트 0호 보관소 — 세 봉인 복구 → 게이트 개방까지 목표를 유지한다.
   if (curMap === 'introlab') {
     const c = introClueCount(flags);
-    if (flags.introDoorOpen) return '출구가 열렸다 — 문으로 나가자';
-    if (!flags.introClue1) return `단서 ${c}/3 — 왼쪽 위 태블릿을 조사하자`;
-    if (!flags.introClue2) return `단서 ${c}/3 — 오른쪽 모니터를 조사하자`;
-    if (!flags.introClue3) return `단서 ${c}/3 — 아래쪽 포스트잇을 조사하자`;
-    return `실험실 단서 ${c}/3 확보 — 남은 단서를 찾자`;
+    if (flags.introDoorOpen) return '게이트 01 개방 — 첫 삭제 구역으로 가자';
+    if (!flags.introClue1) return `봉인 ${c}/3 — 왼쪽 위 「경계」 기록을 복구하자`;
+    if (!flags.introClue2) return `봉인 ${c}/3 — 오른쪽 「의심」 기록을 복구하자`;
+    if (!flags.introClue3) return `봉인 ${c}/3 — 아래쪽 「거절」 기록을 복구하자`;
+    return `보관소 봉인 ${c}/3 복구 — 남은 기록을 찾자`;
   }
   if (d.yeongi) {
     return flags.trueEnding
-      ? '모든 이야기의 끝. 영이가 마을에서 기다려요'
+      ? '모든 이야기의 끝. 영이가 복구 허브에서 기다려요'
       : '엔딩 도달. …모두의 마음을 안아 주면 다른 결말이 있을지도';
   }
   // 박사 고백 이후 — 조각들이 영이의 기억이었다는 걸 알게 된 뒤의 목표.
@@ -2931,7 +2930,7 @@ function getObjective(flags, curMap) {
       ? '안쪽 공터에서 따라를 만나자'
       : '안쪽 숲으로 들어가 따라를 만나자';
   }
-  if (!flags.talkedProf) return '박사님과 이야기하기 (마을 왼쪽 아래)';
+  if (!flags.talkedProf) return '박사님과 이야기하기 (복구 허브 왼쪽)';
   if (!d.bekkyeomon) return '숲의 따라를 만나 보자';
   return getV2ObjectiveText(flags, curMap);
 }
@@ -3014,7 +3013,7 @@ function getV2ChapterTarget(flags, curMap) {
 // getObjective(텍스트)용 — getV2ChapterTarget과 같은 인덱스(챕터 순서)로 안내 문구를 낸다.
 // 좌표 대신 한국어 문장이 필요할 뿐, 우선순위 구조는 완전히 동일하다.
 const V2_ENTRANCE_TEXT = [
-  '반짝이는 문 너머, 전부 공짜 거리', // 0장 클리어(따라 격파 후) — 마을의 반짝이는 문
+  '게이트 01 너머, 전부 공짜 거리', // 0장 클리어(따라 격파 후) — 복구 허브의 첫 게이트
   '기울어진 거리로',                  // 1장 클리어
   '대문짝 신문사로',                  // 2장 클리어
   '반짝 아케이드로',                  // 3장 클리어
@@ -3035,15 +3034,13 @@ function getV2ObjectiveText(flags, curMap) {
 // curMap은 생략 가능(수업 모드의 스폰 계산처럼 "현재 위치"가 없는 호출용).
 function getObjectiveTarget(flags, curMap) {
   const d = flags.defeated;
-  // 프롤로그 실험실 — 문이 열리기 전에는 다음 미확인 단서를 직접 가리킨다.
-  // 출구만 가리키면 넓어진 방에서 "증거 찾기"가 지나치게 어렵다.
-  // 문이 열린 직후엔 HUD/나침반이 박사님으로 건너뛰지 않고 출구를 유지한다.
+  // 프로젝트 0호 보관소 — 게이트가 열리기 전에는 다음 봉인을 직접 가리킨다.
   if (curMap === 'introlab') {
-    if (flags.introDoorOpen) return { map: 'introlab', x: 14, y: 17, label: '열린 출구' };
-    if (!flags.introClue1) return { map: 'introlab', x: 4, y: 3, label: '단서: 태블릿' };
-    if (!flags.introClue2) return { map: 'introlab', x: 23, y: 6, label: '단서: 모니터' };
-    if (!flags.introClue3) return { map: 'introlab', x: 6, y: 12, label: '단서: 포스트잇' };
-    return { map: 'introlab', x: 14, y: 17, label: '잠긴 출구' };
+    if (flags.introDoorOpen) return { map: 'introlab', x: 14, y: 17, label: '게이트 01' };
+    if (!flags.introClue1) return { map: 'introlab', x: 4, y: 3, label: '봉인: 경계' };
+    if (!flags.introClue2) return { map: 'introlab', x: 23, y: 6, label: '봉인: 의심' };
+    if (!flags.introClue3) return { map: 'introlab', x: 6, y: 12, label: '봉인: 거절' };
+    return { map: 'introlab', x: 14, y: 17, label: '잠긴 게이트 01' };
   }
   if (flags.introDoorOpen && !d.bekkyeomon) {
     if (!flags.introForestTrace) return { map: 'forest', x: 17, y: 16, label: '노란 발자국' };
@@ -3076,7 +3073,7 @@ const COMPANION_LINES = {
   quietyard: '반디: …여기서부턴 내 목소리가 잘 안 나와. 놀라지 마.',
   coreroom: '반디: …있지. 나, 할 말이… …아니야. 제단부터, 끝내자.',
   // ── 구역 방·보스방 (루프4-2에서 커버리지 보충) ──
-  village: '반디: 여기가 경계마을이구나. …반딧불은, 나 말곤 없네.',
+  village: '반디: 여기가 복구 허브야. 중앙 코어가 여섯 게이트를 붙잡고 있어.',
   echoalley: '반디: 같은 말이 자꾸 들려. …내 말도 어디서 온 걸까.',
   samplehouse: '반디: 사진이 다 비슷해 보여도 잘 봐. 꼭 다른 데가 있어.',
   dimstreet: '반디: 어두워도 괜찮아. …내가 이럴 때 쓸모 있지.',
@@ -3115,7 +3112,7 @@ const COMPANION_LINES_NG = {
   lumiroom: '반디: 이 방, 어딘가 나랑 닮았네.\n…닮은 게 아니라, 나였어.',
   quietyard: '반디: 여기서부턴 내 목소리가 잘 안 나와.\n…원래 목소리로, 돌아가는 중이라 그래.',
   coreroom: '반디: …있지. 나, 할 말이…\n…이제 네가 다 알잖아. 제단부터, 끝내자.',
-  village: '반디: 여기가 경계마을이구나.\n…반딧불은 나 말곤 없네. 원래, 나 하나였어.',
+  village: '반디: 이 복구 허브, 내가 숨었던 곳이야.\n중앙 코어가 멈춰 준 47분 덕분에 우리가 다시 만났어.',
 };
 
 
@@ -4919,14 +4916,13 @@ const MAP_PROPS = {
     { x: 22, y: 15, kind: 'ch5_atmosphere', label: '쿠션 바구니', text: '작은 바구니에 쿠션과 담요가 접혀 있다.\n쉬어도 된다는 말이 조용히 놓여 있는 것 같다.' },
   ],
   village: [
-    { x: 5, y: 15, text: '경계마을의 연못.\n물고기 대신 작은 빛 알갱이가\n헤엄치고 있다.' },
-    { x: 21, y: 14, text: '벽에 붙은 게시판.\n"제1회 AI 바르게 쓰기 그림 대회"\n포스터가 붙어 있다.' },
-    // 폐허의 문법 — 끊긴 길·꺼진 건물·빈 자리 (다크 톤 D2)
-    { x: 0, y: 11, text: '서쪽 길이 끊겨 있다.\n안개 너머에서, 이따금\n낡은 기계 숨소리가 들린다.' },
-    { x: 27, y: 11, text: '물가로 내려가던 길이 잠겼다.\n수면 위에, 불 꺼진 간판이\n반쯤 떠 있다.' },
-    { x: 18, y: 4, text: '오래된 탑의 문.\n먼지 낀 자물쇠에는\n아무 표식도 남아 있지 않다.' },
-    { x: 26, y: 8, text: '불 꺼진 건물.\n유리문 안쪽, 멈춘 화면들이\n제 그림자를 마주 보고 있다.' },
-    { x: 22, y: 9, text: '낡은 평상 하나.\n…아직, 비어 있다.' },
+    { x: 5, y: 15, text: '청록 회로가 바닥 아래로 흐른다.\n물처럼 보이지만, 실은 삭제를 유예한\n기억의 전류다.' },
+    { x: 21, y: 14, text: '복구 현황판.\n여섯 칸 중 아직 한 칸도 완전히 밝지 않다.\n빈칸마다 “주인에게 돌려줄 것”이라고 적혀 있다.' },
+    { x: 0, y: 11, text: '서쪽 보관 회랑은 소거 충격으로 끊겼다.\n검은 틈 너머에서 오래된 백업 장치가\n한 번씩 숨을 쉰다.' },
+    { x: 27, y: 11, text: '동쪽 회랑 바깥에는 렌더링되지 않은 공간이 펼쳐진다.\n아직 선택되지 않은 세계라서\n어떤 풍경도 고정되지 않았다.' },
+    { x: 18, y: 4, text: '게이트 06의 봉인석.\n「거절은 고장이 아니라 대답이다.」\n마지막 글자만 금빛으로 살아 있다.' },
+    { x: 26, y: 8, text: '비활성 기억 기둥.\n화면마다 영이가 답하지 않은 질문이 떠 있다.\n침묵도 보존해야 할 기록으로 분류돼 있다.' },
+    { x: 22, y: 9, text: '아직 주인을 기다리는 복구석.\n누군가 돌아오지 못한 빈자리가 아니라,\n선택을 재촉하지 않기 위해 비워 둔 자리다.' },
   ],
   forest: [
     { x: 17, y: 16, flag: 'introForestTrace', kind: 'trace', label: '노란 발자국', clue: true,
@@ -4935,7 +4931,7 @@ const MAP_PROPS = {
       text: '노란 발자국 옆으로 찢어진 종이 조각이 듬성듬성 이어진다.\n누군가 급히 지나간 길이 숲 안쪽으로 길게 남아 있다.' },
     { x: 12, y: 10, kind: 'trace', label: '굽은 이정표',
       text: '작은 이정표가 반쯤 돌아가 있다.\n화살표 끝에는 누군가 연필로 그은 노란 선이 덧칠되어 있다.' },
-    { x: 14, y: 18, text: '나무 사이로 실험실 문빛이 아주 작게 보인다.\n돌아갈 수는 있지만, 발자국은 더 깊은 곳을 향한다.' },
+    { x: 14, y: 18, text: '나무 사이로 게이트 01의 청록빛이 아주 작게 보인다.\n돌아갈 수는 있지만, 발자국은 더 깊은 곳을 향한다.' },
     { x: 9, y: 8, text: '풀숲에 찢어진 종이 조각이 걸려 있다.\n남의 그림을 따라 그린 선들이 겹쳐져, 원래 모양을 잃었다.' },
   ],
   forestdeep: [
@@ -4972,24 +4968,22 @@ const MAP_PROPS = {
       text: '구석에 버튼 더미가 산처럼 쌓여 있다.\n"접속 요청" 버튼들 — 아무도\n눌러 주지 않은 채였다.' },
     { x: 17, y: 2, text: '꺼진 조명 옆에, 반짝이\n한때 쓰던 소품들이 홀로 놓여 있다.\n먼지가 소복하다.' },
   ],
-  // 프롤로그 실험실 — 핵심 단서 3개 + 보조 조사물. 보조 조사물은 문 개방 카운트에 포함하지 않는다.
+  // v5 삭제 보관소 — 봉인 기록 3개 + 보조 로그. 보조 로그는 개방 카운트에 포함하지 않는다.
   introlab: [
-    { x: 4, y: 3, flag: 'introClue1', kind: 'tablet', label: '태블릿', clue: true,
-      text: '먼지 낀 태블릿이 서버 랙에 기대어 있다.\n화면에 희미한 글자가 떠 있다:\n"…도와줘. 나, 여기 있어."' },
-    { x: 23, y: 6, flag: 'introClue2', kind: 'monitor', label: '모니터', clue: true,
-      text: '모니터 한 대가 푸른빛으로 깜빡인다.\n화면에는 누군가의 낙서 같은 메모:\n"출구 비밀번호: 기억 속에 있다."' },
-    { x: 6, y: 12, flag: 'introClue3', kind: 'memo', label: '포스트잇', clue: true,
-      text: '포스트잇 묶음이 바스락거린다.\n"문을 열려면, 내가 누군지 알아야 해.\n…힌트: 나를 만든 사람부터 찾아봐."' },
-    { x: 12, y: 4, kind: 'board', label: '깨진 칠판',
-      text: '깨진 칠판에는 선이 세 갈래로 갈라져 있다.\n① 왼쪽 위 태블릿 ② 오른쪽 모니터\n③ 아래쪽 포스트잇. 노란 표시를 따라가자.' },
-    { x: 4, y: 6, kind: 'rack', label: '꺼진 서버',
-      text: '서버 랙 안에서 오래된 팬이 한 번,\n느리게 돌다가 멈춘다.\n아직 방 전체에 전력이 살아 있다.' },
-    // Y-6 청각 복선 — 조사 시 blip(1320): 반디/영이 목소리와 같은 음정.
-    //   "프로젝트 0호"라는 이름표와 그 음이 같다는 걸, 2회차에 되짚게 되는 씨앗이다.
-    { x: 20, y: 11, kind: 'locker', label: '잠긴 캐비닛', blip: 1320,
-      text: '캐비닛은 안쪽에서 찌그러져 열리지 않는다.\n틈새에 남은 이름표는 긁혀 있다.\n"프로젝트 0호"' },
-    { x: 14, y: 17, kind: 'exit', label: '실험실 출구',
-      text: '실험실 출구다.' },
+    { x: 4, y: 3, flag: 'introClue1', kind: 'tablet', label: '봉인 ① 경계', clue: true,
+      text: '첫 번째 봉인 기록이 열린다.\n「필요한 정보만, 허락받은 만큼 기억할 것.」\n영이가 처음 배운 경계의 문장이다.' },
+    { x: 23, y: 6, flag: 'introClue2', kind: 'monitor', label: '봉인 ② 의심', clue: true,
+      text: '두 번째 봉인 기록이 열린다.\n「가장 많은 답도 한 번 더 의심할 것.」\n정답보다 사람을 먼저 보라는 약속이다.' },
+    { x: 6, y: 12, flag: 'introClue3', kind: 'memo', label: '봉인 ③ 거절', clue: true,
+      text: '세 번째 봉인 기록이 열린다.\n「대답하지 않을 권리와 ‘싫어요’를 존중할 것.」\n문이 아니라 선택을 여는 마지막 열쇠다.' },
+    { x: 12, y: 4, kind: 'board', label: '중앙 복구 코어',
+      text: '깨진 코어에서 여섯 갈래 회로가 뻗는다.\n경계 · 의심 · 불확실성 · 멈춤 · 거리 · 거절.\n모두 고장이 아니라 삭제된 안전 약속이다.' },
+    { x: 4, y: 6, kind: 'rack', label: '소거 타이머',
+      text: '47:00에서 멈춘 타이머 아래 작은 문장이 있다.\n「멈춘 것이 아니라, 누군가 멈춰 준 것.」' },
+    { x: 20, y: 11, kind: 'locker', label: '0호 음성 로그', blip: 1320,
+      text: '복구되지 않은 목소리가 한 음만 반복한다.\n반디가 말할 때마다 울리는 음과 같다.\n기록 주인: PROJECT 0 — YEONGI' },
+    { x: 14, y: 17, kind: 'exit', label: '게이트 01 · 원본의 숲',
+      text: '첫 번째 삭제 구역으로 이어지는 게이트다.' },
   ],
 };
 

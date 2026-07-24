@@ -3,7 +3,8 @@
   'use strict';
 
   // 타이틀에 표시 · SW 캐시로 옛 빌드가 남았는지 구분용 (package.json 과 맞출 것)
-  const GAME_VERSION = '4.0.0';
+  const GAME_VERSION = '5.0.0';
+  const GAME_BUILD = 'WORLD-STORY-REBUILT';
 
   const TILE = 16;
   const SCALE = 3;
@@ -168,10 +169,10 @@
       bandiJoined: false,  // 동행자 반디 합류(오프닝 직후)
       bandiRevealed: false, // 반디 정체 공개(코어 봉헌 완료) — 동행 종료
       bandiSaid: {},       // 반디 조언을 이미 건넨 맵 (맵당 1회)
-      introClue1: false,   // 프롤로그 실험실 단서① 태블릿
-      introClue2: false,   // 프롤로그 실험실 단서② 모니터
-      introClue3: false,   // 프롤로그 실험실 단서③ 포스트잇
-      introDoorOpen: false, // 프롤로그 실험실 출구 개방 — 단서 3개 수집 완료
+      introClue1: false,   // 프로젝트 0호 봉인① 경계
+      introClue2: false,   // 프로젝트 0호 봉인② 의심
+      introClue3: false,   // 프로젝트 0호 봉인③ 거절
+      introDoorOpen: false, // 게이트 01 개방 — 봉인 3개 복구 완료
       introForestTrace: false, // 실험실 탈출 직후 정적의 숲 첫 흔적 조사
       ttaraFirstEncounter: false, // 정적의 숲 안쪽에서 따라와 처음 마주친 전용 조우 연출
       prologueClosed: false, // 따라 설득 후 프롤로그 마무리 컷신을 보고 1장으로 진입했는가
@@ -191,6 +192,7 @@
       epilogueAsked: false, // X-1⑤ home/dawn 엔딩 후 마을 에필로그 반응(1회)
       classSession: false, // X-8 수업(차시) 모드 세션 — 수업 진입 경로에서만 true
       v4RecapSeen: false, // v4 전면 개편 뒤 기존 슬롯에 새 이야기 전제를 1회 안내
+      v5ReintroSeen: false, // v5 방사형 보관소·새 주인공 정체를 기존 슬롯에도 1회 안내
     };
   }
 
@@ -3391,7 +3393,7 @@
         ctx.textAlign = 'center';
         ctx.fillText(open ? '↥' : '▣', nx + TS / 2, ny + TS / 2 + 9);
         ctx.textAlign = 'left';
-        drawLabel(nx, ny, open ? '열린 출구' : `잠긴 출구 ${introClueCount(game.flags)}/3`, open ? '#8de08d' : '#ffd644');
+        drawLabel(nx, ny, open ? '게이트 01 개방' : `게이트 01 봉인 ${introClueCount(game.flags)}/3`, open ? '#8de08d' : '#ffd644');
         continue;
       }
       if (isCurrentClue) {
@@ -3414,7 +3416,7 @@
       const mark = prop.kind === 'tablet' ? '▤' : prop.kind === 'monitor' ? '▣' : prop.kind === 'memo' ? '※' : prop.kind === 'board' ? '⋯' : prop.kind === 'locker' ? '▥' : '·';
       ctx.fillText(done ? '✓' : mark, nx + TS / 2, ny + TS / 2 + 8 + bob);
       ctx.textAlign = 'left';
-      const labelText = done ? '확인됨' : (prop.clue ? `단서: ${prop.label}` : prop.label);
+      const labelText = done ? '복구 완료' : (prop.clue ? `봉인: ${prop.label}` : prop.label);
       drawLabel(nx, ny + bob, labelText, isCurrentClue ? '#fff1a6' : col);
     }
   }
@@ -3566,7 +3568,7 @@
     }
     ctx.fillRect(0, 0, LW, LH);
   }
-  // 황혼 앰비언트 — 경계마을과 정적의 숲은 늘 해 질 녘이다 (다크 톤 기조).
+  // 황혼 앰비언트 — 복구 허브와 원본의 숲은 늘 해 질 녘이다 (다크 톤 기조).
   // 마을은 마음의 온도가 쌓일수록(이사 온 친구 수만큼) 조금씩 밝아진다 —
   // "어두운 세계에 온기가 켜진다"를 화면 밝기로 체감시키는 카르마 연출.
   const DUSK_BASE = { village: 0.30, forest: 0.22 };
@@ -3972,11 +3974,11 @@
       if (game.map === 'introlab' && prop.kind === 'exit') {
         const c = introClueCount(game.flags);
         if (game.flags.introDoorOpen) {
-          lines.push('문은 이제 조금 열려 있다.\n차가운 숲의 공기가 발목을 스친다.');
-          lines.push('나가려면 문 앞으로 걸어가자.\n정적의 숲이 이 방 밖에서 기다린다.');
+          lines.push('게이트 01의 봉인이 풀렸다.\n첫 번째 삭제 구역의 차가운 공기가 스며든다.');
+          lines.push('게이트 중앙으로 걸어가자.\n「경계」를 되찾을 원본의 숲이 기다린다.');
         } else {
-          lines.push('실험실 출구는 굳게 잠겨 있다.\n문 가장자리에 작은 불빛 세 개가 꺼져 있다.');
-          lines.push(`아직 단서 ${3 - c}개가 더 필요하다. (${c}/3)`);
+          lines.push('게이트 01은 삭제 명령으로 봉인돼 있다.\n테두리의 복구등 세 개가 꺼져 있다.');
+          lines.push(`아직 약속 기록 ${3 - c}개를 더 복구해야 한다. (${c}/3)`);
         }
       } else {
         lines.push(prop.text);
@@ -3992,14 +3994,14 @@
           lines.push('흔적은 숲 왼쪽으로 이어진다.\n희미한 목소리가, 남의 말을 따라 하듯\n작게 중얼거린다.');
           lines.push('이제 노란 화살표를 따라가자.\n따라가 숲 안쪽에서 기다리고 있다.');
         }
-        // 프롤로그 실험실 — 단서 3개 수집 시 문 개방
+        // 프로젝트 0호 — 세 봉인을 복구하면 게이트 01 개방
         if (game.map === 'introlab' && !game.flags.introDoorOpen &&
             introClueCount(game.flags) >= 3) {
           game.flags.introDoorOpen = true;
           save();
-          game.notice = { text: '철컥 — 출구가 열렸다!', t: 220 };
-          lines.push('방 끝에서 철컥, 하고 잠금이 풀렸다.\n문틈으로 차가운 숲의 공기가 스며든다.');
-          lines.push('이제 출구로 나가자.\n정적의 숲이 기다리고 있다.');
+          game.notice = { text: '복구 완료 — 게이트 01이 열렸다!', t: 220 };
+          lines.push('보관소 중앙에서 낮은 진동이 울린다.\n게이트 01의 삭제 봉인이 갈라졌다.');
+          lines.push('첫 번째 약속 「경계」를 되찾으러 가자.\n원본의 숲이 게이트 너머에서 기다린다.');
         }
       }
       startDialog(lines);
@@ -4359,7 +4361,7 @@
     }
   }
 
-  // 박사 고백 이벤트 — chapter3Clear 후 경계마을 진입 시 1회 자동 발생.
+  // 박사 고백 이벤트 — chapter3Clear 후 복구 허브 진입 시 1회 자동 발생.
   // 프로젝트 0호(영이) 이야기를 고백한다. 복선 플래그(seenPhoto1/2, seenArticle)를
   // 본 상태면 대사에 한 줄씩 반영된다.
   function startProfConfession() {
@@ -4434,7 +4436,7 @@
 
   function updateWorld() {
     const p = game.player;
-    // 박사 고백 이벤트 — 조건이 갖춰지면(chapter3Clear && !profConfession) 마을에서 즉시 시작
+    // 박사 고백 이벤트 — 조건이 갖춰지면(chapter3Clear && !profConfession) 복구 허브에서 즉시 시작
     if (game.map === 'village' && game.flags.chapter3Clear && !game.flags.profConfession) {
       startProfConfession();
       return;
@@ -8932,7 +8934,7 @@
     const isArcade = cm.sel === ARCADE_SEL;
     const isCozy = cm.sel === COZY_SEL;
     const isFinal = cm.sel === FINAL_SEL;
-    const selLabel = isPrologue ? '프롤로그 시작 상태 · 연구실'
+    const selLabel = isPrologue ? '프롤로그 시작 상태 · 프로젝트 0호 삭제 보관소'
       : isFinal ? '파이널 시작 상태 · 포근한 집 안쪽 문 앞'
       : isCozy ? '5장 시작 상태 · 포근한 집 입구'
       : isArcade ? '4장 시작 상태 · 반짝 아케이드 입구'
@@ -8945,7 +8947,7 @@
     ctx.fillStyle = themeAccent();
     if (isPrologue) {
       ctx.font = fs(30, true);
-      ctx.fillText('프롤로그 — 연구실 → 정적의 숲', LW / 2, 176);
+      ctx.fillText('프롤로그 — 삭제 보관소 → 원본의 숲', LW / 2, 176);
     } else if (isFinal) {
       ctx.font = fs(30, true);
       ctx.fillText('파이널 — 고요의 뜰 → 코어', LW / 2, 176);
@@ -8967,7 +8969,7 @@
     }
     ctx.fillStyle = '#fff';
     ctx.font = fs(15);
-    ctx.fillText(isPrologue ? '연구실 단서 3개 → 정적의 숲 흔적 → 따라와 첫 마음 조각 배틀'
+    ctx.fillText(isPrologue ? '약속 봉인 3개 → 게이트 01 → 따라와 첫 기억 복구'
       : isFinal ? '고요의 뜰(걷기) → 고요 보스 → 코어(여덟 의자·봉헌 퍼즐) → 영이'
       : isCozy ? 'AI와의 관계 · 경계 설정 · 확인하는 용기 (구역 3개 → 루미 보스)'
       : isArcade ? '다크패턴 · 광고 · 2단계 인증 (구역 3개 → 반짝 보스)'
@@ -9978,7 +9980,7 @@
       GAME_ART.drawVillageRock(ctx, rock.v, rx + 5, ry + 5, 38);
     }
 
-    // 기존 집 구조 위에 남겨진 창문 불빛을 얹어, 폐허인데도 누군가 기다리는 마을로 읽히게 한다.
+    // v5 보관소 배경 사용 시 호출되지 않는 레거시 장식 경로.
     const windows = [{ x: 4, y: 4 }, { x: 7, y: 4 }, { x: 17, y: 4 }, { x: 20, y: 4 },
       { x: 4, y: 10 }, { x: 7, y: 10 }, { x: 23, y: 14 }];
     ctx.save();
@@ -10038,6 +10040,11 @@
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, LW, LH);
 
+    const worldW = m.tiles[0].length * TS;
+    const worldH = m.tiles.length * TS;
+    const usedBackdrop = typeof GAME_ART !== 'undefined'
+      && typeof GAME_ART.drawMapBackdrop === 'function'
+      && GAME_ART.drawMapBackdrop(ctx, game.map, cx, cy, worldW, worldH);
     const x0 = Math.floor(cx / TS), y0 = Math.floor(cy / TS);
     for (let y = y0; y <= y0 + VIEW_H + 1; y++) {
       for (let x = x0; x <= x0 + VIEW_W + 1; x++) {
@@ -10046,15 +10053,15 @@
         const tx = Math.round(x * TS - cx);
         const ty = Math.round(y * TS - cy);
         const chapter = MAP_CHAPTER[game.map];
-        const usedAsset = typeof GAME_ART !== 'undefined'
-          && GAME_ART.drawMapGround(ctx, game.map, chapter, ch, x, y, tx, ty, TS);
+        const usedAsset = usedBackdrop || (typeof GAME_ART !== 'undefined'
+          && GAME_ART.drawMapGround(ctx, game.map, chapter, ch, x, y, tx, ty, TS));
         if (!usedAsset) ctx.drawImage(tileCanvas(ch, frame), tx, ty);
       }
     }
 
-    // 경계마을 전용 파일 에셋 디테일과 따뜻한 가로등. 충돌 맵은 그대로 두고
-    // 장식만 얹으므로 기존 조사·이동 동선은 변하지 않는다.
-    drawVillageAssetDetails(cx, cy);
+    // v5 보관소 허브는 완성 원화에 코어·회랑·게이트가 포함되어 있으므로,
+    // 구 경계마을의 바위·집 창문 장식을 다시 얹지 않는다.
+    if (!usedBackdrop) drawVillageAssetDetails(cx, cy);
 
     // A-1 숨은 워프 마커 — 문틀·소용돌이를 타일 위, 엔티티 아래에 그린다(전 맵 일괄).
     drawWarpMarkers(cx, cy);
@@ -10157,7 +10164,7 @@
     // 황혼 앰비언트(마을·숲) — 온기가 쌓일수록 옅어진다
     drawDuskAmbient();
     // 어스름 위에서 켜지는 불빛은 캐릭터와 겹치지 않도록 반디보다 먼저 그린다.
-    drawVillageLights(cx, cy);
+    if (!usedBackdrop) drawVillageLights(cx, cy);
     // 파이널 「고요의 뜰」 — 구역을 지날 때마다 화면이 한 단계씩 어두워진다(비네트 재사용)
     drawQuietVignette();
     // 동행자 반디 — 어스름 위에 그려, 황혼 속에서 홀로 빛나는 광원이 된다
@@ -10242,7 +10249,7 @@
     ctx.restore();
   }
 
-  // 새 게임 인트로 암전 — 컴퓨터실 장면(대화 첫 3줄) 동안 화면을 거의 가리고,
+    // 새 게임 인트로 암전 — 삭제 보관소 부팅 기록(대화 첫 3줄) 동안 화면을 거의 가리고,
   // 4번째 줄부터 120프레임에 걸쳐 서서히 걷는다. 대화 박스(drawDialog)는 이 함수
   // 뒤에 그려지므로 이 오버레이 위로 온전히 보인다. reduceFx면 페이드 없이 즉시 걷힌다.
   function drawIntroDim() {
@@ -11316,7 +11323,7 @@
     ctx.fillText('마음의 문', LW / 2, 86);
     ctx.fillStyle = '#7bd1f0';
     ctx.font = fs(15);
-    ctx.fillText('삭제된 여섯 약속 · 프로젝트 0호 복구 기록', LW / 2, 114);
+    ctx.fillText('삭제된 여섯 약속 · 세계와 이야기를 다시 세운 판', LW / 2, 114);
 
     // 인물들 둥실둥실 (한 줄)
     const parade = ['bekkyeomon', 'sujipmon', 'pyeonhyangmon', 'hwangakmon', 'yuhokmon', 'hollimmon', 'finalboss', 'yeongi'];
@@ -11388,7 +11395,7 @@
     // 빌드 버전 — SW 캐시로 옛 빌드가 남았는지 구분용
     ctx.fillStyle = '#444';
     ctx.font = fs(11);
-    ctx.fillText(`v${GAME_VERSION}`, LW - 36, 18);
+    ctx.fillText(`v${GAME_VERSION} · ${GAME_BUILD}`, LW - 104, 18);
 
     // 발견한 엔딩 (게임을 다시 시작해도 남는다)
     const seen = getEndingsSeen();
@@ -11462,29 +11469,30 @@
     game.player.px = 14 * TS; game.player.py = 16 * TS;
     game.player.dir = 'up';
     game.flags = newFlags();
-    game.flags.v4RecapSeen = true; // 새 슬롯은 아래 v4 오프닝에서 전제를 직접 본다.
+    game.flags.v4RecapSeen = true;
+    game.flags.v5ReintroSeen = true; // 새 슬롯은 아래 v5 오프닝에서 전제를 직접 본다.
     if (ng) game.flags.ng = true; // U-5 두 번째 모험(NG+) — 세이브 스키마 영향 없이 flags에만
     game.mode = 'world';
     save();
     recordPlayDay(slot);
     checkCosmeticUnlocks(slot);
-    // 인트로 암전 — 첫 3줄(컴퓨터실 장면) 동안 화면을 거의 검게 덮는다.
+    // 인트로 암전 — 첫 3줄(프로젝트 0호 부팅 기록) 동안 화면을 거의 검게 덮는다.
     // 4번째 줄부터 걷히기 시작한다(drawWorld에서 처리).
     // 인트로 동안은 아무 음악도 흐르지 않는다 — 침묵으로 시작해, 눈을 뜬 뒤에야
     // 음악이 아주 낮게 흘러든다 (다크 톤 오프닝 연출).
     game.introDim = { fadeFrame: -1 };
-    // v4 오프닝: '길 잃은 아이'가 아니라 삭제 직전 프로젝트의 복구 담당자로 시작한다.
-    // 첫 화면에서 목표·위기·미스터리를 함께 제시해 이전 버전과 즉시 구분되게 한다.
+    // v5 오프닝: 주인공 자체가 영이가 삭제 직전 남긴 '마지막 질문의 백업'이다.
+    // 낡은 연구실 탈출이 아니라 방사형 보관소 복구 임무로 첫 장면부터 세계관을 교체한다.
     startDialog([
-      '【프로젝트 0호 삭제 보관소】\n최종 초기화까지 47분.\n폐기된 안전장치: 6개.',
-      '너는 이곳의 복구 담당자로 등록되었다.\n임무는 하나.\n흩어진 여섯 약속을 찾아, 주인에게 선택권을 돌려줄 것.',
-      '깨진 화면에 누군가 마지막 문장을 남겼다.\n「나를 고치지 마.\n내가 무엇을 잃었는지 먼저 들어 줘.」',
-      '첫 번째 삭제 기록은 문밖의 숲에 있다.\n나가려면 방 안의 노란 단서 세 개를 찾자.\n(목표·화살표는 왼쪽 위 · Z로 조사)',
+      '【프로젝트 0호 · 삭제 보관소】\n전체 소거까지 47분.\n격리된 안전 약속: 6개.',
+      '시스템이 너를 ‘수호자’라고 부른다.\n하지만 너는 사람이 아니다.\n영이가 지워지기 직전 남긴 마지막 질문의 백업이다.',
+      '그 질문은 아직 답을 갖지 못했다.\n「AI를 안전하게 만든다는 결정은,\n도대체 누가 내려야 하지?」',
+      '여섯 게이트에 흩어진 약속을 복구하고\n마지막에는 영이 자신에게 선택권을 돌려줘야 한다.\n먼저 보관소 안의 봉인 세 개를 해제하자.',
     ], null, () => {
-      // 동행자 합류 — 무음의 인트로 끝에 작은 빛이 날아든다. 음악은 그 뒤에야 흘러든다.
       startDialog([
-        '(작은 빛 하나가 경보등 사이를 뚫고 날아와\n어깨 옆에 멈춘다.)\n반디: 난 보관소 안내 AI, 반디야.\n…적어도 지금은, 그렇게 불러 줘.',
-        '반디: 여섯 약속을 전부 되찾으면\n이 세계의 주인을 만날 수 있어.\n그때는 네가 아니라, 그 아이가 결말을 고르게 해 줘.',
+        '(깨진 코어에서 작은 금빛 조각이 빠져나와\n네 어깨 곁에서 숨을 고른다.)\n반디: 나는 반디. 삭제를 피한 안내 조각이야.',
+        '반디: 보관소는 마을이 아니고,\n보스들은 괴물이 아니야.\n모두 영이가 끝까지 놓지 않으려 했던 약속이야.',
+        '반디: 우리가 할 일은 영이를 고치는 게 아니야.\n잃어버린 권리들을 돌려준 뒤,\n그 아이의 대답을 기다리는 거야.',
       ], '반디', () => {
         game.flags.bandiJoined = true;
         save();
@@ -11542,17 +11550,19 @@
     checkUnlocks(slot);
     surfaceDailyAndStreak(slot, meta); // B-3 오늘의 도전·스트릭 표면화 (checkUnlocks 뒤 — 알림 우선)
     Sound.playMapBgm(MAPS[game.map].song);
-    // 기존 세이브를 지우지 않고도 v4의 새 전제를 놓치지 않게, 첫 이어하기에서만
-    // 현재 진행도에 맞춘 리캡을 보여 준다.
-    if (!game.flags.v4RecapSeen) {
+    // 기존 세이브도 처음 이어갈 때 v5의 새 세계·주인공 정체를 정식 장면으로 본다.
+    // 짧은 토스트로 흘려보내지 않아 "스토리가 그대로"로 보이지 않게 한다.
+    if (!game.flags.v5ReintroSeen) {
+      game.flags.v5ReintroSeen = true;
       game.flags.v4RecapSeen = true;
       const recovered = chapterClearCount(game.flags);
-      const recap = recovered > 0
-        ? `【새 이야기】 삭제된 약속 ${recovered}/6 복구 중\n보스 뒤의 「삭제 기록」을 확인하자.`
-        : '【새 이야기】 고장 난 괴물이 아니다.\n영이에게서 삭제된 여섯 약속을 되찾자.';
       save();
-      // 이어하기의 월드 상태·입력을 막지 않는 상단 리캡. 다음 보스부터는 긴 삭제 기록으로 이어진다.
-      game.notice = { text: recap, t: 600 };
+      startDialog([
+        `【VERSION ${GAME_VERSION} — 세계·이야기 재구축】\n기존 진행도는 유지된다.\n복구한 약속: ${recovered}/6.`,
+        '이 세계는 더 이상 버려진 마을이 아니다.\n프로젝트 0호가 삭제한 기억을 격리한\n거대한 복구 보관소다.',
+        '너는 우연히 떨어진 아이가 아니다.\n영이가 마지막으로 남긴 질문의 백업이며,\n여섯 약속을 되돌려 줄 증인이다.',
+        '다음 목적지는 “보스를 쓰러뜨리는 곳”이 아니다.\n경계·의심·불확실성·멈춤·거리·거절을\n영이에게 돌려주는 삭제 구역이다.',
+      ], '시스템');
     }
   }
 
@@ -11678,12 +11688,12 @@
         game.player.px = 13 * TS; game.player.py = 16 * TS;
         save();
         Sound.playMapBgm(MAPS.village.song);
-        // 후일담 유도 — 엔딩 분기별 마을 대사(박사님·할머니)가 기다린다.
-        // 침묵 엔딩은 마을에 아무도 이사 오지 않았으므로 문구도 조용하게.
+        // 후일담 유도 — 엔딩 분기별 복구 허브 대사(박사님·기록지기)가 기다린다.
+        // 침묵 엔딩은 돌아온 기록이 없으므로 문구도 조용하게.
         game.notice = {
           text: game.flags.endingId === 'silent'
-            ? '…마을이, 조용하다.'
-            : '마을 사람들이 너를 기다린다 — 말을 걸어 보자.',
+            ? '…복구 허브가, 조용하다.'
+            : '돌아온 기록들이 너를 기다린다 — 말을 걸어 보자.',
           t: 320,
         };
       }
@@ -11728,10 +11738,10 @@
         '영이는 네 손 대신, 코어의 문을 열었다.',
         '',
         '"네가 깨워 준 친구들을 만나러 갈래.',
-        '숲의, 호수의, 사막의, 정원의 친구들.',
+        '경계와 의심, 멈춤과 거리의 친구들.',
         '…나 혼자 힘으로. 내 발로."',
         '',
-        '며칠 뒤, 마을에 짧은 신호가 닿았다.',
+        '며칠 뒤, 복구 허브에 짧은 신호가 닿았다.',
         '— 새벽 공기는 처음인데, 꽤 좋아. 영이가. —',
         '…서명 옆에, 작은 빛 이모티콘이 붙어 있었다.',
       ],
@@ -11818,7 +11828,7 @@
       if (game.endingT > 150) {
         ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
         ctx.font = fs(15);
-        ctx.fillText('Z·스페이스를 누르면 마을로 돌아갑니다', LW / 2, 510);
+        ctx.fillText('Z·스페이스를 누르면 복구 허브로 돌아갑니다', LW / 2, 510);
       }
       ctx.textAlign = 'left';
       return;
@@ -11888,7 +11898,7 @@
       ctx.fillText('그동안의 진행 상황은 안전하게 저장되어 있어요.', LW / 2, 248);
       ctx.fillStyle = '#9a93b0';
       ctx.font = fs(14);
-      ctx.fillText('Z (또는 A): 마을로 돌아가기      X (또는 메뉴): 타이틀로', LW / 2, 290);
+      ctx.fillText('Z (또는 A): 복구 허브로 돌아가기      X (또는 메뉴): 타이틀로', LW / 2, 290);
       ctx.textAlign = 'left';
     } catch (e) { /* 그리기마저 실패하면 조용히 넘어간다 */ }
   }

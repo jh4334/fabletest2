@@ -67,6 +67,9 @@ function step(n = 1) { for (let i = 0; i < n; i++) { const cb = rafCb; rafCb = n
 function dispatch(ev, obj) { for (const fn of (listeners[ev] || []).slice()) fn(Object.assign({ preventDefault() {} }, obj)); }
 function tap(key) { dispatch('keydown', { key }); step(2); dispatch('keyup', { key }); }
 function slot(i) { const r = storage.get('ai-ethics-adventure-slot-' + i); return r ? JSON.parse(r) : null; }
+function advanceDialog(max = 80) {
+  for (let i = 0; i < max && g.mode === 'dialog'; i++) tap('z');
+}
 
 let passed = 0;
 function check(name, cond) {
@@ -84,6 +87,8 @@ check('타이틀에서 슬롯 0이 채워져 보임', g.mode === 'title' && g.ti
 
 console.log('[2] 슬롯 0 이어하기');
 tap('z'); // 슬롯 0(채워짐) → 이어하기
+check('기존 세이브에 v5 세계·이야기 재구축 안내', g.mode === 'dialog' && /VERSION 5\.0\.0/.test(g.dialog.lines[0]));
+advanceDialog();
 check('이어하기로 월드 진입', g.mode === 'world');
 check('사라진 v1 맵(serverroom) 세이브는 마을로 안전 이동(v3 마이그레이션)', g.map === 'village');
 check('현재 슬롯 0', g.currentSlot === 0);
@@ -121,7 +126,7 @@ const { MAPS, WALKABLE } = vm.runInContext('({ MAPS, WALKABLE })', sandbox);
 // village (0,0)은 'T'(나무, 이동 불가). 손상/구버전 세이브를 흉내 낸다.
 storage.set('ai-ethics-adventure-slot-2', JSON.stringify({
   name: '테스트', map: 'village', x: 0, y: 0,
-  flags: { talkedProf: true, badges: {}, defeated: {}, mercy: 0, visited: {} }, updatedAt: Date.now(),
+  flags: { talkedProf: true, badges: {}, defeated: {}, mercy: 0, visited: {}, v5ReintroSeen: true }, updatedAt: Date.now(),
 }));
 g.mode = 'title'; g.titleScreen = 'slots'; g.slotCursor = 2;
 tap('z'); // 슬롯 2 이어하기

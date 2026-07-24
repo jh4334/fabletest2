@@ -69,6 +69,10 @@ const VIEWPORTS = [
 
 let pass = 0, fail = 0;
 const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { console.log('  ✘ ' + n); fail++; } };
+async function dismissVersionGate(page) {
+  await page.waitForFunction(() => document.getElementById('version-gate')?.dataset.ready === '1', { timeout: 8000 });
+  await page.evaluate(() => window.__dismissVersionGate && window.__dismissVersionGate());
+}
 
 (async () => {
   const server = await startServer();
@@ -103,6 +107,9 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
 
     check('게임 모듈 로드(window.__test 노출)', loaded);
     check('캔버스(#game) 존재', !!(await page.$('#game')));
+    check('v5 시작 버전 게이트 표시', (await page.$eval('#version-gate', (el) => getComputedStyle(el).display)) === 'flex');
+    check('시작 화면에 VERSION 5.0 명시',
+      (await page.$eval('#version-gate', (el) => el.textContent)).includes('VERSION 5.0'));
 
     const disp = (sel) => page.$eval(sel, (el) => getComputedStyle(el).display).catch(() => null);
     const isTouch = await page.evaluate(() => document.body.classList.contains('touch'));
@@ -138,6 +145,15 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
     });
     await page.goto(base, { waitUntil: 'load' });
     await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await dismissVersionGate(page);
+    const archiveEntered = await page.evaluate(() => {
+      window.__test.applyPrologueClass();
+      window.__game.mode = 'world';
+      return window.__game.map === 'introlab';
+    });
+    await page.waitForTimeout(700);
+    check('v5 프로젝트 0호 삭제 보관소 진입', archiveEntered);
+    await page.screenshot({ path: path.join(shotsDir, 'browser-v5-archive.png') });
     const entered = await page.evaluate(() => {
       window.__test.applyTiltStreetClass();   // 2장 「기울어진 거리」 시작 상태로 진입
       window.__game.mode = 'world';
@@ -162,6 +178,7 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
     page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
     await page.goto(base, { waitUntil: 'load' });
     await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await dismissVersionGate(page);
     await page.evaluate(() => { window.__game.largeText = true; });
     await page.waitForTimeout(300); // 타이틀 렌더
     await page.evaluate(() => {
@@ -196,6 +213,7 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
     page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push('console.error: ' + m.text()); });
     await page.goto(base, { waitUntil: 'load' });
     await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await dismissVersionGate(page);
     // 반 순위표 — 백업 두 개를 합산 상태로 넣고 화면을 연다
     const lbMode = await page.evaluate(() => {
       const g = window.__game, T = window.__test;
@@ -236,6 +254,7 @@ const check = (n, c) => { if (c) { console.log('  ✔ ' + n); pass++; } else { c
     const page = await ctx.newPage();
     await page.goto(base, { waitUntil: 'load' });
     await page.waitForFunction(() => !!(window.__test && window.__game), { timeout: 8000 });
+    await dismissVersionGate(page);
     const r = await page.evaluate(() => {
       // 합성 TouchEvent로 게임 요소 핸들러를 직접 구동 (e.changedTouches 기반 로직 검증)
       const mkTouch = (el, id, x, y) => new Touch({ identifier: id, target: el, clientX: x, clientY: y });
