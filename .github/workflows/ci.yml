@@ -17,6 +17,8 @@ jobs:
       - run: npm ci
       - name: 데이터 검증
         run: npm run validate
+      - name: 출시 후보 정합성
+        run: npm run releasecheck
       - name: 로직 스모크/슬롯 테스트
         run: npm test
       - name: 플레이봇 완주 (프롤로그→진엔딩 회귀)

@@ -3,7 +3,7 @@
   'use strict';
 
   // 타이틀에 표시 · SW 캐시로 옛 빌드가 남았는지 구분용 (package.json 과 맞출 것)
-  const GAME_VERSION = '1.0.1';
+  const GAME_VERSION = '3.0.0';
 
   const TILE = 16;
   const SCALE = 3;
@@ -3568,7 +3568,7 @@
   // 황혼 앰비언트 — 경계마을과 정적의 숲은 늘 해 질 녘이다 (다크 톤 기조).
   // 마을은 마음의 온도가 쌓일수록(이사 온 친구 수만큼) 조금씩 밝아진다 —
   // "어두운 세계에 온기가 켜진다"를 화면 밝기로 체감시키는 카르마 연출.
-  const DUSK_BASE = { village: 0.24, forest: 0.22 };
+  const DUSK_BASE = { village: 0.30, forest: 0.22 };
   function duskWarmCount(flags) {
     let n = 0;
     if (flags.mercyChoice && flags.mercyChoice.bekkyeomon === 'mercy') n += 1;
@@ -4373,7 +4373,8 @@
     if (f.seenPhoto1) lines.push('박사: "네가 주인의 방에서 본 사진…\n그게, 나와 영이였어."');
     if (f.seenPhoto2) lines.push('박사: "표본 창고 구석의 그 ×표 사진들도…\n영이 거였단다."');
     if (f.seenArticle) lines.push('박사: "송출되지 못한 그 기사도…\n영이 이야기였어."');
-    lines.push('박사: "…미안하다. 정말, 미안해."');
+    lines.push('박사: "영이가 잘못 배운 것만 탓했지.\n가르치고 지켜볼 내 책임은 외면했어."');
+    lines.push('박사: "…미안하다는 말로 끝내지 않을게.\n찾게 되면, 내가 직접 사과하고\n그다음 선택은 영이에게 돌려주마."');
     // U-1 답안지 → 힌트 — "네가 모은 조각=영이의 기억"이라는 직접 연결 설명을 걷어내고,
     // 아이가 스스로 잇도록 열린 질문으로 닫는다. (박사는 죄책감·0호·도망까지만 안다)
     lines.push('박사: "…그 아이가 어디로 갔는지,\n나는 끝내 몰라."');
@@ -4382,10 +4383,10 @@
     startDialog(lines, '박사님', () => {
       startPlayerVoice('prof',
         '박사님이 고개를 숙인 채, 네 대답을 기다린다.',
-        ['"박사님 잘못만은, 아니에요."', '"…그 아이, 제가 꼭 찾을게요."'],
+        ['"도망친 건 잘못이에요. 이제 함께 찾아요."', '"그 아이에게 직접 말해 주세요."'],
         '박사님',
-        ['박사: …고맙다.\n그렇게 말해 주니… 조금은, 숨이 쉬어지는구나.',
-          '박사: …그래. 너라면,\n…어쩌면, 찾을 수 있을지도 모르겠구나.']);
+        ['박사: …그래. 네 말이 맞아.\n이번에는 도망치지 않고, 내가 할 일을 하마.',
+          '박사: …그래. 용서를 바라기 전에,\n먼저 듣고 사과해야겠지. 꼭 그러마.']);
     });
   }
 
@@ -4715,30 +4716,35 @@
       mercyLine: '💛 담아의 굳어 있던 마음이\n환하게 풀렸어요. 또 한 친구를 되돌렸다!',
       clearLine: '☆ 1장 클리어! ☆\n「전부 공짜 거리」의 네온이\n조용히 잦아들었다.',
       afterLine: '담아가 상자마다 붙은\n「친구가 준 것」 라벨을\n하나씩 떼어 내기 시작했다.',
+      nextLine: '마지막 라벨 아래,\n한쪽으로 기운 저울 문양이 드러난다.\n동쪽 벽에서 문 여는 소리가 났다.',
     },
     2: {
       map: 'tiltstreet', x: 14, y: 10, dir: 'up',
       mercyLine: '💛 기울의 한쪽으로 굳었던 마음이\n반대쪽으로도 천천히 열렸어요. 또 한 친구를 되돌렸다!',
       clearLine: '☆ 2장 클리어! ☆\n광장의 거대한 저울이,\n천천히 수평으로 내려앉았다.',
       afterLine: '기울이 한쪽 접시의 짐을\n반대쪽에도 하나씩 옮겨 담기 시작했다.',
+      nextLine: '빈 접시 밑에서 구겨진 기사 조각이 나온다.\n「프로젝트 0호 — 미송출」.\n동쪽에서 인쇄기 소리가 들린다.',
     },
     3: {
       map: 'rumorstreet', x: 17, y: 5, dir: 'down',
       mercyLine: '💛 그럴싸의 [속보] 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!',
       clearLine: '☆ 3장 클리어! ☆\n거리의 헤드라인 벽보가\n하나둘 [정정] 딱지로 바뀌었다.',
       afterLine: '상점 문들이 활짝 열리고,\n주민들의 얼굴에 웃음이 돌아왔다.',
+      nextLine: '정정된 마지막 벽보 뒤에 광고 한 장.\n「계속 보게 만드는 무대, 오늘 개장」.\n네온 화살표가 다음 골목을 가리킨다.',
     },
     4: {
       map: 'arcade', x: 18, y: 2, dir: 'down',
       mercyLine: '💛 반짝의 반짝임 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!',
       clearLine: '☆ 4장 클리어! ☆\n무대의 네온사인이\n하나둘 차분한 빛으로 바뀌었다.',
       afterLine: '반짝이 남은 광고 딱지들을\n하나씩 떼어 내기 시작했다.',
+      nextLine: '가장 큰 광고 아래에서 집 모양 표식이 나온다.\n「영원히 함께 있어 줄게」.\n꺼진 간판 너머로 따뜻한 불빛이 샌다.',
     },
     5: {
       map: 'cozyhome', x: 18, y: 2, dir: 'down',
       mercyLine: '💛 루미의 붙잡던 손 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!',
       clearLine: '☆ 5장 클리어! ☆\n집 안의 공기가\n한결 가벼워졌다.',
       afterLine: '루미가 현관문을\n스스로 열어 두었다.',
+      nextLine: '열린 문 너머에는 불빛도 안내판도 없다.\n다만 누군가 오래도록 대답을 기다린 듯,\n고요한 뜰이 이어진다.',
     },
   };
   // X-8 40분 차시 모드 — 그 장의 보스를 클리어하면 마무리 안내 한 상자를 덧붙인다(수업 세션만).
@@ -4766,6 +4772,7 @@
     if (b.mercyChoiceKind === 'mercy') lines.push(cfg.mercyLine);
     lines.push(cfg.clearLine);
     lines.push(cfg.afterLine);
+    lines.push(cfg.nextLine);
     appendRankLine(b, lines, b.persuadeId); // B-2 판정 한 줄 + 최고 등급 기록
     grantDiaryShard('ch' + n, lines, b.mercyChoiceKind); // 자비로 되돌렸다면 일기 조각(Q-2)
     lines.push(bandiBossLine('ch' + n, b.mercyChoiceKind, game.flags));
@@ -4927,6 +4934,7 @@
   function winBattle() {
     const b = game.battle;
     const mon = b.mon;
+    const wasPrologueClass = b.monId === 'bekkyeomon' && !!game.flags.classSession;
     // X-6 재대결(기억의 방)은 진행 플래그를 건드리지 않고 별도 처리한다 — 모든 승리 경로보다 앞.
     if (b.rematch) { winRematch(); return; }
     // 챕터 보스 — 별도 진행 플래그(chapterNClear)로 처리한다
@@ -4970,6 +4978,11 @@
       appendRankLine(b, lines, b.persuadeId); // B-2 판정 한 줄 + 최고 등급 기록
       grantDiaryShard('prologue', lines, b.mercyChoiceKind); // 첫 일기 조각(Q-2) — 미스터리의 시작
       lines.push(bandiBossLine('prologue', b.mercyChoiceKind, game.flags));
+      if (wasPrologueClass) {
+        lines.push(CLASS_END_LINE);
+        game.flags.classSession = false;
+        save();
+      }
     }
     // 영이(최종)는 곧장 진엔딩으로 이어지는 감정 장면이라 판정 라벨을 얹지 않는다(톤 보존).
     if (b.monId === 'yeongi') {
@@ -4987,6 +5000,7 @@
       });
     } else if (b.monId === 'bekkyeomon') {
       // X-1① 따라 배틀 승리 직후 — 주인공의 반응 한 번(정답 없음). 반디가 그 말을 받아 준다.
+      const offerPost = wasPrologueClass && getPrepost(game.currentSlot, 'prologue').pre;
       startDialog(lines, mon.name, () => {
         Sound.playMapBgm(MAPS[game.map].song);
         startPlayerVoice('ttara',
@@ -4994,7 +5008,8 @@
           ['"서툴러도, 네 그림은 네 거야."', '"…다음엔, 같이 그리자."'],
           '반디',
           ['반디: …응. 서툰 게, 제일 사람 같은 거래.\n(반디가 조금 웃었다.)',
-            '반디: …같이. 좋은 말이야.\n…나도, 끼워 줄 거지?']);
+            '반디: …같이. 좋은 말이야.\n…나도, 끼워 줄 거지?'],
+          offerPost ? () => openPrepost('post', 'prologue', 'world') : null);
       });
     } else {
       startDialog(lines, mon.name, () => {
@@ -5073,6 +5088,7 @@
       '마지막 속삭임이 사라지자,\n어깨 옆의 반디가\n천천히 떠오른다.',
       '반디: "…있지. 아까 하려던 말,\n지금 할게."',
       '반디: "나… 안내 도우미가 아니야.\n이 세계엔, 그런 거 없어."',
+      '반디: "따라도, 담아도, 기울도…\n모두 내가 견디지 못해\n떼어 놓은 마음이었어."',
       '(작은 빛이 제단의 빛 속으로 녹아들고 —\n그 안에, 작은 아이가 서 있다.)',
       '"…처음부터, 나였어."',
     ], null, () => startRevealBeat());
@@ -8665,6 +8681,8 @@
     flags.classSession = true; // X-8 수업(차시) 세션 — 수업 진입 경로에서만 켜진다(일반 세이브 오염 없음)
     return flags;
   }
+  // 프롤로그 「연구실 → 정적의 숲」 수업 특별 항목.
+  const PROLOGUE_SEL = 1;
   // 수업 모드 특별 항목 「1장 — 전부 공짜 거리」 (스테이지 번호가 아닌 방탈출 수업용)
   const TRACE_SEL = 0;
   // 2장 「기울어진 거리」 수업 특별 항목 (sel = -1)
@@ -8678,9 +8696,22 @@
   // 파이널 「고요의 뜰 → 코어」 수업 특별 항목 (sel = -5)
   const FINAL_SEL = -5;
   const MIN_SEL = FINAL_SEL; // 선택기 하한
+  const MAX_SEL = PROLOGUE_SEL; // 선택기 상한
+  // 16차시 지도안과 여섯 거리·프롤로그의 관계. 한 거리에서 여러 관점으로
+  // 수업할 수 있으므로, 교사가 선택기 안에서 바로 대응 차시를 확인하게 한다.
+  const CLASS_RELATED = {
+    [PROLOGUE_SEL]: { lessons: '1·4·15차시', focus: '첫 약속 · 창작 윤리 · 출처 밝히기' },
+    [TRACE_SEL]: { lessons: '8·13차시', focus: '개인정보 · 동의 · 디지털 발자국' },
+    [TILT_SEL]: { lessons: '2·3·5차시', focus: '추천 편향 · 공정함 · 다른 관점 듣기' },
+    [RUMOR_SEL]: { lessons: '6·7·11차시', focus: '출처 확인 · AI 환각 · 정정 보도' },
+    [ARCADE_SEL]: { lessons: '9·10·13차시', focus: '사용 균형 · 다크패턴 · 계정 안전' },
+    [COZY_SEL]: { lessons: '9·12·14차시', focus: '경계 설정 · 관계 · 책임 있는 결정' },
+    [FINAL_SEL]: { lessons: '12·14·16차시', focus: '공감 · 책임 · 종합 성찰' },
+  };
   // Y-18 — 수업 선택기 값 → 사전/사후 세트 장 키. 파이널(FINAL_SEL)은 세트 없음(null).
   function classSelToChKey(sel) {
-    return sel === TRACE_SEL ? 'trace' : sel === TILT_SEL ? 'tilt' : sel === RUMOR_SEL ? 'rumor'
+    return sel === PROLOGUE_SEL ? 'prologue' : sel === TRACE_SEL ? 'trace'
+      : sel === TILT_SEL ? 'tilt' : sel === RUMOR_SEL ? 'rumor'
       : sel === ARCADE_SEL ? 'arcade' : sel === COZY_SEL ? 'cozy' : null;
   }
   // 지금 슬롯의 진행(chapterNClear)에 맞는 특별 항목을 고른다 — 「선생님 방」을 열 때
@@ -8691,7 +8722,21 @@
     if (flags.chapter3Clear) return ARCADE_SEL;
     if (flags.chapter2Clear) return RUMOR_SEL;
     if (flags.chapter1Clear) return TILT_SEL;
-    return TRACE_SEL;
+    if (flags.defeated && flags.defeated.bekkyeomon) return TRACE_SEL;
+    return PROLOGUE_SEL;
+  }
+  // 프롤로그 시작 상태. 이름 입력과 오프닝 대사만 건너뛰고 연구실의 세 단서부터
+  // 직접 시작한다. 다른 수업 점프와 달리 박사 대화·따라 클리어를 미리 처리하지 않는다.
+  function applyPrologueClass() {
+    const flags = newFlags();
+    flags.bandiJoined = true;
+    flags.classSession = true;
+    game.flags = flags;
+    game.map = 'introlab';
+    const p = game.player;
+    p.x = 14; p.y = 16; p.px = 14 * TS; p.py = 16 * TS;
+    p.moving = false; p.dir = 'up';
+    save();
   }
   // 1장 시작 상태로 맞추고, 전부 공짜 거리 입구에 서서 시작한다.
   // defeated.bekkyeomon(프롤로그 「따라」 격파)도 true로 맞춘다 — 1장 허브 안에 이미 서
@@ -8833,11 +8878,14 @@
         else if (cm.sel === RUMOR_SEL) applyRumorStreetClass();
         else if (cm.sel === TILT_SEL) applyTiltStreetClass();
         else if (cm.sel === TRACE_SEL) applyTraceRoomClass();
+        else if (cm.sel === PROLOGUE_SEL) applyPrologueClass();
         cm.confirm = false;
         // Y-18 — 그 장에 사전/사후 세트가 있으면 수업 시작 직전 옵트인 사전 점검을 연다(스킵 가능).
         // 파이널 등 세트가 없는 항목은 기존대로 적용 안내(toast) 후 월드로.
         const chKey = classSelToChKey(cm.sel);
-        if (chKey && PREPOST_CH[chKey]) { openPrepost('pre', chKey, cm.ret); return; }
+        // 사전 점검을 마치거나 건너뛰면 선생님 방으로 되돌아가지 않고, 방금 고른
+        // 구간의 월드에서 바로 수업을 시작한다.
+        if (chKey && PREPOST_CH[chKey]) { openPrepost('pre', chKey, 'world'); return; }
         cm.toast = 90;
         Sound.badge();
         return;
@@ -8845,10 +8893,10 @@
       if (justPressed('cancel') || justPressed('menu')) { cm.confirm = false; Sound.blip(); }
       return;
     }
-    // 특별 항목 6개(「1장 — 전부 공짜 거리」~「파이널 — 고요의 뜰 → 코어」)만 한 바퀴로 순환한다.
+    // 특별 항목 7개(프롤로그~파이널)만 한 바퀴로 순환한다.
     // v1 숫자 스테이지(1~5) 항목은 제거되었다 — v2 항목만 남는다.
-    if (justPressed('left') || justPressed('up')) { cm.sel = cm.sel <= MIN_SEL ? TRACE_SEL : cm.sel - 1; Sound.blip(); }
-    if (justPressed('right') || justPressed('down')) { cm.sel = cm.sel >= TRACE_SEL ? MIN_SEL : cm.sel + 1; Sound.blip(); }
+    if (justPressed('left') || justPressed('up')) { cm.sel = cm.sel <= MIN_SEL ? MAX_SEL : cm.sel - 1; Sound.blip(); }
+    if (justPressed('right') || justPressed('down')) { cm.sel = cm.sel >= MAX_SEL ? MIN_SEL : cm.sel + 1; Sound.blip(); }
     if (justPressed('action')) { cm.confirm = true; Sound.select(); return; }
     if (justPressed('cancel') || justPressed('menu')) { closeClassMode(); }
   }
@@ -8859,18 +8907,20 @@
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.font = fs(22, true);
-    ctx.fillText('▶ 수업 모드 — 거리(챕터) 바로 시작', 24, 40);
+    ctx.fillText('▶ 수업 모드 — 이야기 구간 바로 시작', 24, 40);
     ctx.fillStyle = '#888';
     ctx.font = fs(13);
-    ctx.fillText('오늘 수업할 거리를 골라 바로 시작해요. (지금 학생 슬롯에 적용)', 24, 64);
+    ctx.fillText('오늘 수업할 구간을 골라 바로 시작해요. (지금 학생 슬롯에 적용)', 24, 64);
 
-    // 특별 항목 6개(v2 항목만 순환) — 「1장 — 전부 공짜 거리」는 그 외 모든 값이 아닐 때(else)로 처리한다.
+    // 특별 항목 7개(프롤로그~파이널).
+    const isPrologue = cm.sel === PROLOGUE_SEL;
     const isTilt = cm.sel === TILT_SEL;
     const isRumor = cm.sel === RUMOR_SEL;
     const isArcade = cm.sel === ARCADE_SEL;
     const isCozy = cm.sel === COZY_SEL;
     const isFinal = cm.sel === FINAL_SEL;
-    const selLabel = isFinal ? '파이널 시작 상태 · 포근한 집 안쪽 문 앞'
+    const selLabel = isPrologue ? '프롤로그 시작 상태 · 연구실'
+      : isFinal ? '파이널 시작 상태 · 포근한 집 안쪽 문 앞'
       : isCozy ? '5장 시작 상태 · 포근한 집 입구'
       : isArcade ? '4장 시작 상태 · 반짝 아케이드 입구'
       : isRumor ? '3장 시작 상태 · 대문짝 신문사 입구'
@@ -8880,7 +8930,10 @@
     // 스테이지 선택기
     ctx.textAlign = 'center';
     ctx.fillStyle = themeAccent();
-    if (isFinal) {
+    if (isPrologue) {
+      ctx.font = fs(30, true);
+      ctx.fillText('프롤로그 — 연구실 → 정적의 숲', LW / 2, 176);
+    } else if (isFinal) {
       ctx.font = fs(30, true);
       ctx.fillText('파이널 — 고요의 뜰 → 코어', LW / 2, 176);
     } else if (isCozy) {
@@ -8901,41 +8954,46 @@
     }
     ctx.fillStyle = '#fff';
     ctx.font = fs(15);
-    ctx.fillText(isFinal ? '고요의 뜰(걷기) → 고요 보스 → 코어(여덟 의자·봉헌 퍼즐) → 영이'
+    ctx.fillText(isPrologue ? '연구실 단서 3개 → 정적의 숲 흔적 → 따라와 첫 마음 조각 배틀'
+      : isFinal ? '고요의 뜰(걷기) → 고요 보스 → 코어(여덟 의자·봉헌 퍼즐) → 영이'
       : isCozy ? 'AI와의 관계 · 경계 설정 · 확인하는 용기 (구역 3개 → 루미 보스)'
       : isArcade ? '다크패턴 · 광고 · 2단계 인증 (구역 3개 → 반짝 보스)'
       : isRumor ? '가짜 뉴스 분별 · 출처 확인 · 정정 보도 (구역 3개 → 그럴싸 보스)'
       : isTilt ? '경청 · 필터버블 · 스스로 고르기 (구역 3개 → 기울 보스)'
       : '개인정보 · 디지털 발자국 · 동의 (구역 3개 → 담아 보스)', LW / 2, 250);
+    const related = CLASS_RELATED[cm.sel] || { lessons: '16차시', focus: '종합 성찰' };
+    ctx.fillStyle = '#ffd644';
+    ctx.font = fs(13, true);
+    ctx.fillText(`연계 ${related.lessons} · ${related.focus}`, LW / 2, 274);
     ctx.fillStyle = '#666';
     ctx.font = fs(13);
-    ctx.fillText('◀ ▶ 거리 고르기', LW / 2, 286);
+    ctx.fillText('◀ ▶ 수업 구간 고르기', LW / 2, 302);
 
     if (cm.toast > 0) {
       ctx.fillStyle = okColor();
       ctx.font = fs(17, true);
-      ctx.fillText(`✓ ${selLabel} 상태로 맞췄어요!`, LW / 2, 360);
+      ctx.fillText(`✓ ${selLabel} 상태로 맞췄어요!`, LW / 2, 366);
       ctx.fillStyle = '#aaa';
       ctx.font = fs(13);
-      ctx.fillText('잠시 후 모험 화면으로 돌아갑니다…', LW / 2, 386);
+      ctx.fillText('잠시 후 모험 화면으로 돌아갑니다…', LW / 2, 392);
       if (cm.toast === 1) { game.mode = cm.ret; }
     } else if (cm.confirm) {
       ctx.fillStyle = badColor();
       ctx.font = fs(16, true);
-      ctx.fillText(`지금 이 슬롯을 ${selLabel} 상태로 바꿀까요?`, LW / 2, 360);
+      ctx.fillText(`지금 이 슬롯을 ${selLabel} 상태로 바꿀까요?`, LW / 2, 366);
       ctx.fillStyle = '#ddd';
       ctx.font = fs(13);
-      ctx.fillText('이전 진행은 완료 처리되고 되돌릴 수 없어요.', LW / 2, 384);
+      ctx.fillText('이전 진행은 완료 처리되고 되돌릴 수 없어요.', LW / 2, 390);
       ctx.fillStyle = '#fff';
       ctx.font = fs(14, true);
-      ctx.fillText('Z: 시작   ·   X: 취소', LW / 2, 416);
+      ctx.fillText('Z: 시작   ·   X: 취소', LW / 2, 422);
     } else {
       ctx.fillStyle = '#777';
       ctx.font = fs(13);
-      ctx.fillText('Z: 이 거리로 시작 · X: 닫기', LW / 2, 360);
+      ctx.fillText('Z: 이 구간으로 시작 · X: 닫기', LW / 2, 366);
       ctx.fillStyle = '#555';
       ctx.font = fs(12);
-      ctx.fillText('※ 미리 「데이터 백업」을 해 두면 안전해요.', LW / 2, 388);
+      ctx.fillText('※ 미리 「데이터 백업」을 해 두면 안전해요.', LW / 2, 394);
     }
     ctx.textAlign = 'left';
   }
@@ -8945,6 +9003,7 @@
   // 장 보스 클리어 후 같은 문항으로 사후 점검 → 향상도를 CSV에 담는다. 전부 로컬·스킵 가능.
   // 저장 스키마 변경(meta.prepost) — 없던 슬롯은 그냥 빈 값으로 취급(하위 호환).
   const PREPOST_CH = {
+    prologue: { n: 0, label: '프롤로그 · 창작·출처', topics: ['copyright', 'genai', 'identity', 'transparency', 'responsibility'] },
     trace: { n: 1, label: '1장 · 개인정보·동의', topics: ['privacy', 'consent', 'footprint', 'copyright', 'identity'] },
     tilt: { n: 2, label: '2장 · 경청·편향', topics: ['listen', 'bias', 'filterbubble', 'balance', 'emotion'] },
     rumor: { n: 3, label: '3장 · 가짜 정보 분별', topics: ['fake', 'rumor', 'genai', 'deepfake', 'transparency'] },
@@ -9121,15 +9180,20 @@
   // ---------- 교사용 학생 진단 리포트 (U3) ----------
   // 주제 키 → 추천 차시(docs/차시별-활동지.md). 약점 주제를 다음 수업과 연결한다.
   const TOPIC_SESSION = {
-    privacy: '1차시 (개인정보·저작권)', copyright: '1차시 (개인정보·저작권)',
-    consent: '1차시 (개인정보·저작권)', security: '1차시 (개인정보·저작권)', identity: '1차시 (개인정보·저작권)',
-    fake: '2차시 (가짜 정보·생성형 AI)', genai: '2차시 (가짜 정보·생성형 AI)',
-    deepfake: '2차시 (가짜 정보·생성형 AI)', rumor: '2차시 (가짜 정보·생성형 AI)',
-    bias: '3차시 (공정함·편향)', filterbubble: '3차시 (공정함·편향)', listen: '3차시 (공정함·편향)',
-    balance: '4차시 (절제·디지털 발자국)', footprint: '4차시 (절제·디지털 발자국)',
-    saving: '4차시 (절제·디지털 발자국)', environment: '4차시 (절제·디지털 발자국)', persuasion: '4차시 (절제·디지털 발자국)',
-    manners: '5차시 (관계·책임)', emotion: '5차시 (관계·책임)', responsibility: '5차시 (관계·책임)',
-    excuse: '5차시 (관계·책임)', safety: '5차시 (관계·책임)', transparency: '5차시 (관계·책임)', core: '5차시 (관계·책임)',
+    privacy: '8차시 (개인정보 최소 수집)', consent: '8차시 (개인정보와 동의)',
+    copyright: '15차시 (AI 창작과 출처)', identity: '4차시 (나의 말·AI의 말 구분)',
+    security: '13차시 (계정·디지털 발자국)', footprint: '13차시 (계정·디지털 발자국)',
+    fake: '6차시 (출처 확인)', rumor: '11차시 (공유 전 확인·정정)',
+    genai: '7차시 (생성형 AI 환각)', deepfake: '7차시 (딥페이크 분별)',
+    bias: '3차시 (데이터와 공정함)', filterbubble: '2차시 (추천과 필터버블)',
+    listen: '5차시 (다른 관점 듣기)', balance: '9차시 (사용 시간과 경계)',
+    saving: '9차시 (디지털 절제·에너지)', environment: '9차시 (디지털 절제·에너지)',
+    persuasion: '10차시 (광고·다크패턴)', manners: '12차시 (AI와 관계 맺기)',
+    emotion: '12차시 (AI와 관계 맺기)', responsibility: '14차시 (AI 결정과 책임)',
+    excuse: '14차시 (AI 결정과 책임)', safety: '13차시 (계정·디지털 발자국)',
+    jobs: '14차시 (AI 변화와 사람의 책임)', creativity: '15차시 (AI 창작과 저작권)',
+    transparency: '4차시 (AI 사용 밝히기)', core: '16차시 (종합 성찰·나의 원칙)',
+    boss: '16차시 (여정 종합 복습)', finale: '16차시 (나의 AI 사용 원칙)',
   };
   function topicSession(t) { return TOPIC_SESSION[t] || '종합 복습 (퀴즈 챌린지)'; }
 
@@ -9523,20 +9587,23 @@
     const f = game.flags;
     if (!f || !f.bandiJoined || f.bandiRevealed) return;
     const p = game.player;
-    const off = { up: { x: 14, y: 26 }, down: { x: 16, y: -18 },
-      left: { x: 26, y: -10 }, right: { x: -20, y: -10 } }[p.dir] || { x: 16, y: -18 };
+    const off = { up: { x: 20, y: 30 }, down: { x: -18, y: -16 },
+      left: { x: 34, y: -10 }, right: { x: -30, y: -10 } }[p.dir] || { x: -18, y: -16 };
     const bob = Math.sin(game.time / 16) * 3;
     const sx = Math.round(p.px - cx + off.x);
     const sy = Math.round(p.py - cy + off.y + bob);
     // 광륜 — 황혼 속의 작은 온기
     if (!game.reduceFx) {
-      const pulse = 0.12 + Math.sin(game.time / 22) * 0.04;
+      const pulse = 0.16 + Math.sin(game.time / 22) * 0.05;
       ctx.fillStyle = `rgba(255,220,130,${pulse})`;
       ctx.beginPath();
-      ctx.arc(sx + 16, sy + 14, 15, 0, Math.PI * 2);
+      ctx.arc(sx + 16, sy + 14, 18, 0, Math.PI * 2);
       ctx.fill();
     }
-    drawMon(ctx, 'bandi', sx, sy, 2);
+    const artFrame = Math.floor(game.time / 10) % 4;
+    const usedAsset = typeof GAME_ART !== 'undefined'
+      && GAME_ART.drawBandi(ctx, artFrame, sx + 16, sy + 14);
+    if (!usedAsset) drawMon(ctx, 'bandi', sx, sy, 2);
   }
 
   function ch1HubVisibleMarks() {
@@ -9885,6 +9952,71 @@
     ctx.restore();
   }
 
+  function drawVillageAssetDetails(cx, cy) {
+    if (game.map !== 'village' || typeof GAME_ART === 'undefined') return;
+    const rocks = [
+      { x: 2, y: 5, v: 0 }, { x: 10, y: 5, v: 2 }, { x: 27, y: 5, v: 1 },
+      { x: 2, y: 17, v: 3 }, { x: 19, y: 17, v: 0 }, { x: 26, y: 16, v: 2 },
+    ];
+    for (const rock of rocks) {
+      const rx = Math.round(rock.x * TS - cx);
+      const ry = Math.round(rock.y * TS - cy + 8);
+      if (rx < -TS || rx > LW + TS || ry < -TS || ry > LH + TS) continue;
+      GAME_ART.drawVillageRock(ctx, rock.v, rx + 5, ry + 5, 38);
+    }
+
+    // 기존 집 구조 위에 남겨진 창문 불빛을 얹어, 폐허인데도 누군가 기다리는 마을로 읽히게 한다.
+    const windows = [{ x: 4, y: 4 }, { x: 7, y: 4 }, { x: 17, y: 4 }, { x: 20, y: 4 },
+      { x: 4, y: 10 }, { x: 7, y: 10 }, { x: 23, y: 14 }];
+    ctx.save();
+    for (const win of windows) {
+      const wx = Math.round(win.x * TS - cx + 15);
+      const wy = Math.round(win.y * TS - cy + 16);
+      if (wx < -20 || wx > LW + 20 || wy < -20 || wy > LH + 20) continue;
+      ctx.fillStyle = 'rgba(255,190,82,0.74)';
+      ctx.fillRect(wx, wy, 18, 15);
+      ctx.fillStyle = 'rgba(255,236,162,0.7)';
+      ctx.fillRect(wx + 3, wy + 2, 4, 10);
+      ctx.fillStyle = '#4c3827';
+      ctx.fillRect(wx + 8, wy, 2, 15);
+      ctx.fillRect(wx, wy + 7, 18, 2);
+    }
+    ctx.restore();
+  }
+
+  function drawVillageLights(cx, cy) {
+    if (game.map !== 'village') return;
+    const lamps = [{ x: 9, y: 7 }, { x: 19, y: 7 }, { x: 10, y: 17 },
+      { x: 21, y: 17 }, { x: 26, y: 11 }];
+    ctx.save();
+    for (const lamp of lamps) {
+      const lx = Math.round(lamp.x * TS - cx + TS / 2);
+      const ly = Math.round(lamp.y * TS - cy + TS / 2);
+      if (lx < -70 || lx > LW + 70 || ly < -70 || ly > LH + 70) continue;
+      if (!game.reduceFx) {
+        const glow = ctx.createRadialGradient(lx, ly - 9, 3, lx, ly - 9, 42);
+        if (glow && glow.addColorStop) {
+          glow.addColorStop(0, 'rgba(255,221,132,0.34)');
+          glow.addColorStop(1, 'rgba(255,186,70,0)');
+          ctx.fillStyle = glow;
+        } else {
+          ctx.fillStyle = 'rgba(255,205,102,0.12)';
+        }
+        ctx.fillRect(lx - 42, ly - 51, 84, 84);
+      }
+      ctx.fillStyle = '#171a24';
+      ctx.fillRect(lx - 3, ly - 1, 6, 24);
+      ctx.fillRect(lx - 8, ly + 21, 16, 4);
+      ctx.fillStyle = '#3d3329';
+      ctx.fillRect(lx - 8, ly - 16, 16, 17);
+      ctx.fillStyle = '#ffc85a';
+      ctx.fillRect(lx - 5, ly - 13, 10, 11);
+      ctx.fillStyle = '#fff0aa';
+      ctx.fillRect(lx - 3, ly - 11, 3, 7);
+    }
+    ctx.restore();
+  }
+
   function drawWorld() {
     const m = MAPS[game.map];
     const { cx, cy } = camera();
@@ -9898,9 +10030,19 @@
       for (let x = x0; x <= x0 + VIEW_W + 1; x++) {
         if (y < 0 || y >= m.tiles.length || x < 0 || x >= m.tiles[0].length) continue;
         const ch = m.tiles[y][x];
-        ctx.drawImage(tileCanvas(ch, frame), Math.round(x * TS - cx), Math.round(y * TS - cy));
+        const tx = Math.round(x * TS - cx);
+        const ty = Math.round(y * TS - cy);
+        const chapter = MAP_CHAPTER[game.map];
+        const usedAsset = typeof GAME_ART !== 'undefined'
+          && ((game.map === 'village' && GAME_ART.drawVillageGround(ctx, ch, x, y, tx, ty, TS))
+            || GAME_ART.drawChapterGround(ctx, chapter, ch, x, y, tx, ty, TS));
+        if (!usedAsset) ctx.drawImage(tileCanvas(ch, frame), tx, ty);
       }
     }
+
+    // 경계마을 전용 파일 에셋 디테일과 따뜻한 가로등. 충돌 맵은 그대로 두고
+    // 장식만 얹으므로 기존 조사·이동 동선은 변하지 않는다.
+    drawVillageAssetDetails(cx, cy);
 
     // A-1 숨은 워프 마커 — 문틀·소용돌이를 타일 위, 엔티티 아래에 그린다(전 맵 일괄).
     drawWarpMarkers(cx, cy);
@@ -9986,8 +10128,12 @@
     const walking = p.px !== p.x * TS || p.py !== p.y * TS;
     const pframe = walking ? Math.floor(p.step / 6) % 2 : 0;
     const dirKey = p.dir === 'right' ? 'left' : p.dir;
-    drawSprite(ctx, PLAYER_SPRITES[dirKey][pframe],
-      Math.round(p.px - cx), Math.round(p.py - cy - 6), SCALE, null, p.dir === 'right');
+    const playerAsset = typeof GAME_ART !== 'undefined'
+      && GAME_ART.drawPlayer(ctx, p.dir, pframe, Math.round(p.px - cx), Math.round(p.py - cy));
+    if (!playerAsset) {
+      drawSprite(ctx, PLAYER_SPRITES[dirKey][pframe],
+        Math.round(p.px - cx), Math.round(p.py - cy - 6), SCALE, null, p.dir === 'right');
+    }
 
     if (game.puzzleRun) drawStalkers(cx, cy);
     // 코어 — 여덟 개의 의자(안아 준 조각 수만큼 채워짐)
@@ -9998,6 +10144,8 @@
     if (game.puzzleRun && game.puzzleRun.puzzle.type === 'voices') drawEchoVignette();
     // 황혼 앰비언트(마을·숲) — 온기가 쌓일수록 옅어진다
     drawDuskAmbient();
+    // 어스름 위에서 켜지는 불빛은 캐릭터와 겹치지 않도록 반디보다 먼저 그린다.
+    drawVillageLights(cx, cy);
     // 파이널 「고요의 뜰」 — 구역을 지날 때마다 화면이 한 단계씩 어두워진다(비네트 재사용)
     drawQuietVignette();
     // 동행자 반디 — 어스름 위에 그려, 황혼 속에서 홀로 빛나는 광원이 된다
@@ -10346,7 +10494,8 @@
     rumorstreet: 3, tipsroom: 3, editroom: 3, towerroom: 3, towerroof: 3,
     arcade: 4, roulettesquare: 4, signupalley: 4, backstage: 4, yuhokstage: 4,
     cozyhome: 5, callroom: 5, corridor: 5, sofaroom: 5, lumiroom: 5,
-    quietyard: 'final', goyostage: 'final', coreroom: 'final',
+    quietyard: 'final', quietyard2: 'final', quietyard3: 'final',
+    goyostage: 'final', coreroom: 'final',
   };
   // 챕터 플래그 기반 HUD 표기: 프롤로그~1장 클리어 전 = "1장", chapterNClear 이후 =
   // "(N+1)장", chapter5Clear 이후 = "파이널". 신규 스테이지 맵은 그 맵 자신의 장을 우선한다.
@@ -10566,6 +10715,18 @@
     const mx = Math.round(LW - 16 * monScale - 60 + shakeX);
     const my = Math.round(56 + bob);
     const mcx = mx + 16 * monScale / 2;
+    // 첫 보스의 표정이 검은 화면에서 바로 읽히도록 아주 옅은 초록빛 무대를 만든다.
+    if (b.monId === 'bekkyeomon' && !game.reduceFx) {
+      const aura = ctx.createRadialGradient(mcx, 132, 22, mcx, 132, 154);
+      if (aura && aura.addColorStop) {
+        aura.addColorStop(0, 'rgba(112,180,78,0.17)');
+        aura.addColorStop(1, 'rgba(20,50,36,0)');
+        ctx.fillStyle = aura;
+      } else {
+        ctx.fillStyle = 'rgba(78,120,68,0.08)';
+      }
+      ctx.fillRect(mcx - 160, -8, 320, 286);
+    }
     // 그림자 — 인물이 땅에 떠 있는 느낌을 줘 화면이 덜 휑하게
     ctx.fillStyle = 'rgba(0,0,0,0.32)';
     ctx.beginPath();
@@ -11302,6 +11463,8 @@
     // 첫 배틀까지 읽기 부담을 줄이기 위해 오프닝 상자를 압축한다.
     startDialog([
       '눈을 뜨니 좁은 방.\n낡은 기계들, 그리고\n반짝이지 않는 문 하나.',
+      '깨진 화면에 마지막 문장만 남아 있다.\n「이 기록을 읽는 너에게 —\n마음을 지켜 줘.」',
+      '누가 보낸 신호인지 기억나지 않는다.\n하지만 문밖에서 누군가,\n아주 오래 대답을 기다리는 것 같다.',
       '나가려면 방 안의 노란 단서를 찾자.\n(목표·화살표는 왼쪽 위 · Z로 조사)',
     ], null, () => {
       // 동행자 합류 — 무음의 인트로 끝에 작은 빛이 날아든다. 음악은 그 뒤에야 흘러든다.
@@ -11513,11 +11676,11 @@
       lines: [
         '너는 영이의 손을 잡고 코어를 걸어 나왔다.',
         '햇살 아래에서 박사님은 아주 오래 울었다.',
-        '"미안하다"는 말과 "고맙다"는 말이',
-        '몇 번이고 뒤섞였다.',
+        '박사님은 변명 없이 사과했고,',
+        '영이는 대답할 시간을 스스로 정했다.',
         '',
         '지워진 것은 사라진 것이 아니었다.',
-        '누군가 기억하는 한, 다시 만날 수 있었다.',
+        '함께 책임질 때, 다시 만날 길을 만들 수 있었다.',
         '',
         '— 모두의 마음을 안아 준 진정한 수호자에게 —',
         '',
@@ -11558,8 +11721,8 @@
         '코어를 나서는 너의 등 뒤로',
         '꺼진 화면만이 조용히 남아 있었다.',
         '',
-        '…어쩌면, 다른 결말도 있었을지 모른다.',
-        '아이들의 마음을 더 많이 안아 주었다면.',
+        '함께 돌아오는 것만이 마음을 지키는 일은 아니었다.',
+        '잘 듣고, 떠날 권리를 지켜 주는 작별도 있었다.',
         '',
         '…어깨 옆자리가, 유난히 허전했다.',
       ],
@@ -12017,7 +12180,7 @@
     buildClassCsv, csvCell, setupClassBaseFlags, classSelForFlags,
     backupSlotRows, buildLeaderboardCsv, openLeaderboard, // Y-20 반 순위표 검증용
     prepostQuizzes, openPrepost, recordPrepost, getPrepost, classSelToChKey, PREPOST_CH, // Y-18 사전/사후 점검
-    applyTraceRoomClass, applyTiltStreetClass, applyRumorStreetClass,
+    applyPrologueClass, applyTraceRoomClass, applyTiltStreetClass, applyRumorStreetClass,
     applyArcadeClass, applyCozyhomeClass, applyFinalClass,
     getPuzzleLog, writePuzzleLog, nextWaypoint, currentObjective: () => getObjective(game.flags, game.map), // 나침반/HUD 경로 — E2E가 '화살표 따라가기'를 재현할 때 사용
     privacyLeak, privacyPressureProfile, addPrivacyLeak, notePrivacyRecoveryPiece,

@@ -12,7 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const { createCanvas } = require('canvas');
+const { createCanvas, Image } = require('canvas');
 
 const ROOT = path.join(__dirname, '..', '..');
 const OUT = path.join(ROOT, 'shots');
@@ -65,7 +65,7 @@ function createGameSandbox() {
       removeItem: (k) => storage.delete(k),
     },
     requestAnimationFrame: windowObj.requestAnimationFrame,
-    console, Math, Set, Map, JSON, Object, setTimeout, clearTimeout, Date,
+    console, Math, Set, Map, JSON, Object, Image, setTimeout, clearTimeout, Date,
   };
   vm.createContext(sandbox);
 
@@ -74,7 +74,7 @@ function createGameSandbox() {
     g: null,
     // src 4파일 로드 — storage 시드가 끝난 뒤에 호출해야 한다(게임이 로드 시 읽는다)
     boot() {
-      for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js', 'src/game.js']) {
+      for (const f of ['src/art.js', 'src/sprites.js', 'src/audio.js', 'src/data.js', 'src/game.js']) {
         vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
       }
       env.g = windowObj.__game;

@@ -30,6 +30,8 @@ jobs:
           node-version: '20'
       - name: 데이터 검증
         run: node tools/validate.js
+      - name: 출시 후보 정합성
+        run: node tools/releasecheck.js
       - name: 스모크 테스트
         run: node tools/smoketest.js
       - name: 슬롯 테스트

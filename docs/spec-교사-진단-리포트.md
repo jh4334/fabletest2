@@ -37,14 +37,24 @@
 3. **내보내기**: 인쇄/캡처용 텍스트를 클립보드 복사 + (가능 환경) `.txt` 저장.
 4. 반 전체 모드: 세 슬롯의 약점 주제 분포 요약 + 공통 약점 Top 3.
 
-## 주제 → 추천 차시 매핑 (초안)
+## 주제 → 추천 차시 매핑 (v3 16차시)
 | 주제 키 | 추천 차시(docs/차시별-활동지) |
 |---|---|
-| privacy, copyright | 1차시 (개인정보·저작권) |
-| fake, genai, deepfake | 2차시 (가짜 정보·생성형 AI) |
-| bias, filterbubble | 3차시 (공정함·편향) |
-| balance, footprint, saving | 4차시 (절제·디지털 발자국) |
-| manners, emotion, responsibility, excuse | 5차시 (관계·책임) |
+| filterbubble | 2차시 (추천·필터버블) |
+| bias | 3차시 (데이터·공정함) |
+| identity, transparency | 4차시 (AI 사용 밝히기) |
+| listen | 5차시 (경청·관점 전환) |
+| fake | 6차시 (정보·출처 확인) |
+| genai, deepfake | 7차시 (환각·딥페이크) |
+| privacy, consent | 8차시 (개인정보·동의) |
+| balance, saving, environment | 9차시 (사용 균형·경계) |
+| persuasion | 10차시 (광고·다크패턴) |
+| rumor | 11차시 (소문·정정) |
+| manners, emotion | 12차시 (AI와 관계 맺기) |
+| security, footprint, safety | 13차시 (계정 안전·발자국) |
+| responsibility, excuse, jobs | 14차시 (결정과 책임) |
+| copyright, creativity | 15차시 (AI 창작·저작권) |
+| core, boss, finale | 16차시 (종합 성찰) |
 
 ## 수용 기준 (Acceptance — 기계적으로 검증)
 - `node tools/validate.js` 통과(데이터·스키마·문서 동기화).

@@ -208,9 +208,9 @@ g.hof = { ret: 'title', cat: 0 };
 g.time = 20;
 shot('21-hof.png');
 
-// 22) 수업 모드 (챕터 바로 시작)
+// 22) 수업 모드 (프롤로그~파이널 + 16차시 연계)
 g.mode = 'classmode';
-g.classmode = { ret: 'world', sel: 0, confirm: false, toast: 0 };
+g.classmode = { ret: 'world', sel: 1, confirm: false, toast: 0 };
 g.time = 20;
 shot('22-classmode.png');
 

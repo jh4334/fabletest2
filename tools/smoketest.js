@@ -1215,8 +1215,9 @@ check('데드존 경계 바로 밖은 방향 인식', sd(35, 0, 100) === 'right'
 console.log('[66] 교사용 학생 진단 리포트 (U3)');
 const TR = vm.runInContext('window.__test', sandbox);
 // 약점 주제가 추천 차시로 매핑되는지 (순수 함수)
-check('주제→차시 매핑(개인정보=1차시)', /1차시/.test(TR.topicSession('privacy')));
-check('주제→차시 매핑(가짜정보=2차시)', /2차시/.test(TR.topicSession('fake')));
+check('주제→차시 매핑(개인정보=8차시)', /8차시/.test(TR.topicSession('privacy')));
+check('주제→차시 매핑(가짜정보=6차시)', /6차시/.test(TR.topicSession('fake')));
+check('주제→차시 매핑(저작권=15차시)', /15차시/.test(TR.topicSession('copyright')));
 check('미정 주제는 종합 복습 폴백', /종합 복습/.test(TR.topicSession('___none___')));
 const rep0 = TR.buildDiagnosticReport(0);
 check('진단 리포트 구조 반환', rep0 && typeof rep0.text === 'string' && Array.isArray(rep0.recommendations));
@@ -1693,6 +1694,7 @@ tap('z'); // 자비 선택 → 응답
 check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z'); // 응답 닫기 → 승리 처리
 check('승리 대화 시작', g.mode === 'dialog');
+check('1→2장 연결 단서 — 기울어진 저울 문양', g.dialog.lines.some((l) => /기운 저울 문양/.test(l)));
 check('이슈6 수업 세션 보스 클리어 대화에 마무리 안내(CLASS_END_LINE) 포함',
   g.dialog.lines.some((l) => /다음 시간에 이어서/.test(l)));
 advanceDialog();
@@ -1704,6 +1706,13 @@ check('보스 승리 후 금고 앞(거리) 복귀', g.map === 'freestreet' && g
 check('라이브러리 수집몬 처치 플래그 오염 없음', g.flags.defeated.sujipmon === false);
 check('보스는 도감 순서에 없음', !DEX_ORDER.includes('sujipmon_boss'));
 check('보스 설득 로그 기록', g.flags.pStats.gateRight === 2 && g.flags.pStats.gateWrong >= 2);
+
+console.log('[69b] 수업 모드 — 프롤로그 「연구실 → 정적의 숲」 특별 항목');
+g.dialog = null; g.mode = 'world';
+TJ.applyPrologueClass();
+check('프롤로그 수업: 연구실 세 단서 시작점', g.map === 'introlab' && g.player.x === 14 && g.player.y === 16);
+check('프롤로그 수업: 따라·1장 미완료', !g.flags.defeated.bekkyeomon && !g.flags.chapter1Clear);
+check('프롤로그 수업: 차시 세션 배너 활성', g.flags.classSession === true);
 
 console.log('[70] 수업 모드 — 「1장 — 전부 공짜 거리」 특별 항목');
 g.dialog = null; g.mode = 'world';
@@ -1942,6 +1951,7 @@ while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z');
 check('승리 대화 시작', g.mode === 'dialog');
+check('2→3장 연결 단서 — 프로젝트 0호 미송출 기사', g.dialog.lines.some((l) => /프로젝트 0호 — 미송출/.test(l)));
 advanceDialog();
 check('2장 클리어 플래그', g.flags.chapter2Clear === true);
 check('보스 승리 후 저울 앞(허브) 복귀', g.map === 'tiltstreet' && g.player.x === 14 && g.player.y === 10);
@@ -2185,6 +2195,7 @@ while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z');
 check('승리 대화 시작', g.mode === 'dialog');
+check('3→4장 연결 단서 — 계속 보게 만드는 무대', g.dialog.lines.some((l) => /계속 보게 만드는 무대/.test(l)));
 advanceDialog();
 check('3장 클리어 플래그', g.flags.chapter3Clear === true);
 check('보스 승리 후 신문사 입구(허브) 복귀', g.map === 'rumorstreet' && g.player.x === 17 && g.player.y === 5);
@@ -2204,6 +2215,8 @@ check('고백 대사 — 프로젝트 0호', g.dialog.lines.some((l) => /프로�
 check('복선 반영 — seenPhoto1 있음', g.dialog.lines.some((l) => /주인의 방에서 본 사진/.test(l)));
 check('복선 미반영 — seenPhoto2 없으면 해당 줄 없음', !g.dialog.lines.some((l) => /×표 사진들도/.test(l)));
 check('복선 반영 — seenArticle 있음', g.dialog.lines.some((l) => /송출되지 못한 그 기사/.test(l)));
+check('박사 고백 — 방치한 어른의 책임을 직접 인정', g.dialog.lines.some((l) => /내 책임은 외면했어/.test(l)));
+check('박사 고백 — 영이에게 선택권을 돌려주기로 약속', g.dialog.lines.some((l) => /선택은 영이에게 돌려주마/.test(l)));
 check('profConfession 즉시 기록(재진입 방지)', g.flags.profConfession === true);
 advanceDialog();
 // X-1② 박사 고백 끝 반응 선택(정답 없음)이 자동 처리되어 playerVoice.prof에 남는다.
@@ -2472,6 +2485,7 @@ while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z');
 check('승리 대화 시작', g.mode === 'dialog');
+check('4→5장 연결 단서 — 영원히 함께 있어 줄 집', g.dialog.lines.some((l) => /영원히 함께 있어 줄게/.test(l)));
 advanceDialog();
 check('4장 클리어 플래그', g.flags.chapter4Clear === true);
 check('4장 자비 플래그(다음 장 콜백용)', g.flags.chapter4Mercy === true);
@@ -2680,6 +2694,7 @@ while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z');
 check('승리 대화 시작', g.mode === 'dialog');
+check('5→파이널 연결 단서 — 대답을 기다린 고요한 뜰', g.dialog.lines.some((l) => /대답을 기다린 듯/.test(l)));
 advanceDialog();
 check('5장 클리어 플래그', g.flags.chapter5Clear === true);
 check('5장 자비 플래그(다음 장 콜백용)', g.flags.chapter5Mercy === true);
@@ -2841,14 +2856,14 @@ check('보스는 도감 순서에 없음', !DEX_ORDER.includes('goyo_boss'));
 
 console.log('[103] 코어 — 여덟 의자(coreMercyCount = 자비 수) + 봉헌 퍼즐(정답·오답 기록)');
 check('영이는 아직 안 보임(shrineDone 전)', !g.flags.shrineDone);
-check('의자 수 = 자비 수(0)', coreMercyCount(g.flags) === 0);
+check('고요를 안아 준 자리 1석', coreMercyCount(g.flags) === 1);
 g.flags.mercyChoice = g.flags.mercyChoice || {};
 g.flags.mercyChoice.bekkyeomon = 'mercy';
 g.flags.chapter1Mercy = true;
 g.flags.chapter3Mercy = true;
-check('의자 수 = 자비 수(3)', coreMercyCount(g.flags) === 3);
+check('고요 포함 의자 수 = 자비 수(4)', coreMercyCount(g.flags) === 4);
 g.flags.chapter2Mercy = true; g.flags.chapter4Mercy = true; g.flags.chapter5Mercy = true;
-check('의자 수 = 자비 수(6, 여덟 석 중 최대)', coreMercyCount(g.flags) === 6);
+check('영이 전 의자 수 = 7/8(마지막 자리는 영이)', coreMercyCount(g.flags) === 7);
 
 setPos(7, 2, 'up'); tap('z');
 check('제단 조사 — 봉헌 안내 대화', g.mode === 'dialog');
@@ -3166,26 +3181,27 @@ console.log('[110c] 엔딩 분기별 후일담 — 박사·할머니 대사가 �
   check('엔딩 전 박사 — 후일담 미노출', !/잘 다녀왔니/.test(profBefore) && !/영이가 돌아왔단다/.test(profBefore));
 }
 
-console.log('[111] 수업 모드 선택기 — v1 숫자 스테이지 제거, v2 6개 항목만 순환');
+console.log('[111] 수업 모드 선택기 — 프롤로그~파이널 7개 항목만 순환');
 {
   const TJ2 = vm.runInContext('window.__test', sandbox);
   check('classSelForFlags 존재(테스트 훅)', typeof TJ2.classSelForFlags === 'function');
-  check('진행 없음 → TRACE_SEL(0)', TJ2.classSelForFlags({}) === 0);
+  check('진행 없음 → PROLOGUE_SEL(1)', TJ2.classSelForFlags({}) === 1);
+  check('따라 완료 → TRACE_SEL(0)', TJ2.classSelForFlags({ defeated: { bekkyeomon: true } }) === 0);
   check('chapter1Clear → TILT_SEL(-1)', TJ2.classSelForFlags({ chapter1Clear: true }) === -1);
   check('chapter2Clear → RUMOR_SEL(-2)', TJ2.classSelForFlags({ chapter1Clear: true, chapter2Clear: true }) === -2);
   check('chapter3Clear → ARCADE_SEL(-3)', TJ2.classSelForFlags({ chapter3Clear: true }) === -3);
   check('chapter4Clear → COZY_SEL(-4)', TJ2.classSelForFlags({ chapter4Clear: true }) === -4);
   check('chapter5Clear → FINAL_SEL(-5)', TJ2.classSelForFlags({ chapter5Clear: true }) === -5);
 
-  // 순환 경계 — 파이널(-5)에서 왼쪽/위로 가면 숫자 스테이지 없이 곧장 1장(0)으로 순환
+  // 순환 경계 — 파이널(-5)에서 왼쪽/위로 가면 프롤로그(1)로 순환
   g.dialog = null; g.mode = 'world';
   g.classmode.ret = 'world'; g.classmode.sel = -5; g.classmode.confirm = false; g.classmode.toast = 0;
   g.mode = 'classmode';
   tap('ArrowUp');
-  check('파이널에서 왼쪽 → 곧장 1장(0), 숫자 스테이지 없음', g.classmode.sel === 0);
-  // 1장(0)에서 오른쪽/아래로 가면 곧장 파이널(-5)로 순환
+  check('파이널에서 왼쪽 → 프롤로그(1)', g.classmode.sel === 1);
+  // 프롤로그(1)에서 오른쪽/아래로 가면 파이널(-5)로 순환
   tap('ArrowDown');
-  check('1장에서 오른쪽 → 곧장 파이널(-5), 숫자 스테이지 없음', g.classmode.sel === -5);
+  check('프롤로그에서 오른쪽 → 파이널(-5)', g.classmode.sel === -5);
 }
 
 console.log('[112] 4·5장 허브 HUD 진행 텍스트 — arcade(열쇠 N/2)·cozyhome(확인한 용기 N/3)');
@@ -3834,13 +3850,17 @@ console.log('[Y-14·Y-20] 패턴 레지스트리 정합성 · 반 순위표 집�
 
   // Y-18 사전/사후 점검 — 세트 결정론성·매핑·저장·CSV
   const preTrace = T.prepostQuizzes('trace');
-  check('Y-18 장별 사전/사후 세트 5문항', preTrace.length === 5 && T.prepostQuizzes('tilt').length === 5 &&
+  check('Y-18 프롤로그·장별 사전/사후 세트 5문항', T.prepostQuizzes('prologue').length === 5 &&
+    preTrace.length === 5 && T.prepostQuizzes('tilt').length === 5 &&
     T.prepostQuizzes('rumor').length === 5 && T.prepostQuizzes('arcade').length === 5 && T.prepostQuizzes('cozy').length === 5);
   check('Y-18 사전=사후 동일 세트(결정론적)',
     JSON.stringify(T.prepostQuizzes('trace').map((q) => q.q)) === JSON.stringify(preTrace.map((q) => q.q)));
   check('Y-18 파이널 등 세트 없는 항목은 빈 배열', T.prepostQuizzes('final').length === 0);
-  check('Y-18 수업 선택기 값 → 장 키 매핑', T.classSelToChKey(0) === 'trace' && T.classSelToChKey(-1) === 'tilt' &&
+  check('Y-18 수업 선택기 값 → 장 키 매핑', T.classSelToChKey(1) === 'prologue' &&
+    T.classSelToChKey(0) === 'trace' && T.classSelToChKey(-1) === 'tilt' &&
     T.classSelToChKey(-4) === 'cozy' && T.classSelToChKey(-5) === null);
+  check('Y-18 사전 점검 완료·건너뛰기 후 선택 구간 월드로 진입',
+    gameSrcFinal.includes("openPrepost('pre', chKey, 'world')"));
   // 저장·조회 왕복(슬롯 메타)
   windowObj.__game.currentSlot = 0;
   T.recordPrepost(0, 'trace', 'pre', 2, 5);
