@@ -1,56 +1,41 @@
-# Visual asset sources
+# VERSION 6 visual assets
 
-## Legacy CC0 archive (not used by the v4 map renderer)
+All runtime images in `assets/art/` and `icons/` were created specifically for
+**미결 우체국 VERSION 6.0** with OpenAI's built-in image generation workflow,
+then cropped, alpha-cleaned, resized, and PNG-optimized locally.
 
-- Source: https://pixel-boy.itch.io/ninja-adventure-asset-pack
-- Repository: https://github.com/pixel-boy/NinjaAdventure
-- License: CC0 1.0 (public domain)
-- Files used:
-  - `cc0/ninja-adventure/tileset_floor.png`
-  - `cc0/ninja-adventure/tileset_village_abandoned.png`
+No v1–v5 character sheet, map texture, archive background, CC0 tile atlas, or
+legacy app icon remains in the runtime asset directories.
 
-These two files remain in the repository for provenance and comparison, but v4 no longer
-loads them at runtime.
+## Environment art
 
-## Project-original v5 archive environment
+- `art/maps/postal-central-hall.png`
+- `art/maps/postal-permission-market.png`
+- `art/maps/postal-one-sided-terminal.png`
+- `art/maps/postal-rumor-press.png`
+- `art/maps/postal-prize-dispatch.png`
+- `art/maps/postal-waiting-lounge.png`
+- `art/maps/postal-silent-route.png`
+- `art/maps/postal-sender-chamber.png`
 
-`art/maps/v5-project-zero-archive.png` was generated specifically for the VERSION 5.0
-world rebuild. It is an environment-only, top-down 16-bit pixel-art background for the
-radial Project Zero recovery archive: central cracked core, cyan data channels, archive
-pillars, and six gate approaches. Player characters, UI, and text are drawn by the game
-at runtime. The image is stored locally and no external image service is called at
+The shared direction is layered cream paper architecture, smoked-glass mail
+chutes, coral wax seals, brass stamp machinery, mint delivery routes, and a
+deep aubergine void. Each file is environment-only and is drawn as a complete
+world backdrop.
+
+## Character art
+
+- `art/postal-courier-atlas.png` — the undelivered-letter courier and Mori
+- `art/postal-cast-main.png` — Mosa, Bogwan, Danjeong, Jeonpa, Kkeullim, Maedeup
+- `art/postal-cast-support.png` — Gongbaek, Narae, the Director, Archivist, Saegim
+
+## App icon
+
+- `icons/postal-icon-192.png`
+- `icons/postal-icon-512.png`
+- `icons/postal-icon-maskable-512.png`
+- `icons/postal-apple-touch-icon.png`
+
+The icon uses a cream envelope, coral wax seal, and mint origami moth on an
+aubergine postal-route field. The game performs no external image calls at
 runtime.
-
-## Project-original chapter map art
-
-The seven textures in `art/maps/` were generated specifically for this project from the
-approved top-down 16-bit pixel-art direction, then resized and palette-optimized locally.
-They do not call an external image service at runtime.
-
-- `prologue-boundary.png`
-- `ch1-free-street.png`
-- `ch2-tilted-street.png`
-- `ch3-rumor-news.png`
-- `ch4-sparkle-arcade.png`
-- `ch5-cozy-loop.png`
-- `finale-memory-core.png`
-
-## Project-original character art
-
-The player, Bandi, and eight boss expression sheets in `art/` were created specifically
-for this project from the approved twilight storybook/pixel-game visual direction.
-They are stored locally and do not call an external image service at runtime.
-
-- `player-sheet.png`
-- `bandi-sheet.png`
-- `ttara-expression-sheet.png`
-- `dama-expression-sheet.png`
-- `giul-expression-sheet.png`
-- `geureol-expression-sheet.png`
-- `banjjak-expression-sheet.png`
-- `lumi-expression-sheet.png`
-- `goyo-expression-sheet.png`
-- `yeongi-expression-sheet.png`
-
-The eight boss sheets cover Ttara, Dama, Giul, Geureolssa, Banjjak, Lumi, Goyo,
-and Yeongi. Each sheet contains closed, shaken, open, and mercy/emotional states.

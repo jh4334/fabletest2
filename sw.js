@@ -2,7 +2,7 @@
 // 모든 정적 자원을 처음 방문 때 캐시해, 이후 네트워크 없이도 실행되게 한다.
 // 핵심 HTML/JS는 온라인일 때 네트워크를 먼저 확인해 배포 직후 구버전이 남지 않게 한다.
 // 게임 코드/콘텐츠가 바뀌면 CACHE 버전을 올리면 된다.
-const CACHE = 'ai-ethics-adventure-d3020812';
+const CACHE = 'ai-ethics-adventure-1a6ef84a';
 const ASSETS = [
   './',
   './index.html',
@@ -11,29 +11,22 @@ const ASSETS = [
   './src/audio.js',
   './src/data.js',
   './src/game.js',
-  './assets/art/player-sheet.png',
-  './assets/art/bandi-sheet.png',
-  './assets/art/ttara-expression-sheet.png',
-  './assets/art/dama-expression-sheet.png',
-  './assets/art/giul-expression-sheet.png',
-  './assets/art/geureol-expression-sheet.png',
-  './assets/art/banjjak-expression-sheet.png',
-  './assets/art/lumi-expression-sheet.png',
-  './assets/art/goyo-expression-sheet.png',
-  './assets/art/yeongi-expression-sheet.png',
-  './assets/art/maps/prologue-boundary.png',
-  './assets/art/maps/ch1-free-street.png',
-  './assets/art/maps/ch2-tilted-street.png',
-  './assets/art/maps/ch3-rumor-news.png',
-  './assets/art/maps/ch4-sparkle-arcade.png',
-  './assets/art/maps/ch5-cozy-loop.png',
-  './assets/art/maps/finale-memory-core.png',
-  './assets/art/maps/v5-project-zero-archive.png',
+  './assets/art/postal-courier-atlas.png',
+  './assets/art/postal-cast-main.png',
+  './assets/art/postal-cast-support.png',
+  './assets/art/maps/postal-central-hall.png',
+  './assets/art/maps/postal-permission-market.png',
+  './assets/art/maps/postal-one-sided-terminal.png',
+  './assets/art/maps/postal-rumor-press.png',
+  './assets/art/maps/postal-prize-dispatch.png',
+  './assets/art/maps/postal-waiting-lounge.png',
+  './assets/art/maps/postal-silent-route.png',
+  './assets/art/maps/postal-sender-chamber.png',
   './manifest.webmanifest',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/icon-maskable-512.png',
-  './icons/apple-touch-icon.png',
+  './icons/postal-icon-192.png',
+  './icons/postal-icon-512.png',
+  './icons/postal-icon-maskable-512.png',
+  './icons/postal-apple-touch-icon.png',
 ];
 
 self.addEventListener('install', (e) => {

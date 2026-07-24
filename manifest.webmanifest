@@ -1,17 +1,17 @@
 {
-  "name": "마음의 문",
-  "short_name": "마음의 문",
-  "description": "화면 속으로 떨어진 아이의 미스터리 어드벤처. 굳어 버린 아이들의 마음을 여는 여정.",
+  "name": "미결 우체국",
+  "short_name": "미결 우체국",
+  "description": "답장을 재촉하는 도시에서 여섯 선택권을 되찾아 배달하는 종이 우편 판타지 어드벤처.",
   "lang": "ko",
   "start_url": "./index.html",
   "scope": "./",
   "display": "fullscreen",
   "orientation": "landscape",
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "background_color": "#24102c",
+  "theme_color": "#24102c",
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "icons/postal-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/postal-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/postal-icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

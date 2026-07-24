@@ -9,7 +9,7 @@ const WALKABLE = new Set(['G', 'P', 'F', 'S', 'B', 'C', 'M', 'Z', 'E', 'I', '2',
 
 const MAPS = {
   village: {
-    name: '프로젝트 0호 · 복구 허브',
+    name: '미결 우체국 · 중앙홀',
     song: 'village',
     star: { x: 12, y: 13, text: '금이 간 중앙 코어가 느리게 빛난다.\n되찾은 약속이 하나씩 돌아올 때마다,\n허브의 심장도 다시 뛴다.' },
     // v5 복구 허브 조사 기록 — 구 마을·연못·빈집의 흔적을 완전히 걷어낸다.
@@ -58,24 +58,24 @@ const MAPS = {
       { x: 24, y: 5, to: 'freestreet', tx: 18, ty: 21 },
     ],
     npcs: [
-      { id: 'prof', x: 4, y: 12, pal: 'prof', name: '박사님' },
-      { id: 'kid', x: 16, y: 7, pal: 'kid', name: '아이 도도' },
-      { id: 'grandma', x: 20, y: 12, pal: 'grandma', monSprite: 'caretaker', name: '할머니' },
-      { id: 'yeongi_npc', x: 5, y: 12, monSprite: 'yeongi', name: '영이',
+      { id: 'prof', x: 4, y: 12, monSprite: 'director', name: '국장' },
+      { id: 'kid', x: 16, y: 7, monSprite: 'clerk', name: '새김' },
+      { id: 'grandma', x: 20, y: 12, monSprite: 'archivist', name: '기록지기' },
+      { id: 'yeongi_npc', x: 5, y: 12, monSprite: 'yeongi', name: '나래',
         show: (flags) => !!flags.trueEnding },
       // 마음의 온도 — 자비로 되돌린 1~5장 보스(+따라)는 복구 허브의 기록석으로 돌아온다.
       // 차갑게 대했으면(harsh) 그 기록석은 비어 있다 — 기록지기의 대사가 빈자리를 언급한다.
-      { id: 'friend_dama', x: 9, y: 9, monSprite: 'sujipmon', name: '담아',
+      { id: 'friend_dama', x: 9, y: 9, monSprite: 'sujipmon', name: '보관',
         show: (flags) => !!flags.chapter1Mercy },
-      { id: 'friend_giul', x: 11, y: 9, monSprite: 'pyeonhyangmon', name: '기울',
+      { id: 'friend_giul', x: 11, y: 9, monSprite: 'pyeonhyangmon', name: '단정',
         show: (flags) => !!flags.chapter2Mercy },
-      { id: 'friend_geureol', x: 16, y: 9, monSprite: 'hwangakmon', name: '그럴싸',
+      { id: 'friend_geureol', x: 16, y: 9, monSprite: 'hwangakmon', name: '전파',
         show: (flags) => !!flags.chapter3Mercy },
-      { id: 'friend_banjjak', x: 18, y: 9, monSprite: 'yuhokmon', name: '반짝',
+      { id: 'friend_banjjak', x: 18, y: 9, monSprite: 'yuhokmon', name: '끌림',
         show: (flags) => !!flags.chapter4Mercy },
-      { id: 'friend_lumi', x: 24, y: 9, monSprite: 'hollimmon', name: '루미',
+      { id: 'friend_lumi', x: 24, y: 9, monSprite: 'hollimmon', name: '매듭',
         show: (flags) => !!flags.chapter5Mercy },
-      { id: 'friend_ttara', x: 26, y: 9, monSprite: 'bekkyeomon', name: '따라',
+      { id: 'friend_ttara', x: 26, y: 9, monSprite: 'bekkyeomon', name: '모사',
         show: (flags) => !!(flags.mercyChoice && flags.mercyChoice.bekkyeomon === 'mercy') },
     ],
     signs: [
@@ -89,7 +89,7 @@ const MAPS = {
   // 거리에서 구역 3개(접수처·게시판 광장·배달 창고)와 금고문(주인의 방)으로 갈라진다.
   // 금고 잠금 3개는 구역을 하나 클리어할 때마다 풀린다 (needS1Locks — game.js).
   freestreet: {
-    name: '전부 공짜 거리',
+    name: '허락 없는 소포시장',
     // 허브 거리 전용 곡 — 구역(lab/cave/glitch)과 겹치지 않게 분리
     song: 'street',
     star: { x: 18, y: 18, text: '네온 불빛 사이의 골목 어귀.\n공짜가 아닌 것들 — 이를테면 지금 이 결심이,\n너를 단단하게 한다.' },
@@ -171,7 +171,7 @@ const MAPS = {
   // 구역① 「살금의 접수처」 — 모든 편의는 정보를 대가로 요구한다.
   // 상호작용 물체(단말·게시판·지우개·출구)는 타일이 아니라 PUZZLES.traces 좌표로 배치된다.
   traceroom: {
-    name: '살금의 접수처',
+    name: '무단 개봉 접수대',
     song: 'lab',
     intro: [
       '≪살금의 접수처≫\n반짝이는 화면과 경품이 가득하다.',
@@ -205,7 +205,7 @@ const MAPS = {
   // 구역② 「새김의 게시판 광장」 — 공유의 영속성 체험.
   // 접수처에서 준 내 정보의 사본 3개가 광장을 떠돈다 (PUZZLES.copies).
   boardplaza: {
-    name: '새김의 게시판 광장',
+    name: '복제 송장 광장',
     song: 'glitch',
     intro: [
       '광장 한가운데, 거대한 게시판.\n반짝이는 조각들이\n종이처럼 떠다니고 있다.',
@@ -242,7 +242,7 @@ const MAPS = {
   // 구역③ 「배달 창고」 — 제3자 제공 체험.
   // 내 정보 상자가 컨베이어를 타고 출하구로 흘러간다 (PUZZLES.levers).
   warehouse: {
-    name: '배달 창고',
+    name: '수신인 없는 창고',
     song: 'cave',
     intro: [
       '컨베이어가 덜컹덜컹 돌아간다.\n상자마다 라벨이 붙어 있다.',
@@ -278,7 +278,7 @@ const MAPS = {
   // 담아(보스)는 map 배치 인물이 아니라 NPC(sujip_boss)로 두어 친구 수첩/마음 기록 플래그를
   // 오염시키지 않는다. 조우 시 설득 배틀(PERSUADE.sujipmon_boss)로 이어진다.
   ownerroom: {
-    name: '주인의 방',
+    name: '첫 발신인의 방',
     song: 'battle',
     intro: [
       '금고 너머는 좁은 방이었다.\n서랍과 상자가 천장까지 쌓여 있다.',
@@ -301,7 +301,7 @@ const MAPS = {
       { x: 5, y: 8, to: 'freestreet', tx: 14, ty: 5 },
     ],
     npcs: [
-      { id: 'sujip_boss', x: 5, y: 2, monSprite: 'sujipmon', name: '담아' },
+      { id: 'sujip_boss', x: 5, y: 2, monSprite: 'sujipmon', name: '보관' },
     ],
     signs: [],
     monsters: [],
@@ -311,7 +311,7 @@ const MAPS = {
   // 사선으로 기운 포장(8 타일)과 반짝 추천 문(6)·칙칙한 문(9)의 대비.
   // 중앙 저울(14,9)의 기울기는 구역 3개를 클리어할 때마다 -1, 0이 되면 보스 문(7,14,2) 개방.
   tiltstreet: {
-    name: '기울어진 거리',
+    name: '한쪽 노선 터미널',
     song: 'glitch',
     star: { x: 14, y: 13, text: '기울어진 거리의 한가운데.\n양쪽 발로 선다는 것이,\n너를 단단하게 한다.' },
     // N-3 조사 플레이버
@@ -395,7 +395,7 @@ const MAPS = {
   // 구역① 「메아리 골목」 — 반짝 문은 전부 입구로 되돌아오는 루프(loop). 칙칙한
   // 문(9) 3개 뒤 방에 「다른 목소리」 3명이 골목 주민과 다른 의견을 각자 말한다.
   echoalley: {
-    name: '메아리 골목',
+    name: '같은 답 환승로',
     song: 'glitch',
     intro: [
       '좁은 골목이다. 반짝이는 문이\n여기저기서 "이쪽!" 하고 부른다.',
@@ -450,7 +450,7 @@ const MAPS = {
 
   // 구역② 「표본 창고」 — 선반의 오판정 라벨 개그 + 반례 사진 3장 수집 → 판독기 투입.
   samplehouse: {
-    name: '표본 창고',
+    name: '반례 소포 창고',
     song: 'cave',
     intro: [
       '선반마다 라벨이 붙어 있다.\n「위험 99%」 「안전 100%」 「불량 100%」…',
@@ -484,7 +484,7 @@ const MAPS = {
 
   // 구역③ 「꺼진 거리」 — 어두운 맵. 램프 3개를 점등하면 출구가 열린다.
   dimstreet: {
-    name: '꺼진 거리',
+    name: '선택등이 꺼진 승강장',
     song: 'cave',
     intro: [
       '안내판과 달리, 골목은 캄캄하다.\n한 발짝 앞도 잘 보이지 않는다.',
@@ -519,7 +519,7 @@ const MAPS = {
   // 2장 보스 「문지기의 방」 — 저울이 수평이 되면 열린다. 기울(보스)은 NPC로 두어
   // 보스 조우는 별도 설득 프로필로 진행한다 → PERSUADE.pyeonhyang_boss.
   gatekeeper: {
-    name: '문지기의 방',
+    name: '노선 심사실',
     song: 'battle',
     intro: [
       '저울 뒤는 좁은 방이었다.\n벽마다 한쪽으로 치우친 그래프가\n잔뜩 붙어 있다.',
@@ -541,7 +541,7 @@ const MAPS = {
       { x: 7, y: 9, to: 'tiltstreet', tx: 14, ty: 3 },
     ],
     npcs: [
-      { id: 'pyeong_boss', x: 7, y: 2, monSprite: 'pyeonhyangmon', name: '기울' },
+      { id: 'pyeong_boss', x: 7, y: 2, monSprite: 'pyeonhyangmon', name: '단정' },
     ],
     signs: [],
     monsters: [],
@@ -552,7 +552,7 @@ const MAPS = {
   // 클리어하면 송출 완료 순간(flags.rumorFixed) 거리가 풀린다 — 상점 문 개방 +
   // 주민 대사 교체. 옥상의 그럴싸를 되돌리면 3장 클리어.
   rumorstreet: {
-    name: '소문 거리',
+    name: '속보 인쇄소',
     song: 'glitch',
     star: { x: 17, y: 9, text: '헤드라인이 닿지 않는 길 한복판.\n직접 확인하겠다는 마음이,\n너를 단단하게 한다.' },
     // N-3 조사 플레이버
@@ -621,7 +621,7 @@ const MAPS = {
 
   // 1층 「제보함」 — 제보 쪽지 5장(출처 있음 2 / 수상함 3) 중 출처 있는 것만 채택.
   tipsroom: {
-    name: '제보함',
+    name: '출처 없는 우편함',
     song: 'battle',
     intro: [
       '≪제보함≫ — 쪽지가 산더미처럼 쌓여 있다.\n헛소: "다 그럴듯해 보이지?\n…근데 진짜는 출처가 붙어 있어."',
@@ -657,7 +657,7 @@ const MAPS = {
 
   // 2층 「편집실」 — 원본 대조기로 반전 사진의 단서 3개를 지목. 서랍에 복선(seenArticle).
   editroom: {
-    name: '편집실',
+    name: '정정 인쇄실',
     song: 'glitch',
     intro: [
       '≪편집실≫\n책상마다 사진이 나란히 붙어 있다.',
@@ -694,7 +694,7 @@ const MAPS = {
 
   // 3층 「송출탑」 — 정정문 고르기 → 출처 붙이기 → 송출 레버, 3단계 작업.
   towerroom: {
-    name: '송출탑',
+    name: '긴급 배달탑',
     song: 'glitch',
     intro: [
       '≪송출탑≫\n낡은 단말 세 대가 나란히 놓여 있다.',
@@ -730,7 +730,7 @@ const MAPS = {
   // 3장 보스 「신문사 옥상」 — 정정 보도가 끝나면 열린다. 그럴싸(보스)는 NPC로 두어
   // 보스 조우는 별도 설득 프로필로 진행한다 → PERSUADE.hwangak_boss.
   towerroof: {
-    name: '신문사 옥상',
+    name: '인쇄소 옥상',
     song: 'battle',
     intro: [
       '옥상 문을 열자 바람이 훅 불어온다.\n대문짝만 한 헤드라인 판이 세워져 있다.',
@@ -752,7 +752,7 @@ const MAPS = {
       { x: 7, y: 9, to: 'towerroom', tx: 17, ty: 3 },
     ],
     npcs: [
-      { id: 'hwangak_boss', x: 7, y: 2, monSprite: 'hwangakmon', name: '그럴싸' },
+      { id: 'hwangak_boss', x: 7, y: 2, monSprite: 'hwangakmon', name: '전파' },
     ],
     signs: [],
     monsters: [],
@@ -763,7 +763,7 @@ const MAPS = {
   // 열쇠 두 개(비밀조각·본인표)를 맵 양끝 구역(①룰렛 광장·②회원가입 골목)에서 모아야 열린다.
   // 구역③ 백스테이지는 별도 보상(ev_offstage)과 복선 4호를 품은 곁가지 구역이다.
   arcade: {
-    name: '반짝 아케이드',
+    name: '무한경품 배송관',
     song: 'glitch',
     star: { x: 18, y: 5, text: '반짝임이 잠시 멈추는 자리.\n반짝이지 않아도 좋은 것들이,\n너를 단단하게 한다.' },
     // N-3 조사 플레이버
@@ -831,7 +831,7 @@ const MAPS = {
   // 구역① 「룰렛 광장」 — 룰렛 단말 3개(돌리면 "당첨!"+광고 딱지)와 해지 단말(다크패턴
   // 체험 — 큰 「혜택 유지」 vs 작은 「해지」). 진짜 목표는 룰렛 뒤 창고의 비밀조각 열쇠.
   roulettesquare: {
-    name: '룰렛 광장',
+    name: '해지 없는 추첨대',
     song: 'glitch',
     intro: [
       '룰렛 세 대가 요란하게 돌아간다.\n"당첨! 당첨! 또 당첨!"',
@@ -864,7 +864,7 @@ const MAPS = {
   // 구역② 「회원가입 골목」 — 갈림길 표지판에서 진짜 도메인을 가려낸다(오답=함정 되돌림
   // +wrongTries). 끝에 본인표 열쇠.
   signupalley: {
-    name: '회원가입 골목',
+    name: '가짜 주소 등록소',
     song: 'glitch',
     intro: [
       '갈림길 팻말 두 개가 나란히 서 있다.\nwww.arca-de.com · www.arca-cle.com',
@@ -898,7 +898,7 @@ const MAPS = {
   // 인증 창구에서 회수). 정석은 진짜 열쇠 두 개로 여는 문. 반짝의 무대 뒤: 꺼진 조명,
   // 홀로 남은 소품들. 복선 4호: 구석의 버튼 더미(flags.seenButtons).
   backstage: {
-    name: '백스테이지',
+    name: '보상 포장실',
     song: 'glitch',
     intro: [
       '무대 뒤편, 조명이 반쯤 꺼져 있다.\n소품들이 주인 없이 놓여 있다.',
@@ -931,7 +931,7 @@ const MAPS = {
   // 4장 보스 「반짝의 무대」 — 정문(열쇠 2개)이 열려야 들어올 수 있다. 반짝(보스)은 NPC로
   // 보스 조우는 별도 설득 프로필로 진행한다 → PERSUADE.yuhok_boss.
   yuhokstage: {
-    name: '반짝의 무대',
+    name: '끌림의 발송대',
     song: 'battle',
     intro: [
       '무대로 이어지는 문을 열자,\n눈부신 조명이 쏟아진다.',
@@ -953,7 +953,7 @@ const MAPS = {
       { x: 7, y: 9, to: 'arcade', tx: 18, ty: 2 },
     ],
     npcs: [
-      { id: 'yuhok_boss', x: 7, y: 2, monSprite: 'yuhokmon', name: '반짝' },
+      { id: 'yuhok_boss', x: 7, y: 2, monSprite: 'yuhokmon', name: '끌림' },
     ],
     signs: [],
     monsters: [],
@@ -964,7 +964,7 @@ const MAPS = {
   // 현관(→루미의 방)은 세 번의 「확인하는 용기」(구역 3개: 전화의 방·잠긴 복도·소파 코너)를
   // 모두 마쳐야 열린다 (needS5Zones: 3, game.js s5ClearCount 참고).
   cozyhome: {
-    name: '포근한 집',
+    name: '영원 대기실',
     song: 'village',
     star: { x: 10, y: 5, text: '포근함의 한가운데.\n문을 열고 나갈 수 있다는 사실이,\n너를 단단하게 한다.' },
     // N-3 조사 플레이버
@@ -1036,7 +1036,7 @@ const MAPS = {
   // 퍼즐 없음. 걷는 연출 구간 — 구역을 지날 때마다(맵 전환) BGM 트랙이 하나씩 줄고
   // 화면이 어두워진다(song이 다른 곡으로 바뀌고, drawQuietVignette가 맵별로 어둡기를 더한다).
   quietyard: {
-    name: '고요의 뜰',
+    name: '무음 우편로',
     song: 'quietyard',
     star: { x: 5, y: 10, text: '고요의 뜰 입구.\n적막 속에서도 발을 내딛는 마음이,\n너를 단단하게 한다.' },
     intro: [
@@ -1081,7 +1081,7 @@ const MAPS = {
 
   // 구역② 「더 조용한 곳」 — 음악이 한 겹 더 사라진다.
   quietyard2: {
-    name: '고요의 뜰 (더 조용한 곳)',
+    name: '무음 우편로 · 미수신 구간',
     song: 'quietyard2',
     intro: [
       '음악이 한 겹 더 사라졌다.\n발소리만 유난히 크게 들린다.',
@@ -1120,7 +1120,7 @@ const MAPS = {
 
   // 구역③ 「가장 조용한 곳」 — 이제 거의 아무 소리도 나지 않는다.
   quietyard3: {
-    name: '고요의 뜰 (가장 조용한 곳)',
+    name: '무음 우편로 · 반송 끝',
     song: 'quietyard3',
     intro: [
       '이제 거의 아무 소리도 나지 않는다.\n…이 고요함 끝에, 무언가 기다리고 있다.',
@@ -1162,7 +1162,7 @@ const MAPS = {
   // 파이널 보스 「고요」 — 뜰이 끝나는 자리. 조우는 PERSUADE.goyo_boss로 진행한다.
   // 조우 → PERSUADE.goyo_boss. 클리어 → goyoClear(코어 개방).
   goyostage: {
-    name: '고요의 안쪽',
+    name: '공백의 우편함',
     song: 'battle',
     intro: [
       '뜰이 끝나는 자리, 어둠이 짙게 고여 있다.\n그 한가운데, 고요가 조용히 서 있다.',
@@ -1186,7 +1186,7 @@ const MAPS = {
         lockText: '고요가 있던 자리 뒤로,\n옅은 빛이 새어 나온다.\n…아직, 열리지 않는다.' },
     ],
     npcs: [
-      { id: 'goyo_boss', x: 7, y: 2, monSprite: 'finalboss', name: '고요' },
+      { id: 'goyo_boss', x: 7, y: 2, monSprite: 'finalboss', name: '공백' },
     ],
     signs: [],
     monsters: [],
@@ -1198,7 +1198,7 @@ const MAPS = {
   // 영이 조우 → PERSUADE.yeongi_boss(마음 조각 배틀). v1 코어의 퀴즈 영이 조우와는
   // 별개의 새 맵/새 경로다.
   coreroom: {
-    name: '코어',
+    name: '발신인실',
     song: 'core',
     star: { x: 3, y: 7, text: '코어의 낮은 웅웅거림 속.\n누군가의 이름을 기억하고 있다는 것이,\n너를 단단하게 한다.' },
     intro: [
@@ -1219,7 +1219,7 @@ const MAPS = {
     ],
     warps: [],
     npcs: [
-      { id: 'yeongi_boss', x: 7, y: 4, monSprite: 'yeongi', name: '영이',
+      { id: 'yeongi_boss', x: 7, y: 4, monSprite: 'yeongi', name: '나래',
         show: (flags) => !!flags.shrineDone },
     ],
     signs: [],
@@ -1229,7 +1229,7 @@ const MAPS = {
   // 구역① 「전화의 방」 (type: call) — 울리는 전화. 루미가 "받지 마"를 3회 말리고,
   // 그다음(4번째) 조사하면 받는다 — 친구 목소리를 듣고 클리어.
   callroom: {
-    name: '전화의 방',
+    name: '대리 답장실',
     song: 'village',
     intro: [
       '방 한가운데, 전화가 계속 울린다.\n따르릉… 따르릉…',
@@ -1262,7 +1262,7 @@ const MAPS = {
   // 구역② 「잠긴 복도」 (type: checkdoor) — 루미가 "위험 100%"라며 말리는 문. 직접 열면
   // 그냥 밝은 베란다(위험 없음). 복선 5호: 베란다에서 루미 목소리가 잠깐 흔들린다(flags.heardLumi).
   corridor: {
-    name: '잠긴 복도',
+    name: '떠날 수 없는 복도',
     song: 'village',
     intro: [
       '복도 끝에 문이 하나 있다.\n루미: "그 문, 위험 100%야! 열지 마."',
@@ -1303,7 +1303,7 @@ const MAPS = {
   // 구역③ 「소파 코너」 (type: sofa) — 앉으면 화면이 따뜻해지고 루미의 칭찬이 이어진다.
   // 일어나려면 방향키를 90프레임(약 3초) 연속으로 눌러야 한다(이탈 시 리셋).
   sofaroom: {
-    name: '소파 코너',
+    name: '영구 대기 소파',
     song: 'village',
     intro: [
       '방 한가운데 포근한 소파가 놓여 있다.\n루미: "여기 앉아서 좀 쉬어."',
@@ -1336,7 +1336,7 @@ const MAPS = {
   // 5장 보스 「루미」 — 조우는 PERSUADE.hollim_boss로 진행한다.
   // 조우 → PERSUADE.hollim_boss.
   lumiroom: {
-    name: '루미의 방',
+    name: '매듭의 대기실',
     song: 'battle',
     intro: [
       '문을 열자, 따뜻하지만 답답한\n공기가 느껴진다.',
@@ -1358,7 +1358,7 @@ const MAPS = {
       { x: 7, y: 9, to: 'cozyhome', tx: 18, ty: 2 },
     ],
     npcs: [
-      { id: 'hollim_boss', x: 7, y: 2, monSprite: 'hollimmon', name: '루미' },
+      { id: 'hollim_boss', x: 7, y: 2, monSprite: 'hollimmon', name: '매듭' },
     ],
     signs: [],
     monsters: [],
@@ -1366,7 +1366,7 @@ const MAPS = {
 
   // v5 프롤로그 — 방사형 삭제 보관소. 봉인 기록 3개를 모아 제1 게이트를 연다.
   introlab: {
-    name: '프로젝트 0호 · 삭제 보관소',
+    name: '미결 우체국 · 반송 우편실',
     song: 'lab',
     intro: [
       '동심원 회랑과 여섯 개의 게이트가\n깨진 중앙 코어를 둘러싸고 있다.',
@@ -1412,7 +1412,7 @@ const MAPS = {
   },
 
   forest: {
-    name: '정적의 숲',
+    name: '수신인 없는 복사실',
     song: 'field',
     tiles: [
       'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
@@ -1465,7 +1465,7 @@ const MAPS = {
   },
 
   forestdeep: {
-    name: '정적의 숲 · 안쪽 공터',
+    name: '백지 분류장',
     song: 'field',
     tiles: [
       'TTTTTTTTTTTTTTTTTTTTTTTT',
@@ -1513,7 +1513,7 @@ const MAPS = {
 // hp = 맞혀야 하는 문제 수
 const MONSTERS = {
   bekkyeomon: {
-    name: '따라',
+    name: '모사',
     topic: 'copyright',
     hp: 3,
     intro: "노란 발자국을 밟자, 숲 소리가 종이처럼 구겨진다.\n따라가 빈 종이를 품에 안고 서 있다.\n\"잘 그린 건 전부 남의 거였어.\n그럼 내 마음은… 어디서 베끼면 돼?\"\n…하얀 종이들이 마음 안쪽으로 문처럼 접힌다.",
@@ -1532,7 +1532,7 @@ const MONSTERS = {
     },
   },
   pyeonhyangmon: {
-    name: '기울',
+    name: '단정',
     topic: 'bias',
     hp: 3,
     intro: '한쪽 말만 들으면 편해.\n고민도, 헷갈림도 없거든.\n…기울어진 채로 있으면,\n넘어질 일도 없잖아?',
@@ -1551,7 +1551,7 @@ const MONSTERS = {
     },
   },
   hollimmon: {
-    name: '루미',
+    name: '매듭',
     topic: ['emotion', 'creativity', 'jobs', 'identity', 'persuasion'],
     hp: 7,
     intro: '이리 와…\n나만 보면 돼.\n사람은 변하고, 떠나고, 잊지만\n나는 늘 여기 있어.\n…늘 여기, 있기만 해.',
@@ -1572,7 +1572,7 @@ const MONSTERS = {
 
   // ---- (구 표기 정리됨) ----
   finalboss: {
-    name: '고요',
+    name: '공백',
     topic: ['creativity', 'jobs', 'emotion', 'boss', 'finale'],
     hp: 8,
     intro: '……\n(대사가 화면에 떠올랐다가,\n읽기도 전에 지워진다.)',
@@ -1593,7 +1593,7 @@ const MONSTERS = {
 
   // ---- (구 표기 정리됨) ----
   sujipmon: {
-    name: '담아',
+    name: '보관',
     topic: 'consent',
     hp: 3,
     intro: '이 책도 내 거, 저 기억도 내 거!\n물어보고 가져가라고?\n어차피 아무도 모르는데, 뭐 어때!',
@@ -1612,7 +1612,7 @@ const MONSTERS = {
     },
   },
   yuhokmon: {
-    name: '반짝',
+    name: '끌림',
     topic: 'persuasion',
     hp: 3,
     intro: '한 번만 더~ 한 판만 더~\n지금 멈추면 보상이 아깝잖아?\n5분만 더, 응? 딱 5분만~',
@@ -1631,7 +1631,7 @@ const MONSTERS = {
     },
   },
   yeongi: {
-    name: '영이',
+    name: '나래',
     topic: ['core', 'finale', 'emotion'],
     hp: 8,
     song: 'core',
@@ -1655,7 +1655,7 @@ const MONSTERS = {
 
   // ---- 보너스: AI 미래연구소 (자비 없음, 자유 연습) ----
   hwangakmon: {
-    name: '그럴싸',
+    name: '전파',
     topic: 'genai',
     bonus: true,
     hp: 3,

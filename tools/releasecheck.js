@@ -1,4 +1,4 @@
-// v5 출시 후보 정합성 점검 — 코드·에셋·오프라인 캐시·16차시 문서가
+// v6 출시 후보 정합성 점검 — 코드·에셋·오프라인 캐시·16차시 문서가
 // 서로 어긋나는 회귀를 한 번에 잡는다. 외부 패키지 없이 Node.js만 사용한다.
 const fs = require('fs');
 const path = require('path');
@@ -51,34 +51,31 @@ check('art.js 등록 자산이 오프라인 캐시에 모두 포함',
 check('서비스워커 캐시 경로가 모두 존재',
   swAssets.filter((p) => p !== './').every((p) => fs.existsSync(path.join(ROOT, p.replace(/^\.\//, '')))));
 
-const bossSheets = [
-  'ttara', 'dama', 'giul', 'geureol', 'banjjak', 'lumi', 'goyo', 'yeongi',
-].map((id) => `assets/art/${id}-expression-sheet.png`);
+const castSheets = [
+  'assets/art/postal-courier-atlas.png',
+  'assets/art/postal-cast-main.png',
+  'assets/art/postal-cast-support.png',
+];
 const mapTextures = [
-  'prologue-boundary', 'ch1-free-street', 'ch2-tilted-street', 'ch3-rumor-news',
-  'ch4-sparkle-arcade', 'ch5-cozy-loop', 'finale-memory-core',
+  'postal-central-hall', 'postal-permission-market', 'postal-one-sided-terminal',
+  'postal-rumor-press', 'postal-prize-dispatch', 'postal-waiting-lounge',
+  'postal-silent-route', 'postal-sender-chamber',
 ].map((id) => `assets/art/maps/${id}.png`);
-const bossInfo = bossSheets.map(pngInfo);
-check('보스 표정 시트 8개', bossInfo.length === 8 && bossInfo.every(Boolean));
-check('보스 표정 시트 크기 통일',
-  bossInfo.every((p) => p.width === bossInfo[0].width && p.height === bossInfo[0].height),
-  bossInfo.map((p) => p && `${p.width}x${p.height}`).join(', '));
-check('보스 표정 시트 RGBA·고해상도',
-  bossInfo.every((p) => p.colorType === 6 && p.width >= 512 && p.height >= 512));
-check('v4 챕터 전용 맵 원화 7개',
+const castInfo = castSheets.map(pngInfo);
+check('v6 캐릭터 아틀라스 3개', castInfo.length === 3 && castInfo.every(Boolean));
+check('v6 캐릭터 아틀라스 투명 PNG·고해상도',
+  castInfo.every((p) => [3, 6].includes(p.colorType) && p.width >= 1000 && p.height >= 1000));
+check('v6 우체국 전용 맵 원화 8개',
   mapTextures.every((p) => fs.existsSync(path.join(ROOT, p)) && artSrc.includes(p))
   && mapTextures.every((p) => swAssets.includes('./' + p)));
-check('v4 맵 렌더러가 구 CC0 타일을 로드하지 않음',
-  artCode.includes('drawMapGround') && !artCode.includes("load('floor'") && !artCode.includes("load('village'"));
-const v5Archive = 'assets/art/maps/v5-project-zero-archive.png';
-const v5ArchiveInfo = pngInfo(v5Archive);
-check('v5 프로젝트 0호 방사형 보관소 원화',
-  !!v5ArchiveInfo && v5ArchiveInfo.width >= 1200 && v5ArchiveInfo.height >= 700
-  && artSrc.includes(v5Archive) && swAssets.includes('./' + v5Archive));
-check('v5 첫 맵이 구 마을 장식을 숨기고 보관소 배경 사용',
-  artCode.includes("['introlab', 'village'].includes(mapId)")
-  && artCode.includes("ready('map_archive_v5')")
-  && read('src/game.js').includes('if (!usedBackdrop) drawVillageAssetDetails'));
+check('구 런타임 이미지가 자산 폴더에서 완전히 제거됨',
+  !fs.existsSync(path.join(ROOT, 'assets/cc0'))
+  && !fs.existsSync(path.join(ROOT, 'assets/art/player-sheet.png'))
+  && !fs.existsSync(path.join(ROOT, 'assets/art/maps/v5-project-zero-archive.png')));
+check('모든 맵이 새 우체국 배경을 사용하고 구 장식은 폴백에서만 그림',
+  artCode.includes("postal_sender: new Set(['coreroom'])")
+  && read('src/game.js').includes('if (!usedBackdrop) drawVillageAssetDetails')
+  && read('src/game.js').includes('if (!usedBackdrop) {'));
 const artBytes = artSrc.reduce((n, p) => n + fs.statSync(path.join(ROOT, p)).size, 0);
 check('프리캐시 이미지 총량 5MB 이하', artBytes <= 5 * 1024 * 1024,
   `${(artBytes / 1024 / 1024).toFixed(2)}MB`);
@@ -114,11 +111,11 @@ check('수업 모드 프롤로그~파이널 7개 시작 함수',
     .every((fn) => game.includes(`function ${fn}(`)));
 check('프롤로그 사전·사후 점검 5문항 연결',
   game.includes("prologue: { n: 0") && game.includes("openPrepost('post', 'prologue'"));
-check('삭제된 여섯 약속 스토리 축',
-  game.includes('【프로젝트 0호 · 삭제 보관소】')
-  && game.includes('【삭제 기록 06 — 거절】')
-  && game.includes('삭제 명령에서 도망친')
-  && game.includes('그다음 선택은 영이에게 돌려주마'));
+check('미결 우체국의 여섯 답장 권리 스토리 축',
+  game.includes('【미결 우체국 · 야간 반송 우편실】')
+  && game.includes('【반송 기록 06 — 답장하지 않기】')
+  && game.includes('끝내 배달되지 못한 한 통의 편지')
+  && game.includes('답장이 없어도 기다릴게'));
 
 console.log('[문서·출시]');
 const pkg = JSON.parse(read('package.json'));
@@ -137,18 +134,18 @@ check('서비스워커 등록이 HTTP 캐시를 우회해 매 접속 갱신',
   html.includes("register('sw.js', { updateViaCache: 'none' })")
   && html.includes('reg.update().catch(() => {})')
   && html.includes('hadServiceWorkerController && Date.now() - registrationStartedAt'));
-check('v5 핵심 스크립트 캐시 식별자',
+check('v6 핵심 스크립트 캐시 식별자',
   ['art', 'sprites', 'audio', 'data', 'game']
-    .every((name) => html.includes(`src="${`src/${name}.js?v=5.0.0-worldrebuild`}"`)));
-check('시작 화면에 v5 버전·세계/스토리 재구축을 명시',
+    .every((name) => html.includes(`src="${`src/${name}.js?v=6.0.0-postal-clean`}"`)));
+check('시작 화면에 v6 버전·에셋/스토리 전면 교체를 명시',
   html.includes('id="version-gate"')
-  && html.includes('VERSION 5.0')
-  && html.includes('WORLD &amp; STORY REBUILT')
-  && html.includes('V5-20260724-A'));
-check('v5 주인공 정체와 여섯 약속 오프닝',
-  game.includes('영이가 지워지기 직전 남긴 마지막 질문의 백업')
-  && game.includes('그 아이의 대답을 기다리는 거야')
-  && read('src/data.js').includes("name: '프로젝트 0호 · 복구 허브'"));
+  && html.includes('VERSION 6.0')
+  && html.includes('ALL ASSETS &amp; STORY REPLACED')
+  && html.includes('V6-20260724-CLEAN'));
+check('v6 주인공 정체와 여섯 권리 오프닝',
+  game.includes('발신인도 수신인도 없는 미결 편지')
+  && game.includes('나래가 직접 답할지 기다리는 거야')
+  && read('src/data.js').includes("name: '미결 우체국 · 중앙홀'"));
 for (const p of [
   'docs/스토리-전면개편안-v3.md',
   'docs/개발-및-현장적용-계획안-v3.md',

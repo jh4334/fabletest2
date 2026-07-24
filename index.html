@@ -3,21 +3,21 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#000000">
-<meta name="description" content="삭제 직전 남겨진 마지막 질문의 백업이 되어, AI 안전의 여섯 약속과 영이의 선택권을 복구하는 미스터리 어드벤처.">
+<meta name="theme-color" content="#24102c">
+<meta name="description" content="답장을 재촉하는 도시에서 여섯 선택권을 되찾아 나래에게 배달하는 종이 우편 판타지 어드벤처.">
 <meta property="og:type" content="website">
-<meta property="og:title" content="마음의 문">
-<meta property="og:description" content="프로젝트 0호 삭제 보관소에서 경계·의심·불확실성·멈춤·거리·거절을 되찾는 미스터리 어드벤처.">
-<meta property="og:image" content="icons/icon-512.png">
+<meta property="og:title" content="미결 우체국">
+<meta property="og:description" content="열어볼 권한부터 답장하지 않을 권리까지, 여섯 반송 도장을 되찾는 밤의 우편 모험.">
+<meta property="og:image" content="icons/postal-icon-512.png">
 <meta name="twitter:card" content="summary">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="마음의 문">
+<meta name="apple-mobile-web-app-title" content="미결 우체국">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="icon" type="image/png" href="icons/icon-192.png">
-<title>마음의 문</title>
+<link rel="apple-touch-icon" href="icons/postal-apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/postal-icon-192.png">
+<title>미결 우체국</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
@@ -41,7 +41,7 @@
     outline: none;
   }
 
-  /* ---- v5 시작 버전 게이트 — 매 새로고침마다 최신 세계를 명확히 확인 ---- */
+  /* ---- v6 시작 버전 게이트 — 매 새로고침마다 최신 세계를 명확히 확인 ---- */
   #version-gate {
     display: none;
     position: fixed; inset: 0;
@@ -50,26 +50,26 @@
     overflow: auto;
     padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right))
       max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
-    color: #f8f4df;
+    color: #fff2d2;
     background:
-      linear-gradient(rgba(5, 6, 17, .46), rgba(5, 6, 17, .82)),
-      url('assets/art/maps/v5-project-zero-archive.png') center / cover no-repeat;
+      linear-gradient(rgba(30, 11, 36, .35), rgba(30, 11, 36, .84)),
+      url('assets/art/maps/postal-central-hall.png') center / cover no-repeat;
   }
   #version-gate::before {
     content: '';
     position: absolute; inset: 0;
-    background: radial-gradient(circle at 50% 46%, rgba(77, 220, 255, .12), transparent 40%);
+    background: radial-gradient(circle at 50% 46%, rgba(237, 113, 92, .14), transparent 40%);
     box-shadow: inset 0 0 90px rgba(0, 0, 0, .86);
     pointer-events: none;
   }
   .version-card {
     position: relative;
     width: min(760px, 94vw);
-    border: 2px solid #b99b4b;
-    outline: 1px solid rgba(94, 222, 255, .42);
+    border: 2px solid #d9b878;
+    outline: 1px solid rgba(166, 226, 194, .46);
     outline-offset: -9px;
-    background: linear-gradient(180deg, rgba(9, 12, 27, .94), rgba(6, 7, 18, .97));
-    box-shadow: 0 22px 80px #000, inset 0 0 40px rgba(56, 151, 190, .12);
+    background: linear-gradient(180deg, rgba(43, 18, 49, .94), rgba(24, 10, 31, .97));
+    box-shadow: 0 22px 80px #10050f, inset 0 0 40px rgba(166, 226, 194, .10);
     padding: clamp(24px, 5vh, 44px) clamp(18px, 5vw, 54px) clamp(20px, 4vh, 34px);
     text-align: center;
   }
@@ -82,10 +82,10 @@
   .version-card::after { right: 15px; }
   .version-build {
     position: absolute; top: 12px; right: 38px;
-    color: #7edff5; font: 700 11px/1 monospace; letter-spacing: 1px;
+    color: #a8e2c9; font: 700 11px/1 monospace; letter-spacing: 1px;
   }
   .version-kicker {
-    color: #78d8ee;
+    color: #a8e2c9;
     font-size: clamp(11px, 1.8vw, 14px);
     font-weight: 700;
     letter-spacing: .3em;
@@ -97,7 +97,7 @@
     font-size: clamp(38px, 8vw, 76px);
     line-height: .95;
     letter-spacing: .04em;
-    text-shadow: 0 0 24px rgba(102, 222, 255, .32);
+    text-shadow: 0 0 24px rgba(238, 111, 91, .32);
   }
   .version-title {
     margin-top: 14px;
@@ -114,7 +114,7 @@
   .version-copy {
     margin: 17px auto 0;
     max-width: 610px;
-    color: #b9c7da;
+    color: #ddd0df;
     font-size: clamp(12px, 1.8vw, 15px);
     line-height: 1.65;
   }
@@ -129,8 +129,8 @@
     min-height: 72px;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 6px;
-    border: 1px solid rgba(112, 210, 232, .35);
-    background: rgba(22, 35, 57, .58);
+    border: 1px solid rgba(169, 226, 201, .38);
+    background: rgba(64, 31, 66, .62);
     color: #dcebf2;
     font-size: 12px;
   }
@@ -146,7 +146,7 @@
     cursor: pointer;
     box-shadow: 0 0 22px rgba(221, 199, 109, .2);
   }
-  #version-go:focus-visible { outline: 3px solid #72ddf3; outline-offset: 4px; }
+  #version-go:focus-visible { outline: 3px solid #a8e2c9; outline-offset: 4px; }
   .version-foot { margin-top: 12px; color: #75859c; font: 11px/1.4 monospace; }
   @media (max-width: 680px), (max-height: 560px) {
     .promise-grid { grid-template-columns: repeat(3, 1fr); max-width: 390px; }
@@ -371,36 +371,36 @@
   <div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#12101c;color:#fff;font-family:sans-serif;text-align:center;padding:24px;z-index:9999;">
     <div>
       <div style="font-size:20px;font-weight:bold;margin-bottom:12px;">자바스크립트가 꺼져 있어요</div>
-      <div style="color:#cfc8e0;font-size:15px;line-height:1.7;">「마음의 문」은 브라우저에서 자바스크립트로 동작해요.<br>브라우저 설정에서 자바스크립트를 켠 뒤 새로고침해 주세요.</div>
+      <div style="color:#cfc8e0;font-size:15px;line-height:1.7;">「미결 우체국」은 브라우저에서 자바스크립트로 동작해요.<br>브라우저 설정에서 자바스크립트를 켠 뒤 새로고침해 주세요.</div>
     </div>
   </div>
 </noscript>
 <div id="loading">
-  <div class="load-title">마음의 문</div>
+  <div class="load-title">미결 우체국</div>
   <div class="load-sub">불러오는 중…</div>
 </div>
 <section id="version-gate" role="dialog" aria-modal="true" aria-labelledby="version-heading" aria-describedby="version-desc">
   <div class="version-card">
-    <div class="version-build">V5-20260724-A</div>
-    <div class="version-kicker">PROJECT ZERO ARCHIVE</div>
-    <h1 class="version-number" id="version-heading">VERSION 5.0</h1>
-    <div class="version-title">삭제된 여섯 약속</div>
-    <div class="version-rebuilt">WORLD &amp; STORY REBUILT</div>
-    <p class="version-copy" id="version-desc">낡은 마을을 걷는 이야기는 끝났습니다. 이제 당신은 영이가 남긴 마지막 질문의 백업이 되어, 방사형 복구 보관소의 여섯 게이트를 엽니다.</p>
-    <div class="promise-grid" aria-label="되찾아야 할 여섯 약속">
-      <div class="promise"><b>◈</b><span>경계</span></div>
-      <div class="promise"><b>?</b><span>의심</span></div>
-      <div class="promise"><b>△</b><span>불확실성</span></div>
-      <div class="promise"><b>Ⅱ</b><span>멈춤</span></div>
-      <div class="promise"><b>↔</b><span>거리</span></div>
-      <div class="promise"><b>×</b><span>거절</span></div>
+    <div class="version-build">V6-20260724-CLEAN</div>
+    <div class="version-kicker">THE UNDELIVERED POST OFFICE</div>
+    <h1 class="version-number" id="version-heading">VERSION 6.0</h1>
+    <div class="version-title">미결 우체국</div>
+    <div class="version-rebuilt">ALL ASSETS &amp; STORY REPLACED</div>
+    <p class="version-copy" id="version-desc">기존 맵과 캐릭터 에셋을 전부 제거했습니다. 이제 당신은 답장을 받지 못한 한 통의 편지가 되어, 나래에게 여섯 선택권을 배달합니다.</p>
+    <div class="promise-grid" aria-label="되찾아야 할 여섯 답장 권리">
+      <div class="promise"><b>✉</b><span>열어볼 권한</span></div>
+      <div class="promise"><b>?</b><span>되묻기</span></div>
+      <div class="promise"><b>…</b><span>모른다고 말하기</span></div>
+      <div class="promise"><b>Ⅱ</b><span>멈추기</span></div>
+      <div class="promise"><b>↔</b><span>거리 두기</span></div>
+      <div class="promise"><b>○</b><span>답장하지 않기</span></div>
     </div>
     <button id="version-go" type="button">새 세계 확인하기 · Z / SPACE</button>
-    <div class="version-foot">BUILD 5.0.0 · MAP AND NARRATIVE FULL REBUILD</div>
+    <div class="version-foot">BUILD 6.0.0 · ZERO LEGACY RUNTIME ASSETS</div>
   </div>
 </section>
 <div id="wrap">
-  <canvas id="game" width="720" height="528" tabindex="0" role="application" aria-label="마음의 문 게임 화면. 방향키로 이동, Z 또는 스페이스로 결정합니다."></canvas>
+  <canvas id="game" width="720" height="528" tabindex="0" role="application" aria-label="미결 우체국 게임 화면. 방향키로 이동, Z 또는 스페이스로 결정합니다."></canvas>
 </div>
 <!-- 화면 낭독기용 알림 미러 — 캔버스 안 텍스트는 낭독기가 못 읽으므로,
      게임 알림(notice)·대사를 여기에 복사해 aria-live로 전달한다 -->
@@ -418,14 +418,14 @@
 <div id="rotate-hint">
   <div class="ico">📱</div>
   <div>화면을 가로로 돌려 주세요</div>
-  <small>마음의 문은 가로 화면에 맞춰져 있어요</small>
+  <small>미결 우체국은 가로 화면에 맞춰져 있어요</small>
   <button id="rotate-dismiss" type="button">세로로 계속하기</button>
 </div>
 <div id="name-overlay">
   <div class="np-card">
-    <div class="np-title">수호자의 이름은?</div>
-    <div class="np-sub">최대 6글자 · 비워 두면 "수호자"</div>
-    <input id="name-input" maxlength="6" placeholder="수호자" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="수호자 이름 입력 (최대 6글자, 비우면 수호자)">
+    <div class="np-title">미결 편지의 이름은?</div>
+    <div class="np-sub">최대 6글자 · 비워 두면 "미결편지"</div>
+    <input id="name-input" maxlength="6" placeholder="미결편지" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="미결 편지 이름 입력 (최대 6글자, 비우면 미결편지)">
     <div><button class="np-go" id="name-go">모험 시작 ▶</button></div>
     <div class="np-hint">「모험 시작」 버튼(또는 Enter)으로 시작 · Esc로 취소</div>
   </div>
@@ -471,11 +471,11 @@
     }, 50);
   })();
 </script>
-<script src="src/art.js?v=5.0.0-worldrebuild"></script>
-<script src="src/sprites.js?v=5.0.0-worldrebuild"></script>
-<script src="src/audio.js?v=5.0.0-worldrebuild"></script>
-<script src="src/data.js?v=5.0.0-worldrebuild"></script>
-<script src="src/game.js?v=5.0.0-worldrebuild"></script>
+<script src="src/art.js?v=6.0.0-postal-clean"></script>
+<script src="src/sprites.js?v=6.0.0-postal-clean"></script>
+<script src="src/audio.js?v=6.0.0-postal-clean"></script>
+<script src="src/data.js?v=6.0.0-postal-clean"></script>
+<script src="src/game.js?v=6.0.0-postal-clean"></script>
 <script>
   // 첫 로딩 감시: 게임이 일정 시간 안에 시작되지 않으면(스크립트 누락·네트워크 실패)
   // 검은 화면 대신 안내와 '다시 시도' 버튼을 보여 준다.

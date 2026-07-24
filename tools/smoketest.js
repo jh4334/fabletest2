@@ -120,7 +120,7 @@ advanceDialog();
 check('월드 진입', g.mode === 'world' && g.map === 'introlab');
 check('시작 위치 (14,16)', g.player.x === 14 && g.player.y === 16);
 check('슬롯 0에 저장됨', !!storage.get('ai-ethics-adventure-slot-0'));
-check('기본 이름 수호자', g.playerName === '수호자');
+check('기본 이름 미결편지', g.playerName === '미결편지');
 check('동행자 반디 합류 (오프닝 직후)', g.flags.bandiJoined === true);
 
 console.log('[1b] 프롤로그 실험실 — 보조 조사물은 문 개방 카운트에 포함하지 않음');
@@ -272,7 +272,7 @@ check('따라 첫 조우 전용 대화 시작', g.mode === 'dialog' && g.flags.t
 advanceDialog(); // 첫 조우 연출 + 등장 대사 + 증거 카드 지급 + 조작 안내 → 배틀
 check('첫 조우 완료 후 전용 플래그 저장', g.flags.ttaraFirstEncounter === true);
 check('마음 조각 배틀 시작', g.mode === 'battle' && g.battle.monId === 'bekkyeomon' && g.battle.isPersuade === true);
-check('표시 이름은 따라(displayName)', g.battle.mon.name === '따라');
+check('표시 이름은 모사(displayName)', g.battle.mon.name === '모사');
 check('첫 설득 배틀은 프롤로그 튜토리얼 표지 표시', g.battle.prologueTutorial === true);
 check('증거 카드 4장 지급', g.flags.evCards.length === 4);
 check('닫힘·게이지0·내 턴(menu)에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'menu');
@@ -285,7 +285,7 @@ check('막힌 말 걸기도 상대 턴은 온다(조각 없음)', g.battle.phase
 forceMenu();
 // 가만히 듣기 — 주장 + 속마음(hint)이 즉시 흐르고, 마음이 조금 열린다 (조각 줍기 폐지)
 battleMenuPick(2);
-check('듣기 — 주장과 속마음이 한 반응 대사로', g.battle.phase === 'react' && /따라:/.test(g.battle.react.text) &&
+check('듣기 — 주장과 속마음이 한 반응 대사로', g.battle.phase === 'react' && /모사:/.test(g.battle.react.text) &&
   /통할 것 같다/.test(g.battle.react.text));
 check('듣기 즉시 보상 — 게이지 +6·누적 3', g.battle.gauge === 6 && g.battle.fragmentTotal === 3);
 check('누적 3 ≥ 임계(2) → 동요 전환 + 플로팅', g.battle.pState === 'shaken' &&
@@ -387,7 +387,7 @@ while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답', g.battle.phase === 'mercyReply');
 tap('z');
 check('승리 대화', g.mode === 'dialog');
-check('승리 대화에 반디의 한마디 포함', g.dialog.lines.some((l) => /^반디:/.test(l)));
+check('승리 대화에 모리의 한마디 포함', g.dialog.lines.some((l) => /^모리:/.test(l)));
 advanceDialog();
 // X-1① 따라 승리 직후 반응 선택(정답 없음)이 자동 처리되어 playerVoice.ttara에 남는다.
 check('X-1① 따라 승리 직후 반응 선택 저장(playerVoice.ttara)', g.flags.playerVoice && g.flags.playerVoice.ttara === 0);
@@ -1594,10 +1594,10 @@ g.battle.turnCount = 1; g.battle.listened = {}; g.battle.gauge = 0; // (배틀 �
 g.battle.fragmentTotal = 0; g.flags.pStats.fragments = Math.max(0, g.flags.pStats.fragments - 3);
 check('스프라이트/도감 id는 sujipmon', g.battle.monId === 'sujipmon');
 check('설득 프로필 id는 sujipmon_boss', g.battle.persuadeId === 'sujipmon_boss');
-check('표시 이름은 담아(persuadeId 계층)', g.battle.mon.name === '담아');
+check('표시 이름은 보관(persuadeId 계층)', g.battle.mon.name === '보관');
 check('게이지 최대 110(난이도 곡선 1단계)', g.battle.gaugeMax === 110);
 check('조우 카드 미지급(보상으로만 획득)', (g.flags.evCards || []).length === 0);
-check('프로필 관찰 대사(*)가 내 턴에 표시', /^\* 담아/.test(TH.battleObserve()));
+check('프로필 관찰 대사(*)가 내 턴에 표시', /^\* (담아|보관)/.test(TH.battleObserve()));
 
 // ── unlockAt: 감정 주장은 게이지 70 이상에서만 순환 풀에 등장 ──
 g.battle.gauge = 60;
@@ -1694,7 +1694,7 @@ tap('z'); // 자비 선택 → 응답
 check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z'); // 응답 닫기 → 승리 처리
 check('승리 대화 시작', g.mode === 'dialog');
-check('1→2장 연결 단서 — 기울어진 저울 문양', g.dialog.lines.some((l) => /기운 저울 문양/.test(l)));
+check('1→2장 연결 단서 — 한쪽 노선 승차권', g.dialog.lines.some((l) => /한쪽 노선만 그린 승차권/.test(l)));
 check('이슈6 수업 세션 보스 클리어 대화에 마무리 안내(CLASS_END_LINE) 포함',
   g.dialog.lines.some((l) => /다음 시간에 이어서/.test(l)));
 advanceDialog();
@@ -1876,7 +1876,7 @@ advanceDialog();
 check('기울 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'menu');
 check('스프라이트/도감 id는 pyeonhyangmon', g.battle.monId === 'pyeonhyangmon');
 check('설득 프로필 id는 pyeonhyang_boss', g.battle.persuadeId === 'pyeonhyang_boss');
-check('표시 이름은 기울(persuadeId 계층)', g.battle.mon.name === '기울');
+check('표시 이름은 단정(persuadeId 계층)', g.battle.mon.name === '단정');
 check('게이지 최대 115(난이도 곡선 2단계)', g.battle.gaugeMax === 115);
 // 정답 문 1회 (claim0 = ev_othervoice 소지 → 열림 정답 +32)
 // 시작 게이지를 40으로 낮춰 둔다 — gaugeMax가 115로 줄어, 옛 55 기준(+32+10×3=117)이면
@@ -1951,7 +1951,7 @@ while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z');
 check('승리 대화 시작', g.mode === 'dialog');
-check('2→3장 연결 단서 — 프로젝트 0호 미송출 기사', g.dialog.lines.some((l) => /프로젝트 0호 — 미송출/.test(l)));
+check('2→3장 연결 단서 — 출처 없는 속보 봉투', g.dialog.lines.some((l) => /출처가 지워진 속보 봉투/.test(l)));
 advanceDialog();
 check('2장 클리어 플래그', g.flags.chapter2Clear === true);
 check('보스 승리 후 저울 앞(허브) 복귀', g.map === 'tiltstreet' && g.player.x === 14 && g.player.y === 10);
@@ -2047,7 +2047,7 @@ check('3층 잠김(2층에 남음)', g.map === 'editroom' && g.mode === 'dialog'
 advanceDialog();
 check('조사 전 seenArticle 없음', !g.flags.seenArticle);
 setPos(17, 12, 'up'); tap('z');
-check('복선 3호 — 미송출 기사 한 줄', g.mode === 'dialog' && g.dialog.lines.some((l) => /프로젝트 0호/.test(l)));
+check('복선 3호 — 미송출 기사 한 줄', g.mode === 'dialog' && g.dialog.lines.some((l) => /미결 우체국/.test(l)));
 advanceDialog();
 check('복선 seenArticle 기록', g.flags.seenArticle === true);
 // 사진① — 오답 후 정답(좌우 반전)
@@ -2135,7 +2135,7 @@ advanceDialog();
 check('그럴싸 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'menu');
 check('스프라이트/도감 id는 hwangakmon', g.battle.monId === 'hwangakmon');
 check('설득 프로필 id는 hwangak_boss', g.battle.persuadeId === 'hwangak_boss');
-check('표시 이름은 그럴싸(persuadeId 계층)', g.battle.mon.name === '그럴싸');
+check('표시 이름은 전파(persuadeId 계층)', g.battle.mon.name === '전파');
 check('게이지 최대 120', g.battle.gaugeMax === 120);
 check('닫힘·게이지0·내 턴에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'menu');
 // 닫힘 상태에선 문이 전부 잠겨 있다 — 동요로 전환 후 문 판정을 확인한다 (전환 메커니즘 자체는 다른 테스트에서 검증됨)
@@ -2195,7 +2195,7 @@ while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z');
 check('승리 대화 시작', g.mode === 'dialog');
-check('3→4장 연결 단서 — 계속 보게 만드는 무대', g.dialog.lines.some((l) => /계속 보게 만드는 무대/.test(l)));
+check('3→4장 연결 단서 — 끝없이 다음 상자를 여는 초대장', g.dialog.lines.some((l) => /끝없이 다음 상자를/.test(l)));
 advanceDialog();
 check('3장 클리어 플래그', g.flags.chapter3Clear === true);
 check('보스 승리 후 신문사 입구(허브) 복귀', g.map === 'rumorstreet' && g.player.x === 17 && g.player.y === 5);
@@ -2211,19 +2211,19 @@ g.flags.seenPhoto2 = false;
 g.dialog = null; g.mode = 'world'; g.map = 'freestreet'; setPos(18, 21, 'down');
 hold('ArrowDown', 12); step(2);
 check('마을 진입 시 박사 고백 자동 시작', g.map === 'village' && g.mode === 'dialog');
-check('고백 대사 — 프로젝트 0호', g.dialog.lines.some((l) => /프로젝트 0호/.test(l)));
+check('고백 대사 — 미결 우체국', g.dialog.lines.some((l) => /미결 우체국/.test(l)));
 check('복선 반영 — seenPhoto1 있음', g.dialog.lines.some((l) => /주인의 방에서 본 사진/.test(l)));
 check('복선 미반영 — seenPhoto2 없으면 해당 줄 없음', !g.dialog.lines.some((l) => /×표 사진들도/.test(l)));
 check('복선 반영 — seenArticle 있음', g.dialog.lines.some((l) => /송출되지 못한 그 기사/.test(l)));
 check('박사 고백 — 방치한 어른의 책임을 직접 인정', g.dialog.lines.some((l) => /내 책임은 외면했어/.test(l)));
-check('박사 고백 — 영이에게 선택권을 돌려주기로 약속', g.dialog.lines.some((l) => /선택은 영이에게 돌려주마/.test(l)));
+check('국장 고백 — 나래에게 선택권을 돌려주기로 약속', g.dialog.lines.some((l) => /선택은 나래에게 돌려주마/.test(l)));
 check('profConfession 즉시 기록(재진입 방지)', g.flags.profConfession === true);
 advanceDialog();
 // X-1② 박사 고백 끝 반응 선택(정답 없음)이 자동 처리되어 playerVoice.prof에 남는다.
 check('X-1② 박사 고백 끝 반응 선택 저장(playerVoice.prof)', g.flags.playerVoice && g.flags.playerVoice.prof === 0);
 check('getObjective — 영이의 조각을 따라가자 분기', getObjective(g.flags).includes('영이의 조각'));
 setPos(5, 12, 'left'); tap('z');
-check('박사 대사 갱신(고백 이후)', g.mode === 'dialog' && g.dialog.lines.some((l) => /영이의 흔적/.test(l)));
+check('국장 대사 갱신(고백 이후)', g.mode === 'dialog' && g.dialog.lines.some((l) => /나래의 흔적/.test(l)));
 advanceDialog();
 g.flags.seenPhoto2 = true; // 원복
 // 1회성 확인 — 마을을 나갔다 다시 들어와도 재발생하지 않는다
@@ -2405,7 +2405,7 @@ advanceDialog();
 check('반짝 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'menu');
 check('스프라이트/도감 id는 yuhokmon', g.battle.monId === 'yuhokmon');
 check('설득 프로필 id는 yuhok_boss', g.battle.persuadeId === 'yuhok_boss');
-check('표시 이름은 반짝(persuadeId 계층)', g.battle.mon.name === '반짝');
+check('표시 이름은 끌림(persuadeId 계층)', g.battle.mon.name === '끌림');
 check('게이지 최대 125(난이도 곡선 4단계)', g.battle.gaugeMax === 125);
 check('닫힘·게이지0·내 턴에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'menu');
 // 반짝 주장 4종 — 텍스트/패턴/카드/best 확인
@@ -2485,7 +2485,7 @@ while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z');
 check('승리 대화 시작', g.mode === 'dialog');
-check('4→5장 연결 단서 — 영원히 함께 있어 줄 집', g.dialog.lines.some((l) => /영원히 함께 있어 줄게/.test(l)));
+check('4→5장 연결 단서 — 영원 대기실 대기표', g.dialog.lines.some((l) => /영원히 당신 차례를 대신/.test(l)));
 advanceDialog();
 check('4장 클리어 플래그', g.flags.chapter4Clear === true);
 check('4장 자비 플래그(다음 장 콜백용)', g.flags.chapter4Mercy === true);
@@ -2612,7 +2612,7 @@ advanceDialog();
 check('루미 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'menu');
 check('스프라이트/도감 id는 hollimmon', g.battle.monId === 'hollimmon');
 check('설득 프로필 id는 hollim_boss', g.battle.persuadeId === 'hollim_boss');
-check('표시 이름은 루미(persuadeId 계층)', g.battle.mon.name === '루미');
+check('표시 이름은 매듭(persuadeId 계층)', g.battle.mon.name === '매듭');
 check('게이지 최대 130(난이도 곡선 5단계)', g.battle.gaugeMax === 130);
 check('닫힘·게이지0·내 턴에서 시작', g.battle.pState === 'closed' && g.battle.gauge === 0 && g.battle.phase === 'menu');
 // 루미 주장 4종 — 텍스트/패턴/카드/best 확인
@@ -2694,7 +2694,7 @@ while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z');
 check('승리 대화 시작', g.mode === 'dialog');
-check('5→파이널 연결 단서 — 대답을 기다린 고요한 뜰', g.dialog.lines.some((l) => /대답을 기다린 듯/.test(l)));
+check('5→파이널 연결 단서 — 무음 우편로', g.dialog.lines.some((l) => /무음 우편로/.test(l)));
 advanceDialog();
 check('5장 클리어 플래그', g.flags.chapter5Clear === true);
 check('5장 자비 플래그(다음 장 콜백용)', g.flags.chapter5Mercy === true);
@@ -2797,7 +2797,7 @@ advanceDialog();
 check('고요 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true && g.battle.phase === 'menu');
 check('스프라이트/도감 id는 finalboss(어둠대왕몬 재사용)', g.battle.monId === 'finalboss');
 check('설득 프로필 id는 goyo_boss', g.battle.persuadeId === 'goyo_boss');
-check('표시 이름은 고요(persuadeId 계층)', g.battle.mon.name === '고요');
+check('표시 이름은 공백(persuadeId 계층)', g.battle.mon.name === '공백');
 check('침묵 루트 강화 — 자비 0(≤2, v2 침묵 엔딩 임계값과 동일)이라 gaugeMax 140', g.battle.gaugeMax === 140);
 check('침묵 루트 함수 직접 확인 — gaugeMax/waveBulletMul', PERSUADE.goyo_boss.gaugeMax({ mercy: 2 }) === 140 &&
   PERSUADE.goyo_boss.gaugeMax({ mercy: 3 }) === 100 &&
@@ -2901,7 +2901,7 @@ if (!g.reduceFx) {
   tap('z'); // Z로 조기 종료(스킵 가능)
   check('U-2 Z로 정지 비트 조기 종료 → 대사 복귀', g.mode === 'dialog');
 }
-check('U-2 리빌 직후 마지막 대사 "…가면을 벗을게"', g.mode === 'dialog' && /가면을 벗을게/.test(g.dialog.lines.join('\n')));
+check('U-2 리빌 직후 나래의 답장 보류 선언', g.mode === 'dialog' && /아직 답하지 않을래/.test(g.dialog.lines.join('\n')));
 advanceDialog();
 // X-1③ 반디 리빌 직후 반응 선택(정답 없음)이 자동 처리되어 playerVoice.reveal에 남는다.
 check('X-1③ 리빌 직후 반응 선택 저장(playerVoice.reveal)', g.flags.playerVoice && g.flags.playerVoice.reveal === 0);
@@ -2917,7 +2917,7 @@ advanceDialog();
 check('영이 마음 조각 배틀 시작', g.mode === 'battle' && g.battle.isPersuade === true);
 check('스프라이트/도감 id는 yeongi', g.battle.monId === 'yeongi');
 check('설득 프로필 id는 yeongi_boss', g.battle.persuadeId === 'yeongi_boss');
-check('표시 이름은 영이(MONSTERS.yeongi 그대로)', g.battle.mon.name === '영이');
+check('표시 이름은 나래(MONSTERS.yeongi 그대로)', g.battle.mon.name === '나래');
 check('기믹 없음(openMechanic 미정의)', g.battle.p.openMechanic === undefined);
 check('탄막 최소(느린 rain, waveBulletMul 0.6)', g.battle.p.waveBulletMul === 0.6);
 // R라운드 「일곱 마음의 회전」 — 파도마다 지나온 패턴이 순환한다 (아는 만큼 다룬다)
@@ -3544,7 +3544,7 @@ console.log('[U-5] NG+ — 두 번째 모험 (대사 스왑 오버레이 + 타�
   // 타이틀 흐름 — 클리어(endingId) 슬롯에서 Z → ngchoice, "처음부터"면 startNewGame(...true)
   const tsrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'game.js'), 'utf8');
   check('U-5 클리어 슬롯 Z → 두 번째 모험 선택(ngchoice)', /sum && sum\.endingId[\s\S]*?titleScreen = 'ngchoice'/.test(tsrc));
-  check('U-5 처음부터 선택 → NG+ 새 게임(startNewGame(slot, ..., true))', /startNewGame\(slot, sum \? sum\.name : '수호자', true\)/.test(tsrc));
+  check('U-5 처음부터 선택 → NG+ 새 게임(startNewGame(slot, ..., true))', /startNewGame\(slot, sum \? sum\.name : '미결편지', true\)/.test(tsrc));
   check('U-5 세이브 스키마 무영향 — flags.ng에만 반영', /if \(ng\) game\.flags\.ng = true;/.test(tsrc) && !/SAVE_VERSION = 9/.test(tsrc));
 }
 

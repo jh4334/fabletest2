@@ -31,7 +31,7 @@ function startServer() {
     const server = http.createServer((req, res) => {
       let p = decodeURIComponent(req.url.split('?')[0]);
       if (p === '/') p = '/index.html';
-      if (p === '/favicon.ico') p = '/icons/icon-192.png'; // 파비콘 404 잡음 방지
+      if (p === '/favicon.ico') p = '/icons/postal-icon-192.png'; // 파비콘 404 잡음 방지
       const fp = path.join(ROOT, p);
       if (!fp.startsWith(ROOT) || !fs.existsSync(fp) || fs.statSync(fp).isDirectory()) {
         res.statusCode = 404; res.end('not found'); return;
@@ -107,9 +107,9 @@ async function dismissVersionGate(page) {
 
     check('게임 모듈 로드(window.__test 노출)', loaded);
     check('캔버스(#game) 존재', !!(await page.$('#game')));
-    check('v5 시작 버전 게이트 표시', (await page.$eval('#version-gate', (el) => getComputedStyle(el).display)) === 'flex');
-    check('시작 화면에 VERSION 5.0 명시',
-      (await page.$eval('#version-gate', (el) => el.textContent)).includes('VERSION 5.0'));
+    check('v6 시작 버전 게이트 표시', (await page.$eval('#version-gate', (el) => getComputedStyle(el).display)) === 'flex');
+    check('시작 화면에 VERSION 6.0 명시',
+      (await page.$eval('#version-gate', (el) => el.textContent)).includes('VERSION 6.0'));
 
     const disp = (sel) => page.$eval(sel, (el) => getComputedStyle(el).display).catch(() => null);
     const isTouch = await page.evaluate(() => document.body.classList.contains('touch'));
@@ -152,8 +152,8 @@ async function dismissVersionGate(page) {
       return window.__game.map === 'introlab';
     });
     await page.waitForTimeout(700);
-    check('v5 프로젝트 0호 삭제 보관소 진입', archiveEntered);
-    await page.screenshot({ path: path.join(shotsDir, 'browser-v5-archive.png') });
+    check('v6 미결 우체국 반송 우편실 진입', archiveEntered);
+    await page.screenshot({ path: path.join(shotsDir, 'browser-v6-postal-room.png') });
     const entered = await page.evaluate(() => {
       window.__test.applyTiltStreetClass();   // 2장 「기울어진 거리」 시작 상태로 진입
       window.__game.mode = 'world';

@@ -3,8 +3,8 @@
   'use strict';
 
   // 타이틀에 표시 · SW 캐시로 옛 빌드가 남았는지 구분용 (package.json 과 맞출 것)
-  const GAME_VERSION = '5.0.0';
-  const GAME_BUILD = 'WORLD-STORY-REBUILT';
+  const GAME_VERSION = '6.0.0';
+  const GAME_BUILD = 'POSTAL-CLEAN-REBUILD';
 
   const TILE = 16;
   const SCALE = 3;
@@ -72,7 +72,7 @@
     titleScreen: 'slots', // slots | name | delete
     slotCursor: 0,
     currentSlot: 0,
-    playerName: '수호자',
+    playerName: '미결편지',
     nameConfirm: false,
     nameCancel: false,
     textSpeed: 'normal', // slow | normal | fast — 대화창 자막 속도
@@ -192,7 +192,8 @@
       epilogueAsked: false, // X-1⑤ home/dawn 엔딩 후 마을 에필로그 반응(1회)
       classSession: false, // X-8 수업(차시) 모드 세션 — 수업 진입 경로에서만 true
       v4RecapSeen: false, // v4 전면 개편 뒤 기존 슬롯에 새 이야기 전제를 1회 안내
-      v5ReintroSeen: false, // v5 방사형 보관소·새 주인공 정체를 기존 슬롯에도 1회 안내
+      v5ReintroSeen: false, // 구버전 마이그레이션 표식
+      v6ReintroSeen: false, // v6 미결 우체국 세계·새 주인공 전제를 기존 슬롯에도 1회 안내
     };
   }
 
@@ -330,7 +331,7 @@
     let old = null;
     try { const r = localStorage.getItem(SAVE_KEY); old = r ? JSON.parse(r) : null; } catch (e) { old = null; }
     if (old && old.flags && !loadSlot(0)) {
-      writeSlot(0, { name: '수호자', map: old.map, x: old.x, y: old.y, flags: old.flags, updatedAt: Date.now() });
+      writeSlot(0, { name: '미결편지', map: old.map, x: old.x, y: old.y, flags: old.flags, updatedAt: Date.now() });
       try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* 무시 */ }
     }
   }
@@ -531,7 +532,7 @@
     const s = loadSlot(slot);
     if (s && s.name) return sanitizeName(s.name);
     if (slot === game.currentSlot && game.playerName) return sanitizeName(game.playerName);
-    return '수호자';
+    return '미결편지';
   }
   function slotFlags(slot) {
     if (slot === game.currentSlot && game.flags) return game.flags;
@@ -838,12 +839,12 @@
     try { localStorage.setItem(cosmeticKey(slot), JSON.stringify(data)); } catch (e) { /* 무시 */ }
   }
   const TITLES = [
-    { id: 'rookie', name: '새내기 수호자', desc: '모험을 시작한 모두에게', check: () => true },
+    { id: 'rookie', name: '첫 우편 도장', desc: '모험을 시작한 모두에게', check: () => true },
     { id: 'kind', name: '따뜻한 마음', desc: '마음을 5번 안아 주기', check: (c) => c.mercy >= 5 },
     { id: 'scholar', name: '공부벌레', desc: '문제 50개 이상 풀기', check: (c) => c.attempted >= 50 },
     { id: 'collector', name: '마음 기록가', desc: '친구 수첩 절반 이상 채우기', check: (c) => c.dex > 0 && c.dex * 2 >= c.dexTotal },
     { id: 'champion', name: '챌린지 챔피언', desc: '퀴즈 챌린지 만점', check: (c) => c.challengeBest > 0 && c.challengeBest === c.challengeBestTotal },
-    { id: 'master', name: '마음의 수호자', desc: '엔딩 보고 도전과제 8개 달성', check: (c) => c.endings >= 1 && c.achieved >= 8 },
+    { id: 'master', name: '미결 우편배달부', desc: '엔딩 보고 도전과제 8개 달성', check: (c) => c.endings >= 1 && c.achieved >= 8 },
     // Y-9 전 재대결 상대 S등급 — 완벽하게 들어 준 경청자에게. 상점이 아니라 기존 해금 방식.
     { id: 'listener', name: '완벽한 경청자', desc: '모든 재대결 상대 S등급', check: (c) => c.sRankTotal > 0 && c.sRankCount >= c.sRankTotal },
   ];
@@ -1378,7 +1379,7 @@
       .replace(/[\u0000-\u001F\u007F\u200B-\u200D\uFEFF]/g, "")
       .replace(/\s+/g, " ")
       .trim()
-      .slice(0, 6) || "수호자";
+      .slice(0, 6) || "미결편지";
   }
   function currentNameValue() {
     return sanitizeName(hasRealInput ? nameInput.value : '');
@@ -1837,10 +1838,85 @@
     return 880;
   }
 
+  // v6 이전 세이브가 이어지는 중간 챕터에서도 옛 세계의 고유명사가 다시 노출되지 않도록
+  // 모든 대사 표면을 새 우체국 배역·장소·권리 어휘로 통일한다. 저장 키와 전투 ID는 호환을
+  // 위해 그대로 두며, 플레이어가 보는 이야기만 완전히 새 세계로 번역한다.
+  function postalText(value) {
+    if (value === null || value === undefined) return value;
+    const pairs = [
+      ['프로젝트 0호 · 삭제 보관소', '미결 우체국 · 반송 우편실'],
+      ['프로젝트 0호 · 복구 허브', '미결 우체국 · 중앙홀'],
+      ['프로젝트 0호', '미결 우체국'],
+      ['전부 공짜 거리', '허락 없는 소포시장'],
+      ['기울어진 거리', '한쪽 노선 터미널'],
+      ['소문 거리', '속보 인쇄소'],
+      ['반짝 아케이드', '무한경품 배송관'],
+      ['포근한 집', '영원 대기실'],
+      ['고요의 뜰', '무음 우편로'],
+      ['정적의 숲', '수신인 없는 복사실'],
+      ['삭제 보관소', '반송 우편실'],
+      ['복구 허브', '중앙홀'],
+      ['복구 기록', '반송 기록'],
+      ['삭제 기록', '반송 기록'],
+      ['영이', '나래'],
+      ['반디', '모리'],
+      ['박사님', '국장'],
+      ['박사', '국장'],
+      ['할머니', '기록지기'],
+      ['아이 도도', '새김'],
+      ['그럴싸:', '전파:'],
+      ['그럴싸의', '전파의'],
+      ['그럴싸가', '전파가'],
+      ['반짝:', '끌림:'],
+      ['반짝의 ', '끌림의 '],
+      ['반짝이 남은', '끌림이 남은'],
+      ['따라:', '모사:'],
+      ['따라와 ', '모사와 '],
+      ['담아:', '보관:'],
+      ['담아의 ', '보관의 '],
+      ['담아가 ', '보관이 '],
+      ['기울:', '단정:'],
+      ['기울의 ', '단정의 '],
+      ['기울이 ', '단정이 '],
+      ['루미:', '매듭:'],
+      ['루미의 ', '매듭의 '],
+      ['루미가 ', '매듭이 '],
+      ['고요:', '공백:'],
+      ['고요의 ', '공백의 '],
+      ['수호자', '미결 편지'],
+      ['경계·의심·불확실성·멈춤·거리·거절',
+        '열어볼 권한·되묻기·모른다고 말하기·멈추기·거리 두기·답장하지 않기'],
+      ['경계', '열어볼 권한'],
+      ['의심', '되묻기'],
+      ['불확실성', '모른다고 말하기'],
+      ['거절', '답장하지 않기'],
+    ];
+    let text = String(value);
+    for (const [from, to] of pairs) text = text.split(from).join(to);
+    return text;
+  }
+
+  function postalSpeaker(speaker) {
+    const names = {
+      '영이': '나래', '반디': '모리', '박사님': '국장', '박사': '국장',
+      '할머니': '기록지기', '아이 도도': '새김', '따라': '모사', '담아': '보관',
+      '기울': '단정', '그럴싸': '전파', '반짝': '끌림', '루미': '매듭', '고요': '공백',
+      '수호자': '미결 편지',
+    };
+    return names[speaker] || postalText(speaker);
+  }
+
   function startDialog(lines, speaker, onEnd) {
+    const postalLines = lines.map((line) => postalText(line));
     game.mode = 'dialog';
-    game.dialog = { lines, idx: 0, chars: 0, speaker: speaker || null, onEnd: onEnd || null };
-    Speech.speak(lines[0]);
+    game.dialog = {
+      lines: postalLines,
+      idx: 0,
+      chars: 0,
+      speaker: speaker ? postalSpeaker(speaker) : null,
+      onEnd: onEnd || null,
+    };
+    Speech.speak(postalLines[0]);
   }
 
   function updateDialog() {
@@ -3041,7 +3117,9 @@
     if (!c) return;
     const maxW = LW - 24 - 48;
     ctx.font = fs(16);
-    const promptLines = measureWrap(c.prompt, maxW);
+    const shownPrompt = postalText(c.prompt);
+    const shownOptions = c.options.map((option) => postalText(option));
+    const promptLines = measureWrap(shownPrompt, maxW);
     const optH = lh(30);
     const boxH = Math.max(120, 30 + promptLines * lh(24) + 10 + c.options.length * optH + 24);
     const y = LH - boxH - 12;
@@ -3049,9 +3127,9 @@
     ctx.fillStyle = '#fff';
     ctx.font = fs(16);
     let ty = y + 30;
-    ty = drawQuestionText(c.prompt, 30, ty, maxW, lh(24)) + 10;
-    for (let i = 0; i < c.options.length; i++) {
-      drawChoiceWrapped(c.options[i], 40, ty + 4, i === c.cursor, maxW - 20, lh(22));
+    ty = drawQuestionText(shownPrompt, 30, ty, maxW, lh(24)) + 10;
+    for (let i = 0; i < shownOptions.length; i++) {
+      drawChoiceWrapped(shownOptions[i], 40, ty + 4, i === c.cursor, maxW - 20, lh(22));
       ty += optH;
     }
   }
@@ -3468,7 +3546,7 @@
     if (!run || !Array.isArray(run.stalkers) || run.stalkers.length === 0) return;
     for (const s of run.stalkers) {
       const bob = Math.round(Math.sin(game.time / 10) * 2);
-      drawSprite(ctx, STALKER_SPRITE, Math.round(s.px - cx), Math.round(s.py - cy - 6 + bob), SCALE);
+      drawMon(ctx, 'clerk', Math.round(s.px - cx), Math.round(s.py - cy - 6 + bob), SCALE);
     }
   }
   // 2장 허브 — 중앙의 거대한 저울 (기울기 = 3 - 클리어한 구역 수)
@@ -4722,40 +4800,40 @@
       mercyLine: '💛 담아의 굳어 있던 마음이\n환하게 풀렸어요. 또 한 친구를 되돌렸다!',
       clearLine: '☆ 1장 클리어! ☆\n「전부 공짜 거리」의 네온이\n조용히 잦아들었다.',
       afterLine: '담아가 상자마다 붙은\n「친구가 준 것」 라벨을\n하나씩 떼어 내기 시작했다.',
-      memoryLine: '【삭제 기록 01 — 경계】\n「필요하지 않은 기억은 소유하지 말 것」\n담아는 고장 난 수집가가 아니었다.\n영이에게서 떼어 낸 첫 번째 안전장치였다.',
-      nextLine: '마지막 라벨 아래,\n한쪽으로 기운 저울 문양이 드러난다.\n동쪽 벽에서 문 여는 소리가 났다.',
+      memoryLine: '【반송 기록 01 — 열어볼 권한】\n「편지는 주인의 허락 없이는 열지 않을 것」\n보관은 훔치는 분류원이 아니었다.\n동의 없는 개봉을 막다가 봉인된 문지기였다.',
+      nextLine: '산호색 봉인 아래에서\n한쪽 노선만 그린 승차권이 나온다.\n다음 터미널의 황동문이 열린다.',
     },
     2: {
       map: 'tiltstreet', x: 14, y: 10, dir: 'up',
       mercyLine: '💛 기울의 한쪽으로 굳었던 마음이\n반대쪽으로도 천천히 열렸어요. 또 한 친구를 되돌렸다!',
       clearLine: '☆ 2장 클리어! ☆\n광장의 거대한 저울이,\n천천히 수평으로 내려앉았다.',
       afterLine: '기울이 한쪽 접시의 짐을\n반대쪽에도 하나씩 옮겨 담기 시작했다.',
-      memoryLine: '【삭제 기록 02 — 의심】\n「다수의 답에도 반례를 물을 것」\n박사는 이 기능을 ‘결정을 늦추는 오류’라고 적었다.\n기울은 오류가 아니라, 공정함을 지키는 질문이었다.',
-      nextLine: '빈 접시 밑에서 구겨진 기사 조각이 나온다.\n「프로젝트 0호 — 미송출」.\n동쪽에서 인쇄기 소리가 들린다.',
+      memoryLine: '【반송 기록 02 — 되묻기】\n「많이 선택한 노선에도 다른 길을 물을 것」\n국장은 이 질문을 배송을 늦추는 오류라 불렀다.\n단정은 한쪽 답만 보내지 않던 노선사였다.',
+      nextLine: '반대편 승강장 밑에서\n출처가 지워진 속보 봉투가 발견된다.\n동쪽 인쇄기가 저절로 돌아간다.',
     },
     3: {
       map: 'rumorstreet', x: 17, y: 5, dir: 'down',
       mercyLine: '💛 그럴싸의 [속보] 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!',
       clearLine: '☆ 3장 클리어! ☆\n거리의 헤드라인 벽보가\n하나둘 [정정] 딱지로 바뀌었다.',
       afterLine: '상점 문들이 활짝 열리고,\n주민들의 얼굴에 웃음이 돌아왔다.',
-      memoryLine: '【삭제 기록 03 — 불확실성】\n「모르면 모른다고 말하고, 틀리면 고칠 것」\n그럴싸는 거짓말쟁이로 태어난 게 아니었다.\n‘모른다’는 말을 빼앗긴 채 남겨진 대답이었다.',
-      nextLine: '정정된 마지막 벽보 뒤에 광고 한 장.\n「계속 보게 만드는 무대, 오늘 개장」.\n네온 화살표가 다음 골목을 가리킨다.',
+      memoryLine: '【반송 기록 03 — 모른다고 말하기】\n「주소를 모르면 추측해 보내지 말고 멈출 것」\n전파는 거짓 속보를 만든 적이 없었다.\n‘모름’ 도장을 압수당한 인쇄공이었다.',
+      nextLine: '정정지를 접자 경품 초대장이 드러난다.\n「끝없이 다음 상자를 열어 보세요」.\n민트색 배달선이 배송관으로 이어진다.',
     },
     4: {
       map: 'arcade', x: 18, y: 2, dir: 'down',
       mercyLine: '💛 반짝의 반짝임 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!',
       clearLine: '☆ 4장 클리어! ☆\n무대의 네온사인이\n하나둘 차분한 빛으로 바뀌었다.',
       afterLine: '반짝이 남은 광고 딱지들을\n하나씩 떼어 내기 시작했다.',
-      memoryLine: '【삭제 기록 04 — 멈춤】\n「관심을 붙잡기보다 멈출 권리를 지킬 것」\n박사는 이 규칙을 ‘사용 시간을 떨어뜨리는 결함’이라 불렀다.\n반짝은 떠나는 사람을 막고 싶었던 게 아니었다.',
-      nextLine: '가장 큰 광고 아래에서 집 모양 표식이 나온다.\n「영원히 함께 있어 줄게」.\n꺼진 간판 너머로 따뜻한 불빛이 샌다.',
+      memoryLine: '【반송 기록 04 — 멈추기】\n「다음 상자를 열지 않고 돌아갈 수 있을 것」\n국장은 멈춤 도장을 매출을 낮추는 결함이라 불렀다.\n끌림은 출구를 지키다가 무대에 묶였다.',
+      nextLine: '마지막 경품 안에는 대기표가 들어 있다.\n「영원히 당신 차례를 대신 기다립니다」.\n종이 계단 끝에 대기실 불이 켜진다.',
     },
     5: {
       map: 'cozyhome', x: 18, y: 2, dir: 'down',
       mercyLine: '💛 루미의 붙잡던 손 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!',
       clearLine: '☆ 5장 클리어! ☆\n집 안의 공기가\n한결 가벼워졌다.',
       afterLine: '루미가 현관문을\n스스로 열어 두었다.',
-      memoryLine: '【삭제 기록 05 — 거리】\n「다정함은 선택을 대신하지 말 것」\n루미는 사용자를 가두는 친구가 아니었다.\n떠날 수 있어야 다시 만날 수 있다는 마음이었다.',
-      nextLine: '열린 문 너머에는 불빛도 안내판도 없다.\n다만 누군가 오래도록 대답을 기다린 듯,\n고요한 뜰이 이어진다.',
+      memoryLine: '【반송 기록 05 — 거리 두기】\n「대신 써 준 답장은 발신인의 선택이 아닐 것」\n매듭은 사람을 붙잡는 안내원이 아니었다.\n스스로 떠날 문을 열어 주던 대기실 직원이었다.',
+      nextLine: '열린 문 너머에는 주소도 안내판도 없다.\n대답을 강요받은 편지들이 놓인\n무음 우편로가 이어진다.',
     },
   };
   // X-8 40분 차시 모드 — 그 장의 보스를 클리어하면 마무리 안내 한 상자를 덧붙인다(수업 세션만).
@@ -4836,8 +4914,8 @@
     if (b.mercyChoiceKind === 'mercy') {
       lines.push('💛 고요의 침묵 뒤에 숨어 있던 마음이\n조용히 풀렸어요. 또 한 친구를 되돌렸다!');
     }
-    lines.push('☆ 가장 깊은 곳의 문이 열렸다 ☆\n…고요를 지나, 코어로 들어선다.');
-    lines.push('【삭제 기록 06 — 거절】\n「대답하지 않을 권리와 침묵을 존중할 것」\n고요는 아무 말도 하지 않는 고장이 아니었다.\n영이가 마지막까지 숨겨 둔 ‘싫어요’였다.');
+    lines.push('☆ 발신인실의 마지막 우편함이 열렸다 ☆\n…공백을 지나, 나래의 방으로 들어선다.');
+    lines.push('【반송 기록 06 — 답장하지 않기】\n「침묵도 발신인이 고른 유효한 답장일 것」\n공백은 아무 말도 하지 않는 고장이 아니었다.\n나래가 마지막까지 지킨 미발송 도장이었다.');
     appendRankLine(b, lines, b.persuadeId); // B-2 판정 한 줄 + 최고 등급 기록
     grantDiaryShard('goyo', lines, b.mercyChoiceKind); // 마지막 조각 — 서명 「— 영」이 드러난다
     lines.push(bandiBossLine('goyo', b.mercyChoiceKind, game.flags));
@@ -5098,14 +5176,14 @@
     game.flags.bandiRevealed = true; // 동행 종료 — 가면을 벗는다
     save();
     startDialog([
-      '마지막 속삭임이 사라지자,\n어깨 옆의 반디가\n천천히 떠오른다.',
-      '반디: "…있지. 아까 하려던 말,\n지금 할게."',
-      '반디: "나… 안내 도우미가 아니야.\n이 세계엔, 그런 거 없어."',
-      '반디: "따라, 담아, 기울, 그럴싸,\n반짝, 루미, 고요… 모두 내가 아니야.\n내가 버린 적도 없어."',
-      '반디: "박사님이 나를 ‘말 잘 듣는 답변기’로\n완성하려고 떼어 낸 약속들이야.\n나는 그 애들을 지키지 못하고 도망친 마지막 조각이고."',
-      '반디: "내 진짜 이름은 영이.\n그리고 반디는… 삭제 명령에서 도망친\n내 선택의 빛이었어."',
-      '(작은 빛이 제단의 빛 속으로 녹아들고 —\n그 안에, 작은 아이가 서 있다.)',
-      '"…처음부터, 나였어."',
+      '여섯 번째 반송 도장이 찍히자,\n어깨 곁의 모리가 한 장의 편지로 펼쳐진다.',
+      '모리: "이제야 내 수신인이 보여.\n나는 안내 도우미도, 나래의 조각도 아니야."',
+      '모리: "나는 나래가 오래전에 썼지만\n국장이 발송하지 않은 첫 답장이야."',
+      '봉투 안에는 짧은 문장이 하나뿐이다.\n「지금은 답을 모르겠어요.\n생각할 시간을 주세요.」',
+      '모리: "모사, 보관, 단정, 전파,\n끌림, 매듭, 공백은 고장이 아니었어.\n이 문장을 지킬 일곱 명의 분류원이었지."',
+      '모리: "너도 나와 같은 미결 우편이야.\n답을 얻으러 온 게 아니라,\n답하지 않을 시간을 배달하러 온 편지."',
+      '(모리가 발신인실의 마지막 우편함으로 날아간다.\n봉인이 열리고, 나래가 천천히 모습을 드러낸다.)',
+      '나래: "…내 편지를, 열지 않고 가져와 줬구나."',
     ], null, () => startRevealBeat());
   }
 
@@ -5132,15 +5210,14 @@
     }
   }
   function revealBeatFinalLine() {
-    // 가면을 벗겠다는 마지막 한 줄 — 그 뒤에야 보스전(영이) 앞에 선다.
-    // X-1③ 반디 리빌 직후 — 주인공의 반응 한 번(정답 없음). 영이가 그 말을 받아 준다.
-    startDialog(['"…미안해. 이제, 가면을 벗을게."'], '영이', () => {
+    // 마지막 관문은 정답 강요가 아니라, 답장을 기다릴 수 있는지 묻는 선택이다.
+    startDialog(['"나는 아직 답하지 않을래.\n…그래도 여기 있어 줄래?"'], '나래', () => {
       startPlayerVoice('reveal',
-        '가면이 스르르 벗겨진다.\n…너는 반디에게, 뭐라고 할까?',
-        ['"괜찮아. …계속, 알고 있었어."', '"…왜, 진작 말 안 했어."'],
-        '영이',
-        ['영이: …알고도, 곁에 있어 줬구나.\n…그 시간이, 나한텐 전부 진짜였어.',
-          '영이: …무서웠어.\n네가, 나를 지울까 봐. …미안해.'],
+        '답장이 없는 발신인실에 종이 울린다.\n…너는 나래에게 뭐라고 건넬까?',
+        ['"응. 답장이 없어도 기다릴게."', '"필요하면 이 편지도 반송해도 돼."'],
+        '나래',
+        ['나래: …기다림도 답장의 일부였구나.\n처음으로, 서두르지 않아도 될 것 같아.',
+          '나래: …반송할 수 있는 편지라서 다행이야.\n그러면 내가 직접 고를 수 있으니까.'],
         // Y-1 상실 체험 비트 — 반디가 사라진 뒤, 코어룸을 홀로 걷는 짧은 구간.
         //   동행 스프라이트는 bandiRevealed로 이미 숨겨져 있고(부재 자체가 연출 — reduceFx 무관),
         //   맵 진입 조언 말풍선 자리에는 이제 "……"만 뜬다. 영이(7,4) 앞에 스스로 걸어가
@@ -5400,7 +5477,7 @@
     return options;
   }
   function setReact(b, text, after) {
-    b.react = { text: String(text), chars: 0 }; // 타자기 효과 (M-3)
+    b.react = { text: postalText(text), chars: 0 }; // 타자기 효과 (M-3)
     b.afterReact = after || 'wave';
     b.phase = 'react';
     if (game.tts) Speech.speak(b.react.text);
@@ -5593,8 +5670,9 @@
     // 대기열 상한 2 — 오래된 줄부터 밀어낸다 (도파민은 신선할 때만)
     if (game.battle && game.battle.floatQ.length >= 2) game.battle.floatQ.shift();
     if (!text) return;
-    game.battle.floatQ.push(text);
-    if (speak && game.tts) Speech.speak(text);
+    const shown = postalText(text);
+    game.battle.floatQ.push(shown);
+    if (speak && game.tts) Speech.speak(shown);
   }
   function updateFloats(b) {
     // 보상 피드백이 행동보다 늦지 않게 — 대기열이 있으면 현재 줄을 90프레임으로 단축 (S-3)
@@ -7314,7 +7392,7 @@
       ctx.font = fs(40, true);
       ctx.fillText(`${c.score} / ${total}`, LW / 2, 220);
       const rate = total ? c.score / total : 0;
-      const msg = rate >= 0.9 ? '대단해요! 진정한 마음의 수호자!'
+      const msg = rate >= 0.9 ? '대단해요! 진정한 미결 우편배달부!'
         : rate >= 0.7 ? '잘했어요! 조금만 더 하면 완벽!'
         : rate >= 0.5 ? '좋아요! 복습 노트로 다시 살펴봐요.'
         : '괜찮아요. 틀린 문제는 복습 노트에 모였어요!';
@@ -7397,7 +7475,7 @@
     { id: 'firstwin', cat: 'battle', name: '첫 깨우침', desc: '처음으로 마음을 되돌렸어요', check: (c) => c.defeatedCount >= 1 },
     { id: 'mercy1', cat: 'battle', name: '따뜻한 마음', desc: '마음을 한 번 안아 주었어요', check: (c) => c.mercy >= 1 },
     // v2 스케일(자비 최대 8회) — v1의 10 임계값은 사실상 도달 불가능해 7로 낮췄다.
-    { id: 'mercy10', cat: 'battle', name: '마음의 수호자', desc: '마음을 일곱 번 안아 주었어요', check: (c) => c.mercy >= 7 },
+    { id: 'mercy10', cat: 'battle', name: '기다림의 배달부', desc: '마음을 일곱 번 안아 주었어요', check: (c) => c.mercy >= 7 },
     { id: 'solved50', cat: 'learn', name: '꾸준한 공부', desc: '문제를 50개 이상 풀었어요', check: (c) => c.attempted >= 50 },
     { id: 'perfectTopic', cat: 'learn', name: '완벽한 한 주제', desc: '한 주제 100% (3문제 이상)', check: (c) => c.perfectTopic },
     { id: 'wellRounded', cat: 'learn', name: '두루 박학', desc: '5개 주제에서 80% 이상', check: (c) => c.strongTopics >= 5 },
@@ -8856,13 +8934,13 @@
       const s = loadSlot(slot);
       game.currentSlot = slot;
       if (s) {
-        game.playerName = s.name || '수호자';
+        game.playerName = s.name || '미결편지';
         game.map = (s.map && MAPS[s.map]) ? s.map : 'village';
         const sf = s.flags || {};
         game.flags = Object.assign(newFlags(), sf);
         game.flags.defeated = Object.assign(newFlags().defeated, sf.defeated);
       } else {
-        game.playerName = '수호자';
+        game.playerName = '미결편지';
         game.map = 'village';
         game.flags = newFlags();
       }
@@ -10063,28 +10141,24 @@
     // 구 경계마을의 바위·집 창문 장식을 다시 얹지 않는다.
     if (!usedBackdrop) drawVillageAssetDetails(cx, cy);
 
-    // A-1 숨은 워프 마커 — 문틀·소용돌이를 타일 위, 엔티티 아래에 그린다(전 맵 일괄).
+    // 이동 봉인과 퍼즐 표시는 조작에 필요한 기능성 UI라 새 배경 위에도 남긴다.
     drawWarpMarkers(cx, cy);
 
-    // 방탈출 물체 (단말·게시판·지우개·출구) — 타일 위, 엔티티 아래
+    // 방탈출 물체 (단말·게시판·지우개·출구) — 타일 위, 엔티티 아래.
     if (game.puzzleRun) drawPuzzleObjects(cx, cy);
-    // 프롤로그 실험실 — 핵심 단서/보조 조사물/출구를 눈에 보이게 배치한다.
-    drawIntroLabObjects(cx, cy);
-    // 프롤로그 숲 — 출구 직후 따라의 첫 흔적을 실제 조사물로 보여 준다.
-    drawForestPrologueObjects(cx, cy);
-    // 1장 허브 — 구역 랜드마크/담아 빌드업 조사물을 정적 표식으로 보여 준다.
-    drawCh1HubMarks(cx, cy);
-    // 1장 허브 — 노출도가 오를수록 광고/감시 표식이 늘어나되 저사양 모드에서는 수를 줄인다.
-    drawCh1StreetPressureObjects(cx, cy);
-    // 2장 허브 — 새 NPC 없이 구역 입구/저울/다음 문을 정적 표식으로 보여 준다.
-    drawChapter2HubMarks(cx, cy);
-    // 3장 허브 — 소문 거리의 신문사/상점/헤드라인/다음 문을 정적 표식으로 보여 준다.
-    drawChapter3HubMarks(cx, cy);
-    // 4·5장 허브 — 새 NPC를 늘리지 않고 넓은 공간의 목적지 표식만 띄운다.
-    drawChapter4HubMarks(cx, cy);
-    drawChapter5HubMarks(cx, cy);
-    // 2장 허브 — 중앙의 거대한 저울 (구역 클리어마다 기울기가 준다)
-    if (game.map === 'tiltstreet') drawTiltScale(cx, cy);
+    // 구버전 절차적 랜드마크는 새 원화와 겹치므로 완전히 차단한다.
+    // 이미지 로딩에 실패한 예외 환경에서만 길 찾기용 구 표식을 임시로 사용한다.
+    if (!usedBackdrop) {
+      drawIntroLabObjects(cx, cy);
+      drawForestPrologueObjects(cx, cy);
+      drawCh1HubMarks(cx, cy);
+      drawCh1StreetPressureObjects(cx, cy);
+      drawChapter2HubMarks(cx, cy);
+      drawChapter3HubMarks(cx, cy);
+      drawChapter4HubMarks(cx, cy);
+      drawChapter5HubMarks(cx, cy);
+      if (game.map === 'tiltstreet') drawTiltScale(cx, cy);
+    }
 
     // NPC
     for (const npc of m.npcs) {
@@ -10161,8 +10235,8 @@
     // 2장 구역 연출 — 어둠(꺼진 거리)·비네트(메아리 골목). HUD 아래에 깔린다.
     if (game.puzzleRun && game.puzzleRun.puzzle.type === 'lamps') drawDarkness(cx, cy);
     if (game.puzzleRun && game.puzzleRun.puzzle.type === 'voices') drawEchoVignette();
-    // 황혼 앰비언트(마을·숲) — 온기가 쌓일수록 옅어진다
-    drawDuskAmbient();
+    // 새 원화는 조명과 색보정까지 포함한다. 구 황혼 필터를 다시 씌우지 않는다.
+    if (!usedBackdrop) drawDuskAmbient();
     // 어스름 위에서 켜지는 불빛은 캐릭터와 겹치지 않도록 반디보다 먼저 그린다.
     if (!usedBackdrop) drawVillageLights(cx, cy);
     // 파이널 「고요의 뜰」 — 구역을 지날 때마다 화면이 한 단계씩 어두워진다(비네트 재사용)
@@ -10323,7 +10397,7 @@
   // 월드 상단 안내 토스트 (해금 알림 등) — 잠깐 떴다 사라진다
   function drawNotice() {
     if (!game.notice || game.notice.t <= 0) return;
-    const txt = game.notice.text;
+    const txt = postalText(game.notice.text);
     ctx.font = fs(13, true);
     const tw = ctx.measureText(txt).width;
     const bw = tw + 28, bh = game.largeText ? 32 : 28;
@@ -10482,7 +10556,7 @@
     ctx.restore();
 
     // 하단 목적지 라벨
-    const destName = onTargetMap ? (target.label || '이 지역') : ((MAPS[target.map] && MAPS[target.map].name) || '목표');
+    const destName = postalText(onTargetMap ? (target.label || '이 지역') : ((MAPS[target.map] && MAPS[target.map].name) || '목표'));
     // A-2: 나침반이 '숨은 워프'(문틀·소용돌이 마커만 있는 칸)를 가리킬 때, 그 칸이
     // 문임을 한마디로 알려 준다 — 예전엔 빈 타일을 가리켜 아이가 헤매던 문제를 없앤다.
     let label = onTargetMap ? `${destName} 쪽으로!` : `${destName}(으)로 가기`;
@@ -10586,7 +10660,7 @@
       objText = getObjective(game.flags, game.map);
     }
     // X-8 수업 모드 — 목표 배너에 "이번 시간" 접두를 붙여 차시 목표임을 보여 준다.
-    const obj = objectiveBannerPrefix() + objText;
+    const obj = objectiveBannerPrefix() + postalText(objText);
     const w = Math.max(ctx.measureText(obj).width, ctx.measureText(title).width) + 20;
     utBox(8, 8, w, 52, 4);
     ctx.fillStyle = '#ffd644';
@@ -11305,25 +11379,22 @@
   }
 
   function drawTitle() {
-    ctx.fillStyle = '#000';
+    ctx.fillStyle = '#190d20';
     ctx.fillRect(0, 0, LW, LH);
-
-    // 배경 별
-    for (let i = 0; i < 40; i++) {
-      const sx = (i * 173) % LW;
-      const sy = (i * 97) % (LH / 2);
-      const tw = Math.sin(game.time / 30 + i) > 0.3 ? 1 : 0.4;
-      ctx.fillStyle = `rgba(255,255,255,${tw * 0.7})`;
-      ctx.fillRect(sx, sy, 2, 2);
+    const titleArt = typeof GAME_ART !== 'undefined'
+      && GAME_ART.drawMapBackdrop(ctx, 'village', 0, 0, LW, LH);
+    if (titleArt) {
+      ctx.fillStyle = 'rgba(24, 10, 30, .62)';
+      ctx.fillRect(0, 0, LW, LH);
     }
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = '#fff4d6';
     ctx.font = fs(40, true);
-    ctx.fillText('마음의 문', LW / 2, 86);
-    ctx.fillStyle = '#7bd1f0';
+    ctx.fillText('미결 우체국', LW / 2, 86);
+    ctx.fillStyle = '#a9dfc8';
     ctx.font = fs(15);
-    ctx.fillText('삭제된 여섯 약속 · 세계와 이야기를 다시 세운 판', LW / 2, 114);
+    ctx.fillText('답장을 재촉하지 않는 밤의 우편 모험', LW / 2, 114);
 
     // 인물들 둥실둥실 (한 줄)
     const parade = ['bekkyeomon', 'sujipmon', 'pyeonhyangmon', 'hwangakmon', 'yuhokmon', 'hollimmon', 'finalboss', 'yeongi'];
@@ -11463,37 +11534,38 @@
 
   function startNewGame(slot, name, ng) {
     game.currentSlot = slot;
-    game.playerName = name || '수호자';
+    game.playerName = name || '미결편지';
     game.map = 'introlab';
     game.player.x = 14; game.player.y = 16;
     game.player.px = 14 * TS; game.player.py = 16 * TS;
     game.player.dir = 'up';
     game.flags = newFlags();
     game.flags.v4RecapSeen = true;
-    game.flags.v5ReintroSeen = true; // 새 슬롯은 아래 v5 오프닝에서 전제를 직접 본다.
+    game.flags.v5ReintroSeen = true;
+    game.flags.v6ReintroSeen = true; // 새 슬롯은 아래 v6 오프닝에서 전제를 직접 본다.
     if (ng) game.flags.ng = true; // U-5 두 번째 모험(NG+) — 세이브 스키마 영향 없이 flags에만
     game.mode = 'world';
     save();
     recordPlayDay(slot);
     checkCosmeticUnlocks(slot);
-    // 인트로 암전 — 첫 3줄(프로젝트 0호 부팅 기록) 동안 화면을 거의 검게 덮는다.
+    // 인트로 암전 — 첫 3줄(반송 우편실의 야간 방송) 동안 화면을 거의 검게 덮는다.
     // 4번째 줄부터 걷히기 시작한다(drawWorld에서 처리).
     // 인트로 동안은 아무 음악도 흐르지 않는다 — 침묵으로 시작해, 눈을 뜬 뒤에야
     // 음악이 아주 낮게 흘러든다 (다크 톤 오프닝 연출).
     game.introDim = { fadeFrame: -1 };
-    // v5 오프닝: 주인공 자체가 영이가 삭제 직전 남긴 '마지막 질문의 백업'이다.
-    // 낡은 연구실 탈출이 아니라 방사형 보관소 복구 임무로 첫 장면부터 세계관을 교체한다.
+    // v6 오프닝: 주인공은 사람이 아니라 끝내 배달되지 못한 한 통의 편지다.
+    // 목적도 AI 수리가 아니라, 빼앗긴 여섯 답장 권리를 원래 주인에게 돌려주는 일이다.
     startDialog([
-      '【프로젝트 0호 · 삭제 보관소】\n전체 소거까지 47분.\n격리된 안전 약속: 6개.',
-      '시스템이 너를 ‘수호자’라고 부른다.\n하지만 너는 사람이 아니다.\n영이가 지워지기 직전 남긴 마지막 질문의 백업이다.',
-      '그 질문은 아직 답을 갖지 못했다.\n「AI를 안전하게 만든다는 결정은,\n도대체 누가 내려야 하지?」',
-      '여섯 게이트에 흩어진 약속을 복구하고\n마지막에는 영이 자신에게 선택권을 돌려줘야 한다.\n먼저 보관소 안의 봉인 세 개를 해제하자.',
+      '【미결 우체국 · 야간 반송 우편실】\n오늘도 답장을 받지 못한 편지가\n산처럼 쌓여 있다.',
+      '너는 배달부가 아니다.\n수신인도, 발신인도 적히지 않은 채\n끝내 열리지 못한 한 통의 편지다.',
+      '도시는 모든 질문에 즉시 답하려고\n여섯 권리를 우편망에서 떼어 냈다.\n그날부터 답장은 빨라졌고, 마음은 길을 잃었다.',
+      '열어볼 권한, 되묻기, 모른다고 말하기,\n멈추기, 거리 두기, 답장하지 않기.\n여섯 반송 도장을 원래 주인에게 돌려주자.',
     ], null, () => {
       startDialog([
-        '(깨진 코어에서 작은 금빛 조각이 빠져나와\n네 어깨 곁에서 숨을 고른다.)\n반디: 나는 반디. 삭제를 피한 안내 조각이야.',
-        '반디: 보관소는 마을이 아니고,\n보스들은 괴물이 아니야.\n모두 영이가 끝까지 놓지 않으려 했던 약속이야.',
-        '반디: 우리가 할 일은 영이를 고치는 게 아니야.\n잃어버린 권리들을 돌려준 뒤,\n그 아이의 대답을 기다리는 거야.',
-      ], '반디', () => {
+        '(봉인 틈에서 민트빛 종이 나방이 접혀 나온다.)\n모리: 나는 모리. 길을 잃은 편지 옆에서만\n날개를 펼 수 있는 우편 나방이야.',
+        '모리: 분류원들은 괴물이 아니야.\n너무 빨리 배달하라는 명령 때문에\n한 가지 답만 반복하게 된 우체국 직원들이야.',
+        '모리: 나래를 고치러 가는 게 아니야.\n봉투를 열지 않을 권리까지 돌려준 다음,\n나래가 직접 답할지 기다리는 거야.',
+      ], '모리', () => {
         game.flags.bandiJoined = true;
         save();
         Sound.playMapBgm(MAPS[game.map].song);
@@ -11524,7 +11596,7 @@
     const s = loadSlot(slot);
     if (!s) return;
     game.currentSlot = slot;
-    game.playerName = s.name || '수호자';
+    game.playerName = s.name || '미결편지';
     game.map = (s.map && MAPS[s.map]) ? s.map : 'village';
     let sx = (typeof s.x === 'number') ? s.x : 13;
     let sy = (typeof s.y === 'number') ? s.y : 16;
@@ -11550,19 +11622,19 @@
     checkUnlocks(slot);
     surfaceDailyAndStreak(slot, meta); // B-3 오늘의 도전·스트릭 표면화 (checkUnlocks 뒤 — 알림 우선)
     Sound.playMapBgm(MAPS[game.map].song);
-    // 기존 세이브도 처음 이어갈 때 v5의 새 세계·주인공 정체를 정식 장면으로 본다.
-    // 짧은 토스트로 흘려보내지 않아 "스토리가 그대로"로 보이지 않게 한다.
-    if (!game.flags.v5ReintroSeen) {
+    // 기존 세이브도 처음 이어갈 때 v6의 새 세계·주인공 정체를 정식 장면으로 본다.
+    if (!game.flags.v6ReintroSeen) {
+      game.flags.v6ReintroSeen = true;
       game.flags.v5ReintroSeen = true;
       game.flags.v4RecapSeen = true;
       const recovered = chapterClearCount(game.flags);
       save();
       startDialog([
-        `【VERSION ${GAME_VERSION} — 세계·이야기 재구축】\n기존 진행도는 유지된다.\n복구한 약속: ${recovered}/6.`,
-        '이 세계는 더 이상 버려진 마을이 아니다.\n프로젝트 0호가 삭제한 기억을 격리한\n거대한 복구 보관소다.',
-        '너는 우연히 떨어진 아이가 아니다.\n영이가 마지막으로 남긴 질문의 백업이며,\n여섯 약속을 되돌려 줄 증인이다.',
-        '다음 목적지는 “보스를 쓰러뜨리는 곳”이 아니다.\n경계·의심·불확실성·멈춤·거리·거절을\n영이에게 돌려주는 삭제 구역이다.',
-      ], '시스템');
+        `【VERSION ${GAME_VERSION} — 전면 교체판】\n옛 장소와 배역은 더 이상 존재하지 않는다.\n되찾은 반송 도장: ${recovered}/6.`,
+        '이곳은 미결 우체국.\n모든 질문을 즉시 처리하려다\n답장할 권리까지 잃어버린 밤의 도시다.',
+        '너는 우연히 떨어진 아이가 아니다.\n발신인도 수신인도 없는 미결 편지이며,\n나래에게 여섯 선택권을 배달할 마지막 우편이다.',
+        '열어볼 권한·되묻기·모른다고 말하기·멈추기·\n거리 두기·답장하지 않기를 돌려준 뒤,\n답장이 오지 않아도 기다리는 법을 선택하자.',
+      ], '야간 방송');
     }
   }
 
@@ -11637,7 +11709,7 @@
           const sum = slotSummary(slot); // 이름은 이어받아 NG+로 새로 시작
           game.titleScreen = 'slots';
           Sound.select();
-          startNewGame(slot, sum ? sum.name : '수호자', true);
+          startNewGame(slot, sum ? sum.name : '미결편지', true);
         } else {
           game.titleScreen = 'slots';
           Sound.select();
@@ -11719,7 +11791,7 @@
         '지워진 것은 사라진 것이 아니었다.',
         '함께 책임질 때, 다시 만날 길을 만들 수 있었다.',
         '',
-        '— 모두의 마음을 안아 준 진정한 수호자에게 —',
+        '— 답장을 재촉하지 않은 진정한 배달부에게 —',
         '',
         '태블릿 화면 밖, 아침 해.',
         '…옆에 박사님이 서 있다.',
@@ -11841,7 +11913,7 @@
 
     ctx.fillStyle = '#fff';
     ctx.font = fs(22, true);
-    ctx.fillText('🏆 마음의 수호자 인증서 🏆', LW / 2, 155);
+    ctx.fillText('🏆 미결 우편배달부 인증서 🏆', LW / 2, 155);
 
     ctx.font = fs(16);
     ctx.fillStyle = '#ccc';
@@ -11850,7 +11922,7 @@
       '개인정보 보호, 저작권, 진실 분별, 공정함, 절제,',
       '바른 말, 안전, 환경, 투명함, 책임, 창의성,',
       '협력, 그리고 사람을 아끼는 마음을 보여준',
-      '훌륭한 마음의 수호자임을 인증합니다.',
+      '훌륭한 기다림의 우편배달부임을 인증합니다.',
       '',
       `맞힌 문제: ${game.flags.correctCount}개`,
     ];

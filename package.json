@@ -1,7 +1,7 @@
 {
   "name": "ai-ethics-adventure",
-  "version": "5.0.0",
-  "description": "한국 초등학생을 위한 AI 윤리 교육 게임 (순수 HTML5 Canvas, 런타임 의존성 없음)",
+  "version": "6.0.0",
+  "description": "미결 우체국 — 여섯 답장 권리를 배달하는 한국어 AI 리터러시 어드벤처",
   "private": true,
   "scripts": {
     "validate": "node tools/validate.js",
