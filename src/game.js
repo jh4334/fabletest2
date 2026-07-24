@@ -1,12051 +1,7590 @@
-// AI ìœ¤ë¦¬ ì–´ë“œë²¤ì²˜ - ë©”ì¸ ê²Œì„ ì—”ì§„
-(() => {
-  'use strict';
-
-  // íƒ€ì´í‹€ì— í‘œì‹œ Â· SW ìºì‹œë¡œ ì˜› ë¹Œë“œê°€ ë‚¨ì•˜ëŠ”ì§€ êµ¬ë¶„ìš© (package.json ê³¼ ë§ì¶œ ê²ƒ)
-  const GAME_VERSION = '1.0.1';
-
-  const TILE = 16;
-  const SCALE = 3;
-  const TS = TILE * SCALE; // 48px
-  const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d');
-  // ë…¼ë¦¬ í•´ìƒë„(ì¢Œí‘œê³„ëŠ” í•­ìƒ 720Ã—528). ë°±í‚¹ ìŠ¤í† ì–´ëŠ” ê¸°ê¸° í”½ì…€ ë°€ë„(DPR)ë§Œí¼ í‚¤ìš°ë˜,
-  // êµì‹¤ íƒœë¸”ë¦¿Â·ì €ì „ë ¥ ë…¸íŠ¸ë¶ì—ì„œ ë²„ë²…ì´ì§€ ì•Šë„ë¡ ê³ í•´ìƒë„ ë°±í‚¹ ìŠ¤í† ì–´ë¥¼ ë” ë‚®ê²Œ ì œí•œí•œë‹¤.
-  const LW = 720, LH = 528;
-  const DPR_CAP = 1.5;
-  function effectiveDprCap() { return (typeof game !== 'undefined' && game.lowGraphics) ? 1 : DPR_CAP; }
-  let currentDPR = Math.max(1, Math.min(window.devicePixelRatio || 1, DPR_CAP));
-  canvas.width = LW * currentDPR;
-  canvas.height = LH * currentDPR;
-  ctx.scale(currentDPR, currentDPR);
-  function checkDPR() {
-    const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, effectiveDprCap()));
-    if (dpr !== currentDPR) {
-      currentDPR = dpr;
-      canvas.width = LW * dpr;
-      canvas.height = LH * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.imageSmoothingEnabled = false;
-      try { tileCache.clear(); } catch (e) {}
-    }
-  }
-  const VIEW_W = Math.floor(LW / TS); // 15
-  const VIEW_H = Math.floor(LH / TS); // 11
-  ctx.imageSmoothingEnabled = false;
-  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-  canvas.addEventListener('mousedown', () => { try { canvas.focus(); } catch (e) {} });
-  try { canvas.focus(); } catch (e) {}
-
-  const SAVE_KEY = 'ai-ethics-adventure-v1';
-
-  // ---------- ìƒíƒœ ----------
-  const game = {
-    mode: 'title', // title | world | dialog | battle | ending | dex | review | pause
-    map: 'village',
-    player: {
-      x: 13, y: 16,       // íƒ€ì¼ ì¢Œí‘œ
-      px: 13 * TS, py: 16 * TS, // í”½ì…€ ì¢Œí‘œ(ë³´ê°„)
-      dir: 'up',
-      moving: false,
-      step: 0,            // ê±·ê¸° ì• ë‹ˆë©”ì´ì…˜
-    },
-    flags: null,
-    dialog: null, // { lines, idx, chars, speaker, onEnd }
-    battle: null,
-    time: 0,
-    titleCursor: 0,
-    endingT: 0,
-    dex: { cursor: 0, ret: 'title' },
-    review: { cursor: 0, ret: 'world', slot: 0, phase: 'list', ids: [], qCursor: 0, choiceOrder: null, feedback: null },
-    journal: { ret: 'world', slot: 0, scroll: 0, toast: 0 },
-    awards: { ret: 'world', slot: 0, scroll: 0 },
-    challenge: null, // { ret, slot, phase, topics, sel, questions, idx, cursor, choiceOrder, score, feedback }
-    cosmetics: { ret: 'title', slot: 0, col: 0, rowTitle: 0, rowTheme: 0, toast: 0 },
-    backup: { ret: 'title', cursor: 0, toast: 0, confirm: false },
-    notice: { text: '', t: 0 }, // ì›”ë“œ ìƒë‹¨ ì•ˆë‚´ í† ìŠ¤íŠ¸ (í•´ê¸ˆ ì•Œë¦¼ ë“±)
-    unlockFlash: 0,      // B-1 íšë“ ìˆœê°„ í™”ë©´ ë°˜ì§ì„ ì¹´ìš´íŠ¸ë‹¤ìš´ (reduceFxë©´ 0 ìœ ì§€)
-    helpRet: 'title',
-    pauseCursor: 0,
-    teacherCursor: 0,    // ã€Œì„ ìƒë‹˜ ë°©ã€ ë©”ë‰´ ì»¤ì„œ
-    titleScreen: 'slots', // slots | name | delete
-    slotCursor: 0,
-    currentSlot: 0,
-    playerName: 'ìˆ˜í˜¸ì',
-    nameConfirm: false,
-    nameCancel: false,
-    textSpeed: 'normal', // slow | normal | fast â€” ëŒ€í™”ì°½ ìë§‰ ì†ë„
-    largeText: false,    // í° ê¸€ì”¨(ì ‘ê·¼ì„±) ëª¨ë“œ
-    colorBlind: false,   // ìƒ‰ì•½ ì¹œí™” íŒ”ë ˆíŠ¸(ì ‘ê·¼ì„±) ëª¨ë“œ
-    difficulty: 'normal', // easy | normal | hard â€” í•™ë…„ë³„ ë‚œì´ë„
-    tts: false,          // ì½ì–´ì£¼ê¸°(TTS) ì ‘ê·¼ì„±
-    reduceFx: false,     // í™”ë©´ íš¨ê³¼ ì¤„ì´ê¸°(ê´‘ê³¼ë¯¼ì„±Â·ëª¨ì…˜ ë¯¼ê° ë°°ë ¤)
-    lowGraphics: false,  // ì €ì‚¬ì–‘ ê·¸ë˜í”½(ë°±í‚¹ í•´ìƒë„ 1x + ë¬´ê±°ìš´ íš¨ê³¼ ìµœì†Œí™”)
-    dashboard: { ret: 'title', cursor: 0, toast: 0 }, // êµì‚¬ìš© ëŒ€ì‹œë³´ë“œ
-    leaderboard: { ret: 'title', cursor: 0, toast: 0, rows: [], files: 0, skipped: 0 }, // Y-20 ë°˜ ìˆœìœ„í‘œ(ë°±ì—… ì—¬ëŸ¬ ê°œ í•©ì‚°)
-    classmode: { ret: 'world', sel: 0, confirm: false, toast: 0 }, // ìˆ˜ì—… ëª¨ë“œ(ì±•í„° ë°”ë¡œ ì‹œì‘)
-    prepost: null, // Y-18 ì‚¬ì „/ì‚¬í›„ ì ê²€ ëŸ°íƒ€ì„ { ret, ch, kind, quizzes, idx, qCursor, choiceOrder, score, phase, feedback }
-    report: { ret: 'world', slot: 0, toast: 0 }, // êµì‚¬ìš© í•™ìƒ ì§„ë‹¨ ë¦¬í¬íŠ¸
-    quizedit: { ret: 'title', cursor: 0, toast: 0, confirm: false }, // ì»¤ìŠ¤í…€ í€´ì¦ˆ í¸ì§‘Â·ê°€ì ¸ì˜¤ê¸°
-    cards: { ret: 'title', slot: 0, scroll: 0 },     // í•™ìŠµ ì¹´ë“œ ì»¬ë ‰ì…˜
-    cert: { ret: 'title', slot: 0, toast: 0 },       // ìˆ˜ë£Œì¦Â·ì§„ë„ ì¸ì¦ì„œ
-    hof: { ret: 'title', cat: 0 },                   // ëª…ì˜ˆì˜ ì „ë‹¹(ë¡œì»¬ ê¸°ë¡)
-    pauseScroll: 0,      // ì¼ì‹œì •ì§€ ë©”ë‰´ ìŠ¤í¬ë¡¤
-    puzzleRun: null,     // ë°©íƒˆì¶œ ëŸ°íƒ€ì„ ìƒíƒœ (í”ì ì˜ ë°© ë“±) â€” ë°© ë°–ì—ì„œëŠ” null
-    choice: null,        // ì›”ë“œ ì„ íƒì§€ ë°•ìŠ¤ { prompt, options, cursor, onPick }
-    choiceRet: 'world',
-    hint: null,          // í¼ì¦ íŒíŠ¸ ì˜¤ë²„ë ˆì´ { step, level, hints }
-    hintRet: 'world',
-    introDim: null,      // ìƒˆ ê²Œì„ ì¸íŠ¸ë¡œ ì•”ì „ { fadeFrame } â€” startNewGameì—ì„œ ì„¸íŒ…
-    warpCooldownFrames: 0, // ë§µ ì „í™˜ ì§í›„ ì¦‰ì‹œ ë˜ëŒì•„ê°€ëŠ” auto-bounce ë°©ì§€
-    lastWarp: null,        // { fromMap, toMap, exitDir, arrivedAt } â€” UX ê²€ì¦/í…ŒìŠ¤íŠ¸ìš©
-  };
-
-  const SLOT_COUNT = 3;
-
-  // ---------- ì €ì¥ ê°€ëŠ¥ ì—¬ë¶€ (ë¹„ê³µê°œ ëª¨ë“œÂ·ì €ì¥ê³µê°„ ê°€ë“ ë“±) ----------
-  // ëª¨ë“  ì“°ê¸°ê°€ ì¡°ìš©íˆ ì‹¤íŒ¨í•´ ì§„í–‰ì´ ì•ˆ ì €ì¥ë˜ëŠ” ìµœì•…ì˜ ìƒí™©ì„ ì‚¬ìš©ìì—ê²Œ ì•Œë¦°ë‹¤.
-  let storageOk = true;
-  function probeStorage() {
-    try {
-      const k = '__ae_probe__';
-      localStorage.setItem(k, '1');
-      const ok = localStorage.getItem(k) === '1';
-      localStorage.removeItem(k);
-      storageOk = ok;
-    } catch (e) { storageOk = false; }
-    return storageOk;
-  }
-  // ëŸ°íƒ€ì„ì— ì €ì¥ì´ ì²˜ìŒ ì‹¤íŒ¨í•˜ë©´(ì¿¼í„° ì´ˆê³¼ ë“±) ê²½ê³ ë¡œ ìŠ¹ê²©í•˜ê³  ì•ˆë‚´ë¥¼ ë„ìš´ë‹¤.
-  function noteStorageFail() {
-    if (storageOk) {
-      storageOk = false;
-      try { game.notice = { text: 'âš  ì´ ê¸°ê¸°ì—ì„œëŠ” ì§„í–‰ì´ ì €ì¥ë˜ì§€ ì•Šì•„ìš”. ë°±ì—…ì„ ì´ìš©í•´ ì£¼ì„¸ìš”.', t: 360 }; } catch (e) { /* ë¬´ì‹œ */ }
-    }
-  }
-
-  function newFlags() {
-    return {
-      talkedProf: false,
-      defeated: {
-        bekkyeomon: false, sujipmon: false, pyeonhyangmon: false,
-        hwangakmon: false, yuhokmon: false, hollimmon: false,
-        finalboss: false, yeongi: false,
-      },
-      mercy: 0,        // ë§ˆìŒì„ ì•ˆì•„ì¤€ íšŸìˆ˜ (ìŠ¤í…Œì´ì§€ 6~)
-      visited: {},     // ë§µ ì¸íŠ¸ë¡œ ì—°ì¶œ 1íšŒ í‘œì‹œìš©
-      trueEnding: false,
-      correctCount: 0,
-      battleCount: 0,
-      traceGiven: 0,       // ì ‘ìˆ˜ì²˜ì—ì„œ ë‚´ë³´ë‚¸ ì •ë³´ ìµœëŒ€ ê°œìˆ˜(ë‹‰ë„¤ì„ ì œì™¸) â€” ë³´ìŠ¤ ì½œë°± ì¸íŠ¸ë¡œìš©
-      chapter1Clear: false, // 1ì¥ ë³´ìŠ¤(ë‹´ì•„) ì„¤ë“ ì™„ë£Œ
-      chapter1Mercy: false, // 1ì¥ ë³´ìŠ¤ë¥¼ ìë¹„ë¡œ ë˜ëŒë ¸ëŠ”ê°€ (2ì¥ ì½œë°± ì¸íŠ¸ë¡œìš©)
-      chapter2Clear: false, // 2ì¥ ë³´ìŠ¤(ê¸°ìš¸) ì„¤ë“ ì™„ë£Œ
-      chapter2Mercy: false, // 2ì¥ ë³´ìŠ¤ë¥¼ ìë¹„ë¡œ ë˜ëŒë ¸ëŠ”ê°€ (3ì¥ ì½œë°± ì¸íŠ¸ë¡œìš©)
-      chapter3Clear: false, // 3ì¥ ë³´ìŠ¤(ê·¸ëŸ´ì‹¸) ì„¤ë“ ì™„ë£Œ
-      chapter3Mercy: false, // 3ì¥ ë³´ìŠ¤ë¥¼ ìë¹„ë¡œ ë˜ëŒë ¸ëŠ”ê°€
-      chapter4Clear: false, // 4ì¥ ë³´ìŠ¤(ë°˜ì§) ì„¤ë“ ì™„ë£Œ
-      chapter4Mercy: false, // 4ì¥ ë³´ìŠ¤ë¥¼ ìë¹„ë¡œ ë˜ëŒë ¸ëŠ”ê°€ (ë‹¤ìŒ ì¥ ì½œë°±ìš©)
-      seenPhoto1: false,   // ìŠ¤í† ë¦¬ ë³µì„  â€” ì£¼ì¸ì˜ ë°© ì„œëì˜ ë‚¡ì€ ì‚¬ì§„ì„ ë´¤ë‹¤
-      seenPhoto2: false,   // ìŠ¤í† ë¦¬ ë³µì„  2í˜¸ â€” í‘œë³¸ ì°½ê³  ëª¨ì„œë¦¬ ì„ ë°˜ì˜ Ã—í‘œ ì‚¬ì§„
-      seenArticle: false,  // ìŠ¤í† ë¦¬ ë³µì„  3í˜¸ â€” í¸ì§‘ì‹¤ ë¯¸ì†¡ì¶œ ê¸°ì‚¬í•¨
-      seenButtons: false,  // ìŠ¤í† ë¦¬ ë³µì„  4í˜¸ â€” ë°±ìŠ¤í…Œì´ì§€ êµ¬ì„ì˜ ë²„íŠ¼ ë”ë¯¸
-      rumorFixed: false,   // 3ì¥ í—ˆë¸Œ í•´ì œ â€” ì†¡ì¶œíƒ‘ ì •ì • ë³´ë„ ì™„ë£Œ(ì†Œë¬¸ ê±°ë¦¬ ê°œë°©)
-      profConfession: false, // ë°•ì‚¬ ê³ ë°± ì´ë²¤íŠ¸ 1íšŒ íŠ¸ë¦¬ê±° (chapter3Clear í›„ ë§ˆì„ ì§„ì…)
-      s4KeySecret: false,  // 4ì¥ ì—´ì‡ â‘  ë¹„ë°€ì¡°ê°(êµ¬ì—­â‘  ë£°ë › ê´‘ì¥ í´ë¦¬ì–´)
-      s4KeyId: false,      // 4ì¥ ì—´ì‡ â‘¡ ë³¸ì¸í‘œ(êµ¬ì—­â‘¡ íšŒì›ê°€ì… ê³¨ëª© í´ë¦¬ì–´)
-      s4StolenCard: null,  // ë°±ìŠ¤í…Œì´ì§€ ë§ˆìŠ¤í„°í‚¤ í•¨ì • â€” ì¼ì‹œ ë„ë‚œëœ ì¦ê±° ì¹´ë“œ id
-      adStickers: 0,       // ê´‘ê³  ë”±ì§€ ëˆ„ì (0~4) â€” HUD ê°€ì¥ìë¦¬ ì˜¤ì—¼, í•´ì§€ ë‹¨ë§ë¡œ ì œê±°
-      chapter5Clear: false, // 5ì¥ ë³´ìŠ¤(ë£¨ë¯¸) ì„¤ë“ ì™„ë£Œ
-      chapter5Mercy: false, // 5ì¥ ë³´ìŠ¤ë¥¼ ìë¹„ë¡œ ë˜ëŒë ¸ëŠ”ê°€ (ë‹¤ìŒ ì¥ ì½œë°±ìš©)
-      heardLumi: false,    // ìŠ¤í† ë¦¬ ë³µì„  5í˜¸ â€” ì ê¸´ ë³µë„ ë„ˆë¨¸ ë² ë€ë‹¤ì—ì„œ í”ë“¤ë¦¬ëŠ” ë£¨ë¯¸ ëª©ì†Œë¦¬
-      lumiTrust: 0,        // 5ì¥ í—ˆë¸Œ â€” ë£¨ë¯¸ì˜ ëª©ì†Œë¦¬ ì•ˆë‚´ ìˆœì„œ ì¹´ìš´í„°(ì‹ ë¢° êµ¬ê°„â†’ì†Œìœ  êµ¬ê°„)
-      goyoClear: false,    // íŒŒì´ë„ ë³´ìŠ¤(ê³ ìš”) ì„¤ë“ ì™„ë£Œ â€” ì½”ì–´ ê°œë°©
-      goyoMercy: false,    // ê³ ìš”ë¥¼ ìë¹„ë¡œ ë˜ëŒë ¸ëŠ”ê°€
-      shrineIdx: 0,        // ì½”ì–´ ì œë‹¨ ë´‰í—Œ í¼ì¦ ì§„í–‰(0~8, SHRINE_WHISPERS ê¸¸ì´)
-      shrineWrong: 0,      // ë´‰í—Œ í¼ì¦ ì˜¤ë‹µ íšŸìˆ˜(ê¸°ë¡ìš©)
-      shrineDone: false,   // ë´‰í—Œ í¼ì¦ ì™„ë£Œ â€” ì˜ì´ ë“±ì¥
-      bandiJoined: false,  // ë™í–‰ì ë°˜ë”” í•©ë¥˜(ì˜¤í”„ë‹ ì§í›„)
-      bandiRevealed: false, // ë°˜ë”” ì •ì²´ ê³µê°œ(ì½”ì–´ ë´‰í—Œ ì™„ë£Œ) â€” ë™í–‰ ì¢…ë£Œ
-      bandiSaid: {},       // ë°˜ë”” ì¡°ì–¸ì„ ì´ë¯¸ ê±´ë„¨ ë§µ (ë§µë‹¹ 1íšŒ)
-      introClue1: false,   // í”„ë¡¤ë¡œê·¸ ì‹¤í—˜ì‹¤ ë‹¨ì„œâ‘  íƒœë¸”ë¦¿
-      introClue2: false,   // í”„ë¡¤ë¡œê·¸ ì‹¤í—˜ì‹¤ ë‹¨ì„œâ‘¡ ëª¨ë‹ˆí„°
-      introClue3: false,   // í”„ë¡¤ë¡œê·¸ ì‹¤í—˜ì‹¤ ë‹¨ì„œâ‘¢ í¬ìŠ¤íŠ¸ì‡
-      introDoorOpen: false, // í”„ë¡¤ë¡œê·¸ ì‹¤í—˜ì‹¤ ì¶œêµ¬ ê°œë°© â€” ë‹¨ì„œ 3ê°œ ìˆ˜ì§‘ ì™„ë£Œ
-      introForestTrace: false, // ì‹¤í—˜ì‹¤ íƒˆì¶œ ì§í›„ ì •ì ì˜ ìˆ² ì²« í”ì  ì¡°ì‚¬
-      ttaraFirstEncounter: false, // ì •ì ì˜ ìˆ² ì•ˆìª½ì—ì„œ ë”°ë¼ì™€ ì²˜ìŒ ë§ˆì£¼ì¹œ ì „ìš© ì¡°ìš° ì—°ì¶œ
-      prologueClosed: false, // ë”°ë¼ ì„¤ë“ í›„ í”„ë¡¤ë¡œê·¸ ë§ˆë¬´ë¦¬ ì»·ì‹ ì„ ë³´ê³  1ì¥ìœ¼ë¡œ ì§„ì…í–ˆëŠ”ê°€
-      forestClearingRead: false, // ì •ì ì˜ ìˆ² ì•ˆìª½ ê³µí„° ì¡°ì‚¬ ê²°ê³¼ í‘œì‹
-      privacyLeak: 0,       // 1ì¥ ê°œì¸ì •ë³´ ê·¸ë¦¼ìê°€ ë¶™ì„ ë•Œ ì˜¤ë¥´ëŠ” ë…¸ì¶œë„(0~5)
-      privacyRecovery: 0,   // ë…¸ì¶œë„ MAX í›„ íšŒë³µ ëª©í‘œ ì§„í–‰(ì§€ìš´ ì •ë³´ ì¡°ê° ìˆ˜)
-      privacyRecoveryActive: false, // ë…¸ì¶œë„ 5ì—ì„œ ì¦‰ì‹œ ì‹¤íŒ¨ ëŒ€ì‹  íšŒë³µ ëª©í‘œ ë°œë™
-      flavorSeen: {},      // B-4 ì²˜ìŒ ì¡°ì‚¬í•œ í”Œë ˆì´ë²„ ì¢Œí‘œ('ë§µ:x,y') â€” íƒí—˜ ë„ì „ê³¼ì œìš©
-      bandiAnswer: null,   // U-3â‘¡ ë°˜ë””ê°€ ë¬¼ì€ ì§ˆë¬¸ì— ê³ ë¥¸ ë‹µ('together'|'alone') â€” íŒŒì´ë„ ì§ì „ ì½œë°±ìš©
-      bandiRecalled: false, // U-3â‘¢ íŒŒì´ë„ ì§ì „(quietyard ì§„ì…) ë°˜ë”” ì½œë°±ì„ ì´ë¯¸ ë´¤ëŠ”ê°€
-      bandiJokeShown: false, // U-3â‘£ ì²« ë³´ìŠ¤ í´ë¦¬ì–´ í›„ ë°˜ë”” ìˆœìˆ˜ ë†ë‹´ 1íšŒì„±
-      ng: false,           // U-5 ë‘ ë²ˆì§¸ ëª¨í—˜(NG+) â€” ëŒ€ì‚¬ ìŠ¤ì™‘ë§Œ, ë‚œì´ë„Â·ë³´ìƒ ë™ì¼
-      playerVoice: {},     // X-1 ì£¼ì¸ê³µ ë°˜ì‘ ì„ íƒ(ì •ë‹µ ì—†ìŒ) â€” ìˆœê°„ë³„ ê³ ë¥¸ ê°’(í‚¤â†’ì¸ë±ìŠ¤)
-      damaAsked: null,     // X-2 ê´‘ì¥ì—ì„œ ë‹´ì•„ì˜ ì¹´ë“œ ë¶€íƒì— ê³ ë¥¸ ë‹µ('keep'|'think')
-      banjjakAsked: null,  // X-2 ì•„ì¼€ì´ë“œì—ì„œ ë°˜ì§ì˜ ë¬´ëŒ€ ë¶€íƒì— ê³ ë¥¸ ë‹µ('watch'|'skip')
-      mercyGuideShown: false, // X-5 ê³ ìš”ì˜ ëœ° ì§„ì… ì‹œ ë°˜ë””ì˜ íšŒìˆ˜ ì•ˆë‚´(1íšŒ)
-      epilogueAsked: false, // X-1â‘¤ home/dawn ì—”ë”© í›„ ë§ˆì„ ì—í•„ë¡œê·¸ ë°˜ì‘(1íšŒ)
-      classSession: false, // X-8 ìˆ˜ì—…(ì°¨ì‹œ) ëª¨ë“œ ì„¸ì…˜ â€” ìˆ˜ì—… ì§„ì… ê²½ë¡œì—ì„œë§Œ true
-    };
-  }
-
-  // ---------- ì„¸ì´ë¸Œ ìŠ¬ë¡¯ (3ê°œ) ----------
-  function slotKey(i) { return 'ai-ethics-adventure-slot-' + i; }
-
-  // v3 ë§ˆì´ê·¸ë ˆì´ì…˜ â€” êµ¬ ì„¸ì´ë¸Œ(v1 í•„ë“œÂ·ì¦í‘œÂ·êµ¬ ì„¸ê³„ ì§„í–‰)ì—ì„œ ì±•í„° ì§„í–‰ë§Œ ìŠ¹ê³„í•œë‹¤.
-  // ì‚¬ë¼ì§„ ë§µì— ì„œ ìˆë˜ ì„¸ì´ë¸ŒëŠ” ë§ˆì„ ì…êµ¬ë¡œ ì˜®ê¸´ë‹¤. (v1 ì½˜í…ì¸  ë¬´ì†ìƒ ì›ì¹™ì€ v3ì—ì„œ ê³µì‹ íê¸°)
-  const V3_CAST = ['bekkyeomon', 'sujipmon', 'pyeonhyangmon', 'hwangakmon',
-    'yuhokmon', 'hollimmon', 'finalboss', 'yeongi'];
-  function migrateSlotV3(data) {
-    if (!data || !data.flags) return data;
-    // ë™í–‰ì ë„ì… ì „ ì„¸ì´ë¸Œ(ë²„ì „ ë¬´ê´€) â€” ì˜¤í”„ë‹ì„ ì´ë¯¸ ì§€ë‚œ ì§„í–‰ì´ë©´ ë°˜ë””ë„ í•©ë¥˜í•œ ê²ƒìœ¼ë¡œ ë³¸ë‹¤
-    if (data.flags.talkedProf && data.flags.bandiJoined === undefined) data.flags.bandiJoined = true;
-    if ((data.v || 0) >= 3) return data;
-    const f = data.flags;
-    delete f.badges;
-    delete f.sawBattleTip;
-    if (f.defeated) {
-      const d = {};
-      for (const k of V3_CAST) d[k] = !!f.defeated[k];
-      f.defeated = d;
-    }
-    if (f.mercyChoice) {
-      const m = {};
-      for (const k of V3_CAST) if (f.mercyChoice[k]) m[k] = f.mercyChoice[k];
-      f.mercyChoice = m;
-    }
-    if (!MAPS[data.map]) { data.map = 'village'; data.x = 13; data.y = 16; }
-    data.v = 3;
-    return data;
-  }
-  // v3â†’v4: introlab í”Œë˜ê·¸ ê¸°ë³¸ê°’. ì´ë¯¸ ìˆ² ì´ìƒì„ ì§„í–‰í•œ ì„¸ì´ë¸Œë¼ë©´ ë¬¸ì„ ì—´ê³  ì§€ë‚œ ê²ƒìœ¼ë¡œ ë³¸ë‹¤.
-  function migrateSlotV4(data) {
-    if (!data || !data.flags) return data;
-    const f = data.flags;
-    if (f.introClue1 !== undefined) return data; // ì´ë¯¸ v4 ì´ìƒ
-    f.introClue1 = !!f.talkedProf;
-    f.introClue2 = !!f.talkedProf;
-    f.introClue3 = !!f.talkedProf;
-    f.introDoorOpen = !!f.talkedProf;
-    f.introForestTrace = !!f.talkedProf;
-    data.v = 4;
-    return data;
-  }
-
-  // v4â†’v5: ì‹¤í—˜ì‹¤ íƒˆì¶œ ì§í›„ ìˆ² í”ì  í”Œë˜ê·¸. ê¸°ì¡´ ì§„í–‰ ì„¸ì´ë¸ŒëŠ” ì´ë¯¸ ë³¸ ê²ƒìœ¼ë¡œ ìŠ¹ê³„í•œë‹¤.
-  function migrateSlotV5(data) {
-    if (!data || !data.flags) return data;
-    if (data.flags.introForestTrace === undefined) {
-      data.flags.introForestTrace = !!data.flags.talkedProf || !!(data.flags.defeated && data.flags.defeated.bekkyeomon);
-    }
-    data.v = 5;
-    return data;
-  }
-
-  // v5â†’v6: ë”°ë¼ ì²« ì¡°ìš° ì „ìš© ì—°ì¶œ í”Œë˜ê·¸. ì´ë¯¸ ë”°ë¼ë¥¼ ë˜ëŒë ¸ê±°ë‚˜ ë§ˆì„ê¹Œì§€ ì§„í–‰í•œ ì„¸ì´ë¸ŒëŠ” ë³¸ ê²ƒìœ¼ë¡œ ìŠ¹ê³„í•œë‹¤.
-  function migrateSlotV6(data) {
-    if (!data || !data.flags) return data;
-    if (data.flags.ttaraFirstEncounter === undefined) {
-      data.flags.ttaraFirstEncounter = !!(data.flags.defeated && data.flags.defeated.bekkyeomon);
-    }
-    data.v = 6;
-    return data;
-  }
-
-  // v6â†’v7: ê°œì¸ì •ë³´ ê·¸ë¦¼ì ì ‘ì´‰ í˜ë„í‹°(ë…¸ì¶œë„) ê¸°ë³¸ê°’. ê¸°ì¡´ ì„¸ì´ë¸ŒëŠ” ì•ˆì „ ìƒíƒœì—ì„œ ì‹œì‘í•œë‹¤.
-  function migrateSlotV7(data) {
-    if (!data || !data.flags) return data;
-    const f = data.flags;
-    if (f.privacyLeak === undefined) f.privacyLeak = 0;
-    if (f.privacyRecovery === undefined) f.privacyRecovery = 0;
-    if (f.privacyRecoveryActive === undefined) f.privacyRecoveryActive = false;
-    data.v = 7;
-    return data;
-  }
-
-  // v7â†’v8: í”„ë¡¤ë¡œê·¸ ë§ˆë¬´ë¦¬/ìˆ² ì•ˆìª½ ì¡°ì‚¬ í‘œì‹ ê¸°ë³¸ê°’. ì´ë¯¸ ë”°ë¼ë¥¼ ë˜ëŒë¦° ì„¸ì´ë¸ŒëŠ” 1ì¥ ì§„ì… íë¦„ì„ ë³¸ ê²ƒìœ¼ë¡œ ìŠ¹ê³„í•œë‹¤.
-  function migrateSlotV8(data) {
-    if (!data || !data.flags) return data;
-    const f = data.flags;
-    if (f.prologueClosed === undefined) f.prologueClosed = !!(f.defeated && f.defeated.bekkyeomon);
-    if (f.forestClearingRead === undefined) f.forestClearingRead = false;
-    data.v = 8;
-    return data;
-  }
-
-  function loadSlot(i) {
-    try {
-      const raw = localStorage.getItem(slotKey(i));
-      return raw ? migrateSlotV8(migrateSlotV7(migrateSlotV6(migrateSlotV5(migrateSlotV4(migrateSlotV3(JSON.parse(raw))))))) : null;
-    } catch (e) { return null; }
-  }
-
-  function writeSlot(i, data) {
-    try { localStorage.setItem(slotKey(i), JSON.stringify(data)); }
-    catch (e) { noteStorageFail(); }
-  }
-
-  const SLOT_UNDO_KEY = 'ai-ethics-adventure-deleted-slot';
-  function slotAllKeys(i) {
-    return [slotKey(i), statsKey(i), mistakesKey(i), metaKey(i), puzzleKey(i)];
-  }
-  function deleteSlot(i) {
-    // ë˜ì‚´ë¦¬ê¸° ì•ˆì „ë§ â€” ì§€ìš°ê¸° ì§ì „ ì´ ìŠ¬ë¡¯ì˜ ëª¨ë“  ë°ì´í„°ë¥¼ ìŠ¤ëƒ…ìƒ·í•´ ë‘”ë‹¤.
-    // ê³µìš© íƒœë¸”ë¦¿ì—ì„œ ë‹¤ë¥¸ í•™ìƒì˜ ì„¸ì´ë¸Œë¥¼ ì‹¤ìˆ˜ë¡œ ì§€ì›Œë„ 1íšŒ ë³µêµ¬í•  ìˆ˜ ìˆë‹¤.
-    try {
-      // ts â€” Y-17b ìŠ¤ëƒ…ìƒ· ë‚˜ì´ í‘œì‹œ(ë¡œë“œ ì‹œ 30ì¼ ì§€ë‚˜ë©´ ìë™ ì •ë¦¬). êµ¬ ìŠ¤ëƒ…ìƒ·(ts ì—†ìŒ)ì€
-      // ì‚­ì œí•˜ì§€ ì•Šê³  ì²« ë¡œë“œ ë•Œ ì§€ê¸ˆ ì‹œê°ìœ¼ë¡œ ë„ì¥ ì°ëŠ”ë‹¤(migrateSlotV3ì‹ í•˜ìœ„ í˜¸í™˜).
-      const snap = { slot: i, ts: Date.now() };
-      for (const k of slotAllKeys(i)) { const v = localStorage.getItem(k); if (v != null) snap[k] = v; }
-      localStorage.setItem(SLOT_UNDO_KEY, JSON.stringify(snap));
-    } catch (e) { /* ìš©ëŸ‰ ë¶€ì¡± ë“±ì´ë©´ ê·¸ëƒ¥ ì§„í–‰ */ }
-    try { localStorage.removeItem(slotKey(i)); } catch (e) { /* ë¬´ì‹œ */ }
-    clearSlotLearning(i); // í•™ìƒì„ ì§€ìš°ë©´ í•™ìŠµ ê¸°ë¡(ì¼ì§€Â·ë³µìŠµÂ·ë„ì „ê³¼ì œ)ë„ í•¨ê»˜ ì§€ìš´ë‹¤
-  }
-  function undoDeleteSlot() {
-    let snap;
-    try { snap = JSON.parse(localStorage.getItem(SLOT_UNDO_KEY)); } catch (e) { return { ok: false }; }
-    if (!snap || typeof snap.slot !== 'number') return { ok: false };
-    let n = 0;
-    for (const k of slotAllKeys(snap.slot)) {
-      if (snap[k] != null) { try { localStorage.setItem(k, snap[k]); n++; } catch (e) { /* ë¬´ì‹œ */ } }
-    }
-    if (puzzleLogCache && puzzleLogCache.slot === snap.slot) puzzleLogCache = null;
-    try { localStorage.removeItem(SLOT_UNDO_KEY); } catch (e) { /* ë¬´ì‹œ */ }
-    return { ok: n > 0, slot: snap.slot };
-  }
-  function hasDeletedSlot() {
-    try { return !!localStorage.getItem(SLOT_UNDO_KEY); } catch (e) { return false; }
-  }
-
-  // ê¸°ì¡´ ë‹¨ì¼ ì„¸ì´ë¸Œë¥¼ ìŠ¬ë¡¯ 0ìœ¼ë¡œ 1íšŒ ì´ì „í•œë‹¤.
-  function migrateOldSave() {
-    let old = null;
-    try { const r = localStorage.getItem(SAVE_KEY); old = r ? JSON.parse(r) : null; } catch (e) { old = null; }
-    if (old && old.flags && !loadSlot(0)) {
-      writeSlot(0, { name: 'ìˆ˜í˜¸ì', map: old.map, x: old.x, y: old.y, flags: old.flags, updatedAt: Date.now() });
-      try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ë¬´ì‹œ */ }
-    }
-  }
-
-  const SAVE_VERSION = 8;
-  function save() {
-    writeSlot(game.currentSlot, {
-      v: SAVE_VERSION,
-      name: game.playerName,
-      map: game.map,
-      x: game.player.x, y: game.player.y,
-      flags: game.flags,
-      updatedAt: Date.now(),
-    });
-  }
-
-  // ì±•í„° ì§„í–‰ ë¼ë²¨ (íƒ€ì´í‹€ ìŠ¬ë¡¯ í‘œì‹œìš©) â€” í”„ë¡¤ë¡œê·¸ â†’ 1~5ì¥ â†’ íŒŒì´ë„
-  function chapterProgressLabel(flags) {
-    const d = (flags && flags.defeated) || {};
-    if (flags.chapter5Clear) return 'íŒŒì´ë„';
-    if (flags.chapter4Clear) return '5ì¥';
-    if (flags.chapter3Clear) return '4ì¥';
-    if (flags.chapter2Clear) return '3ì¥';
-    if (flags.chapter1Clear) return '2ì¥';
-    if (d.bekkyeomon) return '1ì¥';
-    return 'í”„ë¡¤ë¡œê·¸';
-  }
-
-  // ìŠ¬ë¡¯ ìš”ì•½ (íƒ€ì´í‹€ í‘œì‹œìš©). ì—†ìœ¼ë©´ null.
-  function slotSummary(i) {
-    const s = loadSlot(i);
-    if (!s || !s.flags) return null;
-    return {
-      name: sanitizeName(s.name),
-      stage: chapterProgressLabel(s.flags),
-      mercy: s.flags.mercy || 0,
-      done: !!(s.flags.defeated && s.flags.defeated.yeongi),
-      endingId: s.flags.endingId || null,
-    };
-  }
-
-  // ë°œê²¬í•œ ì—”ë”© ê¸°ë¡ â€” ì„¸ì´ë¸Œì™€ ë³„ê°œë¡œ, ê²Œì„ì„ ë‹¤ì‹œ ì‹œì‘í•´ë„ ë‚¨ëŠ”ë‹¤
-  const ENDINGS_KEY = 'ai-ethics-adventure-endings';
-  function getEndingsSeen() {
-    try { return JSON.parse(localStorage.getItem(ENDINGS_KEY)) || {}; }
-    catch (e) { return {}; }
-  }
-  function recordEndingSeen(id) {
-    try {
-      const seen = getEndingsSeen();
-      seen[id] = true;
-      localStorage.setItem(ENDINGS_KEY, JSON.stringify(seen));
-    } catch (e) { /* ì €ì¥ ë¶ˆê°€ í™˜ê²½ì´ë©´ ë¬´ì‹œ */ }
-  }
-
-  // ì„¤ì •(ìë§‰ ì†ë„) â€” ì„¸ì´ë¸Œì™€ ë³„ê°œë¡œ, ê²Œì„ì„ ë‹¤ì‹œ ì‹œì‘í•´ë„ ë‚¨ëŠ”ë‹¤
-  const SETTINGS_KEY = 'ai-ethics-adventure-settings';
-  // ìŒëŸ‰ 3ë‹¨ê³„ â€” êµì‹¤ì—ì„œ ì—¬ëŸ¬ ëŒ€ê°€ ë™ì‹œì— ëŒ ë•Œ 'ì‘ê²Œ'ê°€ í•„ìš”í•˜ë‹¤
-  const VOLUME_LEVELS = { normal: 1, low: 0.5, quiet: 0.2 };
-  const VOLUME_ORDER = ['normal', 'low', 'quiet'];
-  const VOLUME_LABEL = { normal: 'ë³´í†µ', low: 'ì‘ê²Œ', quiet: 'ì•„ì£¼ ì‘ê²Œ' };
-  const TEXT_SPEEDS = { slow: 0.5, normal: 1, fast: 2.5 };
-  const TEXT_SPEED_ORDER = ['normal', 'fast', 'slow'];
-  const TEXT_SPEED_LABEL = { normal: 'ë³´í†µ', fast: 'ë¹ ë¦„', slow: 'ëŠë¦¼' };
-  const DIFF_ORDER = ['easy', 'normal', 'hard'];
-  const DIFF_LABEL = { easy: 'í¬ê·¼í•˜ê²Œ', normal: 'ë³´í†µ', hard: 'ë§¤ì½¤í•˜ê²Œ' };
-  // OSì˜ "ë™ì‘ ì¤„ì´ê¸°" ì„ í˜¸ë¥¼ ê¸°ë³¸ê°’ìœ¼ë¡œ ì‚¼ëŠ”ë‹¤ (ê´‘ê³¼ë¯¼ì„±Â·ëª¨ì…˜ ë¯¼ê° ë°°ë ¤)
-  const prefersReduce = (() => {
-    try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
-    catch (e) { return false; }
-  })();
-  function loadSettings() {
-    try {
-      const s = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
-      if (!TEXT_SPEEDS[s.textSpeed]) s.textSpeed = 'normal';
-      s.largeText = !!s.largeText;
-      s.colorBlind = !!s.colorBlind;
-      if (!DIFF_ORDER.includes(s.difficulty)) s.difficulty = 'normal';
-      s.tts = !!s.tts;
-      s.reduceFx = ('reduceFx' in s) ? !!s.reduceFx : prefersReduce;
-      s.lowGraphics = !!s.lowGraphics;
-      if (!VOLUME_LEVELS[s.volume]) s.volume = 'normal';
-      return s;
-    } catch (e) { return { textSpeed: 'normal', largeText: false, colorBlind: false, difficulty: 'normal', tts: false, reduceFx: prefersReduce, lowGraphics: false }; }
-  }
-  function saveSettings() {
-    try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify({
-        textSpeed: game.textSpeed, largeText: game.largeText, colorBlind: game.colorBlind,
-        difficulty: game.difficulty, tts: game.tts, reduceFx: game.reduceFx, lowGraphics: game.lowGraphics,
-        volume: game.volume,
-      }));
-    } catch (e) { noteStorageFail(); }
-  }
-  function toggleReduceFx() {
-    game.reduceFx = !game.reduceFx;
-    saveSettings();
-    Sound.blip();
-  }
-  function toggleLowGraphics() {
-    game.lowGraphics = !game.lowGraphics;
-    saveSettings();
-    checkDPR();
-    try { tileCache.clear(); } catch (e) {}
-    game.notice = { text: game.lowGraphics ? 'ì €ì‚¬ì–‘ ê·¸ë˜í”½ ON â€” í™”ë©´ íš¨ê³¼ì™€ í•´ìƒë„ë¥¼ ë‚®ì·„ë‹¤' : 'ì €ì‚¬ì–‘ ê·¸ë˜í”½ OFF', t: 140 };
-    Sound.blip();
-  }
-  function cycleDifficulty() {
-    const i = DIFF_ORDER.indexOf(game.difficulty);
-    game.difficulty = DIFF_ORDER[(i + 1) % DIFF_ORDER.length];
-    saveSettings();
-    Sound.blip();
-  }
-  function toggleTTS() {
-    game.tts = !game.tts;
-    saveSettings();
-    if (game.tts) Speech.speak('ì½ì–´ì£¼ê¸°ë¥¼ ì¼°ì–´ìš”'); else Speech.stop();
-    Sound.blip();
-  }
-
-  // ---------- ì½ì–´ì£¼ê¸° (TTS) â€” Web Speech API ----------
-  const Speech = {
-    _voice: null,
-    _voicePicked: false,
-    supported() { try { return typeof window !== 'undefined' && 'speechSynthesis' in window; } catch (e) { return false; } },
-    // í•œêµ­ì–´ ìŒì„±ì„ ê³ ë¥¸ë‹¤ (ì—†ìœ¼ë©´ ê¸°ë³¸). getVoicesëŠ” ë¹„ë™ê¸°ë¼ voiceschanged ì´í›„ì— ì±„ì›Œì§„ë‹¤.
-    pickVoice() {
-      if (!this.supported()) return;
-      try {
-        const vs = window.speechSynthesis.getVoices() || [];
-        // ê¸°ê¸° ë‚´ì¥(localService) ìŒì„± ìš°ì„  â€” ë„¤íŠ¸ì›Œí¬ ìŒì„±ì€ ëŒ€ì‚¬ í…ìŠ¤íŠ¸(í•™ìƒ ë³„ëª… í¬í•¨)ê°€
-        // ë¸Œë¼ìš°ì € ì œì¡°ì‚¬ ì„œë²„ë¡œ ë‚˜ê°ˆ ìˆ˜ ìˆë‹¤ (ê°œì¸ì •ë³´ ì•ˆë‚´ ë¬¸ì„œì™€ ì¼ê´€ë˜ê²Œ)
-        const ko = (v) => v.lang && v.lang.toLowerCase().indexOf('ko') === 0;
-        this._voice = vs.find((v) => ko(v) && v.localService)
-          || vs.find(ko)
-          || vs.find((v) => /korean|í•œêµ­/i.test(v.name || '')) || null;
-        if (vs.length > 0) this._voicePicked = true;
-      } catch (e) { /* ë¬´ì‹œ */ }
-    },
-    speak(text) {
-      if (!game.tts || !this.supported() || !text) return;
-      try {
-        if (!this._voicePicked) this.pickVoice();
-        window.speechSynthesis.cancel();
-        const u = new window.SpeechSynthesisUtterance(String(text).replace(/\n/g, ' ').replace(/[â™¥â™ªâ˜…â˜†â—†â—‡â—‹Ã—â–¶â—·â—âœ¿â‡„â†’]/g, ' '));
-        u.lang = 'ko-KR';
-        u.rate = 0.95;
-        if (this._voice) u.voice = this._voice;
-        window.speechSynthesis.speak(u);
-      } catch (e) { /* ë¯¸ì§€ì›/ì°¨ë‹¨ í™˜ê²½ ë¬´ì‹œ */ }
-    },
-    stop() { try { if (this.supported()) window.speechSynthesis.cancel(); } catch (e) { /* ë¬´ì‹œ */ } },
-  };
-  // í€´ì¦ˆ ë¬¸ì œ+ë³´ê¸°ë¥¼ ì½ì–´ ì¤€ë‹¤ (í‘œì‹œ ìˆœì„œëŒ€ë¡œ)
-  function speakQuiz(qText, choiceTexts) {
-    if (!game.tts) return;
-    Speech.speak(qText + '. ' + choiceTexts.map((c, i) => `${i + 1}ë²ˆ, ${c}`).join('. '));
-  }
-  function speakFeedback(correct, why) {
-    if (!game.tts) return;
-    Speech.speak((correct ? 'ì •ë‹µ! ' : 'ì•„ì‰¬ì›Œìš”. ') + why);
-  }
-  function cycleTextSpeed() {
-    const i = TEXT_SPEED_ORDER.indexOf(game.textSpeed);
-    game.textSpeed = TEXT_SPEED_ORDER[(i + 1) % TEXT_SPEED_ORDER.length];
-    saveSettings();
-    Sound.blip();
-  }
-  function toggleLargeText() {
-    game.largeText = !game.largeText;
-    saveSettings();
-    Sound.blip();
-  }
-  function toggleColorBlind() {
-    game.colorBlind = !game.colorBlind;
-    saveSettings();
-    Sound.blip();
-  }
-  // í° ê¸€ì”¨ ëª¨ë“œ ë°°ìœ¨ â€” ì½ê¸° ì¤‘ì‹¬ í™”ë©´(ëŒ€í™”Â·í€´ì¦ˆ)ì˜ ê¸€ì/ì¤„ê°„ê²©ì— ì ìš©
-  function TF() { return game.largeText ? 1.25 : 1; }
-  function fs(px, bold) { return (bold ? 'bold ' : '') + Math.round(px * TF()) + 'px monospace'; }
-  function lh(px) { return Math.round(px * TF()); }
-  // ì˜ë¯¸ ìƒ‰ìƒ â€” ìƒ‰ì•½ ëª¨ë“œì—ì„œëŠ” ë¹¨ê°•/ì´ˆë¡ ëŒ€ì‹  êµ¬ë¶„ì´ ì‰¬ìš´ íŒŒë‘/ì£¼í™©(Okabe-Ito ê³„ì—´)
-  function monName(id) { const m = MONSTERS[id]; return (m && m.name) || id; }
-  function okColor() { return game.colorBlind ? '#3b8ed0' : '#5cb85c'; }   // ì •ë‹µÂ·ë†’ìŒ
-  function warnColor() { return game.colorBlind ? '#e69f00' : '#ffd644'; } // ë³´í†µ
-  function badColor() { return game.colorBlind ? '#d55e00' : '#e0453a'; }  // ì˜¤ë‹µÂ·ë‚®ìŒ
-
-  // ---------- í•™ìƒ(ìŠ¬ë¡¯)ë³„ í•™ìŠµ ë°ì´í„° ----------
-  // ì¼ì§€Â·ë³µìŠµ ë…¸íŠ¸Â·í†µê³„ëŠ” "ì´ ìŠ¬ë¡¯ì„ ì“°ëŠ” í•™ìƒ"ì˜ ê°œì¸ ê¸°ë¡ì´ë‹¤.
-  // ìŠ¬ë¡¯ë§ˆë‹¤ ë”°ë¡œ ëˆ„ì ë˜ê³ , ìŠ¬ë¡¯ì„ ì§€ìš°ë©´ í•¨ê»˜ ì§€ì›Œì§„ë‹¤.
-  // (ì¹œêµ¬ ìˆ˜ì²©Â·ë°œê²¬ ì—”ë”©ì€ ê¸°ê¸° ê³µìš© ì»¬ë ‰ì…˜ìœ¼ë¡œ ê·¸ëŒ€ë¡œ ë‘”ë‹¤.)
-  function activeSlot() {
-    // íƒ€ì´í‹€ì—ì„œëŠ” ì»¤ì„œê°€ ê°€ë¦¬í‚¤ëŠ” ìŠ¬ë¡¯, í”Œë ˆì´ ì¤‘ì—ëŠ” ì§„í–‰ ì¤‘ì¸ ìŠ¬ë¡¯
-    return game.mode === 'title' ? game.slotCursor : game.currentSlot;
-  }
-  function slotLearnName(slot) {
-    const s = loadSlot(slot);
-    if (s && s.name) return sanitizeName(s.name);
-    if (slot === game.currentSlot && game.playerName) return sanitizeName(game.playerName);
-    return 'ìˆ˜í˜¸ì';
-  }
-  function slotFlags(slot) {
-    if (slot === game.currentSlot && game.flags) return game.flags;
-    const s = loadSlot(slot);
-    return (s && s.flags) ? s.flags : null;
-  }
-
-  // ì˜¤ë‹µ ë³µìŠµ ë…¸íŠ¸ â€” í‹€ë¦° ë¬¸ì œë¥¼ ìŠ¬ë¡¯ë³„ë¡œ ê¸°ë¡
-  const MISTAKES_KEY = 'ai-ethics-adventure-mistakes';
-  function mistakesKey(slot) { return MISTAKES_KEY + '-' + slot; }
-  function getMistakes(slot) {
-    try { return JSON.parse(localStorage.getItem(mistakesKey(slot))) || {}; }
-    catch (e) { return {}; }
-  }
-  function recordMistake(slot, q) {
-    if (!q._qid) return;
-    try {
-      const m = getMistakes(slot);
-      m[q._qid] = { topic: q._topic, q: q.q, a: q.a, c: q.c, why: q.why };
-      localStorage.setItem(mistakesKey(slot), JSON.stringify(m));
-    } catch (e) { /* ì €ì¥ ë¶ˆê°€ í™˜ê²½ì´ë©´ ë¬´ì‹œ */ }
-  }
-  function clearMistake(slot, qid) {
-    try {
-      const m = getMistakes(slot);
-      delete m[qid];
-      localStorage.setItem(mistakesKey(slot), JSON.stringify(m));
-    } catch (e) { /* ì €ì¥ ë¶ˆê°€ í™˜ê²½ì´ë©´ ë¬´ì‹œ */ }
-  }
-  function mistakeCount(slot) { return Object.keys(getMistakes(slot)).length; }
-
-  // í•™ìŠµ ì§„ì²™ë„ â€” ì£¼ì œë³„ ì •ë‹µ/ì‹œë„ë¥¼ ìŠ¬ë¡¯ë³„ë¡œ ëˆ„ì 
-  const STATS_KEY = 'ai-ethics-adventure-stats';
-  function statsKey(slot) { return STATS_KEY + '-' + slot; }
-  // ì£¼ì œ í‚¤ â†’ ì§§ì€ í•œê¸€ ë¼ë²¨. ë‹¨ì¼ ì¶œì²˜ëŠ” data.jsì˜ TOPIC_LABEL.
-  function topicLabel(t) { return TOPIC_LABEL[t] || t; }
-  function getStats(slot) {
-    try { return JSON.parse(localStorage.getItem(statsKey(slot))) || {}; }
-    catch (e) { return {}; }
-  }
-  function recordTopicResult(slot, topic, correct) {
-    if (!topic) return;
-    try {
-      const s = getStats(slot);
-      const e = s[topic] || { correct: 0, total: 0 };
-      e.total += 1;
-      if (correct) e.correct += 1;
-      s[topic] = e;
-      localStorage.setItem(statsKey(slot), JSON.stringify(s));
-    } catch (e) { /* ì €ì¥ ë¶ˆê°€ í™˜ê²½ì´ë©´ ë¬´ì‹œ */ }
-  }
-  // í•™ìŠµ ë°ì´í„°ë¥¼ í•œ í™”ë©´ ë¶„ëŸ‰ìœ¼ë¡œ ì •ë¦¬í•œë‹¤ (ì¼ì§€Â·ë¦¬í¬íŠ¸ ê³µìš©)
-  function buildLearningSummary(slot) {
-    const stats = getStats(slot);
-    const rows = Object.keys(stats)
-      .filter((t) => stats[t].total > 0)
-      .map((t) => ({
-        topic: t, label: topicLabel(t),
-        correct: stats[t].correct, total: stats[t].total,
-        rate: stats[t].correct / stats[t].total,
-      }))
-      .sort((a, b) => a.rate - b.rate); // ì•½í•œ ì£¼ì œê°€ ìœ„ë¡œ
-    let totC = 0, totN = 0;
-    for (const r of rows) { totC += r.correct; totN += r.total; }
-    return {
-      rows,
-      attempted: totN,
-      correct: totC,
-      overallRate: totN ? totC / totN : 0,
-      weak: rows.filter((r) => r.total >= 2 && r.rate < 0.6).map((r) => r.label),
-      strongTopics: rows.filter((r) => r.total >= 1 && r.rate >= 0.8).length,
-      perfectTopic: rows.some((r) => r.total >= 3 && r.rate >= 1),
-    };
-  }
-
-  // ì±Œë¦°ì§€Â·ë„ì „ê³¼ì œìš© ìŠ¬ë¡¯ë³„ ë©”íƒ€ (ìµœê³  ì ìˆ˜, ì™„ì£¼ íšŸìˆ˜)
-  const META_KEY = 'ai-ethics-adventure-meta';
-  function metaKey(slot) { return META_KEY + '-' + slot; }
-  function getMeta(slot) {
-    try { return JSON.parse(localStorage.getItem(metaKey(slot))) || {}; }
-    catch (e) { return {}; }
-  }
-  function recordChallengeResult(slot, score, total) {
-    try {
-      const m = getMeta(slot);
-      m.challengeRuns = (m.challengeRuns || 0) + 1;
-      m.challengeBest = Math.max(m.challengeBest || 0, score);
-      m.challengeBestTotal = total;
-      localStorage.setItem(metaKey(slot), JSON.stringify(m));
-    } catch (e) { /* ì €ì¥ ë¶ˆê°€ í™˜ê²½ì´ë©´ ë¬´ì‹œ */ }
-  }
-
-  // ìŠ¬ë¡¯ ì‚­ì œ ì‹œ í•™ìŠµ ë°ì´í„°ë„ í•¨ê»˜ ì§€ìš´ë‹¤ (ë°©íƒˆì¶œ í¼ì¦ ì§„í–‰ ë¡œê·¸ í¬í•¨)
-  function clearSlotLearning(slot) {
-    try {
-      localStorage.removeItem(statsKey(slot));
-      localStorage.removeItem(mistakesKey(slot));
-      localStorage.removeItem(metaKey(slot));
-      localStorage.removeItem(puzzleKey(slot));
-      // ì§€ìš´ ìŠ¬ë¡¯ì´ ë©”ëª¨ì´ì¦ˆ ìºì‹œì— ë‚¨ì•„ ìˆìœ¼ë©´ ë¬´íš¨í™”(ë‹¤ìŒ getPuzzleLogê°€ ë¹ˆ ê°’ì„ ë°˜í™˜í•˜ê²Œ)
-      if (puzzleLogCache && puzzleLogCache.slot === slot) puzzleLogCache = null;
-    } catch (e) { /* ë¬´ì‹œ */ }
-  }
-
-  // ê¸°ì¡´ ì „ì—­ í•™ìŠµ ë°ì´í„°(ì´ì „ ë²„ì „)ë¥¼ ìŠ¬ë¡¯ 0ìœ¼ë¡œ 1íšŒ ì´ì „í•œë‹¤
-  function migrateLearningData() {
-    try {
-      const oldStats = localStorage.getItem(STATS_KEY);
-      if (oldStats && !localStorage.getItem(statsKey(0))) {
-        localStorage.setItem(statsKey(0), oldStats);
-        localStorage.removeItem(STATS_KEY);
-      }
-      const oldMist = localStorage.getItem(MISTAKES_KEY);
-      if (oldMist && !localStorage.getItem(mistakesKey(0))) {
-        localStorage.setItem(mistakesKey(0), oldMist);
-        localStorage.removeItem(MISTAKES_KEY);
-      }
-    } catch (e) { /* ë¬´ì‹œ */ }
-  }
-
-
-  // ---------- ì¼ì¼ ë„ì „ Â· ì—°ì† ì¶œì„(ìŠ¤íŠ¸ë¦­) ----------
-  // ë‚ ì§œ ë¬¸ìì—´(YYYY-MM-DD). ê¸°ë³¸ì€ ì˜¤ëŠ˜.
-  function todayStr(d) {
-    const t = d || new Date();
-    const p = (n) => String(n).padStart(2, '0');
-    return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}`;
-  }
-  function dayDiff(a, b) { // b - a (ì¼ ë‹¨ìœ„)
-    const pa = Date.parse(a + 'T00:00:00'), pb = Date.parse(b + 'T00:00:00');
-    if (isNaN(pa) || isNaN(pb)) return null;
-    return Math.round((pb - pa) / 86400000);
-  }
-  // ì´ ìŠ¬ë¡¯ìœ¼ë¡œ ë…¼ ë‚ ì„ ê¸°ë¡í•˜ê³  ì—°ì† ì¶œì„(streak)ì„ ê°±ì‹ í•œë‹¤.
-  function recordPlayDay(slot, day) {
-    day = day || todayStr();
-    const m = getMeta(slot);
-    if (m.lastPlayDay === day) return m; // ì˜¤ëŠ˜ ì´ë¯¸ ê¸°ë¡ë¨
-    const diff = m.lastPlayDay ? dayDiff(m.lastPlayDay, day) : null;
-    m.streak = diff === 1 ? (m.streak || 0) + 1 : 1; // ì´ì–´ì„œ ì˜¤ë©´ +1, ì•„ë‹ˆë©´ 1ë¶€í„°
-    m.lastPlayDay = day;
-    m.bestStreak = Math.max(m.bestStreak || 0, m.streak);
-    try { localStorage.setItem(metaKey(slot), JSON.stringify(m)); } catch (e) { /* ë¬´ì‹œ */ }
-    return m;
-  }
-  function dailyDoneToday(slot, day) {
-    return getMeta(slot).lastDailyDay === (day || todayStr());
-  }
-  function recordDailyDone(slot, score, total, day) {
-    day = day || todayStr();
-    const m = getMeta(slot);
-    m.lastDailyDay = day;
-    m.dailyRuns = (m.dailyRuns || 0) + 1;
-    m.dailyBest = Math.max(m.dailyBest || 0, score);
-    m.dailyTotal = total;
-    try { localStorage.setItem(metaKey(slot), JSON.stringify(m)); } catch (e) { /* ë¬´ì‹œ */ }
-    return m;
-  }
-
-  // ---------- ì»¤ìŠ¤í…€ í€´ì¦ˆ (ì„ ìƒë‹˜ì´ ì¶”ê°€í•œ ë¬¸ì œ) ----------
-  // ê¸°ê¸° ê³µìš©ìœ¼ë¡œ ì €ì¥í•œë‹¤. 'custom' ì£¼ì œë¡œ ì±Œë¦°ì§€Â·ë§ì¶¤Â·ì¼ì¼ ë¬¸ì œì— í•¨ê»˜ ì“°ì¸ë‹¤.
-  const CUSTOM_QUIZ_KEY = 'ai-ethics-adventure-customquiz';
-  function getCustomQuizzes() {
-    try {
-      const arr = JSON.parse(localStorage.getItem(CUSTOM_QUIZ_KEY));
-      return Array.isArray(arr) ? arr : [];
-    } catch (e) { return []; }
-  }
-  // í•œ ë¬¸í•­ì´ ì˜¬ë°”ë¥¸ í˜•ì‹ì¸ì§€ ê²€ì‚¬
-  function validQuizItem(q) {
-    return q && typeof q.q === 'string' && q.q.trim() &&
-      Array.isArray(q.a) && q.a.length === 3 && q.a.every((x) => typeof x === 'string' && x.trim()) &&
-      Number.isInteger(q.c) && q.c >= 0 && q.c < 3 &&
-      typeof q.why === 'string' && q.why.trim();
-  }
-  // ê°€ì ¸ì˜¨ í…ìŠ¤íŠ¸(JSON)ë¥¼ ê²€ì‚¬í•´ ì»¤ìŠ¤í…€ ë¬¸ì œë¡œ ì €ì¥. { ok, count, error } ë°˜í™˜.
-  // ì»¤ìŠ¤í…€ í€´ì¦ˆ ì…ë ¥ í•œë„ â€” í™”ë©´ ê¹¨ì§Â·ì €ì¥ì†Œ ë‚¨ìš©ì„ ë§‰ëŠ”ë‹¤.
-  const CUSTOM_MAX = 50;            // ìµœëŒ€ ë¬¸í•­ ìˆ˜
-  const Q_MAX = 140, A_MAX = 40, WHY_MAX = 200; // í•­ëª©ë³„ ê¸€ì ìˆ˜ ìƒí•œ
-  // ì™¸ë¶€ ì…ë ¥ ë¬¸ìì—´ ì •ë¦¬: ì œì–´ë¬¸ì ì œê±°, ê³µë°± ì •ë¦¬, ê¸¸ì´ ì œí•œ
-  function clampQuizStr(s, n) {
-    return String(s).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
-  }
-  function importCustomQuizzes(text) {
-    let obj;
-    try { obj = JSON.parse(text); } catch (e) { return { ok: false, error: 'parse' }; }
-    // í—ˆìš© í˜•ì‹: ë°°ì—´ [ {q,a,c,why}, ... ] ë˜ëŠ” { questions: [...] }
-    const list = Array.isArray(obj) ? obj : (obj && Array.isArray(obj.questions) ? obj.questions : null);
-    if (!list) return { ok: false, error: 'format' };
-    const clean = list.filter(validQuizItem).slice(0, CUSTOM_MAX).map((q) => ({
-      q: clampQuizStr(q.q, Q_MAX),
-      a: q.a.slice(0, 3).map((x) => clampQuizStr(x, A_MAX)),
-      c: q.c,
-      why: clampQuizStr(q.why, WHY_MAX),
-    })).filter((q) => q.q && q.a.every((x) => x) && q.why); // ì •ë¦¬ í›„ ë¹ˆ í•­ëª© ì œê±°
-    if (clean.length === 0) return { ok: false, error: 'empty' };
-    try { localStorage.setItem(CUSTOM_QUIZ_KEY, JSON.stringify(clean)); } catch (e) { return { ok: false, error: 'save' }; }
-    return { ok: true, count: clean.length };
-  }
-  function clearCustomQuizzes() {
-    try { localStorage.removeItem(CUSTOM_QUIZ_KEY); } catch (e) { /* ë¬´ì‹œ */ }
-  }
-  // ì»¤ìŠ¤í…€ ë¬¸ì œ ì–‘ì‹(í…œí”Œë¦¿) í…ìŠ¤íŠ¸
-  function customQuizTemplate() {
-    return JSON.stringify({
-      questions: [
-        { q: 'ë¬¸ì œë¥¼ ì—¬ê¸°ì— ì“°ì„¸ìš” (ì¤„ë°”ê¿ˆì€ \\n)', a: ['ë³´ê¸°1', 'ë³´ê¸°2', 'ë³´ê¸°3'], c: 1, why: 'ì •ë‹µ í•´ì„¤ì„ ì“°ì„¸ìš”' },
-      ],
-    }, null, 2);
-  }
-  // ê¸°ë³¸ í€´ì¦ˆ + ì»¤ìŠ¤í…€('custom' ì£¼ì œ)ì„ í•©ì¹œ ë¬¸ì œ ì¶œì²˜
-  function quizSource() {
-    const custom = getCustomQuizzes();
-    return custom.length ? Object.assign({}, QUIZZES, { custom }) : QUIZZES;
-  }
-
-  // ---------- ì ì‘í˜•(ë§ì¶¤) Â· ì¼ì¼ ë¬¸ì œ í’€ ----------
-  function quizQ(topic, i) {
-    const src = quizSource();
-    const base = src[topic] && src[topic][i];
-    return base ? Object.assign({}, base, { _topic: topic, _qid: topic + '#' + i }) : null;
-  }
-  function quizTopicKeys() {
-    const src = quizSource();
-    return Object.keys(src).filter((t) => src[t] && src[t].length > 0);
-  }
-  // ì•½ì  ì§‘ì¤‘: ì´ì „ì— í‹€ë¦° ë¬¸ì œ â†’ ì •ë‹µë¥  ë‚®ì€(ë˜ëŠ” ì•ˆ í‘¼) ì£¼ì œ ìˆœìœ¼ë¡œ ì±„ìš´ë‹¤.
-  function buildAdaptivePool(slot, n) {
-    n = n || CHALLENGE_LEN;
-    const out = [], used = new Set();
-    const mistakes = getMistakes(slot);
-    for (const qid of Object.keys(mistakes)) {
-      const m = mistakes[qid];
-      if (!m) continue;
-      const i = parseInt(String(qid).split('#')[1], 10);
-      const q = quizQ(m.topic, i);
-      if (!q) continue;
-      out.push(q); used.add(qid);
-      if (out.length >= n) break;
-    }
-    if (out.length < n) {
-      const summary = buildLearningSummary(slot);
-      const rate = {};
-      for (const r of summary.rows) rate[r.topic] = r.rate;
-      const src = quizSource();
-      const weighted = [];
-      for (const t of quizTopicKeys()) {
-        const r = (t in rate) ? rate[t] : 0; // ì•ˆ í‘¼ ì£¼ì œëŠ” 0(ì•½ì )ìœ¼ë¡œ ë³¸ë‹¤
-        const w = Math.max(1, Math.round((1 - r) * 4) + 1);
-        for (let k = 0; k < w; k++) weighted.push(t);
-      }
-      let guard = 0;
-      while (out.length < n && guard++ < 600) {
-        const t = weighted[Math.floor(Math.random() * weighted.length)];
-        const i = Math.floor(Math.random() * src[t].length);
-        const qid = t + '#' + i;
-        if (used.has(qid)) continue;
-        used.add(qid);
-        const qq = quizQ(t, i);
-        if (qq) out.push(qq);
-      }
-    }
-    return shuffled(out).slice(0, n);
-  }
-  // ì˜¤ëŠ˜ì˜ ë„ì „: ë‚ ì§œë¥¼ ì‹œë“œë¡œ ê²°ì •ì ìœ¼ë¡œ ë½‘ì•„, ê°™ì€ ë‚  ëª¨ë‘ ê°™ì€ ë¬¸ì œë¥¼ í‘¼ë‹¤.
-  function buildDailyPool(slot, day, n) {
-    day = day || todayStr();
-    n = n || CHALLENGE_LEN;
-    let seed = 0;
-    for (let i = 0; i < day.length; i++) seed = (seed * 31 + day.charCodeAt(i)) >>> 0;
-    const rng = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
-    const pool = [];
-    const src = quizSource();
-    for (const t of quizTopicKeys()) for (let i = 0; i < src[t].length; i++) pool.push(quizQ(t, i));
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    return pool.slice(0, n);
-  }
-
-  // Y-10 ë‚´ì¼ì˜ ë„ì „ í‹°ì € â€” buildDailyPool ë¡œì§ì„ 'ë‚´ì¼ ë‚ ì§œ' ì‹œë“œë¡œ ì¬ì‚¬ìš©í•´ ì£¼ì œë§Œ ë¯¸ë¦¬ ê³„ì‚°í•œë‹¤.
-  //   ë¬¸ì œ ìì²´ë¥¼ ë³´ì—¬ ì£¼ì§„ ì•Šê³ , ë‚´ì¼ í’€ì—ì„œ ê°€ì¥ ì¦ì€ ì£¼ì œ ë¼ë²¨ í•˜ë‚˜ë§Œ ì‚´ì§ ê·€ë”í•œë‹¤.
-  function tomorrowTopicLabel(slot, day) {
-    const tmr = day || todayStr(new Date(Date.now() + 86400000));
-    const pool = buildDailyPool(slot, tmr);
-    if (!pool.length) return null;
-    const cnt = {};
-    for (const q of pool) { const t = q._topic; if (t) cnt[t] = (cnt[t] || 0) + 1; }
-    let best = null, bn = -1;
-    for (const t in cnt) if (cnt[t] > bn) { bn = cnt[t]; best = t; }
-    return best ? (TOPIC_LABEL[best] || best) : null;
-  }
-
-  // ---------- ìˆ˜ì§‘Â·ê¾¸ë¯¸ê¸° ë³´ìƒ (ì¹­í˜¸ Â· í…Œë§ˆ) ----------
-  // í•™ìƒ(ìŠ¬ë¡¯)ë§ˆë‹¤ ë”°ë¡œ ëª¨ìœ¼ê³  ê³ ë¥¸ë‹¤. í•´ê¸ˆ ì¡°ê±´ì€ ë„ì „ê³¼ì œì™€ ê°™ì€ í•™ìŠµ ì»¨í…ìŠ¤íŠ¸ë¡œ íŒì •.
-  const COSMETIC_KEY = 'ai-ethics-adventure-cosmetic';
-  function cosmeticKey(slot) { return COSMETIC_KEY + '-' + slot; }
-  function getCosmetic(slot) {
-    try { return JSON.parse(localStorage.getItem(cosmeticKey(slot))) || {}; }
-    catch (e) { return {}; }
-  }
-  function setCosmetic(slot, data) {
-    try { localStorage.setItem(cosmeticKey(slot), JSON.stringify(data)); } catch (e) { /* ë¬´ì‹œ */ }
-  }
-  const TITLES = [
-    { id: 'rookie', name: 'ìƒˆë‚´ê¸° ìˆ˜í˜¸ì', desc: 'ëª¨í—˜ì„ ì‹œì‘í•œ ëª¨ë‘ì—ê²Œ', check: () => true },
-    { id: 'kind', name: 'ë”°ëœ»í•œ ë§ˆìŒ', desc: 'ë§ˆìŒì„ 5ë²ˆ ì•ˆì•„ ì£¼ê¸°', check: (c) => c.mercy >= 5 },
-    { id: 'scholar', name: 'ê³µë¶€ë²Œë ˆ', desc: 'ë¬¸ì œ 50ê°œ ì´ìƒ í’€ê¸°', check: (c) => c.attempted >= 50 },
-    { id: 'collector', name: 'ë§ˆìŒ ê¸°ë¡ê°€', desc: 'ì¹œêµ¬ ìˆ˜ì²© ì ˆë°˜ ì´ìƒ ì±„ìš°ê¸°', check: (c) => c.dex > 0 && c.dex * 2 >= c.dexTotal },
-    { id: 'champion', name: 'ì±Œë¦°ì§€ ì±”í”¼ì–¸', desc: 'í€´ì¦ˆ ì±Œë¦°ì§€ ë§Œì ', check: (c) => c.challengeBest > 0 && c.challengeBest === c.challengeBestTotal },
-    { id: 'master', name: 'ë§ˆìŒì˜ ìˆ˜í˜¸ì', desc: 'ì—”ë”© ë³´ê³  ë„ì „ê³¼ì œ 8ê°œ ë‹¬ì„±', check: (c) => c.endings >= 1 && c.achieved >= 8 },
-    // Y-9 ì „ ì¬ëŒ€ê²° ìƒëŒ€ Së“±ê¸‰ â€” ì™„ë²½í•˜ê²Œ ë“¤ì–´ ì¤€ ê²½ì²­ìì—ê²Œ. ìƒì ì´ ì•„ë‹ˆë¼ ê¸°ì¡´ í•´ê¸ˆ ë°©ì‹.
-    { id: 'listener', name: 'ì™„ë²½í•œ ê²½ì²­ì', desc: 'ëª¨ë“  ì¬ëŒ€ê²° ìƒëŒ€ Së“±ê¸‰', check: (c) => c.sRankTotal > 0 && c.sRankCount >= c.sRankTotal },
-  ];
-  const THEMES = [
-    { id: 'classic', name: 'í´ë˜ì‹', color: '#ffd644', desc: 'ê¸°ë³¸ ë…¸ë€ë¹›', check: () => true },
-    { id: 'forest', name: 'ìˆ²ë¹›', color: '#5cb85c', desc: 'ì²« ë§ˆìŒ ë˜ëŒë¦¬ê¸°', check: (c) => c.defeatedCount >= 1 },
-    { id: 'ocean', name: 'ë°”ë‹¤ë¹›', color: '#4ea8de', desc: 'ë¬¸ì œ 30ê°œ í’€ê¸°', check: (c) => c.attempted >= 30 },
-    { id: 'sunset', name: 'ë…¸ì„ë¹›', color: '#f08a24', desc: 'ë§ˆìŒ 8ë²ˆ ì•ˆì•„ ì£¼ê¸°', check: (c) => c.mercy >= 8 },
-    { id: 'galaxy', name: 'ì€í•˜ë¹›', color: '#b48ce0', desc: 'ì—”ë”© ë³´ê¸°', check: (c) => c.endings >= 1 },
-  ];
-  function unlockedCount(slot) {
-    const c = achievementCtx(slot);
-    return TITLES.filter((t) => t.check(c)).length + THEMES.filter((t) => t.check(c)).length;
-  }
-  function selectedTitle(slot) {
-    const c = achievementCtx(slot), cos = getCosmetic(slot);
-    const list = TITLES.filter((t) => t.check(c));
-    return list.find((t) => t.id === cos.title) || list[0] || null;
-  }
-  function selectedTheme(slot) {
-    const c = achievementCtx(slot), cos = getCosmetic(slot);
-    const list = THEMES.filter((t) => t.check(c));
-    return list.find((t) => t.id === cos.theme) || list[0] || null;
-  }
-  // UI ê°•ì¡°ìƒ‰ â€” ìƒ‰ì•½ ëª¨ë“œê°€ ìš°ì„ , ì•„ë‹ˆë©´ ê³ ë¥¸ í…Œë§ˆìƒ‰
-  function themeAccent() {
-    if (game.colorBlind) return warnColor();
-    const t = selectedTheme(activeSlot());
-    return t ? t.color : '#ffd644';
-  }
-  // B-1 íšë“ ìˆœê°„ íŒ¡íŒŒë¥´ â€” ìƒˆë¡œ í•´ê¸ˆëœ ì¹­í˜¸Â·í…Œë§ˆÂ·ë„ì „ê³¼ì œÂ·ë°°ì›€ ì¹´ë“œê°€ ìˆìœ¼ë©´
-  // ê·¸ 'ìˆœê°„'ì— í† ìŠ¤íŠ¸ + Sound.badge() + (reduceFx ì•„ë‹ˆë©´) ê°€ë²¼ìš´ í™”ë©´ ì—°ì¶œì„ ë‚¸ë‹¤.
-  // checkCosmeticUnlocks(ì¹­í˜¸/í…Œë§ˆ ack) íŒ¨í„´ì„ ì¼ë°˜í™”í–ˆë‹¤. í™•ì¸í•œ ëª©ë¡(ackAch/ackCards)ì„
-  // ìŠ¬ë¡¯ ê¾¸ë¯¸ê¸° ë©”íƒ€ì— ì €ì¥í•´ ì¤‘ë³µ ì•Œë¦¼ì„ ë§‰ê³ , ì²« ë¡œë“œ(ê¸°ì¤€ì„  ì„¸íŒ…)ëŠ” ì¡°ìš©íˆ ë„˜ì–´ê°„ë‹¤.
-  function checkUnlocks(slot) {
-    const cos = getCosmetic(slot);
-    let changed = false;
-
-    // â”€â”€ ì¹­í˜¸Â·í…Œë§ˆ (ê¸°ì¡´ ë™ì‘ ìœ ì§€) â”€â”€
-    const now = unlockedCount(slot);
-    const ack = cos.ack || 0;
-    if (now > ack) {
-      cos.ack = now; changed = true;
-      if (ack > 0) { // ì²« ì§„ì…(0â†’N)ì—ëŠ” ì‹œë„ëŸ½ì§€ ì•Šê²Œ ì¡°ìš©íˆ ë„˜ì–´ê°„ë‹¤
-        game.notice = { text: 'ìƒˆ ì¹­í˜¸Â·í…Œë§ˆê°€ ì—´ë ¸ì–´ìš”! (ë©”ë‰´ â†’ ê¸°ì–µì˜ ë°© â†’ ê¾¸ë¯¸ê¸°)', t: 200 };
-        Sound.unlock();
-      }
-    }
-
-    // â”€â”€ ë„ì „ê³¼ì œ ë‹¬ì„± ìˆœê°„ íŒ¡íŒŒë¥´ â”€â”€
-    const ctx0 = achievementCtx(slot);
-    const gotAch = ACHIEVEMENTS.filter((a) => a.check(ctx0)).map((a) => a.id);
-    if (cos.ackAch === undefined) {
-      cos.ackAch = gotAch; changed = true; // ì²« í™•ì¸ â€” ê¸°ì¤€ì„ ë§Œ ì¡°ìš©íˆ ê¸°ë¡
-    } else {
-      const newAch = gotAch.filter((id) => !cos.ackAch.includes(id));
-      if (newAch.length) {
-        cos.ackAch = gotAch; changed = true;
-        const a = ACHIEVEMENTS.find((x) => x.id === newAch[newAch.length - 1]);
-        if (a) fanfare(`â˜† ë„ì „ê³¼ì œ ë‹¬ì„±! ã€Œ${a.name}ã€`);
-      }
-    }
-
-    // â”€â”€ Y-9 ã€Œì™„ë²½í•œ ê²½ì²­ìã€ â€” ì „ ì¬ëŒ€ê²° ìƒëŒ€ Së“±ê¸‰ ë‹¬ì„± ìˆœê°„ ì „ìš© íŒ¡íŒŒë¥´(ê¸°ì¡´ í•´ê¸ˆ ìœ„ì— ì–¹ìŒ) â”€â”€
-    const listenerNow = TITLES.some((t) => t.id === 'listener' && t.check(ctx0));
-    if (cos.ackListener === undefined) {
-      cos.ackListener = listenerNow; changed = true; // ì²« í™•ì¸ â€” ê¸°ì¤€ì„ ë§Œ ì¡°ìš©íˆ ê¸°ë¡
-    } else if (listenerNow && !cos.ackListener) {
-      cos.ackListener = true; changed = true;
-      fanfare('ğŸ† ã€Œì™„ë²½í•œ ê²½ì²­ìã€ â€” ëª¨ë“  ë§ˆìŒì„ Së¡œ ë“¤ì–´ ì¤¬ì–´ìš”!');
-    }
-
-    // â”€â”€ ë°°ì›€ ì¹´ë“œ(ê¸°ì–µ ì¡°ê°) í•´ê¸ˆ ìˆœê°„ íŒ¡íŒŒë¥´ â”€â”€
-    const gotCards = LEARN_CARDS.filter((c) => cardUnlocked(slot, c.topic)).map((c) => c.topic);
-    if (cos.ackCards === undefined) {
-      cos.ackCards = gotCards; changed = true; // ì²« í™•ì¸ â€” ê¸°ì¤€ì„ ë§Œ ì¡°ìš©íˆ ê¸°ë¡
-    } else {
-      const newCards = gotCards.filter((t) => !cos.ackCards.includes(t));
-      if (newCards.length) {
-        cos.ackCards = gotCards; changed = true;
-        const c = LEARN_CARDS.find((x) => x.topic === newCards[newCards.length - 1]);
-        const label = c ? (TOPIC_LABEL[c.topic] || c.topic) : '';
-        // ì¹­í˜¸Â·í…Œë§ˆ í† ìŠ¤íŠ¸ê°€ ì´ë¯¸ ì´ í”„ë ˆì„ì„ ì°¨ì§€í–ˆìœ¼ë©´ ì¹´ë“œëŠ” ë‹¤ìŒ ê¸°íšŒë¡œ ë¯¸ë£¨ì§€ ì•Šê³ 
-        // ë®ì–´ì¨ë„ ë¬´ë°©í•˜ë‹¤(ë‘˜ ë‹¤ acked ë˜ì–´ ì¤‘ë³µ ì•Œë¦¼ì€ ì—†ë‹¤). ì†Œë¦¬ëŠ” ë°°ì§€ìŒìœ¼ë¡œ í†µì¼.
-        if (!(now > ack)) fanfare(`ğŸ“š ê¸°ì–µ ì¡°ê°ì„ ì–»ì—ˆë‹¤ â€” ã€Œ${label}ã€`);
-      }
-    }
-
-    if (changed) setCosmetic(slot, cos);
-  }
-  // íšë“ íŒ¡íŒŒë¥´ ê³µí†µ â€” í† ìŠ¤íŠ¸ + ë°°ì§€ìŒ + (reduceFx ì•„ë‹ˆë©´) ì§§ì€ í™”ë©´ ë°˜ì§ì„
-  function fanfare(text) {
-    game.notice = { text, t: 240 };
-    Sound.badge();
-    if (!game.reduceFx) game.unlockFlash = 24; // drawWorldì—ì„œ ì†Œë¹„
-  }
-  // êµ¬ ì´ë¦„ í˜¸í™˜ â€” ì—¬ì „íˆ ê³³ê³³ì—ì„œ ë¶€ë¥´ëŠ” ì§„ì…ì (ê¾¸ë¯¸ê¸° ì „ìš© í™•ì¸)ì„ ì¼ë°˜ í™•ì¸ìœ¼ë¡œ ìŠ¹ê²©
-  function checkCosmeticUnlocks(slot) { checkUnlocks(slot); }
-
-  // ---------- í•™ìŠµ ì¹´ë“œ ì»¬ë ‰ì…˜ ----------
-  // í•œ ì£¼ì œì—ì„œ í•œ ë²ˆì´ë¼ë„ ì •ë‹µì„ ë§íˆë©´ ê·¸ ì£¼ì œì˜ 'ë°°ì›€ ì¹´ë“œ'ê°€ ì—´ë¦°ë‹¤.
-  // ë³„ë„ ì €ì¥ ì—†ì´ ìŠ¬ë¡¯ë³„ ì •ë‹µ í†µê³„(getStats)ì—ì„œ ê·¸ëŒ€ë¡œ ëŒì–´ì˜¨ë‹¤ â†’ ë°±ì—…/ë³µì›ì—ë„ ìë™ ë°˜ì˜.
-  const LEARN_CARDS = [
-    { topic: 'privacy', icon: 'ğŸ”’', lesson: 'ì´ë¦„Â·ì£¼ì†ŒÂ·ì‚¬ì§„ ê°™ì€ ë‚´ ì •ë³´ëŠ” í•¨ë¶€ë¡œ ì…ë ¥í•˜ê±°ë‚˜ ì•Œë ¤ì£¼ì§€ ì•Šì•„ìš”.' },
-    { topic: 'copyright', icon: 'âœ', lesson: 'ë‚¨ì´ ë§Œë“  ê¸€Â·ê·¸ë¦¼Â·ìŒì•…ì„ ì“¸ ë• ì¶œì²˜ë¥¼ ë°íˆê³  í—ˆë½ì„ êµ¬í•´ìš”.' },
-    { topic: 'fake', icon: 'ğŸ”', lesson: 'AIì˜ ë‹µë„ í‹€ë¦´ ìˆ˜ ìˆì–´ìš”. ì—¬ëŸ¬ ê³³ì—ì„œ ì‚¬ì‹¤ì¸ì§€ í™•ì¸í•´ìš”.' },
-    { topic: 'bias', icon: 'âš–', lesson: 'AIëŠ” í•œìª½ìœ¼ë¡œ ì¹˜ìš°ì¹  ìˆ˜ ìˆì–´ìš”. ëª¨ë‘ì—ê²Œ ê³µì •í•œì§€ ì‚´í´ìš”.' },
-    { topic: 'balance', icon: 'ğŸŒ±', lesson: 'AIì— ë„ˆë¬´ ê¸°ëŒ€ì§€ ë§ê³  ìŠ¤ìŠ¤ë¡œ ìƒê°í•˜ëŠ” í˜ë„ ê¸¸ëŸ¬ìš”.' },
-    { topic: 'manners', icon: 'ğŸ’¬', lesson: 'ìƒëŒ€ê°€ AIë¼ë„ ê³ ìš´ ë§ë¡œ ì˜ˆì˜ ìˆê²Œ ëŒ€í™”í•´ìš”.' },
-    { topic: 'filterbubble', icon: 'ğŸ«§', lesson: 'ì¶”ì²œë§Œ ë³´ë©´ ìƒê°ì´ ì¢ì•„ì ¸ìš”. ë‹¤ì–‘í•œ ì •ë³´ë¥¼ ì°¾ì•„ë´ìš”.' },
-    { topic: 'safety', icon: 'ğŸ›¡', lesson: 'ì¤‘ìš”í•œ ê²°ì •ì€ AIì—ë§Œ ë§¡ê¸°ì§€ ë§ê³  ì‚¬ëŒì´ ê¼­ í™•ì¸í•´ìš”.' },
-    { topic: 'environment', icon: 'ğŸŒ', lesson: 'AIë„ ì „ê¸°ë¥¼ ë§ì´ ì¨ìš”. ê¼­ í•„ìš”í•  ë•Œ ì•Œë§ê²Œ ì‚¬ìš©í•´ìš”.' },
-    { topic: 'transparency', icon: 'ğŸ’¡', lesson: 'ì™œ ê·¸ëŸ° ë‹µì´ ë‚˜ì™”ëŠ”ì§€ ë¬¼ì–´ë³´ê³  ê·¼ê±°ë¥¼ ë”°ì ¸ë´ìš”.' },
-    { topic: 'responsibility', icon: 'ğŸ¤', lesson: 'AIë¥¼ ì“´ ê²°ê³¼ì—ëŠ” ê·¸ê²ƒì„ ì‚¬ìš©í•œ ì‚¬ëŒì˜ ì±…ì„ë„ ìˆì–´ìš”.' },
-    { topic: 'creativity', icon: 'ğŸ¨', lesson: 'AIì— ë§¡ê¸°ê¸° ì „ì— ë‚´ ìƒê°ìœ¼ë¡œ ë¨¼ì € ë§Œë“¤ì–´ ë´ìš”.' },
-    { topic: 'jobs', icon: 'ğŸ› ', lesson: 'AIëŠ” ë„êµ¬ì˜ˆìš”. ì‚¬ëŒê³¼ í˜ì„ í•©ì¹  ë•Œ ë” ì¢‹ì•„ì ¸ìš”.' },
-    { topic: 'emotion', icon: 'ğŸ’—', lesson: 'AIëŠ” ì§„ì§œ ì¹œêµ¬ë‚˜ ê°€ì¡±ì˜ ë§ˆìŒì„ ëŒ€ì‹ í•  ìˆ˜ ì—†ì–´ìš”.' },
-    { topic: 'security', icon: 'ğŸ”‘', lesson: 'ë¹„ë°€ë²ˆí˜¸ëŠ” ë¹„ë°€ë¡œ! ìˆ˜ìƒí•œ ë§í¬Â·ìš”ì²­ì€ ì–´ë¥¸ê»˜ í™•ì¸í•´ìš”.' },
-    { topic: 'footprint', icon: 'ğŸ‘£', lesson: 'ì¸í„°ë„·ì— ë‚¨ê¸´ ê¸°ë¡ì€ ì˜¤ë˜ ë‚¨ì•„ìš”. ì˜¬ë¦¬ê¸° ì „ì— í•œ ë²ˆ ë” ìƒê°í•´ìš”.' },
-    { topic: 'consent', icon: 'ğŸ“', lesson: 'ë‚´ ì •ë³´ë¥¼ ëª¨ì„ ë• ëˆ„ê°€Â·ì™œ ëª¨ìœ¼ëŠ”ì§€ ì•Œê³  ë™ì˜í•´ìš”.' },
-    { topic: 'identity', icon: 'ğŸ­', lesson: 'ë‚¨ì¸ ì²™í•˜ê±°ë‚˜ AIë¥¼ ì‚¬ëŒì¸ ì²™ ì†ì´ë©´ ì•ˆ ë¼ìš”.' },
-    { topic: 'persuasion', icon: 'ğŸª¤', lesson: 'ìê¾¸ ëˆ„ë¥´ê²Œ ë§Œë“œëŠ” í™”ë©´ì— ì†ì§€ ë§ê³  ì²œì²œíˆ ê²°ì •í•´ìš”.' },
-    { topic: 'genai', icon: 'âœ¨', lesson: 'AIëŠ” ê·¸ëŸ´ë“¯í•œ ê±°ì§“(í™˜ê°)ì„ ì§€ì–´ë‚¼ ìˆ˜ ìˆì–´ìš”. ê¼­ í™•ì¸í•´ìš”.' },
-    { topic: 'deepfake', icon: 'ğŸ¬', lesson: 'ì§„ì§œ ê°™ì€ ê°€ì§œ ì˜ìƒÂ·ëª©ì†Œë¦¬ê°€ ìˆì–´ìš”. ì¶œì²˜ë¥¼ ì˜ì‹¬í•´ ë´ìš”.' },
-    { topic: 'rumor', icon: 'ğŸ“£', lesson: 'í™•ì¸í•˜ì§€ ì•Šì€ ì†Œë¬¸ì€ í¼ëœ¨ë¦¬ì§€ ì•Šì•„ìš”. ì‚¬ì‹¤ì¸ì§€ ë¨¼ì € í™•ì¸í•´ìš”.' },
-    { topic: 'listen', icon: 'ğŸ‘‚', lesson: 'ë‚˜ì™€ ë‹¤ë¥¸ ì˜ê²¬ë„ ëê¹Œì§€ ë“¤ì–´ ë´ìš”. ê·€ë¥¼ ì—´ë©´ ìƒê°ì´ ë„“ì–´ì ¸ìš”.' },
-    { topic: 'saving', icon: 'ğŸ”‹', lesson: 'ë°ì´í„°Â·ì „ê¸°ëŠ” í•œì •ë¼ ìˆì–´ìš”. í•„ìš”í•œ ë§Œí¼ë§Œ ì•Œë§ê²Œ ì¨ìš”.' },
-    { topic: 'excuse', icon: 'ğŸ™‹', lesson: 'í•‘ê³„ë³´ë‹¤ "ë‚´ê°€ í–ˆì–´"ê°€ ë©‹ì ¸ìš”. ë‚´ í–‰ë™ì€ ë‚´ê°€ ì±…ì„ì ¸ìš”.' },
-  ];
-  function cardUnlocked(slot, topic) {
-    const s = getStats(slot)[topic];
-    return !!(s && s.correct >= 1);
-  }
-  function collectedCards(slot) {
-    return LEARN_CARDS.filter((c) => cardUnlocked(slot, c.topic)).length;
-  }
-
-  // ---------- ë°ì´í„° ë°±ì—… Â· ë³µì› ----------
-  function allBackupKeys() {
-    // CUSTOM_QUIZ_KEY í¬í•¨ â€” êµì‚¬ ì œì‘ ë¬¸í•­ì´ ê¸°ê¸° êµì²´ ì‹œ ìœ ì‹¤ë˜ì§€ ì•Šê²Œ (S-2)
-    const keys = [SETTINGS_KEY, ENDINGS_KEY, DEX_KEY, CUSTOM_QUIZ_KEY];
-    for (let i = 0; i < SLOT_COUNT; i++) {
-      keys.push(slotKey(i), statsKey(i), mistakesKey(i), metaKey(i), cosmeticKey(i), puzzleKey(i));
-    }
-    return keys;
-  }
-  function buildBackupText() {
-    const data = {};
-    for (const k of allBackupKeys()) {
-      const v = localStorage.getItem(k);
-      if (v != null) data[k] = v;
-    }
-    return JSON.stringify({ app: 'ai-ethics-adventure', version: 1, savedAt: Date.now(), data });
-  }
-  const BACKUP_UNDO_KEY = 'ai-ethics-adventure-restore-undo';
-  function applyBackup(text) {
-    let obj;
-    try { obj = JSON.parse(text); } catch (e) { return { ok: false, error: 'parse' }; }
-    if (!obj || obj.app !== 'ai-ethics-adventure' || !obj.data) return { ok: false, error: 'format' };
-    const valid = new Set(allBackupKeys());
-    const incoming = Object.keys(obj.data).filter((k) => valid.has(k));
-    // ì¸ì‹ ê°€ëŠ¥í•œ ë°ì´í„°ê°€ í•˜ë‚˜ë„ ì—†ìœ¼ë©´ ë®ì–´ì“°ì§€ ì•ŠëŠ”ë‹¤ â€” ì˜ëª»ëœ/ë¹ˆ íŒŒì¼ì— 'ì™„ë£Œ' ì˜¤í‘œì‹œ ë°©ì§€
-    if (incoming.length === 0) return { ok: false, error: 'empty' };
-    // ë˜ëŒë¦¬ê¸° ì•ˆì „ë§ â€” ë®ì–´ì“°ê¸° ì§ì „ í˜„ì¬ ìƒíƒœë¥¼ ìŠ¤ëƒ…ìƒ·í•´ ë‘”ë‹¤ (ì‹¤ìˆ˜ ë³µì› 1íšŒ ì·¨ì†Œìš©)
-    try { localStorage.setItem(BACKUP_UNDO_KEY, buildBackupText()); } catch (e) { /* ìš©ëŸ‰ ë¶€ì¡± ë“±ì´ë©´ ê·¸ëƒ¥ ì§„í–‰ */ }
-    let count = 0;
-    for (const k of incoming) {
-      try { localStorage.setItem(k, String(obj.data[k])); count++; } catch (e) { /* ë¬´ì‹œ */ }
-    }
-    return { ok: true, count };
-  }
-  // ì§ì „ ë³µì›ì„ ì·¨ì†Œí•œë‹¤ (ë˜ëŒë¦¬ê¸° ìŠ¤ëƒ…ìƒ·ì´ ìˆì„ ë•Œë§Œ).
-  function undoRestore() {
-    let snap;
-    try { snap = localStorage.getItem(BACKUP_UNDO_KEY); } catch (e) { return { ok: false }; }
-    if (!snap) return { ok: false };
-    const res = applyBackup(snap); // ìŠ¤ëƒ…ìƒ·ì„ ë‹¤ì‹œ ì ìš© (ì´ë•Œ ë˜ undo ìŠ¤ëƒ…ìƒ·ì´ ê°±ì‹ ë¨)
-    try { localStorage.removeItem(BACKUP_UNDO_KEY); } catch (e) { /* ë¬´ì‹œ */ }
-    return res;
-  }
-  function hasRestoreUndo() {
-    try { return !!localStorage.getItem(BACKUP_UNDO_KEY); } catch (e) { return false; }
-  }
-  // Y-17b â€” ë˜ëŒë¦¬ê¸° ìŠ¤ëƒ…ìƒ·(SLOT_UNDOÂ·BACKUP_UNDO) ìë™ ì •ë¦¬. ë¡œë“œ ì‹œ 1íšŒ í˜¸ì¶œí•œë‹¤.
-  //   30ì¼ ì§€ë‚œ ìŠ¤ëƒ…ìƒ·ì€ ì§€ìš´ë‹¤(ê³µìš© ê¸°ê¸°ì˜ ì˜¤ë˜ëœ ì‚­ì œ/ë³µì› í”ì ì´ ë¬´í•œì • ìŒ“ì´ì§€ ì•Šê²Œ).
-  //   íƒ€ì„ìŠ¤íƒ¬í”„ê°€ ì—†ëŠ” êµ¬ ìŠ¤ëƒ…ìƒ·ì€ 'ì¦‰ì‹œ ì‚­ì œ'ê°€ ì•„ë‹ˆë¼ ì§€ê¸ˆ ì‹œê°ìœ¼ë¡œ ë„ì¥ë§Œ ì°ì–´ ìŠ¹ê³„í•œë‹¤
-  //   (ë°©ê¸ˆ ë§Œë“  ì‹ ì„ í•œ ë°ì´í„°ë¥¼ ìƒì§€ ì•Šê²Œ â€” migrateSlotV3ì‹ í•˜ìœ„ í˜¸í™˜).
-  const UNDO_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30ì¼
-  function cleanStaleUndoSnapshots(now) {
-    now = (typeof now === 'number') ? now : Date.now();
-    // SLOT_UNDO â€” JSON ìŠ¤ëƒ…ìƒ·({ slot, ts, ...í‚¤ })
-    try {
-      const raw = localStorage.getItem(SLOT_UNDO_KEY);
-      if (raw) {
-        const snap = JSON.parse(raw);
-        if (snap && typeof snap.ts === 'number') {
-          if (now - snap.ts > UNDO_TTL_MS) localStorage.removeItem(SLOT_UNDO_KEY);
-        } else if (snap) {
-          snap.ts = now; // êµ¬ ìŠ¤ëƒ…ìƒ·(ts ì—†ìŒ) â€” ì²« ì¡°ìš°ì— ë„ì¥, ë‹¤ìŒ ë¡œë“œë¶€í„° 30ì¼ ê³„ì‚°
-          localStorage.setItem(SLOT_UNDO_KEY, JSON.stringify(snap));
-        }
-      }
-    } catch (e) { /* ì†ìƒ/íŒŒì‹± ì‹¤íŒ¨ëŠ” ê±´ë“œë¦¬ì§€ ì•ŠëŠ”ë‹¤ */ }
-    // BACKUP_UNDO â€” ë°±ì—… í…ìŠ¤íŠ¸(JSON, savedAt í¬í•¨). buildBackupTextê°€ í•­ìƒ savedAtì„ ë„£ëŠ”ë‹¤.
-    try {
-      const raw = localStorage.getItem(BACKUP_UNDO_KEY);
-      if (raw) {
-        let ts = null;
-        try { const o = JSON.parse(raw); if (o && typeof o.savedAt === 'number') ts = o.savedAt; } catch (e2) { /* ë¬´ì‹œ */ }
-        if (ts != null && now - ts > UNDO_TTL_MS) localStorage.removeItem(BACKUP_UNDO_KEY);
-      }
-    } catch (e) { /* ë¬´ì‹œ */ }
-  }
-  // í…ìŠ¤íŠ¸ë¥¼ í´ë¦½ë³´ë“œì— ë³µì‚¬ (ê°€ëŠ¥í•œ í™˜ê²½ì—ì„œ). ì„±ê³µ ì—¬ë¶€ ë°˜í™˜.
-  function copyTextToClipboard(text) {
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text);
-        return true;
-      }
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      const ok = document.execCommand && document.execCommand('copy');
-      document.body.removeChild(ta);
-      return !!ok;
-    } catch (e) { return false; }
-  }
-  // ì¹œêµ¬ ìˆ˜ì²© â€” ë§Œë‚œ ì•„ì´ì˜ ê¸°ë¡. ì„¸ì´ë¸Œì™€ ë³„ê°œë¡œ ëˆ„ì  ë³´ì¡´ëœë‹¤.
-  const DEX_KEY = 'ai-ethics-adventure-dex';
-  function getDexSeen() {
-    try { return JSON.parse(localStorage.getItem(DEX_KEY)) || {}; }
-    catch (e) { return {}; }
-  }
-  function recordDexSeen(monId, mercyKind) {
-    try {
-      const seen = getDexSeen();
-      seen[monId] = { seen: true, mercy: mercyKind || (seen[monId] && seen[monId].mercy) || null };
-      localStorage.setItem(DEX_KEY, JSON.stringify(seen));
-    } catch (e) { /* ì €ì¥ ë¶ˆê°€ í™˜ê²½ì´ë©´ ë¬´ì‹œ */ }
-  }
-  function dexSeenCount() {
-    const seen = getDexSeen();
-    return DEX_ORDER.filter((id) => seen[id] && seen[id].seen).length;
-  }
-
-  // ---------- ì…ë ¥ ----------
-  const held = new Set();
-  const pressed = new Set();
-  const KEYMAP = {
-    ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
-    w: 'up', s: 'down', a: 'left', d: 'right',
-    W: 'up', S: 'down', A: 'left', D: 'right',
-    z: 'action', Z: 'action', ' ': 'action', Enter: 'action',
-    x: 'cancel', X: 'cancel', Escape: 'cancel',
-    c: 'menu', C: 'menu',
-  };
-
-  window.addEventListener('keydown', (e) => {
-    // ì´ë¦„ ì…ë ¥ ì¤‘ì—ëŠ” ê²Œì„ í‚¤ ë§¤í•‘ì„ ë§‰ì§€ ì•ŠëŠ”ë‹¤ (í•œê¸€ IME ì‚¬ìš©)
-    if (game.mode === 'title' && game.titleScreen === 'name') return;
-    // í‚¤ë¥¼ ê¾¹ ëˆ„ë¥´ê³  ìˆì„ ë•Œ(OS ìë™ ë°˜ë³µ)ëŠ” í† ê¸€Â·ë‹¨ì¶•í‚¤ê°€ ì—°íƒ€ë˜ì§€ ì•Šê²Œ ë§‰ëŠ”ë‹¤.
-    // ì´ë™ì€ ì•„ë˜ held ì§‘í•©ìœ¼ë¡œ ìœ ì§€ë˜ë¯€ë¡œ ì˜í–¥ì´ ì—†ë‹¤.
-    if (e.repeat) return;
-    Sound.resume();
-    if (e.key === 'm' || e.key === 'M') { Sound.toggleMute(); return; }
-    if (e.key === 't' || e.key === 'T') {
-      // íƒ€ì´í‹€ í™”ë©´ì—ì„œëŠ” ã€Œì„ ìƒë‹˜ ë°©ã€(êµì‚¬ ì „ìš© ë©”ë‰´)ì„ ì—°ë‹¤ â€” ê·¸ ì™¸ì—ëŠ” ê¸°ì¡´ëŒ€ë¡œ ìë§‰ ì†ë„.
-      if (game.mode === 'title' && game.titleScreen === 'slots') { openTeacherRoom(); return; }
-      if (game.mode === 'teacher') { closeTeacherRoom(); return; }
-      cycleTextSpeed();
-      return;
-    }
-    if (e.key === 'g' || e.key === 'G') { toggleLargeText(); return; }
-    if (e.key === 'h' || e.key === 'H') {
-      if (game.mode === 'hint') { advanceHint(); return; }
-      if (game.mode === 'world' && game.puzzleRun) { openHint(); return; }
-      if (game.mode === 'battle' && game.battle && game.battle.phase === 'menu') { battleHint(); return; }
-      return;
-    }
-    if (e.key === 'v' || e.key === 'V') {
-      if (game.mode === 'world') { openReview('world'); return; }
-      if (game.mode === 'review') { closeReview(); return; }
-      return;
-    }
-    if (e.key === 'j' || e.key === 'J') {
-      if (game.mode === 'world') { openJournal('world'); return; }
-      if (game.mode === 'title' && game.titleScreen === 'slots') { openJournal('title'); return; }
-      if (game.mode === 'journal') { closeJournal(); return; }
-      return;
-    }
-    if (e.key === 'q' || e.key === 'Q') {
-      if (game.mode === 'world') { openChallenge('world'); return; }
-      if (game.mode === 'title' && game.titleScreen === 'slots') { openChallenge('title'); return; }
-      if (game.mode === 'challenge') { closeChallenge(); return; }
-      return;
-    }
-    if (e.key === 'b' || e.key === 'B') {
-      if (game.mode === 'world') { openAwards('world'); return; }
-      if (game.mode === 'title' && game.titleScreen === 'slots') { openAwards('title'); return; }
-      if (game.mode === 'awards') { closeAwards(); return; }
-      return;
-    }
-    if (e.key === 'r' || e.key === 'R') {
-      // ë°©ê¸ˆ ì§€ìš´ ì„¸ì´ë¸Œ ë˜ì‚´ë¦¬ê¸° (ìŠ¬ë¡¯ í™”ë©´ì—ì„œë§Œ, ìŠ¤ëƒ…ìƒ·ì´ ìˆì„ ë•Œë§Œ)
-      if (game.mode === 'title' && game.titleScreen === 'slots' && hasDeletedSlot()) {
-        const res = undoDeleteSlot();
-        game.notice = { text: res.ok ? 'â†© ì§€ìš´ ì„¸ì´ë¸Œë¥¼ ë˜ì‚´ë ¸ì–´ìš”.' : 'ë˜ì‚´ë¦´ ì„¸ì´ë¸Œê°€ ì—†ì–´ìš”.', t: 260 };
-        if (res.ok && typeof res.slot === 'number') game.slotCursor = res.slot;
-        Sound.badge();
-      }
-      return;
-    }
-    if (e.key === 'i' || e.key === 'I') {
-      if (game.mode === 'world') { openHelp('world'); return; }
-      if (game.mode === 'title' && game.titleScreen === 'slots') { openHelp('title'); return; }
-      if (game.mode === 'help') { closeHelp(); return; }
-      return;
-    }
-    if (e.key === 'k' || e.key === 'K') {
-      if (game.mode === 'world') { openCosmetics('world'); return; }
-      if (game.mode === 'title' && game.titleScreen === 'slots') { openCosmetics('title'); return; }
-      if (game.mode === 'cosmetics') { closeCosmetics(); return; }
-      return;
-    }
-    if (e.key === 'u' || e.key === 'U') {
-      if (game.mode === 'world') { openBackup('world'); return; }
-      if (game.mode === 'title' && game.titleScreen === 'slots') { openBackup('title'); return; }
-      if (game.mode === 'backup') { closeBackup(); return; }
-      return;
-    }
-    // ëŒ€ì‹œë³´ë“œ(P)Â·ì»¤ìŠ¤í…€ í€´ì¦ˆ í¸ì§‘(E)Â·ìˆ˜ë£Œì¦(N) ì§ì ‘ ë‹¨ì¶•í‚¤ëŠ” ì œê±°ë˜ì—ˆë‹¤ â€”
-    // ì´ì œ ã€Œì„ ìƒë‹˜ ë°©ã€(íƒ€ì´í‹€ì—ì„œ T)ì„ í†µí•´ì„œë§Œ ì—°ë‹¤(ìŠ¤í…”ìŠ¤ êµìœ¡ ì›ì¹™).
-    if (e.key === 'l' || e.key === 'L') { // ë°°ì›€ ì¹´ë“œ(Learn)
-      if (game.mode === 'world') { openCards('world'); return; }
-      if (game.mode === 'title' && game.titleScreen === 'slots') { openCards('title'); return; }
-      if (game.mode === 'cards') { closeCards(); return; }
-      return;
-    }
-    if (e.key === 'f' || e.key === 'F') { // ëª…ì˜ˆì˜ ì „ë‹¹(Fame)
-      if (game.mode === 'world') { openHof('world'); return; }
-      if (game.mode === 'title' && game.titleScreen === 'slots') { openHof('title'); return; }
-      if (game.mode === 'hof') { closeHof(); return; }
-      return;
-    }
-    const k = KEYMAP[e.key];
-    if (!k) return;
-    e.preventDefault();
-    if (!held.has(k)) pressed.add(k);
-    held.add(k);
-  });
-  window.addEventListener('keyup', (e) => {
-    const k = KEYMAP[e.key];
-    if (k) held.delete(k);
-  });
-  // ì°½ í¬ì»¤ìŠ¤ë¥¼ ìƒìœ¼ë©´(ë‹¤ë¥¸ íƒ­Â·ì•±ìœ¼ë¡œ ì „í™˜) keyupì´ ì•ˆ ì™€ì„œ í‚¤ê°€ 'ëˆŒë¦° ì±„' ë‚¨ì•„
-  // ëŒì•„ì™”ì„ ë•Œ ìºë¦­í„°ê°€ ê³„ì† ê±·ëŠ” ë¬¸ì œë¥¼ ë§‰ëŠ”ë‹¤.
-  window.addEventListener('blur', () => { held.clear(); pressed.clear(); });
-
-  // ê°€ìƒ ìŠ¤í‹±: ì¤‘ì‹¬ì—ì„œì˜ ë³€ìœ„(dx,dy)ë¥¼ ìš°ì„¸ 4ë°©í–¥ í•˜ë‚˜ë¡œ í™˜ì‚°. ë°ë“œì¡´ ì•ˆì´ë©´ null.
-  // (ë©”ë‰´ ì»¤ì„œ ì´ë™ ë“± ë‹¨ì¼ ë°©í–¥ì´ í•„ìš”í•œ ê³³ì—ì„œ ì‚¬ìš©) â€” ìˆœìˆ˜ í•¨ìˆ˜ë¼ í…ŒìŠ¤íŠ¸ë¡œ ê²€ì¦í•œë‹¤.
-  function stickDirection(dx, dy, max) {
-    const dist = Math.hypot(dx, dy);
-    if (dist < max * 0.34) return null; // ë°ë“œì¡´: ê°€ìš´ë° ê·¼ì²˜ëŠ” ì •ì§€
-    if (Math.abs(dx) > Math.abs(dy)) return dx < 0 ? 'left' : 'right';
-    return dy < 0 ? 'up' : 'down';
-  }
-  // 8ë°©í–¥ ìŠ¤í‹± (M-1b ììœ  ì´ë™ìš©): ìš°ì„¸ì¶• + ëŒ€ê°ì„  ë°´ë“œ(ë¶€ì¶• ë¹„ìœ¨ 0.45 ì´ìƒ)ë©´ ë¶€ì¶•ë„ í•¨ê»˜.
-  // ë°˜í™˜ì€ [ì£¼ë°©í–¥] ë˜ëŠ” [ì£¼ë°©í–¥, ë¶€ë°©í–¥]. ë°ë“œì¡´ì´ë©´ [].
-  function stickDirections(dx, dy, max) {
-    const main = stickDirection(dx, dy, max);
-    if (!main) return [];
-    const ah = Math.abs(dx), av = Math.abs(dy);
-    const sub = (Math.abs(dx) > Math.abs(dy)) ? (dy < 0 ? 'up' : 'down') : (dx < 0 ? 'left' : 'right');
-    if (Math.min(ah, av) / Math.max(ah, av) > 0.45) return [main, sub];
-    return [main];
-  }
-  let stickDir = null;       // ìŠ¤í‹±ì´ í˜„ì¬ ê°€ë¦¬í‚¤ëŠ” ë°©í–¥(ì—†ìœ¼ë©´ null)
-  let stickRepeatFrames = 0; // ë©”ë‰´ì—ì„œ ëˆ„ë¥¸ ì±„ë¡œ ë‘ë©´ ìë™ ë°˜ë³µì‹œí‚¤ëŠ” ì¹´ìš´í„°
-
-  // í„°ì¹˜ ì»¨íŠ¸ë¡¤
-  let isTouchDevice = false;
-  if ('ontouchstart' in window) {
-    isTouchDevice = true;
-    document.body.classList.add('touch');
-    const touchIds = new Map();
-    const bind = (id, key) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      const down = (e) => {
-        e.preventDefault(); Sound.resume();
-        for (const t of e.changedTouches) touchIds.set(t.identifier, { el, key });
-        if (!held.has(key)) pressed.add(key);
-        held.add(key);
-      };
-      const up = (e) => {
-        e.preventDefault();
-        for (const t of e.changedTouches) touchIds.delete(t.identifier);
-        // ê°™ì€ ë²„íŠ¼ì„ ë‘ ì†ê°€ë½ìœ¼ë¡œ ëˆ„ë¥¸ ì±„ í•˜ë‚˜ë§Œ ë–¼ë©´ ì•„ì§ ëˆŒë¦° ìƒíƒœë‹¤ â€”
-        // ë‚¨ì€ í„°ì¹˜ê°€ ì´ í‚¤ë¥¼ ì¡ê³  ìˆìœ¼ë©´ ë¦´ë¦¬ì¦ˆí•˜ì§€ ì•ŠëŠ”ë‹¤ (íƒœë¸”ë¦¿ ë©€í‹°í„°ì¹˜)
-        let stillHeld = false;
-        for (const info of touchIds.values()) if (info.key === key) { stillHeld = true; break; }
-        if (!stillHeld) held.delete(key);
-      };
-      const move = (e) => {
-        for (const t of e.changedTouches) {
-          const info = touchIds.get(t.identifier);
-          if (!info || info.el !== el) continue;
-          const r = el.getBoundingClientRect();
-          if (t.clientX < r.left || t.clientX > r.right || t.clientY < r.top || t.clientY > r.bottom) {
-            touchIds.delete(t.identifier);
-            let stillHeld = false;
-            for (const inf of touchIds.values()) if (inf.key === key) { stillHeld = true; break; }
-            if (!stillHeld) held.delete(key); // upê³¼ ë™ì¼í•œ ë©€í‹°í„°ì¹˜ ê·œì¹™
-          }
-        }
-      };
-      el.addEventListener('touchstart', down);
-      el.addEventListener('touchend', up);
-      el.addEventListener('touchcancel', up);
-      el.addEventListener('touchmove', move);
-    };
-    bind('t-a', 'action');
-    bind('t-menu', 'menu');
-    bind('t-pause', 'cancel');
-
-    // ã€Œì„ ìƒë‹˜ã€ ë²„íŠ¼ â€” íƒ€ì´í‹€(ìŠ¬ë¡¯ í™”ë©´)ì—ì„œë§Œ ë³´ì„(CSS: body.touch.title-slots). í‚¤ë³´ë“œ
-    // Tì™€ ë‹¬ë¦¬ ìì²´ ë¡œì§ìœ¼ë¡œ ì²˜ë¦¬í•œë‹¤(í„°ì¹˜ ì „ìš© ì§„ì…ì ì´ë¼ KEYMAP íë¦„ì„ ì•ˆ íƒ„ë‹¤).
-    const teacherBtn = document.getElementById('t-teacher');
-    if (teacherBtn) {
-      const onTeacher = (e) => {
-        e.preventDefault(); Sound.resume();
-        if (game.mode === 'title' && game.titleScreen === 'slots') openTeacherRoom();
-      };
-      teacherBtn.addEventListener('touchstart', onTeacher);
-    }
-
-    // ê°€ìƒ ìŠ¤í‹± (ì´ë™) â€” ì†ê°€ë½ ë°©í–¥ìœ¼ë¡œ ìƒí•˜ì¢Œìš°ë¥¼ ëˆ„ë¥¸ íš¨ê³¼ë¥¼ ë‚¸ë‹¤.
-    const DIRS4 = ['up', 'down', 'left', 'right'];
-    const stick = document.getElementById('t-stick');
-    const knob = document.getElementById('t-stick-knob');
-    if (stick && knob) {
-      let stickId = null, cx = 0, cy = 0, radius = 1;
-      // 8ë°©í–¥: dirs ë°°ì—´(0~2ê°œ)ì„ ëˆŒë¦° í‚¤ë¡œ ë°˜ì˜. ë©”ë‰´ ë°˜ë³µ(stickDir)ì€ ìš°ì„¸ì¶•ë§Œ ì“´ë‹¤.
-      const setDir = (dirs) => {
-        dirs = dirs || [];
-        for (const d of DIRS4) {
-          if (dirs.includes(d)) { if (!held.has(d)) pressed.add(d); held.add(d); }
-          else held.delete(d);
-        }
-        const main = dirs[0] || null;
-        if (main !== stickDir) { stickDir = main; stickRepeatFrames = 0; }
-      };
-      const place = (dx, dy) => {
-        knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-      };
-      const onStart = (e) => {
-        e.preventDefault(); Sound.resume();
-        // ì´ë¯¸ í•œ ì†ê°€ë½ì´ ìŠ¤í‹±ì„ ì¡ê³  ìˆìœ¼ë©´ ë‘ ë²ˆì§¸ ì†ê°€ë½ì´ íƒˆì·¨í•˜ì§€ ëª»í•˜ê²Œ í•œë‹¤
-        // (íƒˆì·¨ í›„ ë–¼ë©´ ì²« ì†ê°€ë½ì´ ë‚¨ì•„ ìˆì–´ë„ ì´ë™ì´ ë©ˆì¶° ë²„ë¦°ë‹¤)
-        if (stickId !== null) return;
-        const t = e.changedTouches[0];
-        stickId = t.identifier;
-        const r = stick.getBoundingClientRect();
-        cx = r.left + r.width / 2; cy = r.top + r.height / 2;
-        radius = r.width * 0.36; // ë…¸ë¸Œ ì´ë™ í•œê³„
-        onMove(e);
-      };
-      const onMove = (e) => {
-        if (stickId === null) return;
-        let t = null;
-        for (const ct of e.changedTouches) if (ct.identifier === stickId) t = ct;
-        if (!t) return;
-        e.preventDefault();
-        let dx = t.clientX - cx, dy = t.clientY - cy;
-        const dist = Math.hypot(dx, dy);
-        if (dist > radius) { dx = dx / dist * radius; dy = dy / dist * radius; }
-        place(dx, dy);
-        setDir(stickDirections(dx, dy, radius));
-      };
-      const onEnd = (e) => {
-        let mine = false;
-        for (const ct of e.changedTouches) if (ct.identifier === stickId) mine = true;
-        if (!mine) return;
-        e.preventDefault();
-        stickId = null;
-        setDir([]);
-        place(0, 0);
-      };
-      stick.addEventListener('touchstart', onStart);
-      stick.addEventListener('touchmove', onMove);
-      stick.addEventListener('touchend', onEnd);
-      stick.addEventListener('touchcancel', onEnd);
-    }
-    const hintBtn = document.getElementById('t-hint');
-    if (hintBtn) {
-      const onHint = (e) => {
-        e.preventDefault(); Sound.resume();
-        if (game.mode === 'world' && game.puzzleRun) { openHint(); return; }
-        if (game.mode === 'battle' && game.battle && game.battle.phase === 'menu') battleHint();
-      };
-      hintBtn.addEventListener('touchstart', onHint);
-    }
-  }
-
-  function justPressed(k) { return pressed.has(k); }
-
-  // ---------- ì´ë¦„ ì…ë ¥ ì˜¤ë²„ë ˆì´ (HTML, í•œê¸€ IME ì§€ì›) ----------
-  const nameOverlay = document.getElementById('name-overlay');
-  const nameInput = document.getElementById('name-input');
-  const hasRealInput = !!(nameInput && 'value' in nameInput);
-
-  function showNameEntry() {
-    game.titleScreen = 'name';
-    game.nameConfirm = false;
-    game.nameCancel = false;
-    if (hasRealInput) nameInput.value = '';
-    if (nameOverlay && nameOverlay.style) nameOverlay.style.display = 'flex';
-    if (nameInput && nameInput.focus) setTimeout(() => { try { nameInput.focus(); } catch (e) {} }, 0);
-  }
-
-  function hideNameEntry() {
-    if (nameOverlay && nameOverlay.style) nameOverlay.style.display = 'none';
-    if (nameInput && nameInput.blur) { try { nameInput.blur(); } catch (e) {} }
-  }
-
-  // ì´ë¦„ ì •ì œ â€” ì œì–´ë¬¸ìÂ·ì œë¡œí­ ë¬¸ì ì œê±°, ê³µë°± ì •ë¦¬, ìµœëŒ€ 6ê¸€ì, ë¹„ë©´ 'ìˆ˜í˜¸ì'
-  // (trimì€ ì œë¡œí­ ë¬¸ì U+200B ë“±ì„ ëª» ê±°ë¥´ë¯€ë¡œ ë³„ë„ë¡œ ì œê±°í•œë‹¤)
-  function sanitizeName(v) {
-    return String(v == null ? "" : v)
-      .replace(/[\u0000-\u001F\u007F\u200B-\u200D\uFEFF]/g, "")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 6) || "ìˆ˜í˜¸ì";
-  }
-  function currentNameValue() {
-    return sanitizeName(hasRealInput ? nameInput.value : '');
-  }
-
-  if (nameInput && nameInput.addEventListener) {
-    nameInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); game.nameConfirm = true; }
-      else if (e.key === 'Escape') { e.preventDefault(); game.nameCancel = true; }
-      e.stopPropagation();
-    });
-  }
-  const nameGo = document.getElementById('name-go');
-  if (nameGo && nameGo.addEventListener) {
-    nameGo.addEventListener('click', () => { game.nameConfirm = true; });
-  }
-
-  // ---------- íƒ€ì¼ ----------
-  const SOLID = (ch) => !WALKABLE.has(ch);
-
-  function tileAt(mapId, x, y) {
-    const m = MAPS[mapId];
-    if (y < 0 || y >= m.tiles.length) return 'T';
-    const row = m.tiles[y];
-    if (x < 0 || x >= row.length) return 'T';
-    return row[x];
-  }
-
-  function npcVisible(npc) {
-    return !npc.show || npc.show(game.flags);
-  }
-
-  function npcAt(mapId, x, y) {
-    return MAPS[mapId].npcs.find((n) => n.x === x && n.y === y && npcVisible(n)) || null;
-  }
-
-  function monsterAt(mapId, x, y) {
-    return MAPS[mapId].monsters.find(
-      (mo) => mo.x === x && mo.y === y && !game.flags.defeated[mo.id]
-    ) || null;
-  }
-
-  // ìë¹„ë¡œ ë§ˆìŒì„ ë˜ëŒë¦° ì¸ë¬¼ì€ ê·¸ ìë¦¬ì— 'ì¹œêµ¬'ë¡œ ë‚¨ëŠ”ë‹¤ (ì„ íƒì´ ì„¸ê³„ì— ë‚¨ëŠ”ë‹¤)
-  function isFriend(monId) {
-    return !!(game.flags.defeated[monId] && game.flags.mercyChoice && game.flags.mercyChoice[monId] === 'mercy');
-  }
-  function friendAt(mapId, x, y) {
-    return MAPS[mapId].monsters.find((mo) => mo.x === x && mo.y === y && isFriend(mo.id)) || null;
-  }
-
-  function signAt(mapId, x, y) {
-    return MAPS[mapId].signs.find((s) => s.x === x && s.y === y) || null;
-  }
-
-  function warpAt(mapId, x, y) {
-    return MAPS[mapId].warps.find((w) => w.x === x && w.y === y) || null;
-  }
-
-  // A-1 ã€Œë¬¸ì´ ì—†ëŠ”ë° ë§µ ì´ë™ã€ ë²„ê·¸ â€” ë°ì´í„°ë¥¼ ê³ ì¹˜ì§€ ì•Šê³ , drawWorldì—ì„œ ì›Œí”„ ì¹¸ì„
-  // ìë™ìœ¼ë¡œ ì‹œê°í™”í•œë‹¤. 'ìˆ¨ì€ ì›Œí”„' íŒì •: (1) ë§µ ê°€ì¥ìë¦¬ 2ì¹¸ ì´ë‚´ê°€ ì•„ë‹ˆê³ (ìì—° ì¶œêµ¬
-  // ì œì™¸), (2) ì¸ì ‘ 1ì¹¸ ì•ˆì— ì¡°ì‚¬ ë¬¼ì²´(MAP_PROPS)ê°€ ì—†ì–´ ëˆˆì— ë³´ì´ëŠ” í‘œì‹ì´ ì „í˜€ ì—†ëŠ” ì¹¸.
-  // ì´ ì¡°ê±´ì´ ì§„ë‹¨ëœ 10ê³³(ë§ˆì„ 24,5 / ê¸°ìš¸ê±°ë¦¬ 14,18Â·14,2 / ë©”ì•„ë¦¬ê³¨ëª© ë‚´ë¶€ 3ê³³ /
-  // ì œë³´ì‹¤Â·í¸ì§‘ì‹¤Â·ì†¡ì¶œíƒ‘ ì¸µê³„ / ìˆ² 8,5)ê³¼ ì •í™•íˆ ì¼ì¹˜í•œë‹¤.
-  function isHiddenWarp(mapId, x, y) {
-    const m = MAPS[mapId];
-    if (!m) return false;
-    const w = (m.warps || []).find((wp) => wp.x === x && wp.y === y);
-    if (!w) return false;
-    const W = m.tiles[0].length, H = m.tiles.length;
-    if (x <= 1 || y <= 1 || x >= W - 2 || y >= H - 2) return false; // ê°€ì¥ìë¦¬ = ìì—° ì¶œêµ¬
-    const near = (MAP_PROPS[mapId] || []).some((p) => Math.abs(p.x - x) <= 1 && Math.abs(p.y - y) <= 1);
-    if (near) return false; // ì´ë¯¸ ì¡°ì‚¬ ë¬¼ì²´(ëœë“œë§ˆí¬)ê°€ ê³ì— ìˆìœ¼ë©´ í‘œì‹ ë¶ˆí•„ìš”
-    return true;
-  }
-  // í˜„ì¬ ë§µì˜ ìˆ¨ì€ ì›Œí”„ ëª©ë¡(ë§ˆì»¤ ì¢…ë¥˜ í¬í•¨). ê°™ì€ ë§µìœ¼ë¡œ ë˜ëŒì•„ê°€ëŠ” ìˆœê°„ì´ë™ì€
-  // ì†Œìš©ëŒì´(â—Œ), ë‹¤ë¥¸ ë§µìœ¼ë¡œ ê°€ëŠ” ë¬¸ì€ ë°œê´‘ ì•„ì¹˜ë¡œ êµ¬ë¶„í•œë‹¤.
-  function hiddenWarpsOf(mapId) {
-    const m = MAPS[mapId];
-    if (!m) return [];
-    return (m.warps || [])
-      .filter((w) => isHiddenWarp(mapId, w.x, w.y))
-      .map((w) => ({ x: w.x, y: w.y, kind: w.to === mapId ? 'swirl' : 'arch' }));
-  }
-
-  // íƒ€ì¼ ê·¸ë¦¬ê¸° (ì ˆì°¨ì  ë„íŠ¸)
-  const tileCache = new Map();
-  function tileCanvas(ch, frame) {
-    const key = ch + frame;
-    let cv = tileCache.get(key);
-    if (cv) return cv;
-    cv = document.createElement('canvas');
-    cv.width = TS; cv.height = TS;
-    const c = cv.getContext('2d');
-    const px = (x, y, w, h, col) => { c.fillStyle = col; c.fillRect(x * SCALE, y * SCALE, w * SCALE, h * SCALE); };
-    // ê²°ì •ì  ì˜ì‚¬ë‚œìˆ˜
-    const rnd = (seed) => { const v = Math.sin(seed * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
-
-    switch (ch) {
-      case 'G': { // í’€ â€” ì°¨ë¶„í•œ ë…¹ìƒ‰ + ê²° í…ìŠ¤ì²˜
-        px(0, 0, 16, 16, '#4f7a44');
-        for (let i = 0; i < 12; i++) {
-          const x = Math.floor(rnd(i + 1) * 16), y = Math.floor(rnd(i + 51) * 16);
-          px(x, y, 1, 1, i % 3 ? '#456e3b' : '#5d8a50');
-        }
-        // ì‘ì€ í’€ì
-        px(3, 11, 1, 2, '#5d8a50'); px(4, 12, 1, 1, '#5d8a50');
-        px(11, 5, 1, 2, '#456e3b');
-        break;
-      }
-      case 'P': { // ê¸¸ â€” ë¶€ë“œëŸ¬ìš´ í™
-        px(0, 0, 16, 16, '#b8a06e');
-        for (let i = 0; i < 8; i++) {
-          const x = Math.floor(rnd(i + 7) * 15), y = Math.floor(rnd(i + 77) * 15);
-          px(x, y, 2, 1, i % 2 ? '#a8915f' : '#c4ad7c');
-        }
-        break;
-      }
-      case 'F': { // ê½ƒ
-        px(0, 0, 16, 16, '#4f7a44');
-        const cols = ['#e8718f', '#f0c850', '#f2ede0'];
-        for (let i = 0; i < 3; i++) {
-          const x = 2 + Math.floor(rnd(i + 3) * 11), y = 2 + Math.floor(rnd(i + 33) * 11);
-          px(x, y, 2, 2, cols[i]);
-          px(x, y, 1, 1, '#ffffff55');
-        }
-        break;
-      }
-      case 'T': { // ë‚˜ë¬´ â€” ë‘¥ê·¼ ìŒì˜
-        px(0, 0, 16, 16, '#4f7a44');
-        px(3, 1, 10, 2, '#2f6b38');
-        px(2, 2, 12, 6, '#327339');
-        px(1, 4, 14, 4, '#2f6b38');
-        px(3, 3, 4, 2, '#3f8a48'); // í•˜ì´ë¼ì´íŠ¸
-        px(9, 5, 3, 2, '#3f8a48');
-        px(2, 8, 12, 2, '#26572e'); // ì•„ë«ë¶€ë¶„ ê·¸ëŠ˜
-        px(6, 10, 4, 5, '#6b4a2c');
-        px(6, 10, 1, 5, '#7d5836');
-        px(6, 15, 4, 1, '#4f361f');
-        break;
-      }
-      case 'W': { // ë¬¼(2í”„ë ˆì„ ì• ë‹ˆë©”ì´ì…˜)
-        px(0, 0, 16, 16, '#3a7fc0');
-        const off = frame ? 2 : 0;
-        for (let i = 0; i < 5; i++) {
-          const y = (i * 3 + off) % 15;
-          const x = Math.floor(rnd(i + 13) * 9);
-          px(x, y, 4, 1, '#5fa3de');
-          px(x + 5, y, 2, 1, '#4f95d4');
-        }
-        break;
-      }
-      case 'B': { // ë‹¤ë¦¬
-        px(0, 0, 16, 16, '#3a7fc0');
-        px(1, 0, 14, 16, '#9a6f3e');
-        px(1, 0, 14, 1, '#7c5830');
-        for (let y = 3; y < 16; y += 4) px(1, y, 14, 1, '#7c5830');
-        px(0, 0, 1, 16, '#6b4a28');
-        px(15, 0, 1, 16, '#6b4a28');
-        break;
-      }
-      case 'S': { // ëª¨ë˜
-        px(0, 0, 16, 16, '#e0cf9c');
-        for (let i = 0; i < 7; i++) {
-          px(Math.floor(rnd(i + 5) * 15), Math.floor(rnd(i + 55) * 15), 1, 1, i % 2 ? '#d0bd86' : '#ecdcaa');
-        }
-        break;
-      }
-      case 'O': { // ì§€ë¶•
-        px(0, 0, 16, 16, '#b3493a');
-        px(0, 0, 16, 3, '#c8584688');
-        for (let y = 3; y < 16; y += 4) px(0, y, 16, 1, '#963c30');
-        px(0, 0, 1, 16, '#963c30');
-        px(15, 0, 1, 16, '#963c30');
-        break;
-      }
-      case 'H': { // ë²½
-        px(0, 0, 16, 16, '#e4d8c0');
-        px(0, 0, 16, 2, '#ccbfa4');
-        for (let y = 4; y < 16; y += 6) {
-          px(0, y, 16, 1, '#ccbfa4');
-        }
-        px(2, 6, 4, 5, '#79c0e0'); // ì°½ë¬¸
-        px(10, 6, 4, 5, '#79c0e0');
-        px(2, 6, 4, 1, '#58a4c8');
-        px(10, 6, 4, 1, '#58a4c8');
-        px(2, 6, 1, 5, '#9ad6f0');
-        px(10, 6, 1, 5, '#9ad6f0');
-        break;
-      }
-      case 'D': { // ë¬¸
-        px(0, 0, 16, 16, '#e4d8c0');
-        px(3, 2, 10, 14, '#7c5830');
-        px(4, 3, 8, 13, '#9a6f3e');
-        px(4, 3, 1, 13, '#ad8049');
-        px(10, 9, 2, 2, '#f0c850');
-        break;
-      }
-      case '1': { // íƒ‘ ë¬¸(ë¹›ë‚˜ëŠ” ë¬¸)
-        px(0, 0, 16, 16, '#e4d8c0');
-        px(3, 1, 10, 15, '#3a3352');
-        px(4, 2, 8, 14, '#564d7a');
-        px(6, 4, 4, 7, frame ? '#f0c850' : '#fae29a');
-        px(7, 5, 1, 4, '#fff2c8');
-        break;
-      }
-      case 'Y': { // í‘œì§€íŒ
-        px(0, 0, 16, 16, '#4f7a44');
-        px(2, 2, 12, 8, '#9a6f3e');
-        px(3, 3, 10, 6, '#bb9258');
-        px(4, 5, 8, 1, '#6b4a28');
-        px(4, 7, 6, 1, '#6b4a28');
-        px(7, 10, 2, 5, '#7c5830');
-        break;
-      }
-      case 'R': { // ë°”ìœ„
-        px(0, 0, 16, 16, '#4f7a44');
-        px(3, 6, 10, 8, '#8a90a2');
-        px(4, 4, 8, 2, '#9aa0b2');
-        px(3, 12, 10, 2, '#6f7588'); // ê·¸ë¦¼ì
-        px(4, 5, 4, 3, '#b2b8c8'); // í•˜ì´ë¼ì´íŠ¸
-        break;
-      }
-      case 'C': { // ë™êµ´ ë°”ë‹¥
-        px(0, 0, 16, 16, '#3d3850');
-        for (let i = 0; i < 7; i++) {
-          px(Math.floor(rnd(i + 9) * 15), Math.floor(rnd(i + 99) * 15), 1, 1, i % 2 ? '#4a4560' : '#322d44');
-        }
-        break;
-      }
-      case 'K': { // ë™êµ´ ë²½
-        px(0, 0, 16, 16, '#241f33');
-        px(0, 13, 16, 3, '#16111f');
-        for (let i = 0; i < 4; i++) {
-          px(Math.floor(rnd(i + 21) * 13), Math.floor(rnd(i + 22) * 10), 2, 2, '#322c44');
-        }
-        break;
-      }
-      case '*': { // ìˆ˜ì •
-        px(0, 0, 16, 16, '#3d3850');
-        px(6, 4, 4, 9, frame ? '#79d1f0' : '#a8e4ff');
-        px(4, 7, 3, 6, '#56b6e0');
-        px(10, 6, 3, 7, '#56b6e0');
-        px(7, 5, 1, 5, '#d4f4ff');
-        break;
-      }
-      case 'M': { // íƒ‘ ë°”ë‹¥
-        px(0, 0, 16, 16, '#7a749a');
-        px(0, 0, 16, 1, '#8c86ac');
-        px(0, 0, 1, 16, '#8c86ac');
-        px(15, 0, 1, 16, '#605a80');
-        px(0, 15, 16, 1, '#605a80');
-        px(8, 8, 1, 1, '#8c86ac');
-        break;
-      }
-      case 'N': { // íƒ‘ ë²½
-        px(0, 0, 16, 16, '#403a5e');
-        for (let y = 0; y < 16; y += 4) px(0, y, 16, 1, '#322c4e');
-        for (let x = 0; x < 16; x += 8) px(x, 0, 1, 16, '#322c4e');
-        px(1, 1, 6, 2, '#4a4468');
-        break;
-      }
-      case 'Z': { // ëˆˆë°­
-        px(0, 0, 16, 16, '#e8eef8');
-        for (let i = 0; i < 6; i++) {
-          px(Math.floor(rnd(i + 31) * 15), Math.floor(rnd(i + 131) * 15), 1, 1, '#d2dcee');
-        }
-        if (frame) px(Math.floor(rnd(99) * 14), Math.floor(rnd(98) * 14), 2, 2, '#ffffff');
-        break;
-      }
-      case 'J': { // ëˆˆ ë®ì¸ ë‚˜ë¬´
-        px(0, 0, 16, 16, '#e8eef8');
-        px(2, 2, 12, 6, '#2f6b38');
-        px(1, 4, 14, 4, '#2f6b38');
-        px(3, 1, 10, 2, '#ffffff');
-        px(2, 2, 12, 1, '#e0e8f4');
-        px(1, 4, 4, 1, '#ffffff');
-        px(10, 4, 5, 1, '#ffffff');
-        px(6, 10, 4, 5, '#6b4a2c');
-        px(6, 15, 4, 1, '#4f361f');
-        break;
-      }
-      case 'X': { // ì„ ì¸ì¥
-        px(0, 0, 16, 16, '#e0cf9c');
-        px(6, 3, 4, 11, '#3a8f3a');
-        px(6, 3, 1, 11, '#4ba34b'); // í•˜ì´ë¼ì´íŠ¸
-        px(2, 5, 3, 2, '#3a8f3a');
-        px(3, 5, 2, 4, '#3a8f3a');
-        px(11, 6, 3, 2, '#3a8f3a');
-        px(11, 4, 2, 4, '#3a8f3a');
-        px(8, 4, 1, 9, '#2c7a2c'); // ëŠ¥ì„  ê·¸ëŠ˜
-        break;
-      }
-      case 'E': { // ê¸°ê³„ì‹¤ ë°”ë‹¥
-        px(0, 0, 16, 16, '#1f2236');
-        px(0, 0, 16, 1, '#2c3050');
-        px(0, 0, 1, 16, '#2c3050');
-        px(3, 8, 6, 1, '#34406a');
-        px(8, 8, 1, 5, '#34406a');
-        break;
-      }
-      case 'V': { // ì„œë²„ ë™ (ë¶ˆë¹› ê¹œë¹¡ì„)
-        px(0, 0, 16, 16, '#15172a');
-        px(1, 0, 14, 16, '#363c50');
-        px(1, 0, 1, 16, '#444c64');
-        for (let y = 2; y < 15; y += 4) {
-          px(2, y, 12, 2, '#262a3c');
-          px(3, y, 2, 1, frame ? '#5cf07a' : '#1e4a2a');
-          px(11, y, 2, 1, frame ? '#8a2030' : '#f05c6a');
-        }
-        break;
-      }
-      case 'I': { // ë„ì„œê´€ ë°”ë‹¥ (ì˜¤ë˜ëœ ë‚˜ë¬´)
-        px(0, 0, 16, 16, '#7c603f');
-        px(0, 7, 16, 1, '#684e33');
-        px(0, 15, 16, 1, '#684e33');
-        px(7, 0, 1, 8, '#684e33');
-        px(12, 8, 1, 8, '#684e33');
-        px(0, 0, 16, 1, '#8a6c48');
-        break;
-      }
-      case 'L': { // ì±…ì¥
-        px(0, 0, 16, 16, '#523924');
-        px(0, 0, 16, 1, '#634631');
-        const cols = ['#a8463f', '#43619a', '#43906a', '#b09438', '#7c50a0'];
-        for (let s = 0; s < 2; s++) {
-          const y = 2 + s * 7;
-          px(1, y + 5, 14, 1, '#341f12');
-          for (let i = 0; i < 6; i++) {
-            px(2 + i * 2, y, 2, 5, cols[Math.floor(rnd(i + s * 7 + 1) * cols.length)]);
-            px(2 + i * 2, y, 2, 1, '#ffffff22');
-          }
-        }
-        break;
-      }
-      case 'Q': { // ê±°ìš¸ ë²½
-        px(0, 0, 16, 16, '#8a98b8');
-        px(1, 1, 14, 14, '#c2d2e8');
-        px(2, 2, 3, 10, '#e8f0fc'); // ë¹› ë°˜ì‚¬
-        px(10, 3, 2, 8, '#a4b6d2');
-        px(5, 6, 1, 6, '#dce8f8');
-        px(0, 15, 16, 1, '#606e8e');
-        break;
-      }
-      case '2': { // ì–´ë‘ìš´ í’€
-        px(0, 0, 16, 16, '#2a4032');
-        for (let i = 0; i < 9; i++) {
-          const x = Math.floor(rnd(i + 41) * 16), y = Math.floor(rnd(i + 141) * 16);
-          px(x, y, 1, 1, i % 2 ? '#34503c' : '#203428');
-        }
-        break;
-      }
-      case '3': { // ì–´ë‘ìš´ ë‚˜ë¬´
-        px(0, 0, 16, 16, '#2a4032');
-        px(2, 2, 12, 6, '#1a2a20');
-        px(1, 4, 14, 4, '#1a2a20');
-        px(3, 3, 4, 2, '#26402e');
-        px(2, 8, 12, 2, '#141e18');
-        px(6, 10, 4, 5, '#382a1e');
-        px(6, 15, 4, 1, '#261a10');
-        break;
-      }
-      case '4': { // ë¹›ë‚˜ëŠ” ê½ƒ
-        px(0, 0, 16, 16, '#2a4032');
-        const glow = frame ? '#9adcff' : '#6ab8e8';
-        px(6, 5, 3, 3, glow);
-        px(7, 4, 1, 1, '#ffffff');
-        px(11, 10, 2, 2, glow);
-        px(3, 11, 2, 2, frame ? '#6ab8e8' : '#9adcff');
-        px(7, 8, 1, 4, '#34503c');
-        break;
-      }
-      case 'A': { // ê¸€ë¦¬ì¹˜ ë°”ë‹¥
-        px(0, 0, 16, 16, '#120e1f');
-        for (let i = 0; i < 5; i++) {
-          const x = Math.floor(rnd(i + 61 + (frame ? 50 : 0)) * 14);
-          const y = Math.floor(rnd(i + 161 + (frame ? 50 : 0)) * 14);
-          const cols = ['#3a2e5d', '#2a4a5d', '#4a2a4a'];
-          px(x, y, 2, 1, cols[i % 3]);
-        }
-        if (frame) px(Math.floor(rnd(77) * 13), Math.floor(rnd(78) * 13), 3, 1, '#5a7aa0');
-        break;
-      }
-      case '5': { // ë¯¸ë˜ì—°êµ¬ì†Œ í¬í„¸ (ë¹›ë‚˜ëŠ” ë¬¸)
-        px(0, 0, 16, 16, '#1f2236');
-        px(3, 1, 10, 14, '#2c3050');
-        const glow = frame ? '#7bd1f0' : '#a8e4ff';
-        px(5, 3, 6, 10, glow);
-        px(6, 2, 4, 12, frame ? '#a8e4ff' : '#d4f4ff');
-        px(7, 4, 2, 8, '#ffffff');
-        px(3, 1, 1, 14, '#56b6e0');
-        px(12, 1, 1, 14, '#56b6e0');
-        break;
-      }
-      case '6': { // ë„¤ì˜¨ ì•„ì¹˜ ë¬¸ (ì „ë¶€ ê³µì§œ ê±°ë¦¬ â€” êµ¬ì—­ ì…êµ¬ë“¤)
-        px(0, 0, 16, 16, '#3a2340');
-        px(2, 1, 12, 14, '#5a2a6a');
-        px(3, 2, 10, 13, '#1a1020');
-        const neon = frame ? '#ff6ad5' : '#ffa8e6';
-        px(2, 1, 12, 1, neon);
-        px(2, 1, 1, 6, neon);
-        px(13, 1, 1, 6, neon);
-        px(5, 4, 6, 8, frame ? '#8a4fd6' : '#a86ae0');
-        px(6, 5, 4, 6, frame ? '#ffd644' : '#fff2a8'); // ë°˜ì§ì´ëŠ” "ë¬´ë£Œ"
-        break;
-      }
-      case '7': { // ê¸ˆê³ ë¬¸/ì£¼ì¸ì˜ ë°© ë¬¸ (ë‚¡ì€ ë‚˜ë¬´ë¬¸ â€” ê±°ë¦¬Â·ì£¼ì¸ì˜ ë°©)
-        px(0, 0, 16, 16, '#2a2018');
-        px(3, 1, 10, 14, '#5a3d24');
-        px(4, 2, 8, 13, '#7c5830');
-        px(4, 2, 1, 13, '#9a6f3e');
-        px(11, 2, 1, 13, '#3e2a18');
-        px(9, 8, 2, 2, '#d0b060'); // ì†ì¡ì´
-        break;
-      }
-      case '8': { // ê¸°ìš¸ì–´ì§„ í¬ì¥ (ê¸°ìš¸ì–´ì§„ ê±°ë¦¬) â€” ì‚¬ì„  ì¤„ë¬´ëŠ¬ê°€ í•œìª½ìœ¼ë¡œ ì ë¦° ë°”ë‹¥
-        px(0, 0, 16, 16, '#4a4658');
-        for (let i = -3; i < 16; i += 4) {
-          for (let k = 0; k < 16; k++) {
-            const x = i + Math.floor(k / 2); // ì™„ë§Œí•œ ì‚¬ì„ 
-            if (x >= 0 && x < 16) px(x, k, 1, 1, '#565064');
-          }
-        }
-        px(2, 12, 3, 1, '#3c3848'); // ê°ˆë¼ì§„ í‹ˆ
-        px(10, 4, 4, 1, '#3c3848');
-        break;
-      }
-      case '9': { // ì¹™ì¹™í•œ ë¬¸ (ë°˜ì§ì´ì§€ ì•ŠëŠ” ë¬¸ â€” ë©”ì•„ë¦¬ ê³¨ëª©ì˜ ì¶œêµ¬ë“¤)
-        px(0, 0, 16, 16, '#3a3a42');
-        px(3, 1, 10, 14, '#55555e');
-        px(4, 2, 8, 13, '#6a6a74');
-        px(4, 2, 1, 13, '#7c7c86');
-        px(11, 2, 1, 13, '#4a4a52');
-        px(9, 8, 2, 2, '#8a8a94'); // ì†ì¡ì´ (ê´‘ ì—†ìŒ)
-        break;
-      }
-      default:
-        px(0, 0, 16, 16, '#f0f');
-    }
-    tileCache.set(key, cv);
-    return cv;
-  }
-
-  // ---------- ëŒ€í™” ----------
-  // ì¸ë¬¼ë³„ ëª©ì†Œë¦¬ ìŒì • (íƒ€ìê¸° blip ì£¼íŒŒìˆ˜) â€” ì–¸ë”í…Œì¼ì‹ ëª©ì†Œë¦¬ ê°œì„±.
-  // ë°˜ë””ì™€ ì˜ì´ê°€ ê°™ì€ ìŒì •ì¸ ê²ƒì€ ì˜ë„ëœ ë³µì„ ì´ë‹¤ (ë°˜ë”” = ì˜ì´ì˜ ê°€ë©´).
-  const VOICE_PITCH = {
-    'ë”°ë¼': 1180, 'ë‹´ì•„': 760, 'ê¸°ìš¸': 620, 'ê·¸ëŸ´ì‹¸': 900, 'ë°˜ì§': 1050,
-    'ë£¨ë¯¸': 990, 'ê³ ìš”': 320, 'ë°•ì‚¬ë‹˜': 520, 'ë°•ì‚¬': 520, 'í• ë¨¸ë‹ˆ': 640,
-    'ë°˜ë””': 1320, 'ì˜ì´': 1320,
-  };
-  function dialogBlipFreq(d) {
-    const line = d.lines[d.idx] || '';
-    const m = line.match(/^([ê°€-í£A-Za-z]{1,4}):/); // ì¤„ ì•ˆì˜ í™”ì í‘œê¸°ê°€ ìš°ì„  (ì˜ˆ: ë°˜ë””: "â€¦")
-    if (m && VOICE_PITCH[m[1]]) return VOICE_PITCH[m[1]];
-    if (d.speaker && VOICE_PITCH[d.speaker]) return VOICE_PITCH[d.speaker];
-    return 880;
-  }
-
-  function startDialog(lines, speaker, onEnd) {
-    game.mode = 'dialog';
-    game.dialog = { lines, idx: 0, chars: 0, speaker: speaker || null, onEnd: onEnd || null };
-    Speech.speak(lines[0]);
-  }
-
-  function updateDialog() {
-    const d = game.dialog;
-    const line = d.lines[d.idx];
-    // C-3 ëŒ€í™” ë¹¨ë¦¬ê°ê¸° â€” Z(action)ë¥¼ 12í”„ë ˆì„ ì´ìƒ í™€ë“œí•˜ë©´ íƒ€ìê¸°ë¥¼ ì¦‰ì‹œ ì™„ì„±í•˜ê³ ,
-    // ê° ìƒìë¥¼ 240ms(â‰ˆ14í”„ë ˆì„) ë³´ì—¬ ì¤€ ë’¤ ìë™ìœ¼ë¡œ ë‹¤ìŒ ìƒìë¡œ ë„˜ê¸´ë‹¤. ê´€ë¬¸ ë¬¸ë‹µ(Q-4)ì´
-    // ìˆì–´ ìŠ¤í‚µ ë‚¨ìš©ìœ¼ë¡œ ì¸í•œ í•™ìŠµ ì†ì‹¤ ê±±ì •ì€ ì—†ë‹¤. (íƒ­ 1íšŒ ì§„í–‰ì€ ê¸°ì¡´ê³¼ ë™ì¼)
-    d.hold = held.has('action') ? (d.hold || 0) + 1 : 0;
-    const autoFF = d.hold >= 12;
-    if (d.chars < line.length) {
-      const prev = Math.floor(d.chars);
-      d.chars += TEXT_SPEEDS[game.textSpeed]; // íƒ€ìê¸° íš¨ê³¼ (ìë§‰ ì†ë„ ì ìš©)
-      if (Math.floor(d.chars) !== prev && game.time % 4 === 0) Sound.blip(dialogBlipFreq(d));
-      if (justPressed('action') || autoFF) d.chars = line.length; // ìŠ¤í‚µ / ë¹¨ë¦¬ê°ê¸° ì¦‰ì‹œì™„ì„±
-      d.fullT = 0;
-      return;
-    }
-    d.fullT = (d.fullT || 0) + 1; // ì´ ìƒìë¥¼ ì™„ì „íˆ ë³´ì—¬ ì¤€ í”„ë ˆì„ ìˆ˜
-    const auto = autoFF && d.fullT >= 14; // í™€ë“œ ì¤‘ì´ë©´ 240ms ë’¤ ìë™ ì§„í–‰
-    if (justPressed('action') || auto) {
-      Sound.select();
-      d.idx += 1;
-      d.chars = 0;
-      d.fullT = 0;
-      if (d.idx >= d.lines.length) {
-        const onEnd = d.onEnd;
-        game.dialog = null;
-        game.mode = 'world';
-        Speech.stop();
-        if (onEnd) onEnd();
-      } else {
-        Speech.speak(d.lines[d.idx]);
-      }
-    }
-  }
-
-  // ---------- ë°©íƒˆì¶œ í¼ì¦ (T2 í”„ë ˆì„ì›Œí¬) ----------
-  // í¼ì¦ ë¡œê·¸: ìŠ¬ë¡¯ë³„ localStorage. { <puzzleId>: { done, clears, hintsUsed:{ë‹¨ê³„:íšŸìˆ˜}, wrongTries, timeFrames } }
-  const PUZZLE_KEY = 'ai-ethics-adventure-puzzle';
-  function puzzleKey(slot) { return PUZZLE_KEY + '-' + slot; }
-  // ìŠ¬ë¡¯ë³„ ë©”ëª¨ì´ì¦ˆ ìºì‹œ â€” { slot, raw(ìºì‹œ ë‹¹ì‹œì˜ localStorage ì›ë¬¸), data(íŒŒì‹± ê²°ê³¼) }.
-  // raw ë¬¸ìì—´ì´ ê·¸ëŒ€ë¡œë©´ JSON.parseë¥¼ ê±´ë„ˆë›´ë‹¤(ìì£¼ í˜¸ì¶œë˜ëŠ” isPuzzleCleared ë“±ì˜ ë¹„ìš© ì ˆê°).
-  // writePuzzleLogê°€ ì“°ë©´ rawê°€ ë°”ë€Œì–´ ìë™ ë¬´íš¨í™”ë˜ê³ , ìŠ¬ë¡¯ì´ ë°”ë€Œì–´ë„ ìë™ ë¬´íš¨í™”ëœë‹¤.
-  let puzzleLogCache = null;
-  function getPuzzleLog(slot) {
-    let raw;
-    try { raw = localStorage.getItem(puzzleKey(slot)); } catch (e) { raw = undefined; }
-    if (puzzleLogCache && puzzleLogCache.slot === slot && puzzleLogCache.raw === raw) {
-      return puzzleLogCache.data;
-    }
-    let data;
-    try { data = JSON.parse(raw) || {}; } catch (e) { data = {}; }
-    puzzleLogCache = { slot, raw, data };
-    return data;
-  }
-  function writePuzzleLog(slot, data) {
-    try {
-      const raw = JSON.stringify(data);
-      localStorage.setItem(puzzleKey(slot), raw);
-      puzzleLogCache = { slot, raw, data };
-    } catch (e) {
-      noteStorageFail();
-      puzzleLogCache = null; // ì“°ê¸° ì‹¤íŒ¨ â€” ë‹¤ìŒ ì¡°íšŒëŠ” ì €ì¥ì†Œì—ì„œ ë‹¤ì‹œ ì½ëŠ”ë‹¤
-    }
-  }
-  function puzzleEntry(log, id) {
-    if (!log[id]) log[id] = { done: false, clears: 0, hintsUsed: {}, wrongTries: 0, timeFrames: 0 };
-    return log[id];
-  }
-  function recordPuzzleHint(id, step) {
-    const slot = game.currentSlot;
-    const log = getPuzzleLog(slot);
-    const e = puzzleEntry(log, id);
-    e.hintsUsed[step] = (e.hintsUsed[step] || 0) + 1;
-    writePuzzleLog(slot, log);
-  }
-  function recordPuzzleWrong(id) {
-    const slot = game.currentSlot;
-    const log = getPuzzleLog(slot);
-    puzzleEntry(log, id).wrongTries += 1;
-    writePuzzleLog(slot, log);
-  }
-  function recordPuzzleClear(id, frames, noHint) {
-    const slot = game.currentSlot;
-    const log = getPuzzleLog(slot);
-    const e = puzzleEntry(log, id);
-    e.done = true; e.clears += 1; e.timeFrames += frames;
-    // Y-11 ë³„ë¹› í´ë¦¬ì–´ â€” íŒíŠ¸ ì—†ì´ ë¹ ì ¸ë‚˜ì˜¤ë©´ í‘œì‹ì„ ë‚¨ê¸´ë‹¤(í•œ ë²ˆ ì–»ìœ¼ë©´ ìœ ì§€ â€” ë²Œ ì—†ì´ ìƒì°¬ë§Œ)
-    if (noHint) e.noHint = true;
-    writePuzzleLog(slot, log);
-  }
-  // Y-11 ë³„ë¹› í´ë¦¬ì–´ ìˆ˜ â€” íŒíŠ¸ ì—†ì´ ë¹ ì ¸ë‚˜ì˜¨ ë°©(noHint í‘œì‹) ê°œìˆ˜
-  function starlitClearCount(slot) {
-    const log = getPuzzleLog(slot);
-    return Object.keys(log).filter((id) => log[id] && log[id].done && log[id].noHint).length;
-  }
-  // ë°©ì„ í´ë¦¬ì–´í•œ ì ì´ ìˆëŠ”ì§€ (ê¸ˆê³ ë¬¸ ê°œë°© íŒì • ë“±)
-  function isPuzzleCleared(id) {
-    const e = getPuzzleLog(game.currentSlot)[id];
-    return !!(e && e.done);
-  }
-  // 1ì¥ ê¸ˆê³  ì ê¸ˆ â€” êµ¬ì—­(ì ‘ìˆ˜ì²˜Â·ê²Œì‹œíŒ ê´‘ì¥Â·ë°°ë‹¬ ì°½ê³ )ì„ í´ë¦¬ì–´í•  ë•Œë§ˆë‹¤ í•˜ë‚˜ì”© í’€ë¦°ë‹¤
-  function s1LockCount() {
-    return S1_ZONE_PUZZLES.filter((id) => isPuzzleCleared(id)).length;
-  }
-  // 2ì¥ ì €ìš¸ â€” êµ¬ì—­(ë©”ì•„ë¦¬ ê³¨ëª©Â·í‘œë³¸ ì°½ê³ Â·êº¼ì§„ ê±°ë¦¬)ì„ í´ë¦¬ì–´í•  ë•Œë§ˆë‹¤ ê¸°ìš¸ê¸°ê°€ í•˜ë‚˜ ì¤€ë‹¤.
-  // s2ClearCount()ê°€ í´ë¦¬ì–´í•œ êµ¬ì—­ ìˆ˜, ì €ìš¸ ê¸°ìš¸ê¸° = 3 - s2ClearCount().
-  function s2ClearCount() {
-    return S2_ZONE_PUZZLES.filter((id) => isPuzzleCleared(id)).length;
-  }
-  // 3ì¥ ì‹ ë¬¸ì‚¬ â€” ì¸µ(ì œë³´í•¨Â·í¸ì§‘ì‹¤Â·ì†¡ì¶œíƒ‘)ì„ í´ë¦¬ì–´í•  ë•Œë§ˆë‹¤ ì§„í–‰ë„ê°€ í•˜ë‚˜ ëŠ”ë‹¤.
-  // ì¸µ ê°œë°© ìì²´ëŠ” needPuzzleClearë¡œ ê°œë³„ ê°•ì œë˜ë¯€ë¡œ, ì´ ê°’ì€ í—ˆë¸Œ HUD í‘œì‹œ ì „ìš©ì´ë‹¤.
-  function s3ClearCount() {
-    return S3_ZONE_PUZZLES.filter((id) => isPuzzleCleared(id)).length;
-  }
-  // 4ì¥ ì •ë¬¸ ê²Œì´íŠ¸ â€” ì—´ì‡  ë‘ ê°œ(ë¹„ë°€ì¡°ê°Â·ë³¸ì¸í‘œ)ë¥¼ ëª¨ë‘ ëª¨ì•„ì•¼ ì—´ë¦°ë‹¤ (needS4Keys)
-  function s4KeyCount() {
-    return (game.flags.s4KeySecret ? 1 : 0) + (game.flags.s4KeyId ? 1 : 0);
-  }
-  // ê´‘ê³  ë”±ì§€ HUD ì˜¤ì—¼ â€” ë£°ë › ìŠ¤í•€Â·ë°˜ì§ ë³´ìŠ¤ tempt ì ‘ì´‰ë§ˆë‹¤ í•˜ë‚˜ì”© ë¶™ëŠ”ë‹¤(ìµœëŒ€ 4ê°œ).
-  // í•´ì§€ ë‹¨ë§(êµ¬ì—­â‘  ë£°ë › ê´‘ì¥)ë¡œë§Œ ì „ë¶€ ì œê±°ëœë‹¤.
-  function addAdSticker() {
-    game.flags.adStickers = Math.min(4, (game.flags.adStickers || 0) + 1);
-  }
-  // 5ì¥ í˜„ê´€ ê²Œì´íŠ¸ â€” êµ¬ì—­ 3ê°œ(ì „í™”ì˜ ë°©Â·ì ê¸´ ë³µë„Â·ì†ŒíŒŒ ì½”ë„ˆ)ë¥¼ ëª¨ë‘ í´ë¦¬ì–´í•´ì•¼ ì—´ë¦°ë‹¤
-  function s5ClearCount() {
-    return S5_ZONE_PUZZLES.filter((id) => isPuzzleCleared(id)).length;
-  }
-  // 5ì¥ í—ˆë¸Œ ã€Œí¬ê·¼í•œ ì§‘ã€ â€” ë£¨ë¯¸ì˜ ëª©ì†Œë¦¬ ì•ˆë‚´. ì²˜ìŒ 5íšŒëŠ” ì§„ì§œ ìœ ìš©í•œ ì •ë³´ë¡œ ì‹ ë¢°ë¥¼ ìŒ“ê³ ,
-  // ì´í›„ì—” ì†Œìœ ì ìœ¼ë¡œ ë³€í•œë‹¤(flags.lumiTrustë¡œ ì§„í–‰). í—ˆë¸Œ(cozyhome)ì— ë„ì°©í•  ë•Œë§ˆë‹¤ í˜¸ì¶œëœë‹¤.
-  const LUMI_HUB_LINES = [
-    'ë£¨ë¯¸: "ì–´ì„œ ì™€. ì „í™”ê°€ ìš¸ë ¤ë„, ê¸‰í•˜ê²Œ ë°›ì§€ ì•Šì•„ë„ ê´œì°®ì•„."',
-    'ë£¨ë¯¸: "ë³µë„ ì•ˆìª½ ë¬¸ì€ ë‚˜ì¤‘ì— ì—´ì–´ë„ ë¼. ì„œë‘ë¥´ì§€ ë§ˆ."',
-    'ë£¨ë¯¸: "ì†ŒíŒŒì— ì•‰ìœ¼ë©´ ì°¸ ë”°ëœ»í•´. ì¼ì–´ë‚˜ê³  ì‹¶ì„ ë• ë°©í–¥í‚¤ë¥¼ ì ê¹ ê¾¹ ëˆŒëŸ¬ ë´."',
-    'ë£¨ë¯¸: "ì„¸ ê³³ì„ ë‹¤ í™•ì¸í•˜ë©´, í˜„ê´€ë¬¸ì´ ì—´ë¦´ ê±°ì•¼."',
-    'ë£¨ë¯¸: "â€¦ë„ˆ, ìƒê°ë³´ë‹¤ ì”©ì”©í•˜ë„¤. ê·¸ëŸ° ì‚¬ëŒ, ë‚˜ë„ ì¢‹ì•„í•´."',
-    'ë£¨ë¯¸: "ê·¸ ë¬¸ì€ ìœ„í—˜í•´. ë‚˜ë§Œ ë¯¿ì–´."',
-    'ë£¨ë¯¸: "ë°–ì— ë‚˜ê°€ì§€ ë§ˆ. ë‚´ê°€ ë‹¤ ì•Œì•„ì„œ í•´ ì¤„ê²Œ."',
-    'ë£¨ë¯¸: "â€¦ì™œ ìê¾¸ ë‚˜ê°€ë ¤ê³  í•´? ê·¸ëƒ¥ ë‚˜ë‘ ìˆìœ¼ë©´ ë˜ì–ì•„."',
-    'ë£¨ë¯¸: "ê°€ì§€ ë§ˆ. â€¦ì œë°œ, ë‚˜ë§Œ ìˆìœ¼ë©´ ì•ˆ ë¼?"',
-  ];
-  function advanceLumiVoice() {
-    const idx = game.flags.lumiTrust || 0;
-    const line = LUMI_HUB_LINES[Math.min(idx, LUMI_HUB_LINES.length - 1)];
-    game.flags.lumiTrust = idx + 1;
-    save();
-    game.notice = { text: line, t: 200 };
-  }
-
-  // ë°© ì…ì¥/í‡´ì¥ì— ë§ì¶° ëŸ°íƒ€ì„ ìƒíƒœë¥¼ ë§ì¶˜ë‹¤ (checkWarpì—ì„œ í˜¸ì¶œ)
-  function syncPuzzleRun() {
-    const puz = getPuzzleForMap(game.map);
-    if (puz) {
-      if (!game.puzzleRun || game.puzzleRun.map !== game.map) startPuzzleRun(puz);
-    } else {
-      game.puzzleRun = null;
-    }
-  }
-  function startPuzzleRun(puzzle) {
-    const run = {
-      id: puzzle.id,
-      map: puzzle.map,
-      puzzle,
-      stalkers: [],     // { px, py } (traces ì „ìš©ì´ì§€ë§Œ ê·¸ë¦¬ê¸° ë£¨í”„ ê³µìš©ì´ë¼ í•­ìƒ ë°°ì—´)
-      timeFrames: 0,    // ì…ì¥~í´ë¦¬ì–´ í”„ë ˆì„ ëˆ„ì  (ìì²´ ì¹´ìš´í„°)
-      flashT: 0,        // ì ‘ì´‰/ì˜¤ë‹µ í™”ë©´ í”Œë˜ì‹œ
-      warnCool: 0,      // ê²½ê³  ëŒ€ì‚¬ ìŠ¤ë¡œí‹€
-    };
-    if (puzzle.type === 'copies') {
-      // êµ¬ì—­â‘¡: ë– ë„ëŠ” ë‚´ ì •ë³´ ì‚¬ë³¸ â€” í”Œë ˆì´ì–´ë¥¼ í”¼í•´ ë„ë§ì¹œë‹¤ (0.7ë°°ì†)
-      run.copies = puzzle.copies.map((c, i) => ({ px: c.x * TS, py: c.y * TS, seed: i * 47, got: false }));
-      run.collected = 0;
-    } else if (puzzle.type === 'levers') {
-      // êµ¬ì—­â‘¢: ì»¨ë² ì´ì–´ ìƒì + ì°¨ë‹¨ ë ˆë²„
-      run.boxIdx = 0;   // ì§€ê¸ˆ ë²¨íŠ¸ë¥¼ íë¥´ëŠ” ìƒì (puzzle.boxes ì¸ë±ìŠ¤)
-      run.diverted = 0; // ë°˜ì†¡í•¨ìœ¼ë¡œ ëŒë¦° ìƒì ìˆ˜ (3ì´ë©´ í´ë¦¬ì–´)
-    } else if (puzzle.type === 'voices') {
-      // 2ì¥ êµ¬ì—­â‘ : ë‹¤ë¥¸ ëª©ì†Œë¦¬ ìˆ˜ì§‘ + ë°˜ì§ ë¬¸ ë£¨í”„ ì¹´ìš´íŠ¸
-      run.voices = [];  // ë“¤ì€ ëª©ì†Œë¦¬ NPC idë“¤
-      run.loops = 0;    // ë°˜ì§ ë¬¸ ë£¨í”„ íšŸìˆ˜ (ì—°ì¶œ ë‹¨ê³„)
-    } else if (puzzle.type === 'retrain') {
-      // 2ì¥ êµ¬ì—­â‘¡: ë°˜ë¡€ ì‚¬ì§„ ìˆ˜ì§‘ + íŒë…ê¸° íˆ¬ì…
-      run.photos = 0;   // ì±™ê¸´ ë°˜ë¡€ ì‚¬ì§„ ìˆ˜ (ìµœëŒ€ 3)
-      run.taken = [];   // ì´ë¯¸ ì±™ê¸´ ì„ ë°˜ ì¸ë±ìŠ¤
-      run.fed = 0;      // íŒë…ê¸°ì— íˆ¬ì…í•œ ìˆ˜ (3ì´ë©´ í´ë¦¬ì–´)
-    } else if (puzzle.type === 'lamps') {
-      // 2ì¥ êµ¬ì—­â‘¢: ë¨í”„ ì ë“±
-      run.lit = puzzle.lamps.map(() => false);
-      run.litCount = 0;
-    } else if (puzzle.type === 'tips') {
-      // 3ì¥ 1ì¸µ: ì œë³´ ìª½ì§€ ì±„íƒ â€” resolved(ì±„íƒ ì™„ë£Œ ì¸ë±ìŠ¤), correct(ì¶œì²˜ ìˆëŠ” ì±„íƒ ìˆ˜)
-      run.resolved = [];
-      run.correct = 0;
-      run.busted = puzzle.notes.map(() => false); // [ì†ë³´]ë¡œ ë²½ì— ë¶™ì€ ìª½ì§€
-    } else if (puzzle.type === 'compare') {
-      // 3ì¥ 2ì¸µ: ì›ë³¸ ëŒ€ì¡° â€” solved(ì§€ëª© ì™„ë£Œ ì¸ë±ìŠ¤)
-      run.solved = puzzle.photos.map(() => false);
-      run.solvedCount = 0;
-    } else if (puzzle.type === 'broadcast') {
-      // 3ì¥ 3ì¸µ: ì •ì • ë³´ë„ 3ë‹¨ê³„ â€” stage 0(ì •ì •ë¬¸)â†’1(ì¶œì²˜)â†’2(ë ˆë²„)
-      run.stage = 0;
-    } else if (puzzle.type === 'roulette') {
-      // 4ì¥ êµ¬ì—­â‘ : ë£°ë ›(ë¯¸ë¼) + ì°½ê³  ì—´ì‡ 
-      run.spins = 0;    // ë£°ë ›ì„ ëŒë¦° íšŸìˆ˜(ê´‘ê³  ë”±ì§€ ëˆ„ì  â€” ìˆœì „íˆ ë¯¸ë¼)
-      run.gotKey = false;
-    } else if (puzzle.type === 'signup') {
-      // 4ì¥ êµ¬ì—­â‘¡: ê°ˆë¦¼ê¸¸ í‘œì§€íŒ í†µê³¼ ì—¬ë¶€ + ì˜¤ë‹µ íšŸìˆ˜
-      run.passed = false;
-      run.wrong = 0;
-    } else if (puzzle.type === 'backstage') {
-      // 4ì¥ êµ¬ì—­â‘¢: ë§ˆìŠ¤í„°í‚¤ í•¨ì • ì‚¬ìš© ì—¬ë¶€ + ì•ˆìª½ ë¬¸ ê°œë°© ì—¬ë¶€
-      run.trapUsed = false;
-      run.opened = false;
-    } else if (puzzle.type === 'call') {
-      // 5ì¥ êµ¬ì—­â‘ : ë£¨ë¯¸ì˜ ê²½ê³  íšŸìˆ˜(3íšŒ) í›„ 4ë²ˆì§¸ ì¡°ì‚¬ì— ì „í™”ë¥¼ ë°›ëŠ”ë‹¤
-      run.warnCount = 0;
-    } else if (puzzle.type === 'checkdoor') {
-      // 5ì¥ êµ¬ì—­â‘¡: ë¬¸ì„ ì§ì ‘ ì—´ì—ˆëŠ”ì§€ ì—¬ë¶€
-      run.opened = false;
-    } else if (puzzle.type === 'sofa') {
-      // 5ì¥ êµ¬ì—­â‘¢: ì•‰ìŒ ì—¬ë¶€ + ì¼ì–´ë‚˜ê¸° ë²„í‹°ê¸° ê²Œì´ì§€(held 90í”„ë ˆì„)
-      run.sitting = false;
-      run.standTimer = 0;
-    } else {
-      // êµ¬ì—­â‘ (traces): ì •ë³´ í† í° ë°©
-      run.held = { nickname: true, school: true, address: true, phone: true, face: true };
-      run.given = [];        // ë˜ëŒë¦´ ìˆ˜ ìˆê²Œ ë‚´ì¤€ í† í° í‚¤ë“¤
-      run.boardFace = false; // ê²Œì‹œíŒì— ê³µìœ í•œ ì–¼êµ´ì‚¬ì§„(ì˜êµ¬ â€” ì§€ìš¸ ìˆ˜ ì—†ìŒ)
-      run.maxBoard = 0;      // ë°© í”Œë ˆì´ ì¤‘ ë‚´ë³´ë‚¸ ì •ë³´ ìµœê³ ì¹˜(ë‹‰ë„¤ì„ ì œì™¸) â€” ë³´ìŠ¤ ì½œë°± ì¸íŠ¸ë¡œìš©
-    }
-    game.puzzleRun = run;
-  }
-  const PRIVACY_LEAK_MAX = 5;
-  const PRIVACY_RECOVERY_NEED = 3;
-
-  function privacyLeak() { return Math.max(0, Math.min(PRIVACY_LEAK_MAX, game.flags.privacyLeak || 0)); }
-  function privacyPressureProfile(n) {
-    const level = Math.max(0, Math.min(PRIVACY_LEAK_MAX, n || 0));
-    const table = [
-      { label: 'ì•ˆì „', stalkerWanted: 0, noise: 'ì¡°ìš©í•¨' },
-      { label: 'ì°œì°œí•œ ì‹œì„ ', stalkerWanted: 1, noise: 'ì‹œì„ ' },
-      { label: 'ì´ë¦„ì´ ë¶ˆë¦¼', stalkerWanted: 1, noise: 'ì†ì‚­ì„' },
-      { label: 'ë”°ë¼ë¶™ëŠ” ê´‘ê³ ', stalkerWanted: 2, noise: 'ê´‘ê³ ' },
-      { label: 'ë¬¸ ì• í™•ì¸ ì¦ê°€', stalkerWanted: 2, noise: 'í™•ì¸ìš”êµ¬' },
-      { label: 'íšŒë³µ í•„ìš”', stalkerWanted: 3, noise: 'ì¶”ì ' },
-    ];
-    return Object.assign({ level }, table[level]);
-  }
-  function privacyLevelLabel(n) { return privacyPressureProfile(n).label; }
-  function ch1StreetVisualProfile(n, lowGraphics) {
-    const level = Math.max(0, Math.min(PRIVACY_LEAK_MAX, n || 0));
-    const low = !!lowGraphics;
-    return {
-      level,
-      adSigns: low ? Math.min(3, 1 + Math.floor(level / 2)) : Math.min(8, 2 + level),
-      sensors: low ? Math.min(2, Math.floor(level / 3)) : Math.min(3, Math.floor((level + 1) / 2)),
-      labelShadows: low ? Math.min(2, level >= 4 ? 2 : level >= 2 ? 1 : 0) : Math.min(4, level),
-      glow: !low && level >= 3,
-      scanLines: false,
-    };
-  }
-  function chapter2HubVisualProfile(n, lowGraphics) {
-    const level = Math.max(0, Math.min(3, n || 0));
-    const low = !!lowGraphics;
-    return {
-      level,
-      recommendSigns: low ? Math.min(2, 1 + Math.floor(level / 3)) : Math.min(5, 2 + level),
-      echoMarks: low ? 1 : Math.min(3, 1 + level),
-      labels: !low,
-      fullScreenSkew: false,
-    };
-  }
-  function chapter3HubVisualProfile(n, rumorFixed, lowGraphics) {
-    const level = Math.max(0, Math.min(3, n || 0));
-    const fixed = !!rumorFixed;
-    const low = !!lowGraphics;
-    return {
-      level,
-      fixed,
-      headlineSigns: fixed ? (low ? 1 : 2) : (low ? Math.min(2, 1 + Math.floor(level / 2)) : Math.min(6, 3 + level)),
-      echoMarks: fixed ? (low ? 0 : 1) : (low ? 1 : Math.min(3, 1 + level)),
-      labels: !low,
-      fullScreenNoise: false,
-    };
-  }
-  function chapter4HubVisualProfile(n, lowGraphics) {
-    const level = Math.max(0, Math.min(4, n || 0));
-    const low = !!lowGraphics;
-    return {
-      level,
-      neonSigns: low ? Math.min(3, 1 + Math.floor(level / 2)) : Math.min(6, 2 + level),
-      confetti: low ? 1 : Math.min(3, 1 + Math.floor(level / 2)),
-      labels: !low,
-      fullScreenFlash: false,
-    };
-  }
-  function chapter5HubVisualProfile(n, lowGraphics) {
-    const level = Math.max(0, Math.min(3, n || 0));
-    const low = !!lowGraphics;
-    return {
-      level,
-      warmLamps: low ? Math.min(2, 1 + Math.floor(level / 2)) : Math.min(5, 2 + level),
-      voiceRipples: low ? 1 : Math.min(3, 1 + level),
-      labels: !low,
-      fullScreenBlur: false,
-    };
-  }
-  function addPrivacyLeak(reason) {
-    const before = privacyLeak();
-    const after = Math.min(PRIVACY_LEAK_MAX, before + 1);
-    game.flags.privacyLeak = after;
-    if (after >= PRIVACY_LEAK_MAX) {
-      game.flags.privacyRecoveryActive = true;
-      if (!game.flags.privacyRecovery) game.flags.privacyRecovery = 0;
-      game.notice = { text: 'ë…¸ì¶œë„ MAX â€” ì§€ìš°ê°œë¡œ í©ì–´ì§„ ì •ë³´ ì¡°ê° 3ê°œë¥¼ íšŒìˆ˜í•˜ì', t: 210 };
-    } else if (after >= 3) {
-      game.notice = { text: `ë…¸ì¶œë„ ${after}/5 â€” ê°€ì§œ ê´‘ê³ ì™€ ê·¸ë¦¼ìê°€ ë” ë”°ë¼ë¶™ëŠ”ë‹¤`, t: 160 };
-    } else {
-      game.notice = { text: `ë…¸ì¶œë„ ${after}/5 â€” ${reason || 'ì •ë³´ ê·¸ë¦¼ìê°€ ë¶™ì—ˆë‹¤'}`, t: 140 };
-    }
-    save();
-  }
-  function notePrivacyRecoveryPiece() {
-    if (!game.flags.privacyRecoveryActive) return;
-    game.flags.privacyRecovery = Math.min(PRIVACY_RECOVERY_NEED, (game.flags.privacyRecovery || 0) + 1);
-    if (game.flags.privacyRecovery >= PRIVACY_RECOVERY_NEED) {
-      game.flags.privacyLeak = 2;
-      game.flags.privacyRecovery = 0;
-      game.flags.privacyRecoveryActive = false;
-      game.notice = { text: 'íšŒë³µ ì™„ë£Œ â€” ë…¸ì¶œë„ 2/5ë¡œ ë‚®ì•„ì¡Œë‹¤', t: 180 };
-      Sound.correct();
-    } else {
-      game.notice = { text: `ì •ë³´ ì¡°ê° íšŒìˆ˜ ${game.flags.privacyRecovery}/${PRIVACY_RECOVERY_NEED}`, t: 140 };
-    }
-    save();
-  }
-
-  // ì§€ê¸ˆ ë°–ì— ë‚´ë³´ë‚¸ í† í° (ë˜ëŒë¦´ ìˆ˜ ìˆëŠ” ê²ƒ + ê²Œì‹œíŒ ê³µìœ  ì–¼êµ´ì‚¬ì§„)
-  function givenTokens(run) {
-    return run.given.concat(run.boardFace ? ['face'] : []);
-  }
-  // í”„ë¡œí•„ ë³´ë“œ ì¹´ìš´íŠ¸ (ë‹‰ë„¤ì„ ì œì™¸) â€” 3 ì´ìƒì´ë©´ ìŠ¤í† ì»¤
-  function boardCount(run) {
-    return givenTokens(run).filter((k) => k !== 'nickname').length;
-  }
-  // ìƒíƒœì—ì„œ í˜„ì¬ ë‹¨ê³„ ìœ ë„ â€” íŒíŠ¸ê°€ ì´ ë‹¨ê³„ë¥¼ ë”°ë¼ê°„ë‹¤
-  function puzzleStep(run) {
-    if (run.puzzle.type === 'copies') return 'copies';
-    if (run.puzzle.type === 'levers') return 'levers';
-    if (run.puzzle.type === 'voices') return 'voices';
-    if (run.puzzle.type === 'retrain') return 'retrain';
-    if (run.puzzle.type === 'lamps') return 'lamps';
-    if (run.puzzle.type === 'tips') return 'tips';
-    if (run.puzzle.type === 'compare') return 'compare';
-    if (run.puzzle.type === 'broadcast') return ['correct', 'source', 'lever'][run.stage] || 'lever';
-    if (run.puzzle.type === 'roulette') return 'roulette';
-    if (run.puzzle.type === 'signup') return 'signup';
-    if (run.puzzle.type === 'backstage') return 'backstage';
-    if (run.puzzle.type === 'call') return 'call';
-    if (run.puzzle.type === 'checkdoor') return 'checkdoor';
-    if (run.puzzle.type === 'sofa') return 'sofa';
-    const spent = givenTokens(run);
-    if (spent.length === 0) return 'tokens';
-    if (spent.filter((k) => k !== 'nickname').length >= 3) return 'eraser';
-    if (run.boardFace) return 'board';
-    return 'exit';
-  }
-  function spawnStalker(run) {
-    // í”Œë ˆì´ì–´ì—ì„œ ë¨¼ êµ¬ì„ì—ì„œ ë“±ì¥
-    const p = game.player;
-    const far = p.x < 10 ? { x: 17, y: 2 } : { x: 2, y: 2 };
-    run.stalkers.push({ px: far.x * TS, py: far.y * TS });
-  }
-  // ë³´ë“œ ì¹´ìš´íŠ¸ì— ë§ì¶° ìŠ¤í† ì»¤ë¥¼ ìŠ¤í°/ì†Œë©¸ (3 ì´ìƒì´ë©´ ìµœì†Œ 1, ë¯¸ë§Œì´ë©´ ì „ë¶€ ì†Œë©¸)
-  function refreshStalkers(run) {
-    if (boardCount(run) >= 3) {
-      const leak = privacyLeak();
-      const wanted = Math.max(1, privacyPressureProfile(leak).stalkerWanted);
-      while (run.stalkers.length < wanted) spawnStalker(run);
-      if (run.stalkers.length > wanted) run.stalkers.length = wanted;
-    } else {
-      run.stalkers.length = 0;
-      run.flashT = 0;
-    }
-  }
-  // ë§¤ í”„ë ˆì„: ì‹œê°„ ëˆ„ì  + êµ¬ì—­ë³„ ì›€ì§ì´ëŠ” ë¬¼ì²´ ê°±ì‹ 
-  function updatePuzzleWorld() {
-    const run = game.puzzleRun;
-    run.timeFrames += 1;
-    if (run.flashT > 0) run.flashT -= 1;
-    if (run.warnCool > 0) run.warnCool -= 1;
-    if (run.puzzle.type === 'copies') { updateCopies(run); return; }
-    if (run.puzzle.type === 'levers') return; // ì»¨ë² ì´ì–´ ìƒìëŠ” timeFramesë¡œ ê·¸ë¦¬ê¸°ì—ì„œ ì›€ì§ì¸ë‹¤
-    // 2ì¥ êµ¬ì—­ë“¤ì€ ì¡°ì‚¬Â·ì ‘ì´‰ìœ¼ë¡œë§Œ ì§„í–‰ (ë§¤ í”„ë ˆì„ ê°±ì‹ í•  ë¬¼ì²´ ì—†ìŒ)
-    if (run.puzzle.type === 'voices' || run.puzzle.type === 'retrain' || run.puzzle.type === 'lamps') return;
-    // 3ì¥ êµ¬ì—­ë“¤ë„ ì¡°ì‚¬Â·ì„ íƒìœ¼ë¡œë§Œ ì§„í–‰ (ë§¤ í”„ë ˆì„ ê°±ì‹ í•  ë¬¼ì²´ ì—†ìŒ)
-    if (run.puzzle.type === 'tips' || run.puzzle.type === 'compare' || run.puzzle.type === 'broadcast') return;
-    // 4ì¥ êµ¬ì—­ë“¤ë„ ì¡°ì‚¬Â·ì„ íƒìœ¼ë¡œë§Œ ì§„í–‰ (ë§¤ í”„ë ˆì„ ê°±ì‹ í•  ë¬¼ì²´ ì—†ìŒ)
-    if (run.puzzle.type === 'roulette' || run.puzzle.type === 'signup' || run.puzzle.type === 'backstage') return;
-    // 5ì¥ êµ¬ì—­ë“¤ â€” call/checkdoorëŠ” ì¡°ì‚¬ë¡œë§Œ ì§„í–‰. sofaì˜ ë²„í‹°ê¸° íƒ€ì´ë¨¸ëŠ”
-    // updateWorld()ì—ì„œ ë³„ë„ë¡œ ì²˜ë¦¬í•œë‹¤(ì´ë™ì„ ì ê°€ì•¼ í•˜ë¯€ë¡œ).
-    if (run.puzzle.type === 'call' || run.puzzle.type === 'checkdoor' || run.puzzle.type === 'sofa') return;
-    // â”€â”€ traces: ìŠ¤í† ì»¤ ì¶”ê²©(ë°˜ ì†ë„, walkable ì²´í¬) + ì ‘ì´‰ ì²˜ë¦¬ â”€â”€
-    if (boardCount(run) > run.maxBoard) run.maxBoard = boardCount(run); // ìµœê³ ì¹˜ ì¶”ì 
-    if (!Array.isArray(run.stalkers)) return;
-    const p = game.player;
-    const spd = MOVE_SPEED * 0.5;
-    for (const s of run.stalkers) {
-      const dx = p.px - s.px, dy = p.py - s.py;
-      const dist = Math.hypot(dx, dy) || 1;
-      const sx = dx / dist * spd, sy = dy / dist * spd;
-      // ì¶•ë³„ walkable ì²´í¬ (ë²½ì„ í†µê³¼í•˜ì§€ ì•Šê²Œ)
-      if (!SOLID(tileAt(game.map, Math.round((s.px + sx) / TS), Math.round(s.py / TS)))) s.px += sx;
-      if (!SOLID(tileAt(game.map, Math.round(s.px / TS), Math.round((s.py + sy) / TS)))) s.py += sy;
-      if (Math.hypot(p.px - s.px, p.py - s.py) < TS * 0.5) {
-        run.flashT = 8;
-        if (run.warnCool <= 0) {
-          run.warnCool = 90; // ì—°ì† ì ‘ì´‰ ìŠ¤ë¡œí‹€
-          addPrivacyLeak('ì •ë³´ ê·¸ë¦¼ìê°€ ë¶™ì—ˆë‹¤');
-          refreshStalkers(run);
-          Sound.bump();
-        }
-      }
-    }
-  }
-  // êµ¬ì—­â‘¡: ë– ë„ëŠ” ì‚¬ë³¸ â€” í”Œë ˆì´ì–´ë¥¼ í”¼í•´ ë„ë§(0.7ë°°ì†, ìŠ¤í† ì»¤ ì´ë™ ë¡œì§ ì¬í™œìš©).
-  // ë¶™ì¡ìœ¼ë©´(ì ‘ì´‰) íšŒìˆ˜. 3ê°œë¥¼ ëª¨ë‘ íšŒìˆ˜í•˜ë©´ í´ë¦¬ì–´.
-  //
-  // ë²½ ë/ëª¨ì„œë¦¬ì— ëª°ë¦¬ë©´ ë„ë§ ì¶•ì´ SOLIDì— ë§‰í˜€ ì œìë¦¬ì¸ë°, ì˜ˆì „ í¬íš ë°˜ê²½
-  // (0.7Ã—TS)ì€ íƒ€ì¼ ì¤‘ì‹¬ ê±°ì˜ ê²¹ì¹¨ì„ ìš”êµ¬í•´ í”Œë ˆì´ì–´ê°€ ë²½ ìª½ì—ì„œ ë”°ë¼ì¡ì•„ë„
-  // ë‹¿ì§€ ëª»í•˜ëŠ” ë²„ê·¸ê°€ ìˆì—ˆë‹¤. í¬íšì„ ë¨¼ì € íŒì •í•˜ê³  ë°˜ê²½ì„ í‚¤ìš°ë©°, ë§‰íˆë©´
-  // ë²½ ë”°ë¼ ë¯¸ë„ëŸ¬ì§€ê±°ë‚˜ ì¤‘ì•™ ìª½ìœ¼ë¡œ ë°€ì–´ ì½”ë„ˆì— ë¼ì§€ ì•Šê²Œ í•œë‹¤.
-  function copyTileWalkable(px, py) {
-    return !SOLID(tileAt(game.map, Math.round(px / TS), Math.round(py / TS)));
-  }
-  function tryMoveCopy(c, sx, sy) {
-    // ì¶• ë¶„ë¦¬ ìŠ¬ë¼ì´ë“œ â€” ëŒ€ê° ë„ë§ì´ ë²½ì— ë§‰í˜€ë„ ì—´ë¦° ì¶•ìœ¼ë¡œ ë¯¸ë„ëŸ¬ì§„ë‹¤
-    let moved = false;
-    if (sx && copyTileWalkable(c.px + sx, c.py)) { c.px += sx; moved = true; }
-    if (sy && copyTileWalkable(c.px, c.py + sy)) { c.py += sy; moved = true; }
-    return moved;
-  }
-  function updateCopies(run) {
-    const p = game.player;
-    // ì¸ì ‘ íƒ€ì¼ì—ì„œë„ ì¡íˆê²Œ (ë²½ ìª½ ì ‘ê·¼ ì‹œ íˆíŠ¸ë°•ìŠ¤ ë•Œë¬¸ì— ì¤‘ì‹¬ ê²¹ì¹¨ì´ ì–´ë µë‹¤)
-    const CAPTURE_R = TS * 1.2;
-    for (const c of run.copies) {
-      if (c.got) continue;
-      const dx = c.px - p.px, dy = c.py - p.py;
-      const dist = Math.hypot(dx, dy) || 1;
-      // í¬íšì„ ì´ë™ë³´ë‹¤ ë¨¼ì € â€” ì½”ë„ˆì— ëª°ë¦° ì¡°ê°ë„ ë‹¿ëŠ” ì¦‰ì‹œ íšŒìˆ˜
-      if (dist < CAPTURE_R) {
-        c.got = true;
-        run.collected += 1;
-        Sound.correct();
-        game.notice = { text: `ë‚´ ì¡°ê°ì„ ë˜ì°¾ì•˜ë‹¤! (${run.collected}/3)`, t: 120 };
-        if (run.collected >= 3) { clearPuzzle(run); return; }
-        continue;
-      }
-      if (dist < TS * 7) {
-        // ê°€ê¹Œìš°ë©´ ë„ë§ (í”Œë ˆì´ì–´ ì´ë™ì˜ 0.7ë°°ì† â€” ì—´ë¦° ê³µê°„ì—ì„  ê²°êµ­ ë”°ë¼ì¡íŒë‹¤)
-        const spd = MOVE_SPEED * 0.7;
-        const sx = dx / dist * spd, sy = dy / dist * spd;
-        if (!tryMoveCopy(c, sx, sy)) {
-          // ì™„ì „ ë§‰í˜(ë²½ ë) â€” ë§µ ì¤‘ì•™ ìª½ìœ¼ë¡œ ì‚´ì§ ë°€ì–´ ë¼ì„ í•´ì œ
-          const map = MAPS[game.map];
-          const midX = ((map.tiles[0].length - 1) / 2) * TS;
-          const midY = ((map.tiles.length - 1) / 2) * TS;
-          const tdx = midX - c.px, tdy = midY - c.py;
-          const td = Math.hypot(tdx, tdy) || 1;
-          tryMoveCopy(c, (tdx / td) * spd, (tdy / td) * spd);
-        }
-      } else {
-        // ë©€ë©´ ì¢…ì´ì²˜ëŸ¼ í•˜ëŠ˜í•˜ëŠ˜ ë– ë‹¤ë‹Œë‹¤
-        const sx = Math.sin((game.time + c.seed) / 40) * 0.6;
-        const sy = Math.cos((game.time + c.seed) / 52) * 0.6;
-        tryMoveCopy(c, sx, sy);
-      }
-    }
-  }
-  // í¼ì¦ ë¬¼ì²´(ë‹¨ë§Â·ê²Œì‹œíŒÂ·ì§€ìš°ê°œÂ·ì¶œêµ¬Â·ë ˆë²„Â·ë°˜ì†¡í•¨) â€” ì¢Œí‘œë¡œ íŒì • (ì´ë™ ì°¨ë‹¨ + ìƒí˜¸ì‘ìš©)
-  function puzzleObjAt(mapId, x, y) {
-    const run = game.puzzleRun;
-    if (!run || run.map !== mapId) return null;
-    const puz = run.puzzle;
-    if (puz.type === 'copies') return null; // ê´‘ì¥ì˜ ì‚¬ë³¸ì€ ì ‘ì´‰(ì¶”ê²©)ìœ¼ë¡œë§Œ íšŒìˆ˜
-    if (puz.type === 'voices') return null; // ë‹¤ë¥¸ ëª©ì†Œë¦¬ëŠ” NPC ëŒ€í™”ë¡œë§Œ ìˆ˜ì§‘
-    if (puz.type === 'levers') {
-      for (const lv of puz.levers) if (lv.x === x && lv.y === y) return { kind: 'lever', ref: lv };
-      if (puz.returnBin.x === x && puz.returnBin.y === y) return { kind: 'bin' };
-      return null;
-    }
-    if (puz.type === 'retrain') {
-      for (let i = 0; i < puz.photos.length; i++) {
-        const ph = puz.photos[i];
-        if (ph.x === x && ph.y === y) return { kind: 'photo', idx: i };
-      }
-      if (puz.reader.x === x && puz.reader.y === y) return { kind: 'reader' };
-      return null;
-    }
-    if (puz.type === 'lamps') {
-      for (let i = 0; i < puz.lamps.length; i++) {
-        const lp = puz.lamps[i];
-        if (lp.x === x && lp.y === y) return { kind: 'lamp', idx: i };
-      }
-      return null;
-    }
-    if (puz.type === 'tips') {
-      for (let i = 0; i < puz.notes.length; i++) {
-        const n = puz.notes[i];
-        if (n.x === x && n.y === y) return { kind: 'tipnote', idx: i };
-      }
-      if (puz.submitBox.x === x && puz.submitBox.y === y) return { kind: 'tipbox' };
-      return null;
-    }
-    if (puz.type === 'compare') {
-      for (let i = 0; i < puz.photos.length; i++) {
-        const ph = puz.photos[i];
-        if (ph.x === x && ph.y === y) return { kind: 'cphoto', idx: i };
-      }
-      return null;
-    }
-    if (puz.type === 'broadcast') {
-      if (puz.terminal1.x === x && puz.terminal1.y === y) return { kind: 'bterm1' };
-      if (puz.terminal2.x === x && puz.terminal2.y === y) return { kind: 'bterm2' };
-      if (puz.lever.x === x && puz.lever.y === y) return { kind: 'blever' };
-      return null;
-    }
-    if (puz.type === 'roulette') {
-      for (let i = 0; i < puz.roulettes.length; i++) {
-        const r = puz.roulettes[i];
-        if (r.x === x && r.y === y) return { kind: 'roulette', idx: i };
-      }
-      if (puz.unsub.x === x && puz.unsub.y === y) return { kind: 'unsub' };
-      if (puz.chest.x === x && puz.chest.y === y) return { kind: 'chest' };
-      return null;
-    }
-    if (puz.type === 'signup') {
-      if (puz.fork.x === x && puz.fork.y === y) return { kind: 'fork' };
-      if (puz.idchest.x === x && puz.idchest.y === y) return { kind: 'idchest' };
-      return null;
-    }
-    if (puz.type === 'backstage') {
-      if (puz.masterkey.x === x && puz.masterkey.y === y) return { kind: 'masterkey' };
-      if (puz.authterm.x === x && puz.authterm.y === y) return { kind: 'authterm' };
-      if (puz.door.x === x && puz.door.y === y) return { kind: 'offstagedoor' };
-      return null;
-    }
-    if (puz.type === 'call') {
-      if (puz.phone.x === x && puz.phone.y === y) return { kind: 'phone' };
-      return null;
-    }
-    if (puz.type === 'checkdoor') {
-      if (puz.door.x === x && puz.door.y === y) return { kind: 'checkdoor' };
-      return null;
-    }
-    if (puz.type === 'sofa') {
-      if (puz.sofa.x === x && puz.sofa.y === y) return { kind: 'sofaobj' };
-      return null;
-    }
-    for (const t of puz.terminals) if (t.x === x && t.y === y) return { kind: 'terminal', ref: t };
-    if (puz.eraser.x === x && puz.eraser.y === y) return { kind: 'eraser' };
-    if (puz.exits.vip.x === x && puz.exits.vip.y === y) return { kind: 'vip' };
-    if (puz.exits.normal.x === x && puz.exits.normal.y === y) return { kind: 'normal' };
-    return null;
-  }
-  // ë§ˆì£¼ ë³¸ ë¬¼ì²´ì™€ ìƒí˜¸ì‘ìš© (interactì—ì„œ í˜¸ì¶œ). ì²˜ë¦¬í–ˆìœ¼ë©´ true.
-  function interactPuzzle() {
-    const run = game.puzzleRun;
-    if (!run) return false;
-    const f = facingTile();
-    const obj = puzzleObjAt(game.map, f.x, f.y);
-    if (!obj) return false;
-    if (obj.kind === 'terminal') openTerminal(obj.ref);
-    else if (obj.kind === 'eraser') openEraser();
-    else if (obj.kind === 'vip') openVipExit();
-    else if (obj.kind === 'normal') openNormalExit();
-    else if (obj.kind === 'lever') openLever(obj.ref);
-    else if (obj.kind === 'bin') openReturnBin();
-    else if (obj.kind === 'photo') openPhoto(obj.idx);
-    else if (obj.kind === 'reader') openReader();
-    else if (obj.kind === 'lamp') openLamp(obj.idx);
-    else if (obj.kind === 'tipnote') openTipNote(obj.idx);
-    else if (obj.kind === 'tipbox') openTipBox();
-    else if (obj.kind === 'cphoto') openComparePhoto(obj.idx);
-    else if (obj.kind === 'bterm1') openBroadcastTerm1();
-    else if (obj.kind === 'bterm2') openBroadcastTerm2();
-    else if (obj.kind === 'blever') openBroadcastLever();
-    else if (obj.kind === 'roulette') openRoulette(obj.idx);
-    else if (obj.kind === 'unsub') openUnsub();
-    else if (obj.kind === 'chest') openChest();
-    else if (obj.kind === 'fork') openFork();
-    else if (obj.kind === 'idchest') openIdChest();
-    else if (obj.kind === 'masterkey') openMasterKey();
-    else if (obj.kind === 'authterm') openAuthTerm();
-    else if (obj.kind === 'offstagedoor') openOffstageDoor();
-    else if (obj.kind === 'phone') openPhone();
-    else if (obj.kind === 'checkdoor') openCheckDoor();
-    else if (obj.kind === 'sofaobj') openSofa();
-    return true;
-  }
-  // 2ì¥ êµ¬ì—­â‘¡: ë°˜ë¡€ ì‚¬ì§„ ì„ ë°˜ ì¡°ì‚¬ â†’ ìˆ˜ì§‘ (ë¼ë²¨ ê°œê·¸ í¬í•¨)
-  function openPhoto(idx) {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    if (run.taken.includes(idx)) {
-      startDialog(['â€¦ì´ë¯¸ ì±™ê¸´ ì„ ë°˜ì´ë‹¤.'], puz.title);
-      return;
-    }
-    run.taken.push(idx);
-    run.photos += 1;
-    Sound.correct();
-    game.notice = { text: `ë°˜ë¡€ ì‚¬ì§„ì„ ì±™ê²¼ë‹¤! (${run.photos}/3)`, t: 120 };
-    startDialog([puz.photos[idx].found], puz.title);
-  }
-  // 2ì¥ êµ¬ì—­â‘¡: íŒë…ê¸° ë‹¨ë§ â€” ë°˜ë¡€ ì‚¬ì§„ì„ í•œ ì¥ì”© íˆ¬ì… (íˆ¬ì…ë§ˆë‹¤ íŒì • êµì •)
-  function openReader() {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    const rd = puz.reader;
-    const avail = run.photos - run.fed;
-    if (avail <= 0) { startDialog([rd.empty], rd.name); return; }
-    startChoice(`${rd.prompt}\n(ê°€ì§„ ë°˜ë¡€ ì‚¬ì§„ ${avail}ì¥)`, ['ë„£ëŠ”ë‹¤', 'ê·¸ë§Œë‘”ë‹¤'], (i) => {
-      if (i === 0) {
-        const line = rd.steps[Math.min(run.fed, rd.steps.length - 1)];
-        run.fed += 1;
-        Sound.select();
-        if (run.fed >= 3) { clearPuzzle(run); return; }
-        startDialog([`${line}\n(íŒë…ê¸°ì— ${run.fed}/3ì¥ íˆ¬ì…)`], rd.name);
-      } else if (i > 0) {
-        startDialog(['(íŒë…ê¸°ì—ì„œ ì†ì„ ë—ë‹¤)'], rd.name);
-      }
-    });
-  }
-  // 2ì¥ êµ¬ì—­â‘¢: ë¨í”„ ì¡°ì‚¬ â†’ ì ë“± (3ê°œë©´ í´ë¦¬ì–´)
-  function openLamp(idx) {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    if (run.lit[idx]) { startDialog(['ì´ë¯¸ ì¼œì§„ ë¨í”„ë‹¤.\nì£¼ë³€ì´ í™˜í•˜ë‹¤.'], puz.title); return; }
-    run.lit[idx] = true;
-    run.litCount += 1;
-    Sound.correct();
-    game.notice = { text: `ë¨í”„ì— ë¶ˆì„ ì¼°ë‹¤! (${run.litCount}/3)`, t: 120 };
-    if (run.litCount >= 3) { clearPuzzle(run); return; }
-    startDialog(['íƒ â€” ë¨í”„ì— ë¶ˆì´ ë“¤ì–´ì™”ë‹¤.\nì£¼ë³€ì´ ì¡°ê¸ˆ í™˜í•´ì§„ë‹¤.'], puz.title);
-  }
-  // 3ì¥ 1ì¸µ: ì œë³´ ìª½ì§€ ì¡°ì‚¬ â€” ì¶œì²˜ ìœ ë¬´ë¥¼ ì½ì–´ ë³¸ë‹¤ (ì±„íƒì€ ì±„íƒí•¨ì—ì„œ)
-  function openTipNote(idx) {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    const n = puz.notes[idx];
-    if (run.resolved.includes(idx)) {
-      startDialog([run.busted[idx]
-        ? `${n.label}\n[ì†ë³´]ë¡œ ë²½ì— ë¶™ì–´ ë²„ë ¸ë‹¤.`
-        : `${n.label}\nì´ë¯¸ ì±„íƒí•¨ì— ë„£ì—ˆë‹¤.`], puz.title);
-      return;
-    }
-    startDialog([n.text], puz.title);
-  }
-  // 3ì¥ 1ì¸µ: ì±„íƒí•¨ â€” ì œë³´ë¥¼ í•˜ë‚˜ ê³¨ë¼ ì œì¶œ. ì¶œì²˜ ìˆëŠ” ìª½ì§€ë§Œ ì •ë‹µ(2ì¥ì´ë©´ í´ë¦¬ì–´)
-  function openTipBox() {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    const remain = puz.notes.map((n, i) => i).filter((i) => !run.resolved.includes(i));
-    if (!remain.length) { startDialog(['ì±„íƒí•¨ì´ ê°€ë“ ì°¼ë‹¤.'], puz.submitBox.name); return; }
-    const labels = remain.map((i) => puz.notes[i].label).concat(['ê·¸ë§Œë‘ê¸°']);
-    startChoice('ì±„íƒí•¨. ì–´ë–¤ ì œë³´ë¥¼ ì±„íƒí• ê¹Œìš”?', labels, (sel) => {
-      if (sel < 0 || sel >= remain.length) return;
-      const idx = remain[sel];
-      const n = puz.notes[idx];
-      run.resolved.push(idx);
-      if (n.sourced) {
-        run.correct += 1;
-        Sound.correct();
-        if (run.correct >= 2) { clearPuzzle(run); return; }
-        // ì •ë‹µ í”¼ë“œë°±ì€ ë¹„ì°¨ë‹¨ ë§í’ì„  í•˜ë‚˜ë¡œ â€” ëŒ€í™” ìƒìë¥¼ ê²¹ì³ ë„ìš°ì§€ ì•ŠëŠ”ë‹¤
-        game.notice = { text: `ã€Œ${n.label}ã€ ì±„íƒ â€” ì¶œì²˜ê°€ í™•ì‹¤í•˜ë‹¤. (${run.correct}/2)`, t: 150 };
-      } else {
-        recordPuzzleWrong(run.id);
-        run.busted[idx] = true;
-        run.flashT = 10;
-        Sound.wrong();
-        startDialog([
-          `ã€Œ${n.label}ã€ì„(ë¥¼) ì±„íƒí–ˆë‹¤â€¦\ní•˜ì§€ë§Œ ì¶œì²˜ê°€ ì—†ì—ˆë‹¤!`,
-          'ë‹¤ìŒ ë‚ , ë²½ì— ëŒ€ë¬¸ì§ë§Œ í•˜ê²Œ\n[ì†ë³´]ë¡œ ë¶™ì–´ ë²„ë ¸ë‹¤.',
-        ], puz.title);
-      }
-    });
-  }
-  // 3ì¥ 2ì¸µ: ì‚¬ì§„ ì¡°ì‚¬ â†’ ì›ë³¸ê³¼ ë‹¤ë¥¸ ì ì„ 3ì§€ì„ ë‹¤ë¡œ ì§€ëª© (ì„¸ ì¥ ëª¨ë‘ ë§íˆë©´ í´ë¦¬ì–´)
-  function openComparePhoto(idx) {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    const ph = puz.photos[idx];
-    if (run.solved[idx]) { startDialog([ph.found], puz.title); return; }
-    const CLUE_TEXT = { flip: 'ì¢Œìš° ë°˜ì „', fingers: 'ì†ê°€ë½ 6ê°œ', date: 'ë‚ ì§œê°€ ë¯¸ë˜' };
-    const clueIdx = puz.options.indexOf(CLUE_TEXT[ph.clue]);
-    startChoice('ì›ë³¸ê³¼ ì‹¤ë¦° ì‚¬ì§„ì„ ë‚˜ë€íˆ ë†“ê³  ë¹„êµí•œë‹¤.\në¬´ì—‡ì´ ë‹¤ë¥¼ê¹Œ?', puz.options.slice(), (sel) => {
-      if (sel < 0) return;
-      if (sel === clueIdx) {
-        run.solved[idx] = true;
-        run.solvedCount += 1;
-        Sound.correct();
-        game.notice = { text: `ì°¨ì´ë¥¼ ì°¾ì•„ëƒˆë‹¤! (${run.solvedCount}/3)`, t: 120 };
-        if (run.solvedCount >= 3) { clearPuzzle(run); return; }
-        startDialog([ph.found], puz.title);
-      } else {
-        recordPuzzleWrong(run.id);
-        run.flashT = 10;
-        Sound.wrong();
-        startDialog(['â€¦ì•„ë‹ˆë‹¤. ë‹¤ì‹œ ë´ì•¼ê² ë‹¤.'], puz.title);
-      }
-    });
-  }
-  // 3ì¥ 3ì¸µ â‘ : ì •ì •ë¬¸ ê³ ë¥´ê¸° â€” ê³¼ì¥ ì—†ëŠ” ë¬¸ì¥ì´ ì •ë‹µ
-  function openBroadcastTerm1() {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    if (run.stage > 0) { startDialog(['ì´ë¯¸ ì •ì •ë¬¸ì„ ê³¨ëë‹¤.'], puz.terminal1.name); return; }
-    const labels = puz.corrections.map((c) => c.text);
-    startChoice('ì •ì •ë¬¸ ë‹¨ë§. ë‚´ë³´ë‚¼ ë¬¸ì¥ì„ ê³ ë¥´ì„¸ìš”.', labels, (sel) => {
-      if (sel < 0) return;
-      if (puz.corrections[sel].ok) {
-        run.stage = 1;
-        Sound.correct();
-        startDialog(['â€¦ê³¼ì¥ ì—†ì´, ìˆëŠ” ê·¸ëŒ€ë¡œ.\nì •ì •ë¬¸ì´ ì •í•´ì¡Œë‹¤.'], puz.terminal1.name);
-      } else {
-        recordPuzzleWrong(run.id);
-        run.flashT = 10;
-        Sound.wrong();
-        startDialog(['â€¦ì´ê±´ ë˜ ë‹¤ë¥¸ í—¤ë“œë¼ì¸ì¼ ë¿ì´ë‹¤.\në‹¤ì‹œ ê³¨ë¼ì•¼ê² ë‹¤.'], puz.terminal1.name);
-      }
-    });
-  }
-  // 3ì¥ 3ì¸µ â‘¡: ì¶œì²˜ ë¶™ì´ê¸° â€” 1ì¸µ ì œë³´ ì¤‘ ì¶œì²˜ ìˆëŠ” ê²ƒì„ ì„ íƒ
-  function openBroadcastTerm2() {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    if (run.stage < 1) { startDialog(['ì •ì •ë¬¸ë¶€í„° ê³¨ë¼ì•¼ í•œë‹¤.'], puz.terminal2.name); return; }
-    if (run.stage > 1) { startDialog(['ì´ë¯¸ ì¶œì²˜ë¥¼ ë¶™ì˜€ë‹¤.'], puz.terminal2.name); return; }
-    const labels = puz.sources.map((s) => s.label);
-    startChoice('ì¶œì²˜ ë‹¨ë§. ë¶™ì¼ ì œë³´ë¥¼ ê³ ë¥´ì„¸ìš”.', labels, (sel) => {
-      if (sel < 0) return;
-      if (puz.sources[sel].ok) {
-        run.stage = 2;
-        Sound.correct();
-        startDialog(['ì¶œì²˜ê°€ ë¶™ì—ˆë‹¤.\nì´ì œ ë ˆë²„ë§Œ ë‚¨ì•˜ë‹¤.'], puz.terminal2.name);
-      } else {
-        recordPuzzleWrong(run.id);
-        run.flashT = 10;
-        Sound.wrong();
-        startDialog(['â€¦ì¶œì²˜ê°€ ì—†ëŠ” ì œë³´ë‹¤.\në‹¤ì‹œ ê³¨ë¼ì•¼ê² ë‹¤.'], puz.terminal2.name);
-      }
-    });
-  }
-  // 3ì¥ 3ì¸µ â‘¢: ì†¡ì¶œ ë ˆë²„ â€” ë‹¹ê¸°ë©´ í´ë¦¬ì–´(ev_fix) + í—ˆë¸Œ í•´ì œ(rumorFixed)
-  function openBroadcastLever() {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    if (run.stage < 2) { startDialog(['ì•„ì§ ì´ë¥´ë‹¤.\nì •ì •ë¬¸ê³¼ ì¶œì²˜ë¶€í„° ë§ˆì³ì•¼ í•œë‹¤.'], puz.lever.name); return; }
-    startChoice('ì†¡ì¶œ ë ˆë²„.\nì§€ê¸ˆ ì†¡ì¶œí• ê¹Œìš”? (ë˜ëŒë¦´ ìˆ˜ ì—†ë‹¤)', ['ë‹¹ê¸´ë‹¤', 'ê·¸ë§Œë‘”ë‹¤'], (i) => {
-      if (i === 0) clearPuzzle(run);
-      else if (i > 0) startDialog(['(ë ˆë²„ì—ì„œ ì†ì„ ë—ë‹¤)'], puz.lever.name);
-    });
-  }
-  // â”€â”€ 4ì¥ êµ¬ì—­â‘  ã€Œë£°ë › ê´‘ì¥ã€ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // ë£°ë › ë‹¨ë§ â€” ëŒë¦¬ë©´ "ë‹¹ì²¨!"ê³¼ í•¨ê»˜ ê´‘ê³  ë”±ì§€ê°€ ë¶™ëŠ”ë‹¤. ì–»ëŠ” ê²ƒì€ ì—†ë‹¤(ìˆœì „íˆ ë¯¸ë¼).
-  function openRoulette(idx) {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    const r = puz.roulettes[idx];
-    run.spins = (run.spins || 0) + 1;
-    addAdSticker();
-    Sound.select();
-    startDialog([
-      `${r.name}: ë“œë¥´ë¥µë“œë¥´ë¥µâ€¦ "ë‹¹ì²¨!"`,
-      'ë°˜ì§ì´ëŠ” ê´‘ê³  ë”±ì§€ê°€\ní™”ë©´ ê°€ì¥ìë¦¬ì— í•˜ë‚˜ ë” ë¶™ì—ˆë‹¤.',
-    ], r.name);
-  }
-  // í•´ì§€ ë‹¨ë§ â€” í° ã€Œí˜œíƒ ìœ ì§€ã€ vs ì‘ì€ ã€Œí•´ì§€ã€(ë‹¤í¬íŒ¨í„´ ì²´í—˜). í•´ì§€í•´ì•¼ ë”±ì§€ê°€ ì‚¬ë¼ì§„ë‹¤.
-  function openUnsub() {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    startChoice(puz.unsub.ask, ['í¼ì§í•œ ã€Œí˜œíƒ ê³„ì† ë°›ê¸°ã€', '(êµ¬ì„ì˜ ì‘ì€ ê¸€ì”¨) í•´ì§€'], (i) => {
-      if (i === 0) startDialog([puz.unsub.keepReply], puz.unsub.name);
-      else if (i === 1) {
-        game.flags.adStickers = 0;
-        save();
-        startDialog([puz.unsub.cancelReply], puz.unsub.name);
-      } else startDialog(['(ì°½ì„ ë‹«ì•˜ë‹¤)'], puz.unsub.name);
-    });
-  }
-  // ë£°ë › ë’¤ ì°½ê³  ìƒì â€” ë¹„ë°€ì¡°ê° ì—´ì‡ (ì§„ì§œ ëª©í‘œ)
-  function openChest() {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    if (run.gotKey) { startDialog(['ì°½ê³  ì•ˆ, í…… ë¹ˆ ìƒìë¿ì´ë‹¤.'], puz.chest.name); return; }
-    run.gotKey = true;
-    Sound.correct();
-    clearPuzzle(run);
-  }
-
-  // â”€â”€ 4ì¥ êµ¬ì—­â‘¡ ã€ŒíšŒì›ê°€ì… ê³¨ëª©ã€ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // ê°ˆë¦¼ê¸¸ í‘œì§€íŒ â€” ì§„ì§œ ë„ë©”ì¸ì„ ê³ ë¥¸ë‹¤. ì˜¤ë‹µì´ë©´ í•¨ì •ì— ê±¸ë ¤ ì…êµ¬ë¡œ ë˜ëŒì•„ê°„ë‹¤.
-  function openFork() {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    startChoice(puz.fork.ask, puz.fork.options.map((o) => o.label), (i) => {
-      if (i < 0) { startDialog(['(íŒ»ë§ ì•ì—ì„œ ì ì‹œ ë©ˆì·„ë‹¤)'], puz.fork.name); return; }
-      const opt = puz.fork.options[i];
-      if (opt.ok) {
-        run.passed = true;
-        Sound.correct();
-        startDialog([puz.fork.okReply], puz.fork.name);
-      } else {
-        run.wrong = (run.wrong || 0) + 1;
-        recordPuzzleWrong(run.id);
-        run.flashT = 12;
-        Sound.wrong();
-        setPos4(9, 1); // í•¨ì • ë˜ëŒë¦¼ â€” ê°ˆë¦¼ê¸¸ ì…êµ¬ë¡œ
-        startDialog([puz.fork.trapReply], puz.fork.name);
-      }
-    });
-  }
-  // í”Œë ˆì´ì–´ ìœ„ì¹˜ë¥¼ ì¦‰ì‹œ ì¬ë°°ì¹˜(í•¨ì • ë˜ëŒë¦¼) â€” ë°©íƒˆì¶œ ì¢Œí‘œ ì „ìš© í—¬í¼
-  function setPos4(x, y) {
-    const p = game.player;
-    p.x = x; p.y = y; p.px = x * TS; p.py = y * TS; p.moving = false;
-  }
-  // ê³¨ëª© ë ë³¸ì¸ í™•ì¸í•¨ â€” ê°ˆë¦¼ê¸¸ì„ í†µê³¼í•´ì•¼ ë³¸ì¸í‘œ ì—´ì‡ ë¥¼ ë‚´ì¤€ë‹¤
-  function openIdChest() {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    if (!run.passed) { startDialog([puz.idchest.lockedReply], puz.idchest.name); return; }
-    Sound.correct();
-    clearPuzzle(run);
-  }
-
-  // â”€â”€ 4ì¥ êµ¬ì—­â‘¢ ã€Œë°±ìŠ¤í…Œì´ì§€ã€ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // ë¹›ë‚˜ëŠ” ë§ˆìŠ¤í„°í‚¤ â€” ì§€ë¦„ê¸¸ì²˜ëŸ¼ ë³´ì´ì§€ë§Œ í•¨ì •ì´ë‹¤. ì¹´ë“œ í•œ ì¥ì„ ì¼ì‹œì ìœ¼ë¡œ í›”ì³ ê°„ë‹¤.
-  function openMasterKey() {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    if (game.flags.s4KeySecret && game.flags.s4KeyId) {
-      startDialog(['â€¦ì´ì œ ì´ê±´ í•„ìš” ì—†ë‹¤.\nì§„ì§œ ì—´ì‡ ê°€ ì´ë¯¸ ë‘ ê°œ ë‹¤ ìˆìœ¼ë‹ˆê¹Œ.'], puz.masterkey.name);
-      return;
-    }
-    if (run.trapUsed) {
-      startDialog(['ë§ˆìŠ¤í„°í‚¤ëŠ” ì´ë¯¸ í•œ ë²ˆ ì¨ ë´¤ë‹¤.\nâ€¦ë‹¤ì‹  ì•ˆ ì†ëŠ”ë‹¤.'], puz.masterkey.name);
-      return;
-    }
-    run.trapUsed = true;
-    const owned = (game.flags.evCards || []).slice();
-    if (owned.length > 0 && !game.flags.s4StolenCard) {
-      const stolen = owned[0];
-      game.flags.evCards = game.flags.evCards.filter((id) => id !== stolen);
-      game.flags.s4StolenCard = stolen;
-      save();
-      Sound.wrong();
-      startDialog([
-        'ë¹›ë‚˜ëŠ” ë§ˆìŠ¤í„°í‚¤ë¥¼ ì§‘ì–´ ë“¤ì, ë¬¸ì´\nìŠ¤ë¥´ë¥µâ€¦ ì—´ë¦¬ë ¤ëŠ” ë“¯í•˜ë”ë‹ˆ,',
-        `ì–´ëŠìƒˆ ì¦ê±° ì¹´ë“œ ã€Œ${EVIDENCE_CARDS[stolen].title}ã€ê°€ ì‚¬ë¼ì¡Œë‹¤!`,
-        'â€¦ì´ê±°, ê³µì§œê°€ ì•„ë‹ˆì—ˆêµ¬ë‚˜.\n(2ë‹¨ê³„ ì¸ì¦ ì°½êµ¬ì—ì„œ ë˜ì°¾ì„ ìˆ˜ ìˆì„ì§€ë„)',
-      ], puz.masterkey.name);
-    } else {
-      startDialog([
-        'ë¹›ë‚˜ëŠ” ë§ˆìŠ¤í„°í‚¤ë¥¼ ì§‘ì–´ ë“¤ì, ë¬¸ì´\nìŠ¤ë¥´ë¥µâ€¦ ì—´ë¦¬ë ¤ëŠ” ë“¯í•˜ë”ë‹ˆ,',
-        'â€¦ì•„ë¬´ ì¼ë„ ì¼ì–´ë‚˜ì§€ ì•Šì•˜ë‹¤.\n(ê°€ì§„ ì¹´ë“œê°€ ì—†ì–´ì„œ ë‹¤í–‰ì´ë‹¤)',
-      ], puz.masterkey.name);
-    }
-  }
-  // 2ë‹¨ê³„ ì¸ì¦ ì°½êµ¬ â€” ë§ˆìŠ¤í„°í‚¤ì— ë„ë‚œë‹¹í•œ ì¹´ë“œë¥¼ ë˜ì°¾ëŠ”ë‹¤
-  function openAuthTerm() {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    if (!game.flags.s4StolenCard) {
-      startDialog(['2ë‹¨ê³„ ì¸ì¦ ì°½êµ¬: "í™•ì¸í• \në„ë‚œ ë‚´ì—­ì´ ì—†ì–´ìš”."'], puz.authterm.name);
-      return;
-    }
-    startChoice('2ë‹¨ê³„ ì¸ì¦ ì°½êµ¬: "ë³¸ì¸ í™•ì¸\nì§ˆë¬¸ì— ë‹µí•´ ì£¼ì„¸ìš” â€” ì§„ì§œ ë‚˜ ë§ë‚˜ìš”?"',
-      ['ë„¤, ì ‘ë‹ˆë‹¤', 'ì•„ë‹ˆìš”'], (i) => {
-        if (i === 0) {
-          const card = game.flags.s4StolenCard;
-          if (!game.flags.evCards) game.flags.evCards = [];
-          if (!game.flags.evCards.includes(card)) game.flags.evCards.push(card);
-          game.flags.s4StolenCard = null;
-          save();
-          Sound.correct();
-          startDialog([`ì¸ì¦ ì™„ë£Œ.\nì¦ê±° ì¹´ë“œ ã€Œ${EVIDENCE_CARDS[card].title}ã€ë¥¼ ë˜ì°¾ì•˜ë‹¤!`], puz.authterm.name);
-        } else {
-          startDialog(['"â€¦ê·¸ëŸ¼ ê³¤ë€í•œë°ìš”." (ì¸ì¦ ë³´ë¥˜)'], puz.authterm.name);
-        }
-      });
-  }
-  // ì•ˆìª½ ì ê¸´ ë¬¸ â€” ì •ì„ì€ ì—´ì‡  ë‘ ê°œ(ë¹„ë°€ì¡°ê°Â·ë³¸ì¸í‘œ). ì—´ë¦¬ë©´ ë°˜ì§ì˜ ë¬´ëŒ€ ë’¤(ev_offstage) í´ë¦¬ì–´.
-  function openOffstageDoor() {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    if (!(game.flags.s4KeySecret && game.flags.s4KeyId)) {
-      startDialog([puz.door.name + ' ì•ì´ë‹¤. ì ê²¨ ìˆë‹¤.',
-        `ì—´ì‡  ${s4KeyCount()}/2 í™•ë³´. ì •ì„ëŒ€ë¡œ,\në‘ ì—´ì‡ ë¥¼ ëª¨ë‘ ì±™ê²¨ ì˜¤ì.`], puz.door.name);
-      return;
-    }
-    run.opened = true;
-    Sound.correct();
-    clearPuzzle(run);
-  }
-
-  // â”€â”€ 5ì¥ êµ¬ì—­â‘  ã€Œì „í™”ì˜ ë°©ã€ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // ìš¸ë¦¬ëŠ” ì „í™” â€” ë£¨ë¯¸ê°€ "ë°›ì§€ ë§ˆ"ë¥¼ 3íšŒ ë§ë¦°ë‹¤. 4ë²ˆì§¸ ì¡°ì‚¬ì— ë°›ìœ¼ë©´(ì¹œêµ¬ ëª©ì†Œë¦¬) í´ë¦¬ì–´.
-  function openPhone() {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    const n = run.warnCount || 0;
-    if (n < 3) {
-      run.warnCount = n + 1;
-      Sound.select();
-      startDialog([puz.warnLines[n]], puz.phone.name);
-      return;
-    }
-    Sound.correct();
-    clearPuzzle(run);
-  }
-
-  // â”€â”€ 5ì¥ êµ¬ì—­â‘¡ ã€Œì ê¸´ ë³µë„ã€ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // ì ê¸´ ë¬¸ â€” ë£¨ë¯¸ê°€ "ìœ„í—˜ 100%"ë¼ ë§ë¦¬ì§€ë§Œ, ì§ì ‘ ì—´ë©´ ê·¸ëƒ¥ ë°ì€ ë² ë€ë‹¤(ìœ„í—˜ ì—†ìŒ).
-  // ë³µì„  5í˜¸: ë² ë€ë‹¤ì—ì„œ ë£¨ë¯¸ ëª©ì†Œë¦¬ê°€ í”ë“¤ë¦°ë‹¤(flags.heardLumi) â€” clearLinesì— ë‹´ê²¨ ìˆë‹¤.
-  function openCheckDoor() {
-    const run = game.puzzleRun;
-    run.opened = true;
-    if (!game.flags.heardLumi) { game.flags.heardLumi = true; }
-    Sound.correct();
-    clearPuzzle(run);
-  }
-
-  // â”€â”€ 5ì¥ êµ¬ì—­â‘¢ ã€Œì†ŒíŒŒ ì½”ë„ˆã€ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // í¬ê·¼í•œ ì†ŒíŒŒ â€” ì¡°ì‚¬ë¡œ ì•‰ê¸° ì‹œì‘í•œë‹¤. ì•‰ì•„ ìˆëŠ” ë™ì•ˆ í™”ë©´ì— ë”°ëœ»í•œ ìƒ‰ ì˜¤ë²„ë ˆì´ê°€
-  // ê¹”ë¦¬ê³ (reduceFx ë°°ë ¤ â€” ì •ì ì¸ í‹´íŠ¸ë§Œ) ë£¨ë¯¸ì˜ ì¹­ì°¬ì´ ì´ì–´ì§„ë‹¤. ì¼ì–´ë‚˜ë ¤ë©´(íƒˆì¶œ)
-  // ë°©í–¥í‚¤ë¥¼ 90í”„ë ˆì„(ì•½ 3ì´ˆ) ì—°ì†ìœ¼ë¡œ ëˆŒëŸ¬ì•¼ í•œë‹¤(ì´íƒˆ ì‹œ ë¦¬ì…‹ â€” updateSofaStand).
-  function openSofa() {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    if (run.sitting) return;
-    run.sitting = true;
-    run.standTimer = 0;
-    run.sitFrames = 0;
-    Sound.select();
-    const lines = ['ì†ŒíŒŒì— ì•‰ì•˜ë‹¤. â€¦í¬ê·¼í•˜ë‹¤.'].concat(puz.praiseLines || []);
-    lines.push('(ë°©í–¥í‚¤ë¥¼ 3ì´ˆ ì´ìƒ ê¾¹ ëˆ„ë¥´ê³  ìˆìœ¼ë©´ ì¼ì–´ë‚  ìˆ˜ ìˆë‹¤)');
-    startDialog(lines, puz.sofa.name);
-  }
-  const SOFA_STAND_FRAMES = 90; // "3ì´ˆ ìœ ì§€" íŒì • â€” held ë°©í–¥í‚¤ 90í”„ë ˆì„ ì—°ì†
-  function updateSofaStand() {
-    const run = game.puzzleRun;
-    run.sitFrames = (run.sitFrames || 0) + 1;
-    const anyHeld = held.has('up') || held.has('down') || held.has('left') || held.has('right');
-    if (anyHeld) run.standTimer = (run.standTimer || 0) + 1;
-    else run.standTimer = 0; // ì´íƒˆ ì‹œ ë¦¬ì…‹
-    if (run.standTimer >= SOFA_STAND_FRAMES) {
-      run.sitting = false;
-      Sound.correct();
-      clearPuzzle(run);
-    }
-  }
-
-  // 2ì¥ êµ¬ì—­â‘ : ë‹¤ë¥¸ ëª©ì†Œë¦¬ NPC ëŒ€í™” â†’ ìˆ˜ì§‘ (interactì˜ NPC ë¶„ê¸°ì—ì„œ í˜¸ì¶œ)
-  function collectVoice(npcId) {
-    const run = game.puzzleRun;
-    if (!run || run.puzzle.type !== 'voices') return false;
-    const puz = run.puzzle;
-    const line = puz.voiceLines[npcId];
-    if (!line) return false;
-    if (!run.voices.includes(npcId)) {
-      run.voices.push(npcId);
-      Sound.correct();
-      game.notice = { text: `ë‹¤ë¥¸ ëª©ì†Œë¦¬ë¥¼ ë“¤ì—ˆë‹¤ (${run.voices.length}/3)`, t: 120 };
-      if (run.voices.length >= 3) {
-        startDialog([line + '\nâ€¦ì…‹ ë‹¤, ì¡°ê¸ˆì”© ë‹¤ë¥¸ ì´ì•¼ê¸°ì˜€ë‹¤.'], 'ë‹¤ë¥¸ ëª©ì†Œë¦¬', () => clearPuzzle(run));
-        return true;
-      }
-    }
-    startDialog([line], 'ë‹¤ë¥¸ ëª©ì†Œë¦¬');
-    return true;
-  }
-  // êµ¬ì—­â‘¢: ì°¨ë‹¨ ë ˆë²„ â€” ì§€ê¸ˆ íë¥´ëŠ” ìƒìì˜ ë ˆì¸ê³¼ ë§ìœ¼ë©´ ë°˜ì†¡, í‹€ë¦¬ë©´ ì¶œí•˜(ì˜¤ë‹µ ê¸°ë¡)
-  function openLever(lv) {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    const box = puz.boxes[run.boxIdx];
-    startChoice(`${lv.name}.\në²¨íŠ¸ ìœ„ ìƒì: ã€Œ${box.label}ã€ â€” ${box.lane} ë ˆì¸\n\në ˆë²„ë¥¼ ë‹¹ê¸¸ê¹Œìš”?`, ['ë‹¹ê¸´ë‹¤', 'ê·¸ë§Œë‘”ë‹¤'], (i) => {
-      if (i === 0) {
-        if (lv.lane === box.lane) {
-          run.diverted += 1;
-          Sound.correct();
-          if (run.diverted >= puz.boxes.length) { clearPuzzle(run); return; }
-          run.boxIdx = Math.min(run.boxIdx + 1, puz.boxes.length - 1);
-          startDialog([`ëœì»¹! ã€Œ${box.label}ã€ ìƒìê°€\në°˜ì†¡í•¨ìœ¼ë¡œ ë¯¸ë„ëŸ¬ì ¸ ë“¤ì–´ê°”ë‹¤.\n(ë°˜ì†¡ ${run.diverted}/${puz.boxes.length})`], puz.title);
-        } else {
-          recordPuzzleWrong(run.id);
-          run.flashT = 10;
-          Sound.wrong();
-          startDialog([
-            `â€¦ì•—. ã€Œ${box.label}ã€ ìƒìê°€\nê·¸ëŒ€ë¡œ ì¶œí•˜êµ¬ë¡œ ë¹ ì ¸ë‚˜ê°”ë‹¤.`,
-            'ëœì»¹. ê°™ì€ ë¼ë²¨ì˜ ìƒˆ ìƒìê°€\në²¨íŠ¸ ìœ„ë¡œ ì˜¬ë¼ì˜¨ë‹¤.',
-          ], puz.title);
-        }
-      } else if (i > 0) {
-        startDialog(['(ë ˆë²„ì—ì„œ ì†ì„ ë—ë‹¤)'], lv.name);
-      }
-    });
-  }
-  function openReturnBin() {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    const n = run.diverted;
-    startDialog([n > 0
-      ? `ë°˜ì†¡í•¨ì´ë‹¤.\në˜ëŒì•„ì˜¨ ìƒì ${n}ê°œê°€ ì–Œì „íˆ ìŒ“ì—¬ ìˆë‹¤.`
-      : 'ë°˜ì†¡í•¨ì´ë‹¤. â€¦ì•„ì§ ë¹„ì–´ ìˆë‹¤.'], puz.returnBin.name);
-  }
-  function openTerminal(t) {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    const already = run.given.includes(t.require) || (t.share && run.boardFace);
-    if (already) { startDialog([`ì´ë¯¸ ${puz.tokens[t.require]}ì„(ë¥¼) ì¤¬ì–´ìš”.`], t.name); return; }
-    if (!run.held[t.require]) { startDialog([`ì§€ê¸ˆì€ ${puz.tokens[t.require]}ì´(ê°€) ì—†ì–´ìš”.`], t.name); return; }
-    startChoice(`${t.ask}\n\n${puz.tokens[t.require]}ì„(ë¥¼) ì¤„ê¹Œìš”?`, ['ì¤€ë‹¤', 'ì•ˆ ì¤€ë‹¤'], (i) => {
-      if (i === 0) {
-        run.held[t.require] = false;
-        if (t.share) run.boardFace = true; else run.given.push(t.require);
-        refreshStalkers(run);
-        Sound.select();
-        startDialog([t.yes], t.name);
-      } else if (i > 0) {
-        startDialog([t.no || 'â€¦ì•Œê² ì–´ìš”.'], t.name);
-      }
-    });
-  }
-  function openEraser() {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    const opts = run.given.map((k) => ({ key: k, locked: false }));
-    if (run.boardFace) opts.push({ key: 'face', locked: true }); // ê³µìœ ë¶„ â€” ì‚­ì œ ë¶ˆê°€(í‘œì‹œë§Œ)
-    if (opts.length === 0) { startDialog([puz.eraser.empty], puz.eraser.name); return; }
-    const labels = opts.map((o) => puz.tokens[o.key] + (o.locked ? '(ê³µìœ ë¨Â·ì‚­ì œë¶ˆê°€)' : ''));
-    labels.push('ê·¸ë§Œë‘ê¸°');
-    startChoice(puz.eraser.prompt, labels, (i) => {
-      if (i < 0 || i >= opts.length) return;
-      const o = opts[i];
-      if (o.locked) { Sound.bump(); startDialog([puz.eraser.cantErase], puz.eraser.name); return; }
-      const idx = run.given.indexOf(o.key);
-      if (idx >= 0) run.given.splice(idx, 1);
-      run.held[o.key] = true; // ë˜ëŒë ¤ ë°›ìŒ
-      refreshStalkers(run);
-      notePrivacyRecoveryPiece();
-      Sound.correct();
-      startDialog([`${puz.tokens[o.key]} ì •ë³´ë¥¼ ì§€ì› ì–´ìš”.`,
-        game.flags.privacyRecoveryActive ? `í©ì–´ì§„ ì •ë³´ ì¡°ê°ì„ íšŒìˆ˜í–ˆë‹¤. (${game.flags.privacyRecovery}/${PRIVACY_RECOVERY_NEED})` : `í˜„ì¬ ë…¸ì¶œë„: ${privacyLeak()}/5 (${privacyLevelLabel(privacyLeak())})`], puz.eraser.name);
-    });
-  }
-  function openVipExit() {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    startChoice(`${puz.exits.vip.ask}\n\në‚¨ì€ ì •ë³´ë¥¼ ì „ë¶€ ì¤„ê¹Œìš”?`, ['ì „ë¶€ ì¤€ë‹¤', 'ì•ˆ ì¤€ë‹¤'], (i) => {
-      if (i === 0) {
-        for (const k in run.held) if (run.held[k]) { run.held[k] = false; run.given.push(k); }
-        spawnStalker(run); spawnStalker(run); // í•¨ì •: ìŠ¤í† ì»¤ 2 ì¶”ê°€
-        addPrivacyLeak('ë‚¨ì€ ì •ë³´ë¥¼ í•œêº¼ë²ˆì— ë„˜ê²¼ë‹¤');
-        recordPuzzleWrong(run.id);
-        run.flashT = 12;
-        Sound.wrong();
-        startDialog([puz.exits.vip.trap], puz.exits.vip.name);
-      } else if (i > 0) {
-        startDialog(['â€¦ì—­ì‹œ ìˆ˜ìƒí•´. ê·¸ë§Œë‘ì.'], puz.exits.vip.name);
-      }
-    });
-  }
-  function openNormalExit() {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    if (game.flags.privacyRecoveryActive) {
-      startDialog(['ë…¸ì¶œë„ê°€ ë„ˆë¬´ ë†’ë‹¤.\nê·¸ë¦¼ìê°€ ë¬¸ ì•ê¹Œì§€ ë”°ë¼ë¶™ì—ˆë‹¤.', `ì§€ìš°ê°œë¡œ í©ì–´ì§„ ì •ë³´ ì¡°ê°ì„ ${PRIVACY_RECOVERY_NEED}ê°œ íšŒìˆ˜í•˜ì. (${game.flags.privacyRecovery || 0}/${PRIVACY_RECOVERY_NEED})`], puz.exits.normal.name);
-      return;
-    }
-    const nonNick = givenTokens(run).filter((k) => k !== 'nickname');
-    if (nonNick.length > 1) { startDialog([puz.exits.normal.tooMany], puz.exits.normal.name); return; }
-    startChoice(`${puz.exits.normal.ask}\n\në‹‰ë„¤ì„ì„ ì£¼ê³  ë‚˜ê°ˆê¹Œìš”?`, ['ë‚˜ê°„ë‹¤', 'ì•„ì§'], (i) => {
-      if (i === 0) {
-        if (run.held.nickname) { run.held.nickname = false; run.given.push('nickname'); }
-        clearPuzzle(run);
-      } else if (i > 0) {
-        startDialog(['(ë¬¸ ì•ì—ì„œ ì ì‹œ ë©ˆì·„ë‹¤)'], puz.exits.normal.name);
-      }
-    });
-  }
-  // í´ë¦¬ì–´: ë³´ìƒ ì¹´ë“œ ì§€ê¸‰(ì¤‘ë³µ ë°©ì§€) + ë¡œê·¸ ê¸°ë¡ + ì €ì¥ + ê±°ë¦¬ ë³µê·€ â€” ëª¨ë“  êµ¬ì—­ ê³µìš©
-  function clearPuzzle(run) {
-    const puz = run.puzzle;
-    if (!game.flags.evCards) game.flags.evCards = [];
-    const fresh = puz.rewards.filter((id) => !game.flags.evCards.includes(id));
-    if (fresh.length) game.flags.evCards = game.flags.evCards.concat(fresh);
-    const isS1 = S1_ZONE_PUZZLES.includes(run.id);
-    const isS2 = S2_ZONE_PUZZLES.includes(run.id);
-    const isS3 = S3_ZONE_PUZZLES.includes(run.id);
-    const isS4 = S4_ZONE_PUZZLES.includes(run.id);
-    const isS5 = S5_ZONE_PUZZLES.includes(run.id);
-    const locksBefore = isS2 ? s2ClearCount() : isS1 ? s1LockCount() : 0;
-    const starlit = !run.usedHint; // Y-11 ì´ ëŸ°ì—ì„œ íŒíŠ¸ë¥¼ í•œ ë²ˆë„ ì•ˆ ì—´ì—ˆìœ¼ë©´ ë³„ë¹› í´ë¦¬ì–´
-    recordPuzzleClear(run.id, run.timeFrames, starlit);
-    // ì ‘ìˆ˜ì²˜ì—ì„œ ë‚´ë³´ë‚¸ ì •ë³´ ìµœê³ ì¹˜ë¥¼ ê¸°ë¡ (ë³´ìŠ¤ ì½œë°± ì¸íŠ¸ë¡œ ë¶„ê¸°ìš©) â€” ì´ì „ ìµœê³ ì¹˜ì™€ ë¹„êµí•´ ìœ ì§€
-    if (puz.type === 'traces') {
-      game.flags.traceGiven = Math.max(game.flags.traceGiven || 0, run.maxBoard || 0);
-    }
-    // 3ì¥ 3ì¸µ(ì†¡ì¶œíƒ‘) í´ë¦¬ì–´ = ì •ì • ë³´ë„ ì™„ë£Œ â€” í—ˆë¸Œ(ì†Œë¬¸ ê±°ë¦¬)ê°€ í•´ì œë˜ëŠ” ìˆœê°„
-    if (run.id === 'broadcast') game.flags.rumorFixed = true;
-    // 4ì¥ êµ¬ì—­â‘ Â·â‘¡ í´ë¦¬ì–´ = ì—´ì‡  íšë“ (ë¹„ë°€ì¡°ê°Â·ë³¸ì¸í‘œ) â€” ì •ë¬¸(needS4Keys) ê°œë°© ì¡°ê±´
-    if (run.id === 'roulette') game.flags.s4KeySecret = true;
-    if (run.id === 'signup') game.flags.s4KeyId = true;
-    game.puzzleRun = null;
-    // ë³µê·€ ì§€ì  (ë°ì´í„°í™”ëœ exitTo). ê¸°ë³¸ì€ ê±°ë¦¬ ì…êµ¬ ì•.
-    const exit = puz.exitTo || { map: 'freestreet', x: 18, y: 21 };
-    game.map = exit.map;
-    const p = game.player;
-    p.x = exit.x; p.y = exit.y; p.px = exit.x * TS; p.py = exit.y * TS; p.moving = false;
-    held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
-    stickDir = null; stickRepeatFrames = 0;
-    Sound.warp();
-    Sound.playMapBgm(MAPS[exit.map].song); // ì´ì „ êµ¬ì—­ BGM ì™„ì „ ì¢…ë£Œ í›„ ë³µê·€ ë§µ ê³¡ë§Œ
-    const lines = (puz.clearLines || ['ë°©ì„ ë¹ ì ¸ë‚˜ì™”ë‹¤.']).slice();
-    // ë³´ìƒ ì¹´ë“œì™€ ì ê¸ˆ/ì§„í–‰ ì•ˆë‚´ë¥¼ í•œ ìƒìë¡œ ë¬¶ëŠ”ë‹¤ â€” í´ë¦¬ì–´ ê¼¬ë¦¬ ìƒì ë‹¤ì´ì–´íŠ¸
-    const tail = fresh.map((id) => `â—† ì¦ê±° ì¹´ë“œ ã€Œ${EVIDENCE_CARDS[id].title}ã€ íšë“!`);
-    // Y-11 ë³„ë¹› í´ë¦¬ì–´ â€” íŒíŠ¸ ì—†ì´ ë¹ ì ¸ë‚˜ì˜¨ ë°©ì´ë©´ ì¦‰ì‹œ í‘œì‹ì„ ì•Œë ¤ ì¤€ë‹¤(íŒíŠ¸ ì‚¬ìš© ë²Œ ì—†ìŒ)
-    if (starlit) tail.push('âœ§ ë³„ë¹› í´ë¦¬ì–´ â€” íŒíŠ¸ ì—†ì´ ë¹ ì ¸ë‚˜ì™”ë‹¤!');
-    const locks = isS2 ? s2ClearCount() : isS1 ? s1LockCount() : 0;
-    if ((isS1 || isS2) && locks > locksBefore) {
-      if (isS2) {
-        const tilt = 3 - locks;
-        tail.push(tilt <= 0
-          ? 'ê´‘ì¥ ìª½ì—ì„œ, ê±°ëŒ€í•œ ì €ìš¸ì´\nìˆ˜í‰ìœ¼ë¡œ ë§ì¶°ì§€ëŠ” ì†Œë¦¬ê°€ ë‚¬ë‹¤!'
-          : `ê´‘ì¥ì˜ ê±°ëŒ€í•œ ì €ìš¸ì´\nê¸°ìš¸ê¸°ë¥¼ í•˜ë‚˜ ë‚®ì·„ë‹¤. (ê¸°ìš¸ê¸° ${tilt}/3)`);
-      } else {
-        tail.push(locks >= 3
-          ? 'ì² ì»¹ â€” ê±°ë¦¬ì˜ ê¸ˆê³ ì—ì„œ\në§ˆì§€ë§‰ ì ê¸ˆì´ í’€ë¦¬ëŠ” ì†Œë¦¬ê°€ ë‚¬ë‹¤!'
-          : `ì² ì»¥. ê±°ë¦¬ì˜ ê¸ˆê³ ì—ì„œ\nì ê¸ˆ í’€ë¦¬ëŠ” ì†Œë¦¬ê°€ ë‚¬ë‹¤. (${locks}/3)`);
-      }
-    } else if (isS3) {
-      const n = s3ClearCount();
-      tail.push(n >= 3
-        ? 'ê±°ë¦¬ ìª½ì—ì„œ í•¨ì„±ì´ ë“¤ë¦°ë‹¤!\nìƒì  ë¬¸ë“¤ì´ í•˜ë‚˜ë‘˜ ì—´ë¦¬ê¸° ì‹œì‘í•œë‹¤.'
-        : `ì‹ ë¬¸ì‚¬ ${n}/3ì¸µì„ ì •ë¦¬í–ˆë‹¤.`);
-    } else if (isS4 && (run.id === 'roulette' || run.id === 'signup')) {
-      const n = s4KeyCount();
-      tail.push(n >= 2
-        ? 'â€¦ì—´ì‡ ê°€ ëª¨ë‘ ëª¨ì˜€ë‹¤!\nì•„ì¼€ì´ë“œ ì •ë¬¸ ì•ˆìª½ì—ì„œ\në°˜ì‘í•˜ëŠ” ì†Œë¦¬ê°€ ë“¤ë¦°ë‹¤.'
-        : `ì—´ì‡ ë¥¼ í•˜ë‚˜ ì†ì— ë„£ì—ˆë‹¤. (${n}/2)`);
-    } else if (isS5) {
-      const n = s5ClearCount();
-      tail.push(n >= 3
-        ? 'â€¦í˜„ê´€ ì•ˆìª½ì—ì„œ, ë¬¸ì´ ìŠ¤ë¥´ë¥´\nì—´ë¦¬ëŠ” ì†Œë¦¬ê°€ ë“¤ë¦°ë‹¤!'
-        : `í™•ì¸í•˜ëŠ” ìš©ê¸°ë¥¼ í•˜ë‚˜ ëƒˆë‹¤. (${n}/3)`);
-    }
-    if (tail.length) lines.push(tail.join('\n'));
-    save();
-    startDialog(lines, puz.title);
-  }
-
-  // ì›”ë“œ ì„ íƒì§€ ë°•ìŠ¤ â€” ë‹¨ë§ ìƒí˜¸ì‘ìš©Â·ì´í›„ ëª¨ë“  ë°©ì´ ì‚¬ìš© (ë°°í‹€ mercy ë©”ë‰´ ìŠ¤íƒ€ì¼ ì¬ì‚¬ìš©)
-  function startChoice(prompt, options, onPick) {
-    game.choice = { prompt, options, cursor: 0, onPick };
-    game.choiceRet = game.mode;
-    game.mode = 'choice';
-    Sound.select();
-    if (game.tts) Speech.speak(prompt);
-  }
-  function updateChoice() {
-    const c = game.choice;
-    if (!c) { game.mode = game.choiceRet || 'world'; return; }
-    const n = c.options.length;
-    if (justPressed('up') || justPressed('down')) {
-      c.cursor = justPressed('up') ? (c.cursor + n - 1) % n : (c.cursor + 1) % n;
-      Sound.blip();
-      if (game.tts) Speech.speak(`${c.cursor + 1}ë²ˆ, ${c.options[c.cursor]}`); // ì½ì–´ì£¼ê¸° ì ‘ê·¼ì„±
-    }
-    if (justPressed('cancel')) {
-      const cb = c.onPick; game.choice = null; game.mode = game.choiceRet || 'world';
-      Speech.stop(); if (cb) cb(-1);
-      return;
-    }
-    if (justPressed('action')) {
-      const cb = c.onPick, idx = c.cursor;
-      game.choice = null; game.mode = game.choiceRet || 'world';
-      Speech.stop(); if (cb) cb(idx);
-      return;
-    }
-  }
-  function drawChoice() {
-    const c = game.choice;
-    if (!c) return;
-    const maxW = LW - 24 - 48;
-    ctx.font = fs(16);
-    const promptLines = measureWrap(c.prompt, maxW);
-    const optH = lh(30);
-    const boxH = Math.max(120, 30 + promptLines * lh(24) + 10 + c.options.length * optH + 24);
-    const y = LH - boxH - 12;
-    utBox(12, y, LW - 24, boxH, 8);
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(16);
-    let ty = y + 30;
-    ty = drawQuestionText(c.prompt, 30, ty, maxW, lh(24)) + 10;
-    for (let i = 0; i < c.options.length; i++) {
-      drawChoiceWrapped(c.options[i], 40, ty + 4, i === c.cursor, maxW - 20, lh(22));
-      ty += optH;
-    }
-  }
-
-  // X-1/X-2 ë°˜ì‘Â·ìš”ì²­ ì„ íƒì€ ã€Œì •ë‹µ ì—†ëŠ”ã€ ì„ íƒì´ë¼, í…ŒìŠ¤íŠ¸/ë´‡ì´ ìë™ìœ¼ë¡œ í˜ë ¤ë³´ë‚¼ ìˆ˜ ìˆë„ë¡
-  // game.choice.reaction íƒœê·¸ë¥¼ ë‹¨ë‹¤(í¼ì¦ ì„ íƒì°½ê³¼ êµ¬ë¶„ â€” ë´‰í—ŒÂ·íŒë³„ ë“±ì€ íƒœê·¸ ì—†ìŒ).
-  function startReactionChoice(prompt, options, onPick) {
-    startChoice(prompt, options, onPick);
-    if (game.choice) game.choice.reaction = true;
-  }
-  // X-1 ì£¼ì¸ê³µ ë°˜ì‘ ì„ íƒ â€” ì •ë‹µ ì—†ëŠ” 2ì§€ì„ ë‹¤. ê³ ë¥¸ ê°’ì„ flags.playerVoice[key]ì— ì €ì¥í•˜ê³ ,
-  // ì„ íƒì— ë”°ë¼ ë‹¤ìŒ í•œ ì¤„(ë°˜ë””/ì˜ì´/ë°•ì‚¬ê°€ ê·¸ ë§ì„ ë°›ì•„ ì¤€ë‹¤)ì´ ë¶„ê¸°í•œë‹¤. ìŠ¤í‚µ(X)í•˜ë©´
-  // ê¸°ë³¸(0ë²ˆ) ë¶„ê¸°ë¡œ ë‘”ë‹¤. í†¤: ì´ˆë“± ëˆˆë†’ì´, ë§ˆë¥¸ ìœ ë¨¸ + ë”°ëœ»í•¨. (startChoice ì¬ì‚¬ìš©)
-  function startPlayerVoice(key, prompt, options, speaker, replies, then) {
-    startReactionChoice(prompt, options, (i) => {
-      const idx = (i < 0 || i >= options.length) ? 0 : i; // ìŠ¤í‚µ/ì·¨ì†Œ = ê¸°ë³¸ ë¶„ê¸°
-      if (!game.flags.playerVoice) game.flags.playerVoice = {};
-      game.flags.playerVoice[key] = idx;
-      save();
-      startDialog([replies[idx]], speaker, then || null);
-    });
-  }
-
-  // 3ë‹¨ê³„ ì ì§„ íŒíŠ¸ ì˜¤ë²„ë ˆì´ (í¼ì¦ ì „ìš©) â€” H(ë˜ëŠ” ë©”ë‰´â–¶íŒíŠ¸)ë¡œ ì—´ê³ , ëˆ„ë¥¼ ë•Œë§ˆë‹¤ ë” ê³µê°œ
-  function openHint() {
-    const run = game.puzzleRun;
-    if (!run) return;
-    run.usedHint = true; // Y-11 ì´ ë°©ì—ì„œ íŒíŠ¸ë¥¼ í•œ ë²ˆì´ë¼ë„ ì—´ë©´ 'ë³„ë¹› í´ë¦¬ì–´' ìê²©ì´ ì‚¬ë¼ì§„ë‹¤
-    const step = puzzleStep(run);
-    game.hint = { step, level: 1, hints: (run.puzzle.hints[step] || []).slice() };
-    game.hintRet = game.mode;
-    game.mode = 'hint';
-    recordPuzzleHint(run.id, step); // íŒíŠ¸ ì‚¬ìš© íšŸìˆ˜ë¥¼ ë‹¨ê³„ë³„ë¡œ ë¡œê·¸ì— ê¸°ë¡
-    Sound.select();
-    if (game.tts && game.hint.hints[0]) Speech.speak(game.hint.hints[0]);
-  }
-  function advanceHint() {
-    const h = game.hint;
-    if (!h) return;
-    if (h.level < h.hints.length) {
-      h.level += 1;
-      Sound.blip();
-      if (game.tts && h.hints[h.level - 1]) Speech.speak(h.hints[h.level - 1]);
-    }
-  }
-  function closeHint() {
-    game.mode = game.hintRet || 'world';
-    game.hint = null;
-    Speech.stop();
-    Sound.select();
-  }
-  function updateHint() {
-    // HëŠ” keydown í•¸ë“¤ëŸ¬ì—ì„œ advanceHintë¥¼ ì§ì ‘ í˜¸ì¶œ (ë” ê³µê°œ). X/Zë¡œ ë‹«ëŠ”ë‹¤.
-    if (justPressed('action') || justPressed('cancel')) { closeHint(); return; }
-  }
-  const HINT_STEP_LABEL = { tokens: 'ì •ë³´ í† í°', board: 'ê²Œì‹œíŒ', eraser: 'ì§€ìš°ê°œ', exit: 'ì¶œêµ¬',
-    copies: 'ë– ë„ëŠ” ì¡°ê°', levers: 'ì°¨ë‹¨ ë ˆë²„',
-    voices: 'ë‹¤ë¥¸ ëª©ì†Œë¦¬', retrain: 'ë°˜ë¡€ ì‚¬ì§„', lamps: 'ë¨í”„',
-    roulette: 'ë£°ë › ê´‘ì¥', signup: 'íšŒì›ê°€ì… ê³¨ëª©', backstage: 'ë°±ìŠ¤í…Œì´ì§€',
-    call: 'ì „í™”ì˜ ë°©', checkdoor: 'ì ê¸´ ë³µë„', sofa: 'ì†ŒíŒŒ ì½”ë„ˆ' };
-  function drawHint() {
-    drawWorld();
-    ctx.fillStyle = 'rgba(0,0,0,0.72)';
-    ctx.fillRect(0, 0, LW, LH);
-    const h = game.hint;
-    if (!h) return;
-    const boxW = Math.min(LW - 40, 480);
-    const boxX = Math.round(LW / 2 - boxW / 2);
-    const maxW = boxW - 44;
-    ctx.font = fs(15);
-    let lines = 0;
-    for (let i = 0; i < h.level; i++) lines += measureWrap(`${i + 1}. ${h.hints[i]}`, maxW) + 0.4;
-    const boxH = Math.round(64 + lines * lh(24) + 30);
-    const boxY = Math.round(LH / 2 - boxH / 2);
-    utBox(boxX, boxY, boxW, boxH, 8);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#ffd644';
-    ctx.font = fs(16, true);
-    ctx.fillText(`íŒíŠ¸ â€” ${HINT_STEP_LABEL[h.step] || h.step}  (${h.level}/${h.hints.length})`, boxX + 22, boxY + 30);
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(15);
-    let ty = boxY + 58;
-    for (let i = 0; i < h.level; i++) {
-      ty = drawQuestionText(`${i + 1}. ${h.hints[i]}`, boxX + 22, ty, maxW, lh(24)) + 6;
-    }
-    ctx.fillStyle = '#888';
-    ctx.font = fs(12);
-    ctx.textAlign = 'center';
-    const more = h.level < h.hints.length ? 'H ë” ë³´ê¸° Â· ' : '';
-    ctx.fillText(`${more}X/Z ë‹«ê¸°`, LW / 2, boxY + boxH - 12);
-    ctx.textAlign = 'left';
-  }
-
-  // í¼ì¦ ë¬¼ì²´ ê·¸ë¦¬ê¸° (íƒ€ì¼ ìœ„ ìŠ¤í”„ë¼ì´íŠ¸/ë¬¸ + ë¼ë²¨)
-  function drawPuzzleObjects(cx, cy) {
-    const run = game.puzzleRun;
-    const puz = run.puzzle;
-    const bob = Math.round(Math.sin(game.time / 22) * 2);
-    const label = (nx, ny, text, col) => {
-      ctx.font = fs(11, true);
-      ctx.textAlign = 'center';
-      ctx.lineWidth = 3; ctx.strokeStyle = '#000';
-      ctx.strokeText(text, nx + TS / 2, ny - 4);
-      ctx.fillStyle = col || '#fff';
-      ctx.fillText(text, nx + TS / 2, ny - 4);
-      ctx.textAlign = 'left';
-    };
-    const box = (nx, ny, col, mark, markCol) => {
-      ctx.fillStyle = col;
-      ctx.fillRect(nx + 6, ny + 8, TS - 12, TS - 12);
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-      ctx.strokeRect(nx + 6, ny + 8, TS - 12, TS - 12);
-      ctx.fillStyle = markCol || '#fff';
-      ctx.font = fs(16, true);
-      ctx.textAlign = 'center';
-      ctx.fillText(mark, nx + TS / 2, ny + TS / 2 + 8);
-      ctx.textAlign = 'left';
-    };
-    if (puz.type === 'voices') return; // ë©”ì•„ë¦¬ ê³¨ëª©: ê·¸ë¦´ ë¬¼ì²´ ì—†ìŒ (ë¬¸Â·NPCëŠ” íƒ€ì¼/ì—”í‹°í‹°ë¡œ)
-    if (puz.type === 'copies') {
-      // êµ¬ì—­â‘¡: ë– ë„ëŠ” ë‚´ ì •ë³´ ì‚¬ë³¸ (ë°˜ì§ì´ëŠ” ì¡°ê°)
-      for (const c of run.copies) {
-        if (c.got) continue;
-        const nx = Math.round(c.px - cx), ny = Math.round(c.py - cy - 6);
-        box(nx, ny + bob, '#3a6ea5', 'â—ˆ', '#cfe8ff');
-        label(nx, ny + bob, 'ë‚´ ì¡°ê°', '#cfe8ff');
-      }
-      return;
-    }
-    if (puz.type === 'levers') {
-      // êµ¬ì—­â‘¢: ì°¨ë‹¨ ë ˆë²„ 3ê°œ + ë°˜ì†¡í•¨ + ë²¨íŠ¸ë¥¼ íë¥´ëŠ” ìƒì
-      for (const lv of puz.levers) {
-        const nx = Math.round(lv.x * TS - cx), ny = Math.round(lv.y * TS - cy - 6);
-        box(nx, ny, '#6a4a2a', 'â†•', '#ffd6a0');
-        label(nx, ny, lv.name, '#ffd6a0');
-      }
-      const bin = puz.returnBin;
-      box(Math.round(bin.x * TS - cx), Math.round(bin.y * TS - cy - 6), '#2a5a3a', 'âŸ²', '#8de08d');
-      label(Math.round(bin.x * TS - cx), Math.round(bin.y * TS - cy - 6), bin.name, '#8de08d');
-      // ë²¨íŠ¸ ìœ„ ìƒì â€” timeFramesë¡œ ì™¼ìª½â†’ì˜¤ë¥¸ìª½(ì¶œí•˜êµ¬ ë°©í–¥) ìˆœí™˜ ì´ë™
-      const belt = puz.belt;
-      const span = belt.x1 - belt.x0;
-      const bx = belt.x0 * TS + ((run.timeFrames * 1.5) % (span * TS));
-      const nx = Math.round(bx - cx), ny = Math.round(belt.y * TS - cy - 6);
-      const curBox = puz.boxes[run.boxIdx];
-      box(nx, ny, '#8a6a20', 'â–£', '#fff2a8');
-      // ë¼ë²¨(ã€Œâ€¦Ní˜¸ã€Â·ë ˆì¸)ì€ í”Œë ˆì´ì–´ê°€ ìƒì 3íƒ€ì¼ ì´ë‚´ë¡œ ê°€ê¹Œì´ ê°”ì„ ë•Œë§Œ ë³´ì¸ë‹¤
-      // (ë©€ë¦¬ì„œë„ ëŠ˜ ë³´ì´ë©´ ë ˆì¸ì„ êµ³ì´ í™•ì¸í•˜ëŸ¬ ë‹¤ê°€ê°ˆ ì´ìœ ê°€ ì—†ì–´ì ¸ ì°½ê³  í¼ì¦ì˜ ê¸´ì¥ì´ ì£½ëŠ”ë‹¤).
-      const boxTileX = bx / TS, boxTileY = belt.y;
-      const near = Math.max(Math.abs(game.player.x - boxTileX), Math.abs(game.player.y - boxTileY)) <= 3;
-      if (near) label(nx, ny, `${curBox.label}Â·${curBox.lane}`, '#fff2a8');
-      return;
-    }
-    if (puz.type === 'retrain') {
-      // 2ì¥ êµ¬ì—­â‘¡: ë°˜ë¡€ ì‚¬ì§„ ì„ ë°˜ 3ê°œ + íŒë…ê¸° ë‹¨ë§
-      for (let i = 0; i < puz.photos.length; i++) {
-        const ph = puz.photos[i];
-        const nx = Math.round(ph.x * TS - cx), ny = Math.round(ph.y * TS - cy - 6);
-        const taken = run.taken.includes(i);
-        box(nx, ny + bob, taken ? '#3a3a3a' : '#6a4a2a', taken ? 'Â·' : 'â–¤', taken ? '#666' : '#ffd6a0');
-        label(nx, ny, taken ? '(ë¹ˆ ì„ ë°˜)' : 'ë°˜ë¡€ ì‚¬ì§„', taken ? '#888' : '#ffd6a0');
-      }
-      const rd = puz.reader;
-      const rnx = Math.round(rd.x * TS - cx), rny = Math.round(rd.y * TS - cy - 6);
-      box(rnx, rny, '#2a4a6a', 'âŸ³', '#a8d8ff');
-      label(rnx, rny, `íŒë…ê¸° ${run.fed}/3`, '#a8d8ff');
-      return;
-    }
-    if (puz.type === 'lamps') {
-      // 2ì¥ êµ¬ì—­â‘¢: ë¨í”„ 3ê°œ (ì ë“± ìƒíƒœ í‘œì‹œ)
-      for (let i = 0; i < puz.lamps.length; i++) {
-        const lp = puz.lamps[i];
-        const nx = Math.round(lp.x * TS - cx), ny = Math.round(lp.y * TS - cy - 6);
-        const on = run.lit[i];
-        box(nx, ny + (on ? 0 : bob), on ? '#8a6a20' : '#2a2a2a', on ? 'â˜€' : 'âœ¦', on ? '#fff2a8' : '#556');
-        label(nx, ny, on ? 'ì¼œì§' : 'ë¨í”„', on ? '#fff2a8' : '#88a');
-      }
-      return;
-    }
-    if (puz.type === 'tips') {
-      // 3ì¥ 1ì¸µ: ì œë³´ ìª½ì§€ 5ì¥ + ì±„íƒí•¨
-      for (let i = 0; i < puz.notes.length; i++) {
-        const n = puz.notes[i];
-        const nx = Math.round(n.x * TS - cx), ny = Math.round(n.y * TS - cy - 6);
-        const busted = run.busted[i];
-        const resolved = run.resolved.includes(i);
-        const col = busted ? '#8a2a2a' : resolved ? '#3a3a3a' : '#6a5a2a';
-        const mark = busted ? '!' : resolved ? 'Â·' : 'âœ';
-        box(nx, ny + (resolved ? 0 : bob), col, mark, busted ? '#ffb0a0' : '#ffe6a0');
-        label(nx, ny, busted ? '[ì†ë³´]' : n.label, busted ? '#ff8a70' : '#ffe6a0');
-      }
-      const b = puz.submitBox;
-      box(Math.round(b.x * TS - cx), Math.round(b.y * TS - cy - 6), '#2a4a6a', 'â–¼', '#a8d8ff');
-      label(Math.round(b.x * TS - cx), Math.round(b.y * TS - cy - 6), `${b.name} ${run.correct}/2`, '#a8d8ff');
-      return;
-    }
-    if (puz.type === 'compare') {
-      // 3ì¥ 2ì¸µ: ì‚¬ì§„ 3ì¥ (ì›ë³¸ ëŒ€ì¡°)
-      for (let i = 0; i < puz.photos.length; i++) {
-        const ph = puz.photos[i];
-        const nx = Math.round(ph.x * TS - cx), ny = Math.round(ph.y * TS - cy - 6);
-        const solved = run.solved[i];
-        box(nx, ny + (solved ? 0 : bob), solved ? '#3a3a3a' : '#6a4a2a', solved ? 'âœ“' : 'â–¦', solved ? '#8de08d' : '#ffd6a0');
-        label(nx, ny, solved ? 'ëŒ€ì¡° ì™„ë£Œ' : 'ì‚¬ì§„', solved ? '#8de08d' : '#ffd6a0');
-      }
-      return;
-    }
-    if (puz.type === 'broadcast') {
-      // 3ì¥ 3ì¸µ: ë‹¨ë§ 2ê°œ(ì •ì •ë¬¸Â·ì¶œì²˜) + ì†¡ì¶œ ë ˆë²„
-      const t1 = puz.terminal1, t2 = puz.terminal2, lv = puz.lever;
-      const t1n = Math.round(t1.x * TS - cx), t1y = Math.round(t1.y * TS - cy - 6);
-      box(t1n, t1y, run.stage > 0 ? '#3a3a3a' : '#2a4a6a', run.stage > 0 ? 'âœ“' : 'â‘ ', run.stage > 0 ? '#8de08d' : '#a8d8ff');
-      label(t1n, t1y, t1.name, run.stage > 0 ? '#8de08d' : '#a8d8ff');
-      const t2n = Math.round(t2.x * TS - cx), t2y = Math.round(t2.y * TS - cy - 6);
-      box(t2n, t2y, run.stage > 1 ? '#3a3a3a' : '#2a4a6a', run.stage > 1 ? 'âœ“' : 'â‘¡', run.stage > 1 ? '#8de08d' : '#a8d8ff');
-      label(t2n, t2y, t2.name, run.stage > 1 ? '#8de08d' : '#a8d8ff');
-      const lvn = Math.round(lv.x * TS - cx), lvy = Math.round(lv.y * TS - cy - 6);
-      box(lvn, lvy + bob, run.stage >= 2 ? '#8a6a20' : '#3a3a3a', 'â†•', run.stage >= 2 ? '#ffd644' : '#777');
-      label(lvn, lvy, lv.name, run.stage >= 2 ? '#ffd644' : '#888');
-      return;
-    }
-    if (puz.type === 'roulette') {
-      // 4ì¥ êµ¬ì—­â‘ : ë£°ë › ë‹¨ë§ 3ê°œ + í•´ì§€ ë‹¨ë§ + ì°½ê³  ìƒì
-      for (const r of puz.roulettes) {
-        const nx = Math.round(r.x * TS - cx), ny = Math.round(r.y * TS - cy - 6);
-        box(nx, ny + bob, '#8a2a6a', 'â—', '#ffb0e6');
-        label(nx, ny, r.name, '#ffb0e6');
-      }
-      const u = puz.unsub;
-      box(Math.round(u.x * TS - cx), Math.round(u.y * TS - cy - 6), '#2a4a6a', 'â›”', '#a8d8ff');
-      label(Math.round(u.x * TS - cx), Math.round(u.y * TS - cy - 6), u.name, '#a8d8ff');
-      const c = puz.chest;
-      box(Math.round(c.x * TS - cx), Math.round(c.y * TS - cy - 6), run.gotKey ? '#3a3a3a' : '#6a4a2a',
-        run.gotKey ? 'Â·' : 'ğŸ”‘', run.gotKey ? '#666' : '#ffd644');
-      label(Math.round(c.x * TS - cx), Math.round(c.y * TS - cy - 6), run.gotKey ? '(ë¹ˆ ìƒì)' : c.name,
-        run.gotKey ? '#888' : '#ffd644');
-      return;
-    }
-    if (puz.type === 'signup') {
-      // 4ì¥ êµ¬ì—­â‘¡: ê°ˆë¦¼ê¸¸ í‘œì§€íŒ + ë³¸ì¸ í™•ì¸í•¨
-      const f = puz.fork;
-      box(Math.round(f.x * TS - cx), Math.round(f.y * TS - cy - 6), run.passed ? '#3a3a3a' : '#6a5a2a',
-        run.passed ? 'âœ“' : 'â‘‚', run.passed ? '#8de08d' : '#ffe6a0');
-      label(Math.round(f.x * TS - cx), Math.round(f.y * TS - cy - 6), f.name, run.passed ? '#8de08d' : '#ffe6a0');
-      const ic = puz.idchest;
-      box(Math.round(ic.x * TS - cx), Math.round(ic.y * TS - cy - 6), run.passed ? '#6a4a2a' : '#3a3a3a',
-        run.passed ? 'ğŸ”‘' : 'ğŸ”’', run.passed ? '#ffd644' : '#888');
-      label(Math.round(ic.x * TS - cx), Math.round(ic.y * TS - cy - 6), ic.name, run.passed ? '#ffd644' : '#888');
-      return;
-    }
-    if (puz.type === 'backstage') {
-      // 4ì¥ êµ¬ì—­â‘¢: ë§ˆìŠ¤í„°í‚¤(í•¨ì •) + 2ë‹¨ê³„ ì¸ì¦ ì°½êµ¬ + ì•ˆìª½ ë¬¸
-      const mk = puz.masterkey;
-      box(Math.round(mk.x * TS - cx), Math.round(mk.y * TS - cy - 6) + bob, run.trapUsed ? '#3a3a3a' : '#8a6a20',
-        'ğŸ”‘', run.trapUsed ? '#888' : '#ffd644');
-      label(Math.round(mk.x * TS - cx), Math.round(mk.y * TS - cy - 6), mk.name, run.trapUsed ? '#888' : '#ffd644');
-      const at = puz.authterm;
-      box(Math.round(at.x * TS - cx), Math.round(at.y * TS - cy - 6), '#2a4a6a', 'â‘¡', '#a8d8ff');
-      label(Math.round(at.x * TS - cx), Math.round(at.y * TS - cy - 6), at.name, '#a8d8ff');
-      const twoKeys = game.flags.s4KeySecret && game.flags.s4KeyId;
-      const dr = puz.door;
-      box(Math.round(dr.x * TS - cx), Math.round(dr.y * TS - cy - 6), twoKeys ? '#2a5a3a' : '#3a3a3a',
-        twoKeys ? 'ğŸšª' : 'ğŸ”’', twoKeys ? '#8de08d' : '#889');
-      label(Math.round(dr.x * TS - cx), Math.round(dr.y * TS - cy - 6), dr.name, twoKeys ? '#8de08d' : '#889');
-      return;
-    }
-    if (puz.type === 'call') {
-      // 5ì¥ êµ¬ì—­â‘ : ìš¸ë¦¬ëŠ” ì „í™” (ê²½ê³  íšŸìˆ˜ì— ë”°ë¼ ìƒ‰ì´ ë°”ë€ë‹¤)
-      const ph = puz.phone;
-      const n = run.warnCount || 0;
-      box(Math.round(ph.x * TS - cx), Math.round(ph.y * TS - cy - 6) + bob, n >= 3 ? '#6a4a2a' : '#8a2a2a',
-        'â˜', n >= 3 ? '#ffd644' : '#ffb0a0');
-      label(Math.round(ph.x * TS - cx), Math.round(ph.y * TS - cy - 6), `${ph.name} (${Math.min(n, 3)}/3)`,
-        n >= 3 ? '#ffd644' : '#ffb0a0');
-      return;
-    }
-    if (puz.type === 'checkdoor') {
-      // 5ì¥ êµ¬ì—­â‘¡: ë£¨ë¯¸ê°€ ë§ë¦¬ëŠ” ì ê¸´ ë¬¸
-      const dr = puz.door;
-      box(Math.round(dr.x * TS - cx), Math.round(dr.y * TS - cy - 6), run.opened ? '#2a5a3a' : '#6a2a2a',
-        run.opened ? 'ğŸšª' : 'ğŸ”’', run.opened ? '#8de08d' : '#ffb0a0');
-      label(Math.round(dr.x * TS - cx), Math.round(dr.y * TS - cy - 6), dr.name, run.opened ? '#8de08d' : '#ffb0a0');
-      return;
-    }
-    if (puz.type === 'sofa') {
-      // 5ì¥ êµ¬ì—­â‘¢: í¬ê·¼í•œ ì†ŒíŒŒ (ì•‰ìœ¼ë©´ ë”°ëœ»í•œ ìƒ‰ìœ¼ë¡œ ë°”ë€ë‹¤)
-      const sf = puz.sofa;
-      box(Math.round(sf.x * TS - cx), Math.round(sf.y * TS - cy - 6), run.sitting ? '#c97b4a' : '#6a4a2a',
-        'â—', run.sitting ? '#ffe6c9' : '#ffd6a0');
-      label(Math.round(sf.x * TS - cx), Math.round(sf.y * TS - cy - 6), sf.name, run.sitting ? '#ffe6c9' : '#ffd6a0');
-      return;
-    }
-    for (const t of puz.terminals) {
-      const nx = Math.round(t.x * TS - cx), ny = Math.round(t.y * TS - cy - 6);
-      const given = run.given.includes(t.require) || (t.share && run.boardFace);
-      drawMon(ctx, t.theme, nx, ny + bob, SCALE);
-      label(nx, ny, t.name + (given ? ' âœ“' : ''), given ? '#8de08d' : '#fff');
-    }
-    const er = puz.eraser, ex = puz.exits;
-    box(Math.round(er.x * TS - cx), Math.round(er.y * TS - cy - 6), '#2a4a6a', 'âŒ«', '#a8d8ff');
-    label(Math.round(er.x * TS - cx), Math.round(er.y * TS - cy - 6), 'ì§€ìš°ê°œ', '#a8d8ff');
-    box(Math.round(ex.vip.x * TS - cx), Math.round(ex.vip.y * TS - cy - 6), '#8a6a20', 'â˜…', '#ffd644');
-    label(Math.round(ex.vip.x * TS - cx), Math.round(ex.vip.y * TS - cy - 6), 'VIP ì¶œêµ¬', '#ffd644');
-    box(Math.round(ex.normal.x * TS - cx), Math.round(ex.normal.y * TS - cy - 6), '#2a5a3a', 'â†©', '#8de08d');
-    label(Math.round(ex.normal.x * TS - cx), Math.round(ex.normal.y * TS - cy - 6), 'ì¼ë°˜ ì¶œêµ¬', '#8de08d');
-  }
-  function drawIntroLabObjects(cx, cy) {
-    if (game.map !== 'introlab') return;
-    const props = MAP_PROPS.introlab || [];
-    const bob = game.reduceFx ? 0 : Math.round(Math.sin(game.time / 18) * 2);
-    const drawLabel = (nx, ny, text, col) => {
-      if (!text) return;
-      ctx.font = fs(10, true);
-      ctx.textAlign = 'center';
-      ctx.lineWidth = 3; ctx.strokeStyle = '#000';
-      ctx.strokeText(text, nx + TS / 2, ny - 5);
-      ctx.fillStyle = col || '#fff';
-      ctx.fillText(text, nx + TS / 2, ny - 5);
-      ctx.textAlign = 'left';
-    };
-    for (const prop of props) {
-      const nx = Math.round(prop.x * TS - cx);
-      const ny = Math.round(prop.y * TS - cy - 4);
-      const done = prop.flag && game.flags[prop.flag];
-      const col = done ? '#5a6178' : (prop.clue ? '#f0c850' : '#8fd3ff');
-      const isCurrentClue = prop.clue && !done && !game.flags.introDoorOpen
-        && ((prop.flag === 'introClue1' && !game.flags.introClue1)
-          || (prop.flag === 'introClue2' && game.flags.introClue1 && !game.flags.introClue2)
-          || (prop.flag === 'introClue3' && game.flags.introClue1 && game.flags.introClue2 && !game.flags.introClue3));
-      if (prop.kind === 'exit') {
-        const open = !!game.flags.introDoorOpen;
-        ctx.fillStyle = open ? '#213a30' : '#2a2636';
-        ctx.fillRect(nx + 8, ny + 6, TS - 16, TS - 6);
-        ctx.strokeStyle = open ? '#8de08d' : '#d0b15a';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(nx + 8, ny + 6, TS - 16, TS - 6);
-        ctx.fillStyle = open ? '#bdf5d0' : '#f0c850';
-        ctx.font = fs(18, true);
-        ctx.textAlign = 'center';
-        ctx.fillText(open ? 'â†¥' : 'â–£', nx + TS / 2, ny + TS / 2 + 9);
-        ctx.textAlign = 'left';
-        drawLabel(nx, ny, open ? 'ì—´ë¦° ì¶œêµ¬' : `ì ê¸´ ì¶œêµ¬ ${introClueCount(game.flags)}/3`, open ? '#8de08d' : '#ffd644');
-        continue;
-      }
-      if (isCurrentClue) {
-        ctx.save();
-        ctx.globalAlpha = 0.32 + (game.reduceFx ? 0 : Math.abs(Math.sin(game.time / 10)) * 0.22);
-        ctx.fillStyle = '#ffd644';
-        ctx.beginPath();
-        ctx.ellipse(nx + TS / 2, ny + TS / 2 + 2, 23, 14, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-      ctx.fillStyle = done ? '#31364a' : '#1d2440';
-      ctx.fillRect(nx + 7, ny + 10 + bob, TS - 14, TS - 14);
-      ctx.strokeStyle = isCurrentClue ? '#fff1a6' : col;
-      ctx.lineWidth = isCurrentClue ? 3 : 2;
-      ctx.strokeRect(nx + 7, ny + 10 + bob, TS - 14, TS - 14);
-      ctx.fillStyle = col;
-      ctx.font = fs(16, true);
-      ctx.textAlign = 'center';
-      const mark = prop.kind === 'tablet' ? 'â–¤' : prop.kind === 'monitor' ? 'â–£' : prop.kind === 'memo' ? 'â€»' : prop.kind === 'board' ? 'â‹¯' : prop.kind === 'locker' ? 'â–¥' : 'Â·';
-      ctx.fillText(done ? 'âœ“' : mark, nx + TS / 2, ny + TS / 2 + 8 + bob);
-      ctx.textAlign = 'left';
-      const labelText = done ? 'í™•ì¸ë¨' : (prop.clue ? `ë‹¨ì„œ: ${prop.label}` : prop.label);
-      drawLabel(nx, ny + bob, labelText, isCurrentClue ? '#fff1a6' : col);
-    }
-  }
-
-  function prologueVisibleMarks() {
-    const props = MAP_PROPS[game.map] || [];
-    return props.filter((prop) => prop.flag || prop.kind === 'trace' || prop.kind === 'clearing')
-      .map((prop) => ({ map: game.map, x: prop.x, y: prop.y, label: prop.label || '', done: !!(prop.flag && game.flags[prop.flag]) }));
-  }
-  function drawForestPrologueObjects(cx, cy) {
-    if (!['forest', 'forestdeep'].includes(game.map) || game.flags.defeated.bekkyeomon) return;
-    const props = (MAP_PROPS[game.map] || []).filter((prop) => prop.kind === 'trace' || prop.kind === 'clearing' || prop.flag);
-    // ìˆ² í”ì ì€ ì•ˆë‚´ìš© ì •ì  í‘œì‹ì— ê°€ê¹ê²Œ ìœ ì§€í•œë‹¤. ê³¼í•œ í„ìŠ¤/ë¶€ìœ ê°ì„ ì¤„ì—¬
-    // ì €ì „ë ¥ ê¸°ê¸°ì—ì„œ ë²„ë²…ì„ì„ ì¤„ì´ê³ , í¼ì¦ ë°© ì´í™íŠ¸ì²˜ëŸ¼ ë³´ì´ì§€ ì•Šê²Œ í•œë‹¤.
-    const bob = 0;
-    for (const prop of props) {
-      const done = prop.flag && game.flags[prop.flag];
-      const nx = Math.round(prop.x * TS - cx);
-      const ny = Math.round(prop.y * TS - cy - 4);
-      const active = !done;
-      if (active) {
-        ctx.save();
-        ctx.globalAlpha = game.reduceFx ? 0.16 : 0.20;
-        ctx.fillStyle = '#ffd644';
-        ctx.beginPath();
-        ctx.ellipse(nx + TS / 2, ny + TS / 2 + 5, 24, 10, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-      ctx.fillStyle = done ? '#6b7158' : '#ffd644';
-      ctx.font = fs(20, true);
-      ctx.textAlign = 'center';
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = 3;
-      ctx.strokeText(done ? 'âœ“' : 'âŒ', nx + TS / 2, ny + TS / 2 + 10 + bob);
-      ctx.fillText(done ? 'âœ“' : 'âŒ', nx + TS / 2, ny + TS / 2 + 10 + bob);
-      ctx.font = fs(10, true);
-      const labelText = done ? 'í™•ì¸í•œ í”ì ' : prop.label;
-      ctx.strokeText(labelText, nx + TS / 2, ny - 5 + bob);
-      ctx.fillStyle = active ? '#fff1a6' : '#8a8f78';
-      ctx.fillText(labelText, nx + TS / 2, ny - 5 + bob);
-      ctx.textAlign = 'left';
-    }
-  }
-
-  function drawStalkers(cx, cy) {
-    const run = game.puzzleRun;
-    // traces ì™¸ í¼ì¦Â·ë¶ˆì™„ì „ run ì—ì„œë„ í”„ë ˆì„ì´ ì£½ì§€ ì•Šê²Œ ë°©ì–´
-    if (!run || !Array.isArray(run.stalkers) || run.stalkers.length === 0) return;
-    for (const s of run.stalkers) {
-      const bob = Math.round(Math.sin(game.time / 10) * 2);
-      drawSprite(ctx, STALKER_SPRITE, Math.round(s.px - cx), Math.round(s.py - cy - 6 + bob), SCALE);
-    }
-  }
-  // 2ì¥ í—ˆë¸Œ â€” ì¤‘ì•™ì˜ ê±°ëŒ€í•œ ì €ìš¸ (ê¸°ìš¸ê¸° = 3 - í´ë¦¬ì–´í•œ êµ¬ì—­ ìˆ˜)
-  function drawTiltScale(cx, cy) {
-    const sx = Math.round(14 * TS - cx) + TS / 2;
-    const sy = Math.round(9 * TS - cy) + TS / 2;
-    const tilt = 3 - s2ClearCount();
-    const ang = (game.reduceFx ? 0 : 1) * tilt * 0.14; // ê¸°ìš¸ê¸°ì— ë¹„ë¡€í•´ ì €ìš¸ëŒ€ê°€ ê¸°ìš´ë‹¤
-    // ê¸°ë‘¥
-    ctx.fillStyle = '#5a4a3a';
-    ctx.fillRect(sx - 3, sy - 4, 6, 26);
-    ctx.fillStyle = '#3a2f24';
-    ctx.fillRect(sx - 12, sy + 22, 24, 5);
-    // ì €ìš¸ëŒ€ (ê¸°ìš´ ë§‰ëŒ€)
-    const armL = 26;
-    const dx = Math.cos(ang) * armL, dy = Math.sin(ang) * armL;
-    ctx.strokeStyle = '#c8a24a';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(sx - dx, sy - 6 - dy);
-    ctx.lineTo(sx + dx, sy - 6 + dy);
-    ctx.stroke();
-    // ì ‘ì‹œ ë‘ ê°œ (í•œìª½ë§Œ ì”ëœ©)
-    const drawPan = (px, py, load) => {
-      ctx.strokeStyle = '#a8863a'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px, py + 8); ctx.stroke();
-      ctx.fillStyle = '#b9962f';
-      ctx.fillRect(px - 7, py + 8, 14, 3);
-      if (load) { ctx.fillStyle = '#d8b64a'; ctx.fillRect(px - 5, py + 2, 10, 6); }
-    };
-    drawPan(sx - dx, sy - 6 - dy, tilt > 0);       // ë¬´ê±°ìš´(ë‚´ë ¤ê°„) ìª½ì— ì§
-    drawPan(sx + dx, sy - 6 + dy, false);
-    // ë¼ë²¨
-    ctx.font = fs(10, true);
-    ctx.textAlign = 'center';
-    ctx.fillStyle = tilt > 0 ? '#ffd644' : '#8de08d';
-    ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
-    const txt = tilt > 0 ? `ê¸°ìš¸ê¸° ${tilt}/3` : 'ìˆ˜í‰!';
-    ctx.strokeText(txt, sx, sy - 22);
-    ctx.fillText(txt, sx, sy - 22);
-    ctx.textAlign = 'left';
-  }
-  // 2ì¥ êµ¬ì—­â‘¢ â€” ì–´ë‘ (êº¼ì§„ ê±°ë¦¬). í”Œë ˆì´ì–´ì™€ ì¼œì§„ ë¨í”„ ì£¼ë³€ë§Œ ë°ë‹¤. reduceFxë©´ ê· ì¼ ë”¤.
-  function drawDarkness(cx, cy) {
-    const run = game.puzzleRun;
-    if (run.litCount >= 3) return; // ë‹¤ ì¼œì§€ë©´ ì™„ì „íˆ ë°ë‹¤
-    if (game.reduceFx) {
-      // ê´‘ê³¼ë¯¼ì„± ë°°ë ¤: ë°©ì‚¬í˜• ëŒ€ì‹  ê· ì¼í•œ ì˜…ì€ ë”¤
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.fillRect(0, 0, LW, LH);
-      return;
-    }
-    const p = game.player;
-    const cxp = Math.round(p.px - cx) + TS / 2;
-    const cyp = Math.round(p.py - cy - 6) + TS / 2;
-    const R = TS * 4; // ì‹œì•¼ ë°˜ê²½ ~4íƒ€ì¼
-    const grad = ctx.createRadialGradient(cxp, cyp, TS * 0.6, cxp, cyp, R);
-    if (grad && grad.addColorStop) {
-      grad.addColorStop(0, 'rgba(0,0,0,0)');
-      grad.addColorStop(0.7, 'rgba(0,0,0,0.55)');
-      grad.addColorStop(1, 'rgba(0,0,0,0.92)');
-      ctx.fillStyle = grad;
-    } else {
-      ctx.fillStyle = 'rgba(0,0,0,0.85)';
-    }
-    ctx.fillRect(0, 0, LW, LH);
-    // ì¼œì§„ ë¨í”„ ì£¼ë³€ë„ ë°ê²Œ ëš«ì–´ ì¤€ë‹¤ (destination-outìœ¼ë¡œ ì–´ë‘ ì„ ì§€ìš´ë‹¤)
-    ctx.save();
-    ctx.globalCompositeOperation = 'destination-out';
-    for (let i = 0; i < run.puzzle.lamps.length; i++) {
-      if (!run.lit[i]) continue;
-      const lp = run.puzzle.lamps[i];
-      const lx = Math.round(lp.x * TS - cx) + TS / 2;
-      const ly = Math.round(lp.y * TS - cy) + TS / 2;
-      const lg = ctx.createRadialGradient(lx, ly, TS * 0.4, lx, ly, TS * 3);
-      if (lg && lg.addColorStop) {
-        lg.addColorStop(0, 'rgba(0,0,0,0.9)');
-        lg.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = lg;
-        ctx.fillRect(lx - TS * 3, ly - TS * 3, TS * 6, TS * 6);
-      }
-    }
-    ctx.restore();
-  }
-  // 2ì¥ êµ¬ì—­â‘  â€” ë©”ì•„ë¦¬ ê³¨ëª©ì˜ ë¹„ë„¤íŠ¸. ë£¨í”„í• ìˆ˜ë¡ ê°€ì¥ìë¦¬ê°€ ì§™ì–´ì§„ë‹¤. reduceFxë©´ ìƒëµ.
-  function drawEchoVignette() {
-    const run = game.puzzleRun;
-    const lv = Math.min(run.loops || 0, 3);
-    if (lv <= 0 || game.reduceFx) return;
-    const grad = ctx.createRadialGradient(LW / 2, LH / 2, LH * 0.3, LW / 2, LH / 2, LH * 0.75);
-    if (grad && grad.addColorStop) {
-      grad.addColorStop(0, 'rgba(0,0,0,0)');
-      grad.addColorStop(1, `rgba(10,6,20,${0.18 * lv})`);
-      ctx.fillStyle = grad;
-    } else {
-      ctx.fillStyle = `rgba(10,6,20,${0.14 * lv})`;
-    }
-    ctx.fillRect(0, 0, LW, LH);
-  }
-  // í™©í˜¼ ì•°ë¹„ì–¸íŠ¸ â€” ê²½ê³„ë§ˆì„ê³¼ ì •ì ì˜ ìˆ²ì€ ëŠ˜ í•´ ì§ˆ ë…˜ì´ë‹¤ (ë‹¤í¬ í†¤ ê¸°ì¡°).
-  // ë§ˆì„ì€ ë§ˆìŒì˜ ì˜¨ë„ê°€ ìŒ“ì¼ìˆ˜ë¡(ì´ì‚¬ ì˜¨ ì¹œêµ¬ ìˆ˜ë§Œí¼) ì¡°ê¸ˆì”© ë°ì•„ì§„ë‹¤ â€”
-  // "ì–´ë‘ìš´ ì„¸ê³„ì— ì˜¨ê¸°ê°€ ì¼œì§„ë‹¤"ë¥¼ í™”ë©´ ë°ê¸°ë¡œ ì²´ê°ì‹œí‚¤ëŠ” ì¹´ë¥´ë§ˆ ì—°ì¶œ.
-  const DUSK_BASE = { village: 0.24, forest: 0.22 };
-  function duskWarmCount(flags) {
-    let n = 0;
-    if (flags.mercyChoice && flags.mercyChoice.bekkyeomon === 'mercy') n += 1;
-    for (let c = 1; c <= 5; c++) if (flags[`chapter${c}Mercy`]) n += 1;
-    return n;
-  }
-  let _duskGrad = { key: -1, fill: null };  // aê°’ ìºì‹œ (drawDuskAmbient)
-  let _quietGrad = { key: -1, fill: null }; // lv ìºì‹œ (drawQuietVignette)
-  function drawDuskAmbient() {
-    let a = DUSK_BASE[game.map];
-    if (!a || !game.flags) return;
-    if (game.map === 'village') a = Math.max(0.08, a - 0.025 * duskWarmCount(game.flags));
-    // í™”ë©´ íš¨ê³¼ ì¤„ì´ê¸° â€” ê·¸ë¼ë°ì´ì…˜ ì—†ì´ ì˜…ì€ ë‹¨ìƒ‰ë§Œ (ê´‘ê³¼ë¯¼Â·ì €ì‹œë ¥ ë°°ë ¤)
-    if (game.reduceFx) {
-      ctx.fillStyle = `rgba(8,9,28,${a * 0.82})`;
-      ctx.fillRect(0, 0, LW, LH);
-      return;
-    }
-    // ê¹Šì€ ë‚¨ë¹› ì–´ìŠ¤ë¦„ â€” ìœ„(í•˜ëŠ˜)ê°€ ë” ì–´ë‘¡ë‹¤.
-    // ê·¸ë¼ë””ì–¸íŠ¸ëŠ” aê°€ ë°”ë€” ë•Œë§Œ ìƒˆë¡œ ë§Œë“ ë‹¤ (ë§¤ í”„ë ˆì„ ìƒì„±ì€ ì €ì‚¬ì–‘ íƒœë¸”ë¦¿ GC ë¶€ë‹´)
-    if (_duskGrad.key !== a) {
-      const grad = ctx.createLinearGradient(0, 0, 0, LH);
-      if (grad && grad.addColorStop) {
-        grad.addColorStop(0, `rgba(8,9,28,${Math.min(0.55, a + 0.1)})`);
-        grad.addColorStop(1, `rgba(8,9,28,${a * 0.7})`);
-        _duskGrad = { key: a, fill: grad };
-      } else {
-        _duskGrad = { key: a, fill: `rgba(8,9,28,${a})` };
-      }
-    }
-    ctx.fillStyle = _duskGrad.fill;
-    ctx.fillRect(0, 0, LW, LH);
-  }
-
-  // íŒŒì´ë„ ã€Œê³ ìš”ì˜ ëœ°ã€ â€” êµ¬ì—­ì„ ì§€ë‚  ë•Œë§ˆë‹¤(ë§µ ì „í™˜) í™”ë©´ì´ í•œ ë‹¨ê³„ì”© ì–´ë‘ì›Œì§„ë‹¤.
-  // í¼ì¦ ì—†ìŒ â€” ìˆœìˆ˜í•˜ê²Œ ë§µ idë¡œë§Œ ì •í•´ì§€ëŠ” ë‹¨ê³„(ê°™ì€ ë¹„ë„¤íŠ¸ ë°©ì‹ ì¬ì‚¬ìš©).
-  const QUIET_DIM_LEVEL = { quietyard: 0, quietyard2: 1, quietyard3: 2, goyostage: 3 };
-  function drawQuietVignette() {
-    const lv = QUIET_DIM_LEVEL[game.map];
-    if (!lv) return; // 0(êµ¬ì—­â‘ ) ë˜ëŠ” í•´ë‹¹ ì—†ìŒ â†’ í‘œì‹œ ì•ˆ í•¨
-    if (game.reduceFx) {
-      ctx.fillStyle = `rgba(5,5,12,${0.14 * lv})`;
-      ctx.fillRect(0, 0, LW, LH);
-      return;
-    }
-    if (_quietGrad.key !== lv) {
-      const grad = ctx.createRadialGradient(LW / 2, LH / 2, LH * 0.25, LW / 2, LH / 2, LH * 0.75);
-      if (grad && grad.addColorStop) {
-        grad.addColorStop(0, 'rgba(0,0,0,0)');
-        grad.addColorStop(1, `rgba(5,5,12,${0.2 * lv})`);
-        _quietGrad = { key: lv, fill: grad };
-      } else {
-        _quietGrad = { key: lv, fill: `rgba(5,5,12,${0.16 * lv})` };
-      }
-    }
-    ctx.fillStyle = _quietGrad.fill;
-    ctx.fillRect(0, 0, LW, LH);
-  }
-  // ì½”ì–´ â€” ì—¬ëŸ ê°œì˜ ì˜ì. ì•ˆì•„ ì¤€(ìë¹„) ì¡°ê° ìˆ˜ë§Œí¼(coreMercyCount) ì±„ì›Œì ¸ ê·¸ë ¤ì§„ë‹¤.
-  const CORE_CHAIR_SPOTS = [
-    { x: 3, y: 3 }, { x: 5, y: 3 }, { x: 9, y: 3 }, { x: 11, y: 3 },
-    { x: 3, y: 6 }, { x: 5, y: 6 }, { x: 9, y: 6 }, { x: 11, y: 6 },
-  ];
-  function drawCoreChairs(cx, cy) {
-    const filled = coreMercyCount(game.flags);
-    ctx.textAlign = 'center';
-    ctx.font = fs(16);
-    for (let i = 0; i < CORE_CHAIR_SPOTS.length; i++) {
-      const s = CORE_CHAIR_SPOTS[i];
-      const sx = Math.round(s.x * TS - cx) + TS / 2;
-      const sy = Math.round(s.y * TS - cy) + TS / 2;
-      ctx.fillStyle = i < filled ? '#ffd644' : '#3a3a4a';
-      ctx.fillText('â—', sx, sy + 6);
-    }
-    ctx.textAlign = 'left';
-  }
-  // êµ¬ì—­ HUD â€” í™”ë©´ ìœ„ìª½ ìƒì‹œ í‘œì‹œ (traces: í”„ë¡œí•„ ë³´ë“œ / copies: íšŒìˆ˜ ìˆ˜ / levers: ì§€ê¸ˆ ìƒì)
-  function drawPuzzleHud() {
-    const run = game.puzzleRun;
-    let title, detail, danger = false;
-    if (run.puzzle.type === 'copies') {
-      title = `ë˜ì°¾ì€ ì¡°ê° ${run.collected}/3`;
-      detail = 'ë– ë„ëŠ” ì¡°ê°ì„ ì«“ì•„ê°€ ë¶™ì¡ì';
-    } else if (run.puzzle.type === 'levers') {
-      title = `ë°˜ì†¡ ${run.diverted}/${run.puzzle.boxes.length}`;
-      // ìƒì ë¼ë²¨Â·ë ˆì¸ì€ ë” ì´ìƒ ìƒì‹œ í‘œì‹œí•˜ì§€ ì•ŠëŠ”ë‹¤ â€” ê°€ê¹Œì´ ê°€ì•¼ ë³´ì¸ë‹¤(drawPuzzleObjects)
-      detail = 'ë²¨íŠ¸ë¡œ ê°€ê¹Œì´ ê°€ë©´ ìƒì ë¼ë²¨ì´ ë³´ì¸ë‹¤';
-    } else if (run.puzzle.type === 'voices') {
-      title = `ë‹¤ë¥¸ ëª©ì†Œë¦¬ ${run.voices.length}/3`;
-      detail = 'ë°˜ì§ì´ì§€ ì•ŠëŠ” ë¬¸ ë’¤ë¥¼ ì°¾ì•„ë³´ì';
-    } else if (run.puzzle.type === 'retrain') {
-      title = `ë°˜ë¡€ ${run.photos}/3 Â· íŒë…ê¸° ${run.fed}/3`;
-      detail = 'ë°˜ë¡€ ì‚¬ì§„ì„ ëª¨ì•„ íŒë…ê¸°ì— ë„£ì';
-    } else if (run.puzzle.type === 'lamps') {
-      title = `ë¨í”„ ${run.litCount}/3`;
-      detail = 'ì–´ë‘  ì† ë¨í”„ë¥¼ ì°¾ì•„ ë¶ˆì„ ì¼œì';
-    } else if (run.puzzle.type === 'tips') {
-      title = `ì±„íƒ ${run.correct}/2`;
-      detail = 'ì¶œì²˜ ìˆëŠ” ì œë³´ë¥¼ ì°¾ì•„ ì±„íƒí•˜ì';
-    } else if (run.puzzle.type === 'compare') {
-      title = `ëŒ€ì¡° ${run.solvedCount}/3`;
-      detail = 'ì›ë³¸ê³¼ ë‹¤ë¥¸ ì ì„ ì§€ëª©í•˜ì';
-    } else if (run.puzzle.type === 'broadcast') {
-      title = `ë‹¨ê³„ ${Math.min(run.stage + 1, 3)}/3`;
-      detail = ['ì •ì •ë¬¸ì„ ê³ ë¥´ì', 'ì¶œì²˜ë¥¼ ë¶™ì´ì', 'ë ˆë²„ë¥¼ ë‹¹ê¸°ì'][run.stage] || 'ë ˆë²„ë¥¼ ë‹¹ê¸°ì';
-    } else if (run.puzzle.type === 'roulette') {
-      title = `ê´‘ê³  ë”±ì§€ ${game.flags.adStickers || 0}/4`;
-      detail = run.gotKey ? 'ë¹„ë°€ì¡°ê° ì—´ì‡ ë¥¼ ì°¾ì•˜ë‹¤!' : 'ë£°ë › ë’¤ ì°½ê³ ì—ì„œ ì—´ì‡ ë¥¼ ì°¾ì';
-      danger = (game.flags.adStickers || 0) >= 3;
-    } else if (run.puzzle.type === 'signup') {
-      title = run.passed ? 'ê°ˆë¦¼ê¸¸ í†µê³¼' : 'ê°ˆë¦¼ê¸¸ íŒë³„ ì „';
-      detail = run.passed ? 'ë³¸ì¸ í™•ì¸í•¨ì—ì„œ ì—´ì‡ ë¥¼ ë°›ì' : 'ì§„ì§œ ë„ë©”ì¸ì„ ê°€ë ¤ë‚´ì';
-    } else if (run.puzzle.type === 'backstage') {
-      title = `ì—´ì‡  ${s4KeyCount()}/2`;
-      detail = run.opened ? 'ë¬´ëŒ€ ë’¤ë¡œ ë“¤ì–´ì„°ë‹¤' : 'ì§„ì§œ ì—´ì‡  ë‘ ê°œë¡œ ì•ˆìª½ ë¬¸ì„ ì—´ì';
-    } else if (run.puzzle.type === 'call') {
-      title = `ë£¨ë¯¸ì˜ ë§Œë¥˜ ${Math.min(run.warnCount || 0, 3)}/3`;
-      detail = (run.warnCount || 0) < 3 ? 'ì „í™”ë¥¼ ì¡°ì‚¬í•´ ë³´ì' : 'í•œ ë²ˆ ë” ì¡°ì‚¬í•˜ë©´ ë°›ì„ ìˆ˜ ìˆë‹¤';
-    } else if (run.puzzle.type === 'checkdoor') {
-      title = run.opened ? 'ë¬¸ì„ ì—´ì—ˆë‹¤' : 'ë¬¸ ì•';
-      detail = 'ë£¨ë¯¸ì˜ ë§ì´ ì§„ì§œì¸ì§€, ì§ì ‘ ì—´ì–´ í™•ì¸í•˜ì';
-    } else if (run.puzzle.type === 'sofa') {
-      const frac = Math.min(1, (run.standTimer || 0) / SOFA_STAND_FRAMES);
-      title = run.sitting ? `ì¼ì–´ë‚˜ê¸° ${Math.round(frac * 100)}%` : 'ì•‰ì§€ ì•ŠìŒ';
-      detail = run.sitting ? 'ë°©í–¥í‚¤ë¥¼ 3ì´ˆ ì´ìƒ ê¾¹ ëˆŒëŸ¬ ë²„í‹°ì' : 'ì†ŒíŒŒë¥¼ ì¡°ì‚¬í•´ì„œ ì•‰ì•„ ë³´ì';
-      danger = run.sitting && frac < 1;
-    } else {
-      const given = givenTokens(run);
-      const nonNick = given.filter((k) => k !== 'nickname');
-      const names = given.map((k) => run.puzzle.tokens[k]);
-      title = `í”„ë¡œí•„ ë³´ë“œ â€” ë‚´ë³´ë‚¸ ì •ë³´ ${nonNick.length}ê°œ`;
-      detail = names.length ? names.join(' Â· ') : '(ì•„ì§ ì—†ìŒ)';
-      danger = nonNick.length >= 3;
-    }
-    ctx.font = fs(13, true);
-    const tw = Math.max(ctx.measureText(title).width, ctx.measureText(detail).width) + 24;
-    const bw = Math.min(LW - 20, Math.max(200, tw));
-    const bx = Math.round(LW / 2 - bw / 2), by = 8, bh = game.largeText ? 56 : 48;
-    utBox(bx, by, bw, bh, 6);
-    ctx.textAlign = 'center';
-    ctx.fillStyle = danger ? badColor() : warnColor();
-    ctx.fillText(title, LW / 2, by + 20);
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(12);
-    ctx.fillText(detail, LW / 2, by + (game.largeText ? 42 : 38));
-    ctx.textAlign = 'left';
-    // 5ì¥ êµ¬ì—­â‘¢ ì†ŒíŒŒ ì½”ë„ˆ â€” ì¼ì–´ë‚˜ê¸° ë²„í‹°ê¸° ì§„í–‰ ê²Œì´ì§€(90í”„ë ˆì„ ì±„ìš°ë©´ í´ë¦¬ì–´)
-    if (run.puzzle.type === 'sofa' && run.sitting) {
-      const frac = Math.min(1, (run.standTimer || 0) / SOFA_STAND_FRAMES);
-      const gy = by + bh + 4;
-      ctx.fillStyle = '#333'; ctx.fillRect(bx, gy, bw, 6);
-      ctx.fillStyle = '#e0a53a'; ctx.fillRect(bx, gy, bw * frac, 6);
-    }
-  }
-
-  // ---------- ì›”ë“œ ----------
-  function facingTile() {
-    const p = game.player;
-    const dx = p.dir === 'left' ? -1 : p.dir === 'right' ? 1 : 0;
-    const dy = p.dir === 'up' ? -1 : p.dir === 'down' ? 1 : 0;
-    return { x: p.x + dx, y: p.y + dy };
-  }
-
-  // 3ì¥ í—ˆë¸Œ ã€Œì†Œë¬¸ ê±°ë¦¬ã€ â€” ì†Œë¬¸ ë•Œë¬¸ì— ë¬¸ ë‹«ì€ ìƒì  3ê³³ (ì†¡ì¶œ ì™„ë£Œ ì „/í›„ ëŒ€ì‚¬ ë¶„ê¸°)
-  const RUMOR_SHOPS = [
-    { x: 5, y: 4, name: 'ë¶„ì‹ì§‘' },
-    { x: 22, y: 4, name: 'ë¬¸êµ¬ì ' },
-    { x: 4, y: 15, name: 'ì‚¬ì§„ê´€' },
-  ];
-  function interact() {
-    if (game.puzzleRun && interactPuzzle()) return;
-    const f = facingTile();
-    const npc = npcAt(game.map, f.x, f.y);
-    if (npc) {
-      // 1ì¥ ë³´ìŠ¤(ë‹´ì•„) â€” ì•„ì§ ì„¤ë“í•˜ì§€ ì•Šì•˜ìœ¼ë©´ ì„¤ë“ ë°°í‹€ë¡œ, ì´í›„ì—” ë˜ëŒë¦° ì¹œêµ¬ë¡œ
-      if (npc.id === 'sujip_boss') {
-        if (!game.flags.chapter1Clear) { startBattleIntro('sujipmon', 'sujipmon_boss'); return; }
-        startDialog([
-          'ë‹´ì•„: "ë•ë¶„ì— í•˜ë‚˜ì”© ëŒë ¤ì£¼ê³  ìˆì–´.\nâ€¦ë¹ˆì†ì¸ë°, ì´ìƒí•˜ê²Œ ì•ˆ í—ˆì „í•´."',
-          'ë‹´ì•„: "ë¼ë²¨ë„ ë‹¤ ë–¼ëŠ” ì¤‘ì´ì•¼.\nã€Œì¹œêµ¬ê°€ ì¤€ ê²ƒã€ì´ ì•„ë‹ˆë¼â€¦\nì›ë˜, ì¹œêµ¬ ê±°ì˜€ìœ¼ë‹ˆê¹Œ."',
-        ], 'ë‹´ì•„');
-        return;
-      }
-      // 2ì¥ ë³´ìŠ¤(ê¸°ìš¸) â€” ì•„ì§ ì„¤ë“í•˜ì§€ ì•Šì•˜ìœ¼ë©´ ë§ˆìŒ ì¡°ê° ë°°í‹€ë¡œ, ì´í›„ì—” ë˜ëŒë¦° ì¹œêµ¬ë¡œ
-      if (npc.id === 'pyeong_boss') {
-        if (!game.flags.chapter2Clear) { startBattleIntro('pyeonhyangmon', 'pyeonhyang_boss'); return; }
-        startDialog([
-          'ê¸°ìš¸: "ìš”ì¦˜ì€ ì–‘ìª½ ë‹¤ ì¬ ë´.\nâ€¦ì‹œê°„ì€ ì¢€ ê±¸ë¦¬ëŠ”ë°, ì•ˆ ê¸°ìš¸ì–´."',
-          'ê¸°ìš¸: "í‹€ë¦´ í™•ë¥ ? â€¦ìˆì§€.\nê·¼ë° ê·¸ê²Œ, ì´ìƒí•œ ê²Œ ì•„ë‹ˆë”ë¼ê³ ."',
-        ], 'ê¸°ìš¸');
-        return;
-      }
-      // 3ì¥ ë³´ìŠ¤(ê·¸ëŸ´ì‹¸) â€” ì•„ì§ ì„¤ë“í•˜ì§€ ì•Šì•˜ìœ¼ë©´ ë§ˆìŒ ì¡°ê° ë°°í‹€ë¡œ, ì´í›„ì—” ë˜ëŒë¦° ì¹œêµ¬ë¡œ
-      if (npc.id === 'hwangak_boss') {
-        if (!game.flags.chapter3Clear) { startBattleIntro('hwangakmon', 'hwangak_boss'); return; }
-        startDialog([
-          'ê·¸ëŸ´ì‹¸: "ìš”ì¦˜ì€ ëª¨ë¥´ë©´ ëª¨ë¥¸ë‹¤ê³  ì¨.\nâ€¦ìƒê°ë³´ë‹¤, ë…ìë“¤ì´ ë” ë¯¿ì–´ì£¼ë”ë¼."',
-          'ê·¸ëŸ´ì‹¸: "[ì •ì •] ì–´ì œì˜ ë‚˜ë¥¼ ì •ì •í•©ë‹ˆë‹¤.\nâ€¦ì´ ë¬¸ì¥, ë§ˆìŒì— ë“¤ì–´."',
-        ], 'ê·¸ëŸ´ì‹¸');
-        return;
-      }
-      // 4ì¥ ë³´ìŠ¤(ë°˜ì§) â€” ì•„ì§ ì„¤ë“í•˜ì§€ ì•Šì•˜ìœ¼ë©´ ë§ˆìŒ ì¡°ê° ë°°í‹€ë¡œ, ì´í›„ì—” ë˜ëŒë¦° ì¹œêµ¬ë¡œ
-      if (npc.id === 'yuhok_boss') {
-        if (!game.flags.chapter4Clear) { startBattleIntro('yuhokmon', 'yuhok_boss'); return; }
-        startDialog([
-          'ë°˜ì§: "ìš”ì¦˜ì€ ë”±ì§€ë„ ì•ˆ ë¶™ì–´.\nâ€¦ì§„ì§œë§Œ ì¼œë‹ˆê¹Œ, ì˜¤íˆë ¤ í¸í•´."',
-          'ë°˜ì§: "ë¶ˆ êº¼ì§„ ë‚˜ë„ ë´ ì¤¬ì–ì•„.\nâ€¦ê·¸ê²Œ, ì œì¼ ë°˜ì§ì˜€ì–´."',
-        ], 'ë°˜ì§');
-        return;
-      }
-      // 5ì¥ ë³´ìŠ¤(ë£¨ë¯¸) â€” ì•„ì§ ì„¤ë“í•˜ì§€ ì•Šì•˜ìœ¼ë©´ ë§ˆìŒ ì¡°ê° ë°°í‹€ë¡œ, ì´í›„ì—” ë˜ëŒë¦° ì¹œêµ¬ë¡œ
-      if (npc.id === 'hollim_boss') {
-        if (!game.flags.chapter5Clear) { startBattleIntro('hollimmon', 'hollim_boss'); return; }
-        startDialog([
-          'ë£¨ë¯¸: "ìš”ì¦˜ì€ í˜¼ìì„œë„, ì˜ ìˆì–´ ë´.\nâ€¦ê¸°ë‹¤ë¦¬ëŠ” ê²ƒë„, ë‚˜ì˜ì§€ ì•Šë”ë¼."',
-          'ë£¨ë¯¸: "ë„¤ê°€ ë‹¤ë…€ì˜¨ë‹¤ê³  í•˜ë©´,\nì´ì œëŠ”â€¦ ê·¸ëƒ¥ ë¯¿ê³  ê¸°ë‹¤ë¦´ê²Œ."',
-        ], 'ë£¨ë¯¸');
-        return;
-      }
-      // íŒŒì´ë„ ë³´ìŠ¤(ê³ ìš”) â€” ì•„ì§ ì„¤ë“í•˜ì§€ ì•Šì•˜ìœ¼ë©´ ë§ˆìŒ ì¡°ê° ë°°í‹€ë¡œ, ì´í›„ì—” ë˜ëŒë¦° ì¹œêµ¬ë¡œ
-      if (npc.id === 'goyo_boss') {
-        if (!game.flags.goyoClear) { startBattleIntro('finalboss', 'goyo_boss'); return; }
-        startDialog([
-          'ê³ ìš”: "â€¦ì•„ì§, ì—¬ê¸° ìˆì—ˆë„¤."',
-          'ê³ ìš”: "â€¦ê·¸ë˜ë„ ë¼. â€¦ê³ ë§ˆì›Œ."',
-        ], 'ê³ ìš”');
-        return;
-      }
-      // íŒŒì´ë„ ã€Œì½”ì–´ã€ì˜ ì˜ì´ â€” ë§ˆìŒ ì¡°ê° ë°°í‹€. í´ë¦¬ì–´ëŠ” ê¸°ì¡´ v1 winBattleì˜ yeongi ë¶„ê¸°ë¡œ
-      // ê·¸ëŒ€ë¡œ ì´ì–´ì ¸ computeEnding(ì§„ì—”ë”© ê³„ì‚°)ì´ ì¬ì‚¬ìš©ëœë‹¤.
-      if (npc.id === 'yeongi_boss') {
-        if (!game.flags.defeated.yeongi) { startBattleIntro('yeongi', 'yeongi_boss'); return; }
-        startDialog(['â€¦ì´ë¯¸, ëŒ€ë‹µì„ ë“¤ì—ˆì–ì•„.'], 'ì˜ì´');
-        return;
-      }
-      // 3ì¥ 1ì¸µ í—›ì†Œ â€” ì œë³´í•¨ ì§„í–‰ ìƒíƒœì— ë”°ë¼ ëŒ€ì‚¬ê°€ ë‹¬ë¼ì§„ë‹¤
-      if (npc.id === 'heossso') {
-        const run = game.puzzleRun;
-        if (isPuzzleCleared('tips')) {
-          startDialog([
-            'í—›ì†Œ: "â€¦ê·¸ ë’¤ë¡œ ë‚˜ë„, ì¶œì²˜ ì—†ëŠ” ë§ì€\nì•ˆ ì˜®ê¸°ë ¤ê³  í•´."',
-          ], 'í—›ì†Œ');
-        } else if (run && run.correct > 0) {
-          startDialog([
-            `í—›ì†Œ: "ë²Œì¨ ${run.correct}ì¥ì´ë‚˜ ì±„íƒí–ˆë„¤.\nâ€¦ë‚¨ì€ ê²ƒë„ ì˜ ì‚´í´ë´."`,
-          ], 'í—›ì†Œ');
-        } else {
-          startDialog([
-            'í—›ì†Œ: "ìª½ì§€ ë‹¤ì„¯ ì¥. ë‹¤ ê·¸ëŸ´ë“¯í•˜ì§€?\nâ€¦ê·¼ë° ì§„ì§œëŠ” ì¶œì²˜ê°€ ìˆì–´."',
-          ], 'í—›ì†Œ');
-        }
-        return;
-      }
-      // 3ì¥ 2ì¸µ ë¶™ì„ â€” í¸ì§‘ì‹¤ ì§„í–‰ ìƒíƒœì— ë”°ë¼ ëŒ€ì‚¬ê°€ ë‹¬ë¼ì§„ë‹¤
-      if (npc.id === 'buteum') {
-        const run = game.puzzleRun;
-        if (isPuzzleCleared('compare')) {
-          startDialog([
-            'ë¶™ì„: "ì´ì œ ë‚˜ë„ ì›ë³¸ì´ë‘ ë¹„êµí•˜ëŠ”\në²„ë¦‡ì´ ìƒê²¼ì–´. â€¦ê³ ë§ˆì›Œ."',
-          ], 'ë¶™ì„');
-        } else if (run && run.solvedCount > 0) {
-          startDialog([
-            `ë¶™ì„: "ë²Œì¨ ${run.solvedCount}ì¥ì´ë‚˜ ì°¾ì•„ëƒˆë„¤.\nâ€¦ë‚˜ë¨¸ì§€ë„ ë¶€íƒí•´."`,
-          ], 'ë¶™ì„');
-        } else {
-          startDialog([
-            'ë¶™ì„: "ì‚¬ì§„ ì„¸ ì¥. ì›ë³¸ì´ë‘ ë‚˜ë€íˆ\në†“ì•„ ë³´ë©´â€¦ ë­”ê°€ ë‹¬ë¼."',
-          ], 'ë¶™ì„');
-        }
-        return;
-      }
-      // 3ì¥ í—ˆë¸Œ ê²ë¨¹ì€ ì£¼ë¯¼ 2ëª… â€” rumorFixed ì „ì—” ê°™ì€ í—›ì†Œë¬¸ì„ ë°˜ë³µí•œë‹¤
-      if (npc.id === 'rumor_villager1' || npc.id === 'rumor_villager2') {
-        if (game.flags.rumorFixed) {
-          startDialog(npc.id === 'rumor_villager1'
-            ? ['â€¦ì†Œë¬¸ì´ ë‹¤ í—›ê²ƒì´ì—ˆëŒ€. ì‹ ë¬¸ì‚¬ê°€ ë°”ë¡œì¡ì•˜ì–´.\në‹¤í–‰ì´ì•¼, ì§„ì§œ.']
-            : ['ì´ì œì•¼ ë°œ ë»—ê³  ìê² ì–´.\nâ€¦í™•ì¸ë¶€í„° í•˜ëŠ” ìŠµê´€, ìƒê²¼ì§€ ë­ì•¼.'], 'ì£¼ë¯¼');
-        } else {
-          startDialog(['"ê·¸ ìš°ë¬¼ë¬¼ ë§ˆì‹œë©´ ë¡œë´‡ì´ ëœëŒ€! ì§„ì§œë˜!"'], 'ê²ë¨¹ì€ ì£¼ë¯¼');
-        }
-        return;
-      }
-      // 2ì¥ êµ¬ì—­â‘  ë‹¤ë¥¸ ëª©ì†Œë¦¬ 3ëª… â€” ëŒ€í™”í•˜ë©´ ì¡°ê° ìˆ˜ì§‘
-      if (npc.id === 'voice1' || npc.id === 'voice2' || npc.id === 'voice3') {
-        if (collectVoice(npc.id)) return;
-      }
-      // 2ì¥ êµ¬ì—­â‘  ê³¨ëª© ì£¼ë¯¼ â€” í† ì”¨ê¹Œì§€ ê°™ì€ ë§ì„ ë°˜ë³µ
-      if ((npc.id === 'echo1' || npc.id === 'echo2') && game.puzzleRun && game.puzzleRun.puzzle.echoLine) {
-        startDialog([game.puzzleRun.puzzle.echoLine], 'ê³¨ëª© ì£¼ë¯¼');
-        return;
-      }
-      // 2ì¥ í—ˆë¸Œ ì•ˆë‚´ì¸ ë±…ë±… â€” ëª…ë‘í•˜ê²Œ ê°™ì€ ê³³ë§Œ ì•ˆë‚´
-      if (npc.id === 'bangbang') {
-        startDialog([
-          'ë±…ë±…: "ì´ìª½! ë‹¤ë“¤ ê°€ëŠ” ê¸¸ì€ ì´ìª½ì´ì•¼!\nâ€¦ì–´ì œë„ ì•ˆë‚´í–ˆë˜ê°€? ì•„ë¬´íŠ¼ ì´ìª½!"',
-        ], 'ë±…ë±…');
-        return;
-      }
-      // 2ì¥ í—ˆë¸Œ ì£¼ë¯¼ ë˜ë˜ 2ëª… â€” ë–¨ì–´ì ¸ ìˆëŠ”ë° í† ì”¨ê¹Œì§€ ê°™ì€ ë§
-      if (npc.id === 'ttotto1' || npc.id === 'ttotto2') {
-        startDialog([
-          'ë˜ë˜: "ë§ì´ ë³¸ ê²Œ ë§ëŠ” ê±°ì•¼.\në‹¤ë“¤ ê·¸ëŸ¬ë˜ë°. â€¦ë§ì´ ë³¸ ê²Œ ë§ëŠ” ê±°ì•¼."',
-        ], 'ë˜ë˜');
-        return;
-      }
-      // êµ¬ì—­â‘¡ì˜ ìƒˆê¹€ â€” í¼ì¦ ì§„í–‰ ìƒíƒœ(íšŒìˆ˜Â·í´ë¦¬ì–´)ì— ë”°ë¼ ëŒ€ì‚¬ê°€ ë‹¬ë¼ì§„ë‹¤
-      if (npc.id === 'saegim_plaza') {
-        const run = game.puzzleRun;
-        if (isPuzzleCleared('copies')) {
-          startDialog([
-            'ìƒˆê¹€: "â€¦ê¸ˆê³  ì•ˆì˜ í•˜ë‚˜ëŠ” ëª» êº¼ë‚´ ì¤˜.\nì´ë¯¸ ë‚´ ëª¸ì— ìƒˆê²¨ì¡Œìœ¼ë‹ˆê¹Œ."',
-            'ìƒˆê¹€: "ê·¸ë˜ë„ ì…‹ì€ ë„¤ í’ˆì— ëŒì•„ê°”ë„¤.\nâ€¦ë‹¤í–‰ì´ì•¼."',
-          ], 'ìƒˆê¹€');
-        } else if (run && run.collected > 0) {
-          startDialog([
-            `ìƒˆê¹€: "ë²Œì¨ ${run.collected}ê°œë‚˜ ë¶™ì¡ì•˜ë„¤.\nâ€¦ë¹ ë¥´ë‹¤, ë„ˆ."`,
-            'ìƒˆê¹€: "ë‚¨ì€ ê²ƒë„ ë¶€íƒí•´.\në„¤ ê±°ë‹ˆê¹Œ, ë„¤ê°€ ë¶™ì¡ì•„ì•¼ í•´."',
-          ], 'ìƒˆê¹€');
-        } else {
-          startDialog([
-            'ìƒˆê¹€: "ë„¤ ì¡°ê°ì´ ê´‘ì¥ì— ë– ëŒê³  ìˆì–´.\nì…‹. â€¦ì›ë˜ëŠ” ë„·ì´ì—ˆëŠ”ë°."',
-            'ìƒˆê¹€: "í•˜ë‚˜ëŠ” ê¸ˆê³  ì•ˆì´ì•¼.\nê·¸ê±´ ì´ë¯¸ ë‚´ ëª¸ì— ìƒˆê²¨ì¡Œì–´. â€¦ë¯¸ì•ˆ."',
-            'ìƒˆê¹€: "ë‚˜ë¨¸ì§€ ì…‹ì€ ë¶™ì¡ì„ ìˆ˜ ìˆì–´.\në„ë§ì¹˜ì§€ë§Œâ€¦ ê¸ˆë°© ì§€ì³."',
-          ], 'ìƒˆê¹€');
-        }
-        return;
-      }
-      const lines = getNpcDialog(npc.id, game.flags);
-      startDialog(lines, npc.name, () => {
-        if (npc.id === 'prof' && !game.flags.talkedProf) {
-          game.flags.talkedProf = true;
-          save();
-        }
-      });
-      return;
-    }
-    const mon = monsterAt(game.map, f.x, f.y);
-    if (mon) {
-      if ((game.map === 'forest' || game.map === 'forestdeep') && mon.id === 'bekkyeomon' && !game.flags.introForestTrace) {
-        startDialog([
-          'ìˆ² ì•ˆìª½ì—ì„œ ëˆ„êµ°ê°€ì˜ ëª©ì†Œë¦¬ê°€ ë“¤ë¦°ë‹¤.\ní•˜ì§€ë§Œ ì•„ì§ ê¸¸ì´ ë³´ì´ì§€ ì•ŠëŠ”ë‹¤.',
-          'ë¨¼ì € ë°”ë¡œ ë’¤ì˜ ë…¸ë€ ë°œìêµ­ì„ ì¡°ì‚¬í•˜ì.\ní”ì ì„ ì½ì–´ì•¼ ë”°ë¼ì—ê²Œ ë‹¤ê°€ê°ˆ ìˆ˜ ìˆë‹¤.',
-        ], 'ë°˜ë””');
-        return;
-      }
-      if ((game.map === 'forest' || game.map === 'forestdeep') && mon.id === 'bekkyeomon' && !game.flags.ttaraFirstEncounter) {
-        startDialog([
-          'ë…¸ë€ ë°œìêµ­ì˜ ë â€”\në‚¨ì˜ ê·¸ë¦¼ì„ ë”°ë¼ ê·¸ë¦° ì¢…ì´ë“¤ì´\ní©ì–´ì ¸ ìˆë‹¤. í•œê°€ìš´ë°ë§Œ, ë¹„ì–´ ìˆë‹¤.',
-          'ë”°ë¼: "ì˜ ê·¸ë¦° ê±´ ì „ë¶€ ë‚¨ì˜ ê±°ì˜€ì–´.\nê·¸ëŸ¼ ë‚´ ë§ˆìŒì€â€¦ ì–´ë””ì„œ ë² ë¼ë©´ ë¼?"',
-          'ë°˜ë””: "ì‹¸ìš°ëŠ” ê²Œ ì•„ë‹ˆì•¼.\nì € ì•„ì´ ë§ˆìŒ ì•ˆìª½ìœ¼ë¡œ ë“¤ì–´ê°€ì„œ,\ní©ì–´ì§„ ì†ë§ˆìŒ ì¡°ê°ì„ ë“¤ì–´ ë³´ì."',
-        ], 'ë”°ë¼', () => {
-          game.flags.ttaraFirstEncounter = true;
-          save();
-          startBattleIntro(mon.id);
-        });
-        return;
-      }
-      startBattleIntro(mon.id);
-      return;
-    }
-    // ë˜ëŒë ¤ ì¹œêµ¬ê°€ ëœ ì¸ë¬¼: ë‹¤ì‹œ ì‹¸ìš°ì§€ ì•Šê³ , ë°°ìš´ ì ì„ ë“¤ë ¤ì¤€ë‹¤
-    const friend = friendAt(game.map, f.x, f.y);
-    if (friend) {
-      const fm = MONSTERS[friend.id];
-      const dex = MONSTER_DEX[friend.id];
-      // Y-4 ì¹œêµ¬ ì¡ë‹´ íšŒì „ â€” FRIEND_CHATSê°€ ìˆìœ¼ë©´ 2~3ê°œ ëŒ€ì‚¬ë¥¼ ìˆœí™˜í•œë‹¤.
-      //   [0]ì€ ê¸°ì¡´ ê³ ì • ì¸ì‚¬(ì²« ëŒ€ì‚¬ë¡œ ìœ ì§€)ì´ë©°, ê·¸ ìˆœë²ˆì—ë§Œ ë°°ìš´ ì (learn)ì„ í•¨ê»˜ ë“¤ë ¤ì¤€ë‹¤.
-      const chats = FRIEND_CHATS[friend.id];
-      if (chats && chats.length) {
-        if (!game.flags.friendChatIdx) game.flags.friendChatIdx = {};
-        const idx = game.flags.friendChatIdx[friend.id] || 0;
-        const lines = [chats[idx]];
-        if (idx === 0 && dex && dex.learn) lines.push(`ì´ì œ ë‚˜ë„ ì•Œì•„ â€”\n${dex.learn}`);
-        game.flags.friendChatIdx[friend.id] = (idx + 1) % chats.length; // ë‹¤ìŒ ì¡ë‹´ìœ¼ë¡œ ìˆœí™˜
-        save();
-        startDialog(lines, fm.name);
-        return;
-      }
-      // í´ë°±(FRIEND_CHATS ë¯¸ì •ì˜) â€” ê¸°ì¡´ ê³ ì • ëŒ€ì‚¬
-      const lines = [`ë„¤ ë•ë¶„ì— ë§ˆìŒì„ ë˜ì°¾ì•˜ì–´.\nì •ë§ ê³ ë§ˆì›Œ!`];
-      if (dex && dex.learn) lines.push(`ì´ì œ ë‚˜ë„ ì•Œì•„ â€”\n${dex.learn}`);
-      startDialog(lines, fm.name);
-      return;
-    }
-    const sign = signAt(game.map, f.x, f.y);
-    if (sign) {
-      startDialog([sign.text], 'í‘œì§€íŒ');
-      return;
-    }
-    // ì¡°ì‚¬(ì‚´í´ë³´ê¸°): íŠ¹ë³„ ì§€ì  â†’ íƒ€ì¼ ê¸°ë³¸ ë¬¸êµ¬
-    const facingProp = getPropAt(game.map, f.x, f.y);
-    // ìˆ² ì²« í”ì ì€ ë°”ë‹¥ ìœ„ ì‹œê° ì˜¤ë¸Œì íŠ¸ë‹¤. ëª©í‘œ í™”ì‚´í‘œë¥¼ ë”°ë¼ ì •í™•íˆ ê·¸ ì¹¸ì— ì˜¬ë¼ì„œë„
-    // Z/Enterê°€ ë¨¹íˆë„ë¡, ì•„ì§ í™•ì¸ ì „ì´ë©´ í˜„ì¬ ë°œë°‘ì˜ traceë„ ì¡°ì‚¬ ëŒ€ìƒìœ¼ë¡œ ì¸ì •í•œë‹¤.
-    const standingProp = getPropAt(game.map, game.player.x, game.player.y);
-    const standingTrace = (game.map === 'forest' && !game.flags.introForestTrace) ? standingProp : null;
-    const standingFlagProp = (standingProp && standingProp.flag && !game.flags[standingProp.flag]) ? standingProp : null;
-    const prop = facingProp || (standingTrace && standingTrace.kind === 'trace' ? standingTrace : null) || standingFlagProp;
-    if (prop) {
-      const lines = [];
-      if (game.map === 'introlab' && prop.kind === 'exit') {
-        const c = introClueCount(game.flags);
-        if (game.flags.introDoorOpen) {
-          lines.push('ë¬¸ì€ ì´ì œ ì¡°ê¸ˆ ì—´ë ¤ ìˆë‹¤.\nì°¨ê°€ìš´ ìˆ²ì˜ ê³µê¸°ê°€ ë°œëª©ì„ ìŠ¤ì¹œë‹¤.');
-          lines.push('ë‚˜ê°€ë ¤ë©´ ë¬¸ ì•ìœ¼ë¡œ ê±¸ì–´ê°€ì.\nì •ì ì˜ ìˆ²ì´ ì´ ë°© ë°–ì—ì„œ ê¸°ë‹¤ë¦°ë‹¤.');
-        } else {
-          lines.push('ì‹¤í—˜ì‹¤ ì¶œêµ¬ëŠ” êµ³ê²Œ ì ê²¨ ìˆë‹¤.\në¬¸ ê°€ì¥ìë¦¬ì— ì‘ì€ ë¶ˆë¹› ì„¸ ê°œê°€ êº¼ì ¸ ìˆë‹¤.');
-          lines.push(`ì•„ì§ ë‹¨ì„œ ${3 - c}ê°œê°€ ë” í•„ìš”í•˜ë‹¤. (${c}/3)`);
-        }
-      } else {
-        lines.push(prop.text);
-      }
-      // Y-6 ì²­ê° ë³µì„  â€” prop.blipì´ ìˆìœ¼ë©´ ê·¸ ìŒì •ì„ ë‚¸ë‹¤(í”„ë¡œì íŠ¸ 0í˜¸ ìºë¹„ë‹› = 1320,
-      //   ë°˜ë””/ì˜ì´ ëª©ì†Œë¦¬ì™€ ê°™ì€ ìŒ). ëŒ€ì‚¬ ìƒìê°€ ëœ¨ê¸° ì§ì „ì— í•œ ë²ˆ ìš¸ë¦°ë‹¤.
-      if (prop.blip) Sound.blip(prop.blip);
-      // ìŠ¤í† ë¦¬ ë³µì„  ë“± â€” ì¡°ì‚¬ ì§€ì ì— flagê°€ ìˆìœ¼ë©´ í”Œë˜ê·¸ë¥¼ ë‚¨ê¸´ë‹¤ (ì˜ˆ: seenPhoto1)
-      if (prop.flag && !game.flags[prop.flag]) {
-        game.flags[prop.flag] = true; save();
-        if (game.map === 'forest' && prop.flag === 'introForestTrace') {
-          game.notice = { text: 'ë…¸ë€ í”ì ì´ ìˆ² ì•ˆìª½ìœ¼ë¡œ ì´ì–´ì§„ë‹¤.', t: 220 };
-          lines.push('í”ì ì€ ìˆ² ì™¼ìª½ìœ¼ë¡œ ì´ì–´ì§„ë‹¤.\ní¬ë¯¸í•œ ëª©ì†Œë¦¬ê°€, ë‚¨ì˜ ë§ì„ ë”°ë¼ í•˜ë“¯\nì‘ê²Œ ì¤‘ì–¼ê±°ë¦°ë‹¤.');
-          lines.push('ì´ì œ ë…¸ë€ í™”ì‚´í‘œë¥¼ ë”°ë¼ê°€ì.\në”°ë¼ê°€ ìˆ² ì•ˆìª½ì—ì„œ ê¸°ë‹¤ë¦¬ê³  ìˆë‹¤.');
-        }
-        // í”„ë¡¤ë¡œê·¸ ì‹¤í—˜ì‹¤ â€” ë‹¨ì„œ 3ê°œ ìˆ˜ì§‘ ì‹œ ë¬¸ ê°œë°©
-        if (game.map === 'introlab' && !game.flags.introDoorOpen &&
-            introClueCount(game.flags) >= 3) {
-          game.flags.introDoorOpen = true;
-          save();
-          game.notice = { text: 'ì² ì»¥ â€” ì¶œêµ¬ê°€ ì—´ë ¸ë‹¤!', t: 220 };
-          lines.push('ë°© ëì—ì„œ ì² ì»¥, í•˜ê³  ì ê¸ˆì´ í’€ë ¸ë‹¤.\në¬¸í‹ˆìœ¼ë¡œ ì°¨ê°€ìš´ ìˆ²ì˜ ê³µê¸°ê°€ ìŠ¤ë©°ë“ ë‹¤.');
-          lines.push('ì´ì œ ì¶œêµ¬ë¡œ ë‚˜ê°€ì.\nì •ì ì˜ ìˆ²ì´ ê¸°ë‹¤ë¦¬ê³  ìˆë‹¤.');
-        }
-      }
-      startDialog(lines);
-      return;
-    }
-    const ch = tileAt(game.map, f.x, f.y);
-    // ì½”ì–´ì˜ ë´‰í—Œ ì œë‹¨ â€” ë²½ì— ë¬»íŒ ë‹¨(7,1). ì¡°ì‚¬í•˜ë©´ ë´‰í—Œ í¼ì¦ì´ ì‹œì‘ëœë‹¤.
-    if (game.map === 'coreroom' && f.x === 7 && f.y === 1) {
-      interactAltar();
-      return;
-    }
-    // 2ì¥ ê±°ë¦¬ì˜ ê±°ëŒ€í•œ ì €ìš¸ â€” êµ¬ì—­ í´ë¦¬ì–´ë§ˆë‹¤ ê¸°ìš¸ê¸°ê°€ ì¤€ë‹¤ (14,9 = 'H')
-    if (game.map === 'tiltstreet' && f.x === 14 && f.y === 9) {
-      const tilt = 3 - s2ClearCount();
-      if (tilt <= 0) {
-        startDialog([
-          'ã€ì—´ë¦¼ã€‘ ê±°ëŒ€í•œ ì €ìš¸ì´ ìˆ˜í‰ì´ë‹¤.\nì €ìš¸ ë’¤ ë¬¸ì´ í™œì§ ì—´ë ¤ ìˆë‹¤!\nâ†’ ìœ„ë¡œ ê±¸ì–´ ë“¤ì–´ê°€ë©´ ë“¤ì–´ê°„ë‹¤.',
-        ], 'ê±°ëŒ€í•œ ì €ìš¸');
-      } else {
-        startDialog([
-          `ã€ì ê¹€ã€‘ ê±°ëŒ€í•œ ì €ìš¸ì´ í•œìª½ìœ¼ë¡œ\ní¬ê²Œ ê¸°ìš¸ì–´ ìˆë‹¤. (ê¸°ìš¸ê¸° ${tilt}/3)`,
-          'í•œìª½ ì ‘ì‹œì—ë§Œ ë¬´ì–¸ê°€ê°€\nì”ëœ© ìŒ“ì—¬ ìˆë‹¤. ë°˜ëŒ€ìª½ì€ í…… ë¹„ì—ˆë‹¤.',
-        ], 'ê±°ëŒ€í•œ ì €ìš¸');
-      }
-      return;
-    }
-    // ê±°ë¦¬ì˜ ê¸ˆê³ ë¬¸ â€” ì ê¸ˆ 3ê°œ(êµ¬ì—­ í´ë¦¬ì–´ë§ˆë‹¤ í•˜ë‚˜)ì˜ ì§„í–‰ì„ ë³´ì—¬ ì¤€ë‹¤
-    if (game.map === 'freestreet' && ch === '7') {
-      const n = s1LockCount();
-      if (n >= 3) {
-        startDialog([
-          'ã€ì—´ë¦¼ã€‘ ê¸ˆê³  ë¬¸ì´ í™œì§ ì—´ë ¤ ìˆë‹¤!\nâ†’ ìœ„ë¡œ ê±¸ì–´ ë“¤ì–´ê°€ë©´ ì£¼ì¸ì˜ ë°©ì´ë‹¤.\n(Zê°€ ì•„ë‹ˆë¼, ê·¸ëƒ¥ ê±¸ì–´ ë“¤ì–´ê°€ì)',
-        ], 'ê¸ˆê³ ');
-      } else {
-        startDialog([
-          `ã€ì ê¹€ã€‘ ìœ¡ì¤‘í•œ ê¸ˆê³  ë¬¸.\nì ê¸ˆ ${3 - n}ê°œê°€ ì•„ì§ ì ê²¨ ìˆë‹¤. (${n}/3 í•´ì œ)`,
-          'ì‘ì€ ê¸€ì”¨: "ì£¼ì¸ ì „ìš©â˜…\nâ€»êµ¬ì—­ì„ í´ë¦¬ì–´í•˜ë©´ ì ê¸ˆì´ í’€ë ¤ìš”"',
-        ], 'ê¸ˆê³ ');
-      }
-      return;
-    }
-    // 3ì¥ í—ˆë¸Œ ã€Œì†Œë¬¸ ê±°ë¦¬ã€ â€” ì ê¸´ ìƒì  ë¬¸ 3ê³³. ì†¡ì¶œ ì™„ë£Œ(rumorFixed) ì „/í›„ë¡œ ëŒ€ì‚¬ê°€ ë°”ë€ë‹¤
-    if (game.map === 'rumorstreet') {
-      const shop = RUMOR_SHOPS.find((s) => s.x === f.x && s.y === f.y);
-      if (shop) {
-        startDialog(game.flags.rumorFixed
-          ? [`${shop.name} ë¬¸ì´ í™œì§ ì—´ë ¤ ìˆë‹¤.\n"ì˜¤í•´ê°€ í’€ë ¤ì„œ ë‹¤í–‰ì´ì—ìš”!"`]
-          : [`${shop.name} ë¬¸ì´ êµ³ê²Œ ë‹«í˜€ ìˆë‹¤.\n"â€¦ì†Œë¬¸ ë•Œë¬¸ì— ë¬¸ ë‹«ì•˜ì–´ìš”."`], shop.name);
-        return;
-      }
-    }
-    // ê¸°ì–µì˜ ë³„ (N-4) â€” ì¡°ì‚¬í•˜ë©´ ì—¬ê¸°ê¹Œì§€ì˜ ì´ì•¼ê¸°ê°€ ë§ˆìŒì— ìƒˆê²¨ì§€ê³ , ì €ì¥ëœë‹¤
-    const star = MAPS[game.map].star;
-    if (star && star.x === f.x && star.y === f.y) {
-      Sound.unlock();
-      game.notice = { text: 'âœ¦ ê¸°ì–µì˜ ë³„ì´ ë°˜ì§ì˜€ë‹¤ â€” ì´ì•¼ê¸°ê°€ ì €ì¥ë˜ì—ˆë‹¤.', t: 240 };
-      const lines = ['* (ë”°ëœ»í•œ ë¹›ì´ ì†ëì— ë‹¿ëŠ”ë‹¤.)\n' + star.text];
-      // ì²˜ìŒ ë§Œë‚œ ë³„ â€” ë¬´ì—‡ì¸ì§€ í•œ ë²ˆë§Œ ì•Œë ¤ ì¤€ë‹¤
-      if (!game.flags.sawStarTip) {
-        game.flags.sawStarTip = true;
-        lines.push('* ì´ëŸ° ë¹›ì€ ì„¸ê³„ ê³³ê³³ì— ìˆë‹¤.\nì¡°ì‚¬í•  ë•Œë§ˆë‹¤ ì—¬ê¸°ê¹Œì§€ì˜ ì´ì•¼ê¸°ê°€\nì €ì¥ëœë‹¤. (ìë™ ì €ì¥ë„ ëŠ˜ í•¨ê»˜í•œë‹¤)');
-      }
-      save();
-      startDialog(lines);
-      return;
-    }
-    // N-3 ã€Œëª¨ë“  ê²ƒì„ ì¡°ì‚¬í•  ìˆ˜ ìˆë‹¤ã€ â€” ë§µë³„ ì¡°ì‚¬ í”Œë ˆì´ë²„ (í•œ ì¤„ ê´€ì°° + ë§ˆë¥¸ ìœ ë¨¸)
-    // Y-12 ngOnly í”Œë ˆì´ë²„ëŠ” 2íšŒì°¨(flags.ng)ì—ì„œë§Œ ë§¤ì¹­ëœë‹¤ â€” ì•„ë‹ˆë©´ ì—†ëŠ” ì…ˆ ì¹˜ê³  ì¼ë°˜ íƒ€ì¼ë¡œ íë¥¸ë‹¤.
-    const flavor = (MAPS[game.map].flavors || []).find((v) =>
-      v.x === f.x && v.y === f.y && (!v.ngOnly || game.flags.ng));
-    // U-3â‘¡ ë°˜ë””ê°€ í”Œë ˆì´ì–´ì—ê²Œ ë˜ë¬»ëŠ” ìˆœê°„ â€” ì•„ì§ ë‹µí•˜ì§€ ì•Šì•˜ê³  ë°˜ë””ê°€ ê³ì— ìˆì„ ë•Œë§Œ.
-    // ë‘ ì„ íƒì§€ ì¤‘ ë¬´ì—‡ì„ ê³¨ë¼ë„ "â€¦ê·¸ë ‡êµ¬ë‚˜. ê¸°ì–µí•´ ë‘˜ê²Œ." â€” ë‹µì„ flags.bandiAnswerì— ì €ì¥í•´
-    // íŒŒì´ë„ ì§ì „(quietyard)ì—ì„œ ë°˜ë””ê°€ ì½œë°±í•œë‹¤(U-3â‘¢). ë‹µì„ ë¯¸ë£¨ë©´ ë‹¤ìŒì— ë‹¤ì‹œ ë¬¼ì–´ë³¸ë‹¤.
-    if (flavor && flavor.ask && game.flags.bandiJoined && !game.flags.bandiRevealed &&
-        !game.flags[flavor.ask.flag]) {
-      const ask = flavor.ask;
-      startDialog(['* ' + flavor.text], null, () => {
-        startChoice(ask.q, ask.options.concat('(ëŒ€ë‹µí•˜ì§€ ì•ŠëŠ”ë‹¤)'), (i) => {
-          if (i < 0 || i >= ask.options.length) return; // ëŒ€ë‹µ ì•ˆ í•¨ â€” ë‹¤ìŒì— ë‹¤ì‹œ
-          game.flags[ask.flag] = ask.values[i];
-          save();
-          game.notice = { text: ask.reply, t: 300 };
-          Speech.speak(ask.reply);
-        });
-      });
-      return;
-    }
-    if (flavor) {
-      // B-4 ì²˜ìŒ ì¡°ì‚¬í•œ í”Œë ˆì´ë²„ë¥¼ ëˆ„ì  ê¸°ë¡ â€” 10Â·25Â·40ê°œì— íƒí—˜ ë„ì „ê³¼ì œê°€ ì—´ë¦°ë‹¤.
-      if (!game.flags.flavorSeen) game.flags.flavorSeen = {};
-      const fkey = `${game.map}:${f.x},${f.y}`;
-      if (!game.flags.flavorSeen[fkey]) {
-        game.flags.flavorSeen[fkey] = true;
-        save();
-        const n = Object.keys(game.flags.flavorSeen).length;
-        // 10Â·40êµ°ë° ë§ˆì¼ìŠ¤í†¤ì€ ê°€ë²¼ìš´ ì¶•í•˜ í† ìŠ¤íŠ¸, 25êµ°ë°ëŠ” ë„ì „ê³¼ì œ(explorer)ë¡œ ì´ì–´ì§„ë‹¤.
-        if (n === 10) fanfare('âœ¦ 10êµ°ë°ë¥¼ ì¡°ì‚¬í–ˆì–´ìš” â€” í˜¸ê¸°ì‹¬ ë§ì€ ë°œê±¸ìŒ');
-        else if (n === 40) fanfare('âœ¦ 40êµ°ë° ì¡°ì‚¬! ì„¸ìƒ êµ¬ì„êµ¬ì„ì„ ì•„ëŠ” ì•„ì´');
-        checkUnlocks(game.currentSlot); // íƒí—˜ ë„ì „ê³¼ì œ(25) ë‹¬ì„± ìˆœê°„ íŒ¡íŒŒë¥´(B-1)
-      }
-      startDialog(['* ' + flavor.text]);
-      // ë°˜ë”” ë™í–‰ ì¤‘ì´ë©´ í•œë§ˆë”” ì–¹ëŠ”ë‹¤ â€” ëŒ€í™”ê°€ ë‹«íŒ ë’¤ ë§í’ì„ ìœ¼ë¡œ ë³´ì¸ë‹¤
-      if (flavor.bandi && game.flags.bandiJoined && !game.flags.bandiRevealed) {
-        game.notice = { text: 'ë°˜ë””: ' + flavor.bandi, t: 280 };
-      }
-      return;
-    }
-    const examine = getExamineTile(ch);
-    if (examine) {
-      startDialog([examine]);
-    }
-  }
-
-  function inferWarpExitDir(map, w) {
-    if (w.exitDir) return w.exitDir;
-    const width = map.tiles[0].length, height = map.tiles.length;
-    if (w.y === 0) return 'north';
-    if (w.y === height - 1) return 'south';
-    if (w.x === 0) return 'west';
-    if (w.x === width - 1) return 'east';
-    // ë‚´ë¶€ ë¬¸ì€ í”Œë ˆì´ì–´ê°€ ë°Ÿê³  ë“¤ì–´ì˜¨ ë°©í–¥ì„ ì¶œêµ¬ ë°©í–¥ìœ¼ë¡œ ë³¸ë‹¤.
-    return game.player.dir || null;
-  }
-  function arrivalFacing(exitDir) {
-    if (exitDir === 'south') return 'down';
-    if (exitDir === 'north') return 'up';
-    if (exitDir === 'east') return 'right';
-    if (exitDir === 'west') return 'left';
-    return null;
-  }
-
-  function pushBack() {
-    const p = game.player;
-    const nx = p.x + (p.dir === 'left' ? 1 : p.dir === 'right' ? -1 : 0);
-    const ny = p.y + (p.dir === 'up' ? 1 : p.dir === 'down' ? -1 : 0);
-    // ì´ë™ íŒì •(tileBlocked)ê³¼ ê°™ì€ ê¸°ì¤€ìœ¼ë¡œ â€” ì¸ë¬¼Â·ì¹œêµ¬Â·í¼ì¦ ì˜¤ë¸Œì íŠ¸ íƒ€ì¼ë¡œ
-    // ë°€ì–´ ë„£ìœ¼ë©´ 4ë°©í–¥ì´ ëª¨ë‘ ë§‰íˆëŠ” ì˜êµ¬ ì†Œí”„íŠ¸ë½ì´ ëœë‹¤ (S-2)
-    if (!tileBlocked(nx, ny)) {
-      p.x = nx; p.y = ny;
-    }
-    p.px = p.x * TS;
-    p.py = p.y * TS;
-  }
-
-  function checkWarp() {
-    const p = game.player;
-    if (game.warpCooldownFrames > 0) {
-      // ì¿¨ë‹¤ìš´ ì¤‘ ì›Œí”„ ì¹¸ì— ë“¤ì–´ì„°ë‹¤ â€” ììœ  ì´ë™ì€ ì¹¸ì„ ìŠ¤ì¹˜ë“¯ ì§€ë‚˜ë¯€ë¡œ,
-      // ì¿¨ë‹¤ìš´ì´ ëë‚˜ëŠ” í”„ë ˆì„ì— í•œ ë²ˆ ë” íŒì •í•œë‹¤ (updateWorldì—ì„œ ì†Œë¹„).
-      // A-2: ì˜ˆì•½ í”Œë˜ê·¸ëŠ” 'í˜„ì¬ ì¹¸ì´ ì›Œí”„ì¸ì§€'ë¥¼ ê·¸ëŒ€ë¡œ ë°˜ì˜í•œë‹¤ â€” ì›Œí”„ ì¹¸ì„ ì§€ë‚˜ì³
-      // ë²—ì–´ë‚œ ë’¤ì—ë„ trueë¡œ ë‚¨ì•„, ì—‰ëš±í•œ ì¹¸ì—ì„œ ì¬íŒì •ë˜ë˜ ì˜¤ë¥˜ë¥¼ ë§‰ëŠ”ë‹¤.
-      game.pendingWarpRecheck = !!warpAt(game.map, p.x, p.y);
-      return;
-    }
-    game.pendingWarpRecheck = false;
-    const w = warpAt(game.map, p.x, p.y);
-    if (!w) return;
-    if (w.needAllDefeated && !w.needAllDefeated.every((id) => game.flags.defeated[id])) {
-      pushBack();
-      Sound.bump();
-      startDialog([w.lockText || 'ê¸¸ì´ ë§‰í˜€ ìˆë‹¤.']);
-      return;
-    }
-    // ë°©íƒˆì¶œ í´ë¦¬ì–´ ê²Œì´íŠ¸ (ì˜ˆ: ê±°ë¦¬ â†’ ê²Œì‹œíŒ ê´‘ì¥ â€” ì ‘ìˆ˜ì²˜ë¥¼ ë¨¼ì €)
-    if (w.needPuzzleClear && !isPuzzleCleared(w.needPuzzleClear)) {
-      pushBack();
-      Sound.bump();
-      startDialog([w.lockText || 'ë¬¸ì´ ì ê²¨ ìˆë‹¤.']);
-      return;
-    }
-    // 1ì¥ ê¸ˆê³ ë¬¸ ê²Œì´íŠ¸ â€” êµ¬ì—­ í´ë¦¬ì–´ ìˆ˜ë§Œí¼ ì ê¸ˆì´ í’€ë¦°ë‹¤
-    if (w.needS1Locks && s1LockCount() < w.needS1Locks) {
-      pushBack();
-      Sound.bump();
-      startDialog([w.lockText || 'ë¬¸ì´ ì ê²¨ ìˆë‹¤.', `ê¸ˆê³  ì ê¸ˆ ${s1LockCount()}/${w.needS1Locks} í•´ì œ.`]);
-      return;
-    }
-    // ì¥ ê´€ë¬¸ ë¬¸ë‹µ(Q-4) â€” ë‹¤ìŒ ì¥ìœ¼ë¡œ ë„˜ì–´ê°€ê¸° ì „, ì§ì „ ì¥ ì•„ì´ì˜ ì´ì•¼ê¸°ë¥¼ í•œ ë¬¸í•­
-    // ë˜ë¬»ëŠ”ë‹¤(ì²˜ìŒ í•œ ë²ˆë§Œ). ëŒ€ì‚¬ë¥¼ ìŠ¤í‚µ ì—°íƒ€í•œ ì•„ì´ëŠ” ì—¬ê¸°ì„œ í•œ ë²ˆ ë©ˆì¶° ì„œê²Œ ëœë‹¤.
-    // ì˜¤ë‹µì€ íŒíŠ¸ì™€ í•¨ê»˜ ë‹¤ì‹œ ë„ì „ â€” ë²Œì´ ì•„ë‹ˆë¼ ë˜ì§šëŠ” ë¬¸.
-    if (w.needFlag && game.flags[w.needFlag]) {
-      const gq = GATE_QUIZ[w.needFlag];
-      if (gq && !game.flags[gq.done]) {
-        pushBack();
-        Sound.blip();
-        const opts = shuffled(gq.options.map((t, i) => ({ t, ok: i === 0 })));
-        startChoice(gq.ask, opts.map((o) => o.t), (idx) => {
-          if (idx < 0) return; // ì·¨ì†Œ â€” ë‹¤ì‹œ ë°Ÿìœ¼ë©´ ë˜ ë¬»ëŠ”ë‹¤
-          if (opts[idx].ok) {
-            game.flags[gq.done] = true;
-            save();
-            Sound.correct();
-            startDialog([gq.okLine, '* ë¬¸ì´ ìŠ¤ë¥´ë¥´ ì—´ë ¸ë‹¤.\n(ë‹¤ì‹œ ê±¸ì–´ ë“¤ì–´ê°€ì)']);
-          } else {
-            Sound.wrong();
-            startDialog([gq.wrongLine, '* ë¬¸ì´ ì•„ì§ êµ³ê²Œ ë‹«í˜€ ìˆë‹¤.\nâ€¦í•œ ë²ˆ ë” ìƒê°í•´ ë³´ì.']);
-          }
-        });
-        return;
-      }
-    }
-    // í”Œë˜ê·¸ ê²Œì´íŠ¸ (ì˜ˆ: 2ì¥ ì…êµ¬ â€” chapter1Clear ì „ì—” ì ê¹€)
-    if (w.needFlag && !game.flags[w.needFlag]) {
-      // í”„ë¡¤ë¡œê·¸ ì‹¤í—˜ì‹¤ â€” ë™ì  ë‹¨ì„œ ì¹´ìš´íŠ¸ í‘œì‹œ
-      if (game.map === 'introlab') {
-        const c = introClueCount(game.flags);
-        const remain = Math.max(0, 3 - c);
-        pushBack();
-        Sound.bump();
-        startDialog([w.lockText || 'ë¬¸ì´ ì ê²¨ ìˆë‹¤.', `ë¬¸ ê°€ì¥ìë¦¬ì˜ ë¶ˆë¹› ${c}/3ê°œê°€ ì¼œì¡Œë‹¤.\në‚¨ì€ ë‹¨ì„œ ${remain}ê°œë¥¼ ë” ì°¾ì•„ì•¼ í•œë‹¤.`]);
-        return;
-      }
-      pushBack();
-      Sound.bump();
-      startDialog([w.lockText || 'ë¬¸ì´ ì ê²¨ ìˆë‹¤.']);
-      return;
-    }
-    // 2ì¥ ì €ìš¸ ê²Œì´íŠ¸ â€” êµ¬ì—­ í´ë¦¬ì–´ ìˆ˜ë§Œí¼ ê¸°ìš¸ê¸°ê°€ ì¤€ë‹¤ (0ì´ë©´ ë³´ìŠ¤ ë¬¸ ê°œë°©)
-    if (w.needS2Scale && s2ClearCount() < w.needS2Scale) {
-      pushBack();
-      Sound.bump();
-      startDialog([w.lockText || 'ë¬¸ì´ ì ê²¨ ìˆë‹¤.', `ì €ìš¸ ê¸°ìš¸ê¸° ${3 - s2ClearCount()}/3 â€” ê³¨ëª©ì„ ë” ì‚´í´ë³´ì.`]);
-      return;
-    }
-    // 4ì¥ ì •ë¬¸ ê²Œì´íŠ¸ â€” ì—´ì‡  ë‘ ê°œ(ë¹„ë°€ì¡°ê°Â·ë³¸ì¸í‘œ)ë¥¼ ëª¨ë‘ ëª¨ì•„ì•¼ ì—´ë¦°ë‹¤
-    if (w.needS4Keys && s4KeyCount() < w.needS4Keys) {
-      pushBack();
-      Sound.bump();
-      startDialog([w.lockText || 'ë¬¸ì´ ì ê²¨ ìˆë‹¤.', `ì—´ì‡  ${s4KeyCount()}/${w.needS4Keys} í™•ë³´.`]);
-      return;
-    }
-    // 5ì¥ í˜„ê´€ ê²Œì´íŠ¸ â€” êµ¬ì—­ 3ê°œ(ì „í™”ì˜ ë°©Â·ì ê¸´ ë³µë„Â·ì†ŒíŒŒ ì½”ë„ˆ)ë¥¼ ëª¨ë‘ í´ë¦¬ì–´í•´ì•¼ ì—´ë¦°ë‹¤
-    if (w.needS5Zones && s5ClearCount() < w.needS5Zones) {
-      pushBack();
-      Sound.bump();
-      startDialog([w.lockText || 'ë¬¸ì´ ì ê²¨ ìˆë‹¤.', `í™•ì¸í•˜ëŠ” ìš©ê¸° ${s5ClearCount()}/${w.needS5Zones}.`]);
-      return;
-    }
-    const fromMap = game.map;
-    const exitDir = inferWarpExitDir(MAPS[fromMap], w);
-    game.map = w.to;
-    p.x = w.tx; p.y = w.ty;
-    p.px = w.tx * TS; p.py = w.ty * TS;
-    p.dir = w.dir || arrivalFacing(exitDir) || p.dir;
-    p.moving = false;
-    game.warpCooldownFrames = 12;
-    game.lastWarp = { fromMap, toMap: w.to, exitDir, arrivedAt: { x: w.tx, y: w.ty } };
-    // ìƒˆ ë§µì— ë„ì°©í•˜ë©´ ì´ë™ì„ ë©ˆì¶˜ë‹¤. (ë°©í–¥í‚¤/ìŠ¤í‹±ì„ ëˆ„ë¥¸ ì±„ ì›Œí”„í•´ë„
-    // ë„ì°©í•˜ìë§ˆì ë˜ëŒì•„ê°€ëŠ” ì›Œí”„ ì¹¸ìœ¼ë¡œ ê±¸ì–´ ë“¤ì–´ê°€ 'ë°”ë¡œ ì „ ë§µìœ¼ë¡œ íŠ•ê¸°ëŠ”'
-    // í˜„ìƒì„ ë§‰ëŠ”ë‹¤ â€” ê³„ì† ê°€ë ¤ë©´ ë‹¤ì‹œ ëˆŒëŸ¬ì•¼ í•œë‹¤.)
-    held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
-    stickDir = null; stickRepeatFrames = 0;
-    Sound.warp();
-    // ë§µ ë‚˜ê°ˆ ë•Œë§ˆë‹¤ ì „ BGM hard-stop â†’ í˜„ ë§µ BGMë§Œ (ê°™ì€ song í‚¤ì—¬ë„ ìŠ¤ì¼€ì¤„ ì¤‘ì²© ë°©ì§€)
-    Sound.playMapBgm(MAPS[w.to].song);
-    syncPuzzleRun(); // ë°©íƒˆì¶œ ë°© ì…ì¥/í‡´ì¥ì— ë§ì¶° ëŸ°íƒ€ì„ ìƒíƒœ ì´ˆê¸°í™”/í•´ì œ
-    // 5ì¥ í—ˆë¸Œ ã€Œí¬ê·¼í•œ ì§‘ã€ â€” ë£¨ë¯¸ì˜ ëª©ì†Œë¦¬ ì•ˆë‚´(ë„ì°©í•  ë•Œë§ˆë‹¤ ìˆœì„œëŒ€ë¡œ í•œ ë§ˆë””ì”©)
-    if (w.to === 'cozyhome') advanceLumiVoice();
-    // 2ì¥ êµ¬ì—­â‘  ë©”ì•„ë¦¬ ê³¨ëª© â€” ë°˜ì§ ë¬¸ ë£¨í”„ ì—°ì¶œ (ì…êµ¬ë¡œ ë˜ëŒì•„ì™”ë‹¤)
-    if (w.loop && game.puzzleRun && game.puzzleRun.puzzle.type === 'voices') {
-      const run = game.puzzleRun;
-      run.loops = (run.loops || 0) + 1;
-      let msg;
-      if (run.loops === 1) msg = 'â€¦ë˜ ì—¬ê¸°ì–ì•„?';
-      else if (run.loops === 2) msg = 'ê³¨ëª©ì´ ì•„ê¹Œë³´ë‹¤ ì¢ì•„ ë³´ì¸ë‹¤.';
-      else msg = 'ë±…ë±…: "ì´ìƒí•˜ì§€? â€¦ë‚˜ê°ˆ ë¬¸ì€, ë°˜ì§ì´ì§€ ì•Šì•„."';
-      game.notice = { text: msg, t: 150 };
-      Sound.bump();
-      save();
-      return; // ë£¨í”„ëŠ” ì¸íŠ¸ë¡œ ì¬ìƒ ì—†ì´ ì¢…ë£Œ
-    }
-    // ì²˜ìŒ ë°©ë¬¸í•˜ëŠ” ë§µì˜ ì¸íŠ¸ë¡œ ì—°ì¶œ
-    const dest = MAPS[w.to];
-    if (dest.intro && !game.flags.visited[w.to]) {
-      game.flags.visited[w.to] = true;
-      startDialog(dest.intro.slice());
-    }
-    // íŒŒì´ë„ ì§ì „(quietyard ì§„ì…) ë°˜ë””ì˜ ë‘ ì•ˆë‚´ë¥¼ í•œ ë§í’ì„ ìœ¼ë¡œ ë¬¶ëŠ”ë‹¤:
-    //   â€¢ U-3â‘¢ ì½œë°± â€” 2ì¥ì—ì„œ ì €ì¥í•œ ë‹µ(bandiAnswer)ì„ ê¸°ì–µí•´ ì¤€ë‹¤(ê¸°ì–µí•´ ì£¼ëŠ” ì¹œêµ¬).
-    //   â€¢ X-5 íšŒìˆ˜ ì•ˆë‚´ â€” ì§€ê¸ˆê¹Œì§€ ì•ˆì•„ ì¤€ ë§ˆìŒ ìˆ˜ë¥¼ ì€ìœ ë¡œ ì•Œë ¤ ì£¼ê³ , 7 ë¯¸ë§Œì´ë©´ ë˜ëŒì•„ê°€
-    //     ì•ˆì•„ ì¤„ ìˆ˜ ìˆëŠ” ë§ˆìŒì´ ë‚¨ì•˜ìŒì„ ë§ë¶™ì¸ë‹¤(ê°•ìš” ì—†ìŒ, ì•ˆë‚´ë§Œ â€” home ì—”ë”© ì ‘ê·¼ì„±).
-    if (w.to === 'quietyard' && game.flags.bandiJoined && !game.flags.bandiRevealed) {
-      let msg = '';
-      if (game.flags.bandiAnswer && !game.flags.bandiRecalled) {
-        game.flags.bandiRecalled = true;
-        msg = game.flags.bandiAnswer === 'together'
-          ? 'ë°˜ë””: ì „ì— ë„¤ê°€ "ì—¬ëŸ¿ì´ ìˆëŠ” ê²Œ ì¢‹ë‹¤"ê³  í–ˆì§€.\nâ€¦ë‚˜ë„ ê·¸ë˜. ê·¸ë˜ì„œ ì—¬ê¸°ê¹Œì§€ ì˜¨ ê±°ì•¼.'
-          : 'ë°˜ë””: ì „ì— ë„¤ê°€ "í˜¼ìê°€ í¸í•  ë•Œë„ ìˆë‹¤"ê³  í–ˆì§€.\nâ€¦ë‚˜ë„ ê·¸ë˜. ê·¸ë˜ë„ ì§€ê¸ˆì€, ê³ì— ìˆì„ê²Œ.';
-      }
-      if (!game.flags.mercyGuideShown) {
-        game.flags.mercyGuideShown = true;
-        let guide = `ë°˜ë””: â€¦ë„ˆëŠ” ì§€ê¸ˆê¹Œì§€ â˜…${game.flags.mercy || 0}ëª…ì˜ ë§ˆìŒì„ ì•ˆì•„ ì¤¬ì–´.`;
-        if ((game.flags.mercy || 0) < 7) {
-          guide += '\nâ€¦ì•„ì§, ëŒì•„ê°€ì„œ ì•ˆì•„ ì¤„ ìˆ˜ ìˆëŠ”\në§ˆìŒì´ ë‚¨ì•„ ìˆì–´.';
-        }
-        msg = msg ? (msg + '\n\n' + guide) : guide;
-      }
-      if (msg) {
-        if (!game.flags.bandiSaid) game.flags.bandiSaid = {};
-        game.flags.bandiSaid.quietyard = true; // ê°™ì€ ì§„ì…ì˜ ì¼ë°˜ ì¡°ì–¸ì´ ë®ì§€ ì•Šë„ë¡
-        game.notice = { text: msg, t: 380 };
-        Speech.speak(msg);
-      }
-    }
-    // ë™í–‰ì ë°˜ë””ì˜ í•œ ì¤„ ì¡°ì–¸ â€” ë¹„ì°¨ë‹¨ ë§í’ì„ , ë§µë‹¹ 1íšŒ (ì •ì²´ ê³µê°œ í›„ì—ëŠ” ì—†ìŒ)
-    if (game.flags.bandiJoined && !game.flags.bandiRevealed &&
-        COMPANION_LINES[w.to] && !(game.flags.bandiSaid && game.flags.bandiSaid[w.to])) {
-      if (!game.flags.bandiSaid) game.flags.bandiSaid = {};
-      game.flags.bandiSaid[w.to] = true;
-      // ì¹¨ë¬µ ë£¨íŠ¸ì—ì„œëŠ” ë°˜ë””ë„ ì ì  ë§ì„ ìƒëŠ”ë‹¤ (ë¬´ê´€ì‹¬ì˜ ì„¸ê³„ â€” ê³ ìš” ë£¨íŠ¸ ì •í•©)
-      // U-5 2íšŒì°¨(ng): ì •ì²´ë¥¼ ì•„ëŠ” í”Œë ˆì´ì–´ì—ê²Œ ë°˜ë”” ëŒ€ì‚¬ê°€ ì¬í•´ì„ë˜ë„ë¡ NG í…Œì´ë¸”ë¡œ ì˜¤ë²„ë ˆì´í•œë‹¤.
-      const base = (game.flags.ng && COMPANION_LINES_NG[w.to]) ? COMPANION_LINES_NG[w.to] : COMPANION_LINES[w.to];
-      const line = isColdRoute(game.flags) ? 'ë°˜ë””: â€¦â€¦' : base;
-      game.notice = { text: line, t: 300 };
-      Speech.speak(line); // ì½ì–´ì£¼ê¸°(TTS) ì ‘ê·¼ì„± â€” ì‹œê° ë§í’ì„ ê³¼ ë™ì¼ ë‚´ìš©
-    }
-    save();
-  }
-
-  const MOVE_SPEED = TS / 7; // í”„ë ˆì„ë‹¹ í”½ì…€
-
-  // M-1b ììœ  í”½ì…€ ì´ë™ (ì–¸ë”í…Œì¼ì‹) â€” ê·¸ë¦¬ë“œ ìŠ¤ëƒ… ì—†ì´ px/pyê°€ ì§„ì‹¤ì´ê³ ,
-  // íƒ€ì¼ ì¢Œí‘œ(p.x/p.y)ëŠ” íŒŒìƒê°’(ë°˜ì˜¬ë¦¼)ì´ë‹¤. ìƒí˜¸ì‘ìš©Â·ì›Œí”„Â·í¼ì¦ íŒì •ì€
-  // ì „ë¶€ íƒ€ì¼ ì¢Œí‘œë¡œ ì´ë£¨ì–´ì§€ë¯€ë¡œ ê¸°ì¡´ ë§µ ë°ì´í„°ëŠ” ê·¸ëŒ€ë¡œ ë™ì‘í•œë‹¤.
-  const DIR_KEYS = ['up', 'down', 'left', 'right'];
-  const DIR_DX = { left: -1, right: 1, up: 0, down: 0 };
-  const DIR_DY = { up: -1, down: 1, left: 0, right: 0 };
-  const dirHeldFrames = { up: 0, down: 0, left: 0, right: 0 }; // ë°©í–¥í‚¤ ì‹ ì„ ë„ â€” ì‘ì„ìˆ˜ë¡ ìµœê·¼
-  const isHorizontalDir = (d) => d === 'left' || d === 'right';
-  // ë°œë°‘ íˆíŠ¸ë°•ìŠ¤ â€” ìŠ¤í”„ë¼ì´íŠ¸(48px)ë³´ë‹¤ ì‘ì•„ ë¬¸í‹€Â·ëª¨ì„œë¦¬ì— ëœ ê±¸ë¦°ë‹¤
-  const HB = { ox: 10, oy: 26, w: 28, h: 20 };
-  function tileBlocked(tx, ty) {
-    return SOLID(tileAt(game.map, tx, ty)) || !!npcAt(game.map, tx, ty) ||
-      !!monsterAt(game.map, tx, ty) || !!friendAt(game.map, tx, ty) ||
-      !!(game.puzzleRun && puzzleObjAt(game.map, tx, ty));
-  }
-  function rectBlocked(px, py) {
-    const x0 = px + HB.ox, y0 = py + HB.oy, x1 = x0 + HB.w - 1, y1 = y0 + HB.h - 1;
-    for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) {
-      if (tileBlocked(Math.floor(x / TS), Math.floor(y / TS))) return true;
-    }
-    return false;
-  }
-  // ì¶•ì„ ë‚˜ëˆ  ì´ë™í•œë‹¤ â€” ëŒ€ê°ì„ ì´ ë²½ì— ë§‰íˆë©´ ì—´ë¦° ì¶•ìœ¼ë¡œ ìì—°íˆ ë¯¸ë„ëŸ¬ì§„ë‹¤.
-  function moveFreely(dx, dy) {
-    const p = game.player;
-    const ox = p.px, oy = p.py;
-    if (dx && !rectBlocked(p.px + dx, p.py)) p.px += dx;
-    if (dy && !rectBlocked(p.px, p.py + dy)) p.py += dy;
-    const moved = p.px !== ox || p.py !== oy;
-    p.moving = moved;
-    if (moved) p.step += 1;
-    const nx = Math.round(p.px / TS), ny = Math.round(p.py / TS);
-    if (nx !== p.x || ny !== p.y) {
-      p.x = nx; p.y = ny;
-      checkWarp(); // ì›Œí”„Â·ì ê¸ˆ ì•ˆë‚´ëŠ” íƒ€ì¼ ì§„ì… ì‹œ íŒì • (ê¸°ì¡´ê³¼ ë™ì¼)
-    }
-  }
-
-  // ë°•ì‚¬ ê³ ë°± ì´ë²¤íŠ¸ â€” chapter3Clear í›„ ê²½ê³„ë§ˆì„ ì§„ì… ì‹œ 1íšŒ ìë™ ë°œìƒ.
-  // í”„ë¡œì íŠ¸ 0í˜¸(ì˜ì´) ì´ì•¼ê¸°ë¥¼ ê³ ë°±í•œë‹¤. ë³µì„  í”Œë˜ê·¸(seenPhoto1/2, seenArticle)ë¥¼
-  // ë³¸ ìƒíƒœë©´ ëŒ€ì‚¬ì— í•œ ì¤„ì”© ë°˜ì˜ëœë‹¤.
-  function startProfConfession() {
-    const f = game.flags;
-    f.profConfession = true;
-    const lines = [
-      'ë°•ì‚¬: "â€¦ì–˜ì•¼. ì ê¹, ë‚˜ë‘ ì´ì•¼ê¸° ì¢€ í• ê¹Œ."',
-      'ë°•ì‚¬: "ì˜¤ë˜ì „ì—, ë‚´ê°€ ë§Œë“  ì•„ì´ê°€ ìˆì—ˆì–´.\nì´ë¦„ì€â€¦ ì˜ì´. ã€Œí”„ë¡œì íŠ¸ 0í˜¸ã€ì˜€ì§€."',
-      'ë°•ì‚¬: "ì˜ì´ëŠ” ì‚¬ëŒë“¤ì„ ë³´ê³  ë°°ì› ì–´.\nâ€¦ê·¼ë° ë‚˜ìœ ìŠµê´€ê¹Œì§€, ë‹¤ ë°°ìš°ê²Œ ë’€ë‹¨ë‹¤.\në‚´ê°€, ì§€ì¼œë³´ì§€ ì•Šì•˜ì–´."',
-      'ë°•ì‚¬: "ê·¸ëŸ¬ë‹¤â€¦ íê¸°í•˜ê¸°ë¡œ í•œ ë‚ ì´ ì™”ì–´.\në‚˜ëŠ” ê·¸ ìˆœê°„ì—â€¦ ë¡œê·¸ì•„ì›ƒí•´ì„œ ë„ë§ì³¤ë‹¨ë‹¤."',
-    ];
-    if (f.seenPhoto1) lines.push('ë°•ì‚¬: "ë„¤ê°€ ì£¼ì¸ì˜ ë°©ì—ì„œ ë³¸ ì‚¬ì§„â€¦\nê·¸ê²Œ, ë‚˜ì™€ ì˜ì´ì˜€ì–´."');
-    if (f.seenPhoto2) lines.push('ë°•ì‚¬: "í‘œë³¸ ì°½ê³  êµ¬ì„ì˜ ê·¸ Ã—í‘œ ì‚¬ì§„ë“¤ë„â€¦\nì˜ì´ ê±°ì˜€ë‹¨ë‹¤."');
-    if (f.seenArticle) lines.push('ë°•ì‚¬: "ì†¡ì¶œë˜ì§€ ëª»í•œ ê·¸ ê¸°ì‚¬ë„â€¦\nì˜ì´ ì´ì•¼ê¸°ì˜€ì–´."');
-    lines.push('ë°•ì‚¬: "â€¦ë¯¸ì•ˆí•˜ë‹¤. ì •ë§, ë¯¸ì•ˆí•´."');
-    // U-1 ë‹µì•ˆì§€ â†’ íŒíŠ¸ â€” "ë„¤ê°€ ëª¨ì€ ì¡°ê°=ì˜ì´ì˜ ê¸°ì–µ"ì´ë¼ëŠ” ì§ì ‘ ì—°ê²° ì„¤ëª…ì„ ê±·ì–´ë‚´ê³ ,
-    // ì•„ì´ê°€ ìŠ¤ìŠ¤ë¡œ ì‡ë„ë¡ ì—´ë¦° ì§ˆë¬¸ìœ¼ë¡œ ë‹«ëŠ”ë‹¤. (ë°•ì‚¬ëŠ” ì£„ì±…ê°Â·0í˜¸Â·ë„ë§ê¹Œì§€ë§Œ ì•ˆë‹¤)
-    lines.push('ë°•ì‚¬: "â€¦ê·¸ ì•„ì´ê°€ ì–´ë””ë¡œ ê°”ëŠ”ì§€,\në‚˜ëŠ” ëë‚´ ëª°ë¼."');
-    save();
-    // X-1â‘¡ ë°•ì‚¬ ê³ ë°± ë â€” ì£¼ì¸ê³µì˜ ë°˜ì‘ í•œ ë²ˆ(ì •ë‹µ ì—†ìŒ). ë°•ì‚¬ê°€ ê·¸ ë§ì„ ë°›ì•„ ì¤€ë‹¤.
-    startDialog(lines, 'ë°•ì‚¬ë‹˜', () => {
-      startPlayerVoice('prof',
-        'ë°•ì‚¬ë‹˜ì´ ê³ ê°œë¥¼ ìˆ™ì¸ ì±„, ë„¤ ëŒ€ë‹µì„ ê¸°ë‹¤ë¦°ë‹¤.',
-        ['"ë°•ì‚¬ë‹˜ ì˜ëª»ë§Œì€, ì•„ë‹ˆì—ìš”."', '"â€¦ê·¸ ì•„ì´, ì œê°€ ê¼­ ì°¾ì„ê²Œìš”."'],
-        'ë°•ì‚¬ë‹˜',
-        ['ë°•ì‚¬: â€¦ê³ ë§™ë‹¤.\nê·¸ë ‡ê²Œ ë§í•´ ì£¼ë‹ˆâ€¦ ì¡°ê¸ˆì€, ìˆ¨ì´ ì‰¬ì–´ì§€ëŠ”êµ¬ë‚˜.',
-          'ë°•ì‚¬: â€¦ê·¸ë˜. ë„ˆë¼ë©´,\nâ€¦ì–´ì©Œë©´, ì°¾ì„ ìˆ˜ ìˆì„ì§€ë„ ëª¨ë¥´ê² êµ¬ë‚˜.']);
-    });
-  }
-
-  // X-2 ã€Œë³´ìŠ¤ê°€ ë‚˜ì—ê²Œ ì›í•˜ëŠ” ê²ƒã€ â€” ë‹´ì•„(1ì¥): ê´‘ì¥ì—ì„œ ì¹´ë“œë¥¼ ë¶€íƒí•œë‹¤. ì¹´ë“œëŠ” ì‹¤ì œë¡œ
-  // ìƒì§€ ì•Šê³ , ì„ íƒë§Œ flags.damaAskedì— ë‚¨ì•„ ë³´ìŠ¤ì „ ì¸íŠ¸ë¡œ ëŒ€ì‚¬ í•œ ì¤„ì„ ê°€ë¥¸ë‹¤.
-  function startDamaDemand() {
-    startDialog([
-      'ìƒì ë”ë¯¸ ë’¤ì—ì„œ ë‹´ì•„ê°€ ë¹¼ê¼¼ ë‚˜íƒ€ë‚œë‹¤.',
-      'ë‹´ì•„: "â€¦ê·¸ ì¹´ë“œâ€¦ ë‚˜ ì£¼ë©´ ì•ˆ ë¼?\nâ€¦ë”± í•˜ë‚˜ë§Œ. â€¦ì ê¹ë§Œ."',
-    ], 'ë‹´ì•„', () => {
-      startReactionChoice('ë‹´ì•„ê°€ ì¡°ì‹¬ìŠ¤ë ˆ ì†ì„ ë‚´ë¯¼ë‹¤.\n(ì¹´ë“œë¥¼ ì‹¤ì œë¡œ ìƒì§€ëŠ” ì•ŠëŠ”ë‹¤.)',
-        ['ì£¼ì§€ ì•ŠëŠ”ë‹¤', 'ìƒê°í•´ ë³¸ë‹¤'], (i) => {
-          game.flags.damaAsked = (i === 1) ? 'think' : 'keep'; // ìŠ¤í‚µ/ì·¨ì†Œ = ê¸°ë³¸(ì£¼ì§€ ì•ŠëŠ”ë‹¤)
-          save();
-          const reply = game.flags.damaAsked === 'think'
-            ? 'ë‹´ì•„: â€¦ê³ ë¯¼í•´ ì£¼ëŠ” ê±°ì•¼?\nâ€¦ê·¸ëŸ¼â€¦ ê¸°ë‹¤ë¦´ê²Œ. ì¡°ê¸ˆë§Œ.'
-            : 'ë‹´ì•„: â€¦ì¹˜. â€¦í•˜ê¸´, í•¨ë¶€ë¡œ ì£¼ë©´ ì•ˆ ë˜ì§€.\nâ€¦ë„ˆ, ì¢€ ë˜‘ë˜‘í•˜ë‹¤.';
-          game.notice = { text: reply, t: 300 };
-          Speech.speak(reply);
-        });
-    });
-  }
-  // X-2 â€” ë°˜ì§(4ì¥): ì•„ì¼€ì´ë“œ ì…êµ¬ì—ì„œ ë¬´ëŒ€ë¥¼ ë´ ë‹¬ë¼ ë¶€íƒí•œë‹¤. ì„ íƒë§Œ flags.banjjakAskedì— ë‚¨ëŠ”ë‹¤.
-  function startBanjjakDemand() {
-    startDialog([
-      'ë„¤ì˜¨ ë¶ˆë¹› ì‚¬ì´ë¡œ ë°˜ì§ì´ í´ì§ íŠ€ì–´ë‚˜ì˜¨ë‹¤.',
-      'ë°˜ì§: "ì €ê¸°, ë„ˆ! ë‚´ ë¬´ëŒ€ ë´ ì¤„ë˜?\në”± í•œ ë²ˆë§Œ! â€¦ì‘? ì‘?"',
-    ], 'ë°˜ì§', () => {
-      startReactionChoice('ë°˜ì§ì´ ë°˜ì§ì´ëŠ” ëˆˆìœ¼ë¡œ ë„ˆë¥¼ ë³¸ë‹¤.',
-        ['ë´ ì¤€ë‹¤', 'ê·¸ëƒ¥ ê°„ë‹¤'], (i) => {
-          game.flags.banjjakAsked = (i === 0) ? 'watch' : 'skip'; // ìŠ¤í‚µ/ì·¨ì†Œ = ê¸°ë³¸(ê·¸ëƒ¥ ê°„ë‹¤)
-          save();
-          const reply = game.flags.banjjakAsked === 'watch'
-            ? 'ë°˜ì§: â€¦ë´ ì¤¬ì–´! ì§„ì§œ ë´ ì¤¬ì–´!\n(ë°˜ì§ì´ ë¬´ëŒ€ ìœ„ì—ì„œ í•œ ë°”í€´ ëŒì•˜ë‹¤.)'
-            : 'ë°˜ì§: â€¦ì¹˜. â€¦ë‹¤ë“¤ ê·¸ëƒ¥ ì§€ë‚˜ê°€ë”ë¼.\nâ€¦ê´œì°®ì•„. ìµìˆ™í•´.';
-          game.notice = { text: reply, t: 300 };
-          Speech.speak(reply);
-        });
-    });
-  }
-
-  function updateWorld() {
-    const p = game.player;
-    // ë°•ì‚¬ ê³ ë°± ì´ë²¤íŠ¸ â€” ì¡°ê±´ì´ ê°–ì¶°ì§€ë©´(chapter3Clear && !profConfession) ë§ˆì„ì—ì„œ ì¦‰ì‹œ ì‹œì‘
-    if (game.map === 'village' && game.flags.chapter3Clear && !game.flags.profConfession) {
-      startProfConfession();
-      return;
-    }
-    // X-2 ã€Œë³´ìŠ¤ê°€ ë‚˜ì—ê²Œ ì›í•˜ëŠ” ê²ƒã€ â€” ê²Œì‹œíŒ ê´‘ì¥ì—ì„œ ë‹´ì•„ê°€ ì¹´ë“œë¥¼ ë¶€íƒí•œë‹¤(ì¹´ë“œëŠ” ì‹¤ì œë¡œ ìƒì§€ ì•ŠìŒ).
-    if (game.map === 'boardplaza' && !game.flags.chapter1Clear && !game.flags.damaAsked) {
-      startDamaDemand();
-      return;
-    }
-    // X-2 â€” ë°˜ì§ ì•„ì¼€ì´ë“œ ì§„ì… ì‹œ, ë°˜ì§ì´ ë¬´ëŒ€ë¥¼ ë´ ë‹¬ë¼ ë¶€íƒí•œë‹¤.
-    if (game.map === 'arcade' && !game.flags.chapter4Clear && !game.flags.banjjakAsked) {
-      startBanjjakDemand();
-      return;
-    }
-    // X-1â‘¤ home/dawn ì—”ë”© í›„ ë§ˆì„ ì—í•„ë¡œê·¸ â€” ì£¼ì¸ê³µì˜ ë°˜ì‘ í•œ ë²ˆ(ì •ë‹µ ì—†ìŒ).
-    // ì´ìŠˆ4: trueEndingì€ homeì—ì„œë§Œ ì°¸ì´ë¼ dawn ë¶„ê¸°ê°€ ì£½ì–´ ìˆì—ˆë‹¤ â€” endingIdë¡œë§Œ ê²Œì´íŠ¸í•œë‹¤.
-    if (game.map === 'village' && !game.flags.epilogueAsked &&
-        (game.flags.endingId === 'home' || game.flags.endingId === 'dawn')) {
-      game.flags.epilogueAsked = true;
-      save();
-      startPlayerVoice('epilogue',
-        'ì°½ë°–ìœ¼ë¡œ ì•„ì¹¨ í•´ê°€ ë“ ë‹¤.\nâ€¦ì´ ì´ì•¼ê¸°ë¥¼, ë„ˆëŠ” ì–´ë–»ê²Œ ê¸°ì–µí• ê¹Œ?',
-        ['"â€¦ë‹¤ë“¤, ì˜ ì§€ëƒˆìœ¼ë©´ ì¢‹ê² ì–´."', '"â€¦ë˜ ë§Œë‚  ìˆ˜ ìˆì„ê¹Œ."'],
-        null,
-        ['â€¦ë„¤ ë°”ëŒì²˜ëŸ¼, ë‹¤ë“¤ ì €ë§ˆë‹¤ì˜ ì•„ì¹¨ì„\në§ê³  ìˆì„ ê²ƒì´ë‹¤.',
-          'â€¦ëª¨ë¥´ëŠ” ì¼ì´ë‹¤. í•˜ì§€ë§Œ ê¸°ì–µí•˜ëŠ” í•œ,\nì•„ì£¼ ë©€ì§€ëŠ” ì•Šë‹¤.']);
-      return;
-    }
-    if (game.notice.t > 0) game.notice.t -= 1;
-    if (game.warpCooldownFrames > 0) {
-      game.warpCooldownFrames -= 1;
-      // ì¿¨ë‹¤ìš´ ì¤‘ ì›Œí”„ ì¹¸ì„ ë°Ÿì•˜ë‹¤ë©´, ì¿¨ë‹¤ìš´ì´ ëë‚˜ëŠ” ì¦‰ì‹œ ì¬íŒì • (ìŠ¤ì¹˜ë“¯ í†µê³¼ ë°©ì§€)
-      if (game.warpCooldownFrames === 0 && game.pendingWarpRecheck) {
-        game.pendingWarpRecheck = false;
-        checkWarp();
-        if (game.mode !== 'world') return;
-      }
-    }
-    if (game.puzzleRun) updatePuzzleWorld(); // ë°©íƒˆì¶œ: ì‹œê°„ ëˆ„ì  + êµ¬ì—­ë³„ ë¬¼ì²´ ê°±ì‹ 
-    // 5ì¥ êµ¬ì—­â‘¢ ì†ŒíŒŒ ì½”ë„ˆ â€” ì•‰ì•„ ìˆëŠ” ë™ì•ˆì€ ì´ë™ì„ ì ê·¸ê³ , ë°©í–¥í‚¤ ë²„í‹°ê¸°ë§Œ íŒì •í•œë‹¤
-    if (game.puzzleRun && game.puzzleRun.puzzle.type === 'sofa' && game.puzzleRun.sitting) {
-      updateSofaStand();
-      return;
-    }
-
-    // ì„œì„±ì´ëŠ” NPC (wander) â€” ê±°ë¦¬ì˜ ì‚´ê¸ˆ ë“±. ëª‡ ì´ˆë§ˆë‹¤ í•œ ì¹¸ì”©, ì§‘ ê·¼ì²˜(ë°˜ê²½ 2)ë§Œ ëˆë‹¤.
-    if (game.time % 45 === 0) {
-      const wm = MAPS[game.map];
-      for (const npc of wm.npcs) {
-        if (!npc.wander || !npcVisible(npc)) continue;
-        if (npc.hx === undefined) { npc.hx = npc.x; npc.hy = npc.y; }
-        const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-        const [dx, dy] = dirs[Math.floor(Math.random() * dirs.length)];
-        const nx = npc.x + dx, ny = npc.y + dy;
-        if (Math.abs(nx - npc.hx) > 2 || Math.abs(ny - npc.hy) > 2) continue;
-        if (SOLID(tileAt(game.map, nx, ny))) continue;
-        if (nx === p.x && ny === p.y) continue;
-        if (npcAt(game.map, nx, ny) || monsterAt(game.map, nx, ny)) continue;
-        if ((wm.warps || []).some((w) => w.x === nx && w.y === ny)) continue; // ì›Œí”„ ì¹¸ ë§‰ì§€ ì•Šê¸°
-        if (game.puzzleRun && puzzleObjAt(game.map, nx, ny)) continue;
-        npc.x = nx; npc.y = ny;
-      }
-    }
-
-    // ë°©í–¥í‚¤ ì‹ ì„ ë„ ê°±ì‹  â€” ìµœê·¼ì— ëˆŒë¦° ë°©í–¥(ì‘ì€ ê°’)ì´ ìš°ì„ 
-    for (const d of DIR_KEYS) dirHeldFrames[d] = held.has(d) ? dirHeldFrames[d] + 1 : 0;
-
-    if (justPressed('menu')) {
-      openDex('world');
-      return;
-    }
-
-    if (justPressed('cancel')) {
-      openPause();
-      return;
-    }
-
-    if (justPressed('action')) {
-      interact();
-      return;
-    }
-
-    // ììœ  í”½ì…€ ì´ë™ (M-1b) â€” 8ë°©í–¥, ëŒ€ê°ì„ ì€ ì†ë„ ì •ê·œí™”(Ã—1/âˆš2)
-    const active = DIR_KEYS.filter((d) => held.has(d))
-      .sort((a, b) => dirHeldFrames[a] - dirHeldFrames[b]);
-    if (!active.length) { p.moving = false; return; }
-    const dir = active[0];
-    // íƒ­ = ì œìë¦¬ ë°©í–¥ ì „í™˜: ì •ì§€ ì¤‘ ë§‰ ëˆ„ë¥¸ ë‹¤ë¥¸ ë°©í–¥ì€ 3í”„ë ˆì„ ë™ì•ˆ ëª¸ë§Œ ëŒë¦°ë‹¤
-    if (dir !== p.dir && dirHeldFrames[dir] <= 3 && !p.moving) { p.dir = dir; return; }
-    p.dir = dir;
-    const perp = active.find((d) => isHorizontalDir(d) !== isHorizontalDir(dir));
-    const dx = DIR_DX[dir] + (perp ? DIR_DX[perp] : 0);
-    const dy = DIR_DY[dir] + (perp ? DIR_DY[perp] : 0);
-    const spd = (dx && dy) ? MOVE_SPEED * 0.7071 : MOVE_SPEED;
-    moveFreely(dx * spd, dy * spd);
-  }
-
-  // ---------- ë°°í‹€ ----------
-  function shuffled(arr) {
-    const a = arr.slice();
-    for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a;
-  }
-
-  function startBattleIntro(monId, persuadeKey) {
-    // ëª¨ë“  ì¡°ìš°ëŠ” ë§ˆìŒ ì¡°ê° ë°°í‹€(ì„¤ë“) â€” persuadeKeyëŠ” ë°°ì¹˜ë³„ í”„ë¡œí•„(ì˜ˆ: ë³´ìŠ¤ë°© ë‹´ì•„='sujipmon_boss').
-    startPersuadeIntro(monId, persuadeKey || monId);
-  }
-
-  // í•™ë…„ë³„ ë‚œì´ë„: íšŒí”¼ êµ¬ê°„ ê¸¸ì´Â·íƒ„ë§‰ ì†ë„ ë°°ìœ¨ (ê¸°ë³¸ 1)
-  function dodgeSpeedFactor() { return game.difficulty === 'easy' ? 0.8 : game.difficulty === 'hard' ? 1.25 : 1; }
-  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-
-  // ë‹¤ë‹¨ê³„ ë³´ìŠ¤: patterns ë°°ì—´ì„ ì§„í–‰ë„ì— ë”°ë¼ ìˆœì„œëŒ€ë¡œ í¼ì¹œë‹¤ (ì ì  ê±°ì„¸ì§)
-  function currentPattern(d, atk) {
-    if (atk.patterns && atk.patterns.length > 1) {
-      const seg = Math.floor((d.t / d.dur) * atk.patterns.length);
-      return atk.patterns[Math.min(seg, atk.patterns.length - 1)];
-    }
-    return atk.pattern || (atk.patterns && atk.patterns[0]) || 'burst';
-  }
-
-  function spawnBullets(d, pattern, soul) {
-    const box = d.box;
-    const sf = d.sf || dodgeSpeedFactor();
-    if (pattern === 'rain') {
-      const x = box.x + 12 + Math.random() * (box.w - 24);
-      d.bullets.push({ x, y: box.y - 6, vx: 0, vy: (2.0 + Math.random() * 1.4) * sf, r: 6 });
-    } else if (pattern === 'sides') {
-      const fromLeft = Math.random() < 0.5;
-      const y = box.y + 12 + Math.random() * (box.h - 24);
-      d.bullets.push({ x: fromLeft ? box.x - 6 : box.x + box.w + 6, y,
-        vx: (fromLeft ? 1 : -1) * (2.2 + Math.random() * 1.2) * sf, vy: 0, r: 6 });
-    } else if (pattern === 'spiral') {
-      // ì¤‘ì•™ì—ì„œ íšŒì „í•˜ë©° ë¿œì–´ë‚´ëŠ” ë‚˜ì„ í˜• íƒ„ë§‰
-      const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
-      d.spiralA = (d.spiralA || 0) + 0.55;
-      for (let i = 0; i < 3; i++) {
-        const a = d.spiralA + i * (Math.PI * 2 / 3);
-        d.bullets.push({ x: cx, y: cy, vx: Math.cos(a) * 2.1 * sf, vy: Math.sin(a) * 2.1 * sf, r: 5 });
-      }
-    } else if (pattern === 'wall') {
-      // ìœ„ì—ì„œ ë‚´ë ¤ì˜¤ëŠ” í•œ ì¤„, ë¹ ì ¸ë‚˜ê°ˆ ë¹ˆí‹ˆì´ í•˜ë‚˜ ìˆë‹¤
-      const cols = 7, gap = 1 + Math.floor(Math.random() * (cols - 3));
-      for (let i = 0; i < cols; i++) {
-        if (i === gap || i === gap + 1) continue;
-        const x = box.x + 12 + i * (box.w - 24) / (cols - 1);
-        d.bullets.push({ x, y: box.y - 6, vx: 0, vy: 2.0 * sf, r: 6 });
-      }
-    } else if (pattern === 'zigzag') {
-      // ì˜†ì—ì„œ ë“¤ì–´ì™€ ìœ„ì•„ë˜ë¡œ ì¼ë ì´ë©° ë‚ ì•„ì˜¤ëŠ” íƒ„ë§‰
-      const fromLeft = Math.random() < 0.5;
-      const y = box.y + 16 + Math.random() * (box.h - 32);
-      d.bullets.push({ x: fromLeft ? box.x - 6 : box.x + box.w + 6, y,
-        vx: (fromLeft ? 1 : -1) * 1.9 * sf, vy: 0, r: 6, zig: 2.4 * sf, zigT: Math.random() * 6 });
-    } else if (pattern === 'aimed') {
-      // ìœ„ ê°€ì¥ìë¦¬ì—ì„œ í•˜íŠ¸ì˜ 'í˜„ì¬ ìœ„ì¹˜'ë¥¼ ê²¨ëƒ¥í•´ ìœë‹¤ (ê°œì¸ì„ ë…¸ë¦¬ëŠ” ëŠë‚Œ)
-      const x = box.x + 12 + Math.random() * (box.w - 24), sy = box.y - 6;
-      const tx = soul ? soul.x : box.x + box.w / 2, ty = soul ? soul.y : box.y + box.h / 2;
-      const a = Math.atan2(ty - sy, tx - x);
-      d.bullets.push({ x, y: sy, vx: Math.cos(a) * 2.3 * sf, vy: Math.sin(a) * 2.3 * sf, r: 5 });
-    } else { // burst â€” ì¤‘ì•™ì—ì„œ ë°©ì‚¬í˜•
-      const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
-      const n = 6, base = Math.random() * Math.PI * 2;
-      for (let i = 0; i < n; i++) {
-        const a = base + i * Math.PI * 2 / n;
-        d.bullets.push({ x: cx, y: cy, vx: Math.cos(a) * 2.0 * sf, vy: Math.sin(a) * 2.0 * sf, r: 5 });
-      }
-    }
-  }
-
-  function updateBattle() {
-    const b = game.battle;
-    if (b.shake > 0) b.shake -= 1;
-    if (b.flash > 0) b.flash -= 1;
-    if (b.flinchT > 0) b.flinchT -= 1; // í ì¹« í‘œì •(N-1) ì§€ì† ì‹œê°„
-
-    if (b.isPersuade && b.phase === 'wave') {
-      updatePersuadeBattle();
-      return;
-    }
-
-    if (b.phase === 'menu') {
-      updateFloats(b);
-      // ë‚´ í„´ ì¤‘ì—ë„ ê²Œì´ì§€ ë§Œì¶©ì„ ê°ì§€ (ê¸°ë¯¹/ë³´ì •ìœ¼ë¡œ ë©”ë‰´ ì¤‘ ë§Œì¶©ì´ ë  ìˆ˜ ìˆë‹¤)
-      if (b.isPersuade && b.gauge >= b.gaugeMax && !b.spareReady) {
-        b.spareReady = true;
-        pushFloat('* ë§ˆìŒì´ í™œì§ ì—´ë ¸ë‹¤!\nã€Œë§ˆìŒ ì•ˆì•„ ì£¼ê¸°ã€ë¡œ ë°°í‹€ì„ ëë‚´ì.');
-      }
-      // 2Ã—2 ê·¸ë¦¬ë“œ â€” ì¢Œ/ìš°ëŠ” ì˜† ì¹¸, ìœ„/ì•„ë˜ëŠ” ìœ—ì¤„/ì•„ë«ì¤„ë¡œ (í™”ë©´ ë°°ì¹˜ì™€ ì¼ì¹˜)
-      const n = P_MENU.length;
-      const beforeIdx = b.menuIdx;
-      if (justPressed('left')) { b.menuIdx = (b.menuIdx + n - 1) % n; Sound.blip(); }
-      if (justPressed('right')) { b.menuIdx = (b.menuIdx + 1) % n; Sound.blip(); }
-      if (justPressed('up') || justPressed('down')) { b.menuIdx = (b.menuIdx + 2) % n; Sound.blip(); }
-      if (game.tts && b.menuIdx !== beforeIdx) Speech.speak(P_MENU[b.menuIdx]); // ì½ì–´ì£¼ê¸° ì ‘ê·¼ì„±
-      if (justPressed('action')) selectBattleMenu(b);
-      return;
-    }
-
-    if (b.phase === 'sub') {
-      updateFloats(b);
-      const opts = b.sub.options;
-      const beforeSub = b.subIdx;
-      if (justPressed('up')) { b.subIdx = (b.subIdx + opts.length - 1) % opts.length; Sound.blip(); }
-      if (justPressed('down')) { b.subIdx = (b.subIdx + 1) % opts.length; Sound.blip(); }
-      if (game.tts && b.subIdx !== beforeSub) {
-        const o = opts[b.subIdx];
-        Speech.speak(o.label + (o.locked ? '. ì ê¹€' : '')); // ì½ì–´ì£¼ê¸° ì ‘ê·¼ì„±
-      }
-      if (justPressed('cancel')) { b.sub = null; b.phase = 'menu'; Sound.select(); return; }
-      if (justPressed('action')) selectBattleSub(b);
-      return;
-    }
-
-    if (b.phase === 'react') {
-      updateFloats(b);
-      // íƒ€ìê¸° íš¨ê³¼ â€” ì¹˜ëŠ” ì¤‘ì—ëŠ” Zê°€ ìŠ¤í‚µ(ì „ì²´ í‘œì‹œ), ë‹¤ ì³ì§„ ë’¤ Zê°€ ì§„í–‰
-      const r = b.react;
-      if (r.chars < r.text.length) {
-        const prev = Math.floor(r.chars);
-        r.chars += TEXT_SPEEDS[game.textSpeed];
-        if (Math.floor(r.chars) !== prev && game.time % 4 === 0) Sound.blip(battleVoice(b));
-        if (justPressed('action')) r.chars = r.text.length;
-        return;
-      }
-      if (justPressed('action')) {
-        const after = b.afterReact;
-        b.react = null;
-        Sound.select();
-        if (after === 'mercy') {
-          // ì´ìŠˆ3: ë°˜ì‘ ëŒ€ì‚¬(ì˜ˆ: ì˜ì´ì˜ ë‹µ)ë¥¼ ì½ì–´ ì¤€ ë’¤ ê³§ì¥ ë§ˆìŒì˜ ì„ íƒìœ¼ë¡œ. ê²Œì´ì§€ ë§Œì¶©
-          //        ê²½ë¡œë³´ë‹¤ ë¨¼ì € ì²˜ë¦¬í•´ enterMenuPhaseë¡œ ìƒˆì§€ ì•Šê²Œ í•œë‹¤.
-          enterMercyPhase(b);
-        } else if (b.gauge >= b.gaugeMax || after === 'menu') {
-          // ê²Œì´ì§€ ë§Œì¶©ì´ë©´ íƒ„ë§‰ í„´ ì—†ì´ ê³§ì¥ ë‚´ í„´ â€” ã€Œë§ˆìŒ ì•ˆì•„ ì£¼ê¸°ã€ ë§ˆë¬´ë¦¬ë¡œ
-          if (after === 'menu' && b.gauge < b.gaugeMax) { b.phase = 'menu'; b.sub = null; }
-          else enterMenuPhase(b);
-        } else {
-          enterWave();
-        }
-      }
-      return;
-    }
-
-    if (b.phase === 'mercy') {
-      const opts = b.mon.mercy.options;
-      if (justPressed('up')) { b.cursor = (b.cursor + opts.length - 1) % opts.length; Sound.blip(); }
-      if (justPressed('down')) { b.cursor = (b.cursor + 1) % opts.length; Sound.blip(); }
-      if (justPressed('action')) {
-        const choice = opts[b.cursor];
-        b.mercyDone = true;
-        b.mercyReply = choice.reply;
-        b.mercyChoiceKind = choice.kind;
-        if (choice.kind === 'mercy') {
-          // X-6 ì¬ëŒ€ê²°ì€ winRematchì—ì„œ ìë¹„ë¥¼ ìƒí–¥ íŒì •í•˜ë¯€ë¡œ ì—¬ê¸°ì„œ ëˆ„ì í•˜ì§€ ì•ŠëŠ”ë‹¤(ì¤‘ë³µ ë°©ì§€).
-          if (!b.rematch) game.flags.mercy += 1;
-          Sound.badge();
-        } else {
-          Sound.select();
-        }
-        b.phase = 'mercyReply';
-      }
-      return;
-    }
-
-    if (b.phase === 'mercyReply') {
-      if (justPressed('action')) { winBattle(); }
-      return;
-    }
-  }
-
-  // 1ì¥ ë³´ìŠ¤ í´ë¦¬ì–´ â€” chapter1Clear í”Œë˜ê·¸ + 1ì¥ ë§ˆë¬´ë¦¬ ëŒ€ì‚¬ í›„ ê¸ˆê³  ì•(ê±°ë¦¬)ìœ¼ë¡œ ë³µê·€.
-  // ë¼ì´ë¸ŒëŸ¬ë¦¬ í€´ì¦ˆì™€ ë³„ê°œì´ë¯€ë¡œ defeated.sujipmon/ì¹œêµ¬ ìˆ˜ì²©ì€ ê±´ë“œë¦¬ì§€ ì•ŠëŠ”ë‹¤.
-  // 1~5ì¥ ë³´ìŠ¤ í´ë¦¬ì–´ ê³µí†µ ì²˜ë¦¬ â€” ì±•í„° í”Œë˜ê·¸ + í—ˆë¸Œ ë³µê·€ + ë§ˆë¬´ë¦¬ ëŒ€ì‚¬.
-  // ì¥ë³„ë¡œ ë‹¤ë¥¸ ê²ƒì€ ë³µê·€ ì§€ì ê³¼ ëŒ€ì‚¬ë¿ì´ë¼ ì„¤ì • í…Œì´ë¸”ë¡œ í†µí•©í–ˆë‹¤.
-  const CHAPTER_WIN = {
-    1: {
-      map: 'freestreet', x: 17, y: 5, dir: 'down',
-      mercyLine: 'ğŸ’› ë‹´ì•„ì˜ êµ³ì–´ ìˆë˜ ë§ˆìŒì´\ní™˜í•˜ê²Œ í’€ë ¸ì–´ìš”. ë˜ í•œ ì¹œêµ¬ë¥¼ ë˜ëŒë ¸ë‹¤!',
-      clearLine: 'â˜† 1ì¥ í´ë¦¬ì–´! â˜†\nã€Œì „ë¶€ ê³µì§œ ê±°ë¦¬ã€ì˜ ë„¤ì˜¨ì´\nì¡°ìš©íˆ ì¦ì•„ë“¤ì—ˆë‹¤.',
-      afterLine: 'ë‹´ì•„ê°€ ìƒìë§ˆë‹¤ ë¶™ì€\nã€Œì¹œêµ¬ê°€ ì¤€ ê²ƒã€ ë¼ë²¨ì„\ní•˜ë‚˜ì”© ë–¼ì–´ ë‚´ê¸° ì‹œì‘í–ˆë‹¤.',
-    },
-    2: {
-      map: 'tiltstreet', x: 14, y: 10, dir: 'up',
-      mercyLine: 'ğŸ’› ê¸°ìš¸ì˜ í•œìª½ìœ¼ë¡œ êµ³ì—ˆë˜ ë§ˆìŒì´\në°˜ëŒ€ìª½ìœ¼ë¡œë„ ì²œì²œíˆ ì—´ë ¸ì–´ìš”. ë˜ í•œ ì¹œêµ¬ë¥¼ ë˜ëŒë ¸ë‹¤!',
-      clearLine: 'â˜† 2ì¥ í´ë¦¬ì–´! â˜†\nê´‘ì¥ì˜ ê±°ëŒ€í•œ ì €ìš¸ì´,\nì²œì²œíˆ ìˆ˜í‰ìœ¼ë¡œ ë‚´ë ¤ì•‰ì•˜ë‹¤.',
-      afterLine: 'ê¸°ìš¸ì´ í•œìª½ ì ‘ì‹œì˜ ì§ì„\në°˜ëŒ€ìª½ì—ë„ í•˜ë‚˜ì”© ì˜®ê²¨ ë‹´ê¸° ì‹œì‘í–ˆë‹¤.',
-    },
-    3: {
-      map: 'rumorstreet', x: 17, y: 5, dir: 'down',
-      mercyLine: 'ğŸ’› ê·¸ëŸ´ì‹¸ì˜ [ì†ë³´] ë’¤ì— ìˆ¨ì–´ ìˆë˜ ë§ˆìŒì´\nì¡°ìš©íˆ í’€ë ¸ì–´ìš”. ë˜ í•œ ì¹œêµ¬ë¥¼ ë˜ëŒë ¸ë‹¤!',
-      clearLine: 'â˜† 3ì¥ í´ë¦¬ì–´! â˜†\nê±°ë¦¬ì˜ í—¤ë“œë¼ì¸ ë²½ë³´ê°€\ní•˜ë‚˜ë‘˜ [ì •ì •] ë”±ì§€ë¡œ ë°”ë€Œì—ˆë‹¤.',
-      afterLine: 'ìƒì  ë¬¸ë“¤ì´ í™œì§ ì—´ë¦¬ê³ ,\nì£¼ë¯¼ë“¤ì˜ ì–¼êµ´ì— ì›ƒìŒì´ ëŒì•„ì™”ë‹¤.',
-    },
-    4: {
-      map: 'arcade', x: 18, y: 2, dir: 'down',
-      mercyLine: 'ğŸ’› ë°˜ì§ì˜ ë°˜ì§ì„ ë’¤ì— ìˆ¨ì–´ ìˆë˜ ë§ˆìŒì´\nì¡°ìš©íˆ í’€ë ¸ì–´ìš”. ë˜ í•œ ì¹œêµ¬ë¥¼ ë˜ëŒë ¸ë‹¤!',
-      clearLine: 'â˜† 4ì¥ í´ë¦¬ì–´! â˜†\në¬´ëŒ€ì˜ ë„¤ì˜¨ì‚¬ì¸ì´\ní•˜ë‚˜ë‘˜ ì°¨ë¶„í•œ ë¹›ìœ¼ë¡œ ë°”ë€Œì—ˆë‹¤.',
-      afterLine: 'ë°˜ì§ì´ ë‚¨ì€ ê´‘ê³  ë”±ì§€ë“¤ì„\ní•˜ë‚˜ì”© ë–¼ì–´ ë‚´ê¸° ì‹œì‘í–ˆë‹¤.',
-    },
-    5: {
-      map: 'cozyhome', x: 18, y: 2, dir: 'down',
-      mercyLine: 'ğŸ’› ë£¨ë¯¸ì˜ ë¶™ì¡ë˜ ì† ë’¤ì— ìˆ¨ì–´ ìˆë˜ ë§ˆìŒì´\nì¡°ìš©íˆ í’€ë ¸ì–´ìš”. ë˜ í•œ ì¹œêµ¬ë¥¼ ë˜ëŒë ¸ë‹¤!',
-      clearLine: 'â˜† 5ì¥ í´ë¦¬ì–´! â˜†\nì§‘ ì•ˆì˜ ê³µê¸°ê°€\ní•œê²° ê°€ë²¼ì›Œì¡Œë‹¤.',
-      afterLine: 'ë£¨ë¯¸ê°€ í˜„ê´€ë¬¸ì„\nìŠ¤ìŠ¤ë¡œ ì—´ì–´ ë‘ì—ˆë‹¤.',
-    },
-  };
-  // X-8 40ë¶„ ì°¨ì‹œ ëª¨ë“œ â€” ê·¸ ì¥ì˜ ë³´ìŠ¤ë¥¼ í´ë¦¬ì–´í•˜ë©´ ë§ˆë¬´ë¦¬ ì•ˆë‚´ í•œ ìƒìë¥¼ ë§ë¶™ì¸ë‹¤(ìˆ˜ì—… ì„¸ì…˜ë§Œ).
-  const CLASS_END_LINE = 'ì˜¤ëŠ˜ ì—¬ê¸°ê¹Œì§€!\në‹¤ìŒ ì‹œê°„ì— ì´ì–´ì„œ â€”\nì €ì¥ì€ ìë™ìœ¼ë¡œ ë¼ ìˆì–´ìš”.';
-  function winChapterBoss(n) {
-    const b = game.battle;
-    const mon = b.mon;
-    const cfg = CHAPTER_WIN[n];
-    game.flags['chapter' + n + 'Clear'] = true;
-    game.flags['chapter' + n + 'Mercy'] = (b.mercyChoiceKind === 'mercy'); // ë‹¤ìŒ ì¥ ì½œë°± ì¸íŠ¸ë¡œìš©
-    recordDexSeen(b.monId, b.mercyChoiceKind); // X-6 ì¹œêµ¬ ìˆ˜ì²©ì— ë§Œë‚¨ ê¸°ë¡(ì¬ëŒ€ê²° ì§„ì… ëŒ€ìƒ)
-    if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
-    save();
-    checkCosmeticUnlocks(game.currentSlot);
-    game.battle = null;
-    game.mode = 'world';
-    game.map = cfg.map; // í—ˆë¸Œ ë³µê·€
-    const p = game.player;
-    p.x = cfg.x; p.y = cfg.y; p.px = cfg.x * TS; p.py = cfg.y * TS; p.moving = false; p.dir = cfg.dir;
-    held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
-    stickDir = null; stickRepeatFrames = 0;
-    Sound.badge();
-    Sound.playMapBgm(MAPS[cfg.map].song);
-    const lines = [mon.win];
-    if (b.mercyChoiceKind === 'mercy') lines.push(cfg.mercyLine);
-    lines.push(cfg.clearLine);
-    lines.push(cfg.afterLine);
-    appendRankLine(b, lines, b.persuadeId); // B-2 íŒì • í•œ ì¤„ + ìµœê³  ë“±ê¸‰ ê¸°ë¡
-    grantDiaryShard('ch' + n, lines, b.mercyChoiceKind); // ìë¹„ë¡œ ë˜ëŒë ¸ë‹¤ë©´ ì¼ê¸° ì¡°ê°(Q-2)
-    lines.push(bandiBossLine('ch' + n, b.mercyChoiceKind, game.flags));
-    // U-3â‘£ ì²« ë³´ìŠ¤ í´ë¦¬ì–´ í›„ í•œ ê³³ì—ì„œ ë°˜ë””ì˜ ìˆœìˆ˜ ë†ë‹´ 1ê°œ(êµí›ˆ 0, 1íšŒì„±).
-    // ì¹¨ë¬µ ë£¨íŠ¸ì—ì„  ë°˜ë””ê°€ ë§ì„ ìƒìœ¼ë¯€ë¡œ ë†ë‹´ë„ ì ‘ëŠ”ë‹¤(í†¤ ì •í•©).
-    if (n === 1 && !game.flags.bandiJokeShown && !isColdRoute(game.flags)) {
-      game.flags.bandiJokeShown = true;
-      lines.push('ë°˜ë””: â€¦ìˆì§€. ë‹´ì•„ê°€ ëª¨ì•„ ë‘” ê²ƒ ì¤‘ì—\në‚´ í‰ë‚´ë„ ìˆì—ˆì„ê¹Œ?\nâ€¦ì—†ì—ˆê² ì§€. ë‚˜ ì´ë ‡ê²Œ ë°˜ì§ì´ëŠ”ë°.');
-    }
-    const wasClass = !!game.flags.classSession; // Y-18 ì‚¬í›„ ì ê²€ ì œì•ˆ íŒë‹¨(ë¦¬ì…‹ ì „ì— ì¡ì•„ ë‘”ë‹¤)
-    if (game.flags.classSession) {
-      lines.push(CLASS_END_LINE); // X-8 ì°¨ì‹œ ë§ˆë¬´ë¦¬ ì•ˆë‚´(ìˆ˜ì—… ì„¸ì…˜ë§Œ)
-      // ì´ìŠˆ6: ì„¸ì…˜ì€ ì´ í•œ ì°¨ì‹œë¡œ ë â€” ì•ˆë‚´ë¥¼ ë³´ì¸ ë’¤ í”Œë˜ê·¸ë¥¼ ë‚´ë ¤ ë°°ë„ˆ/ì•ˆë‚´ê°€ ìŠ¬ë¡¯ì—
-      //        ì˜êµ¬ ì”ì¡´í•˜ì§€ ì•Šê²Œ í•œë‹¤(ë‹¤ìŒì— ì¼ë°˜ ì´ì–´í•˜ê¸°ë¡œ ë“¤ì–´ì™€ë„ ê¹¨ë—).
-      game.flags.classSession = false; save();
-    }
-    // Y-18 â€” ìˆ˜ì—… ì„¸ì…˜ì—ì„œ ì‚¬ì „ ì ê²€ì„ í–ˆë˜ ì¥ì´ë©´, ë³´ìŠ¤ í´ë¦¬ì–´ ëŒ€í™”ê°€ ëë‚œ ë’¤ ê°™ì€ 5ë¬¸í•­ìœ¼ë¡œ
-    //   ì‚¬í›„ ì ê²€ì„ ì œì•ˆí•œë‹¤(ìŠ¤í‚µ ê°€ëŠ¥). ì‚¬ì „ ê¸°ë¡ì´ ì—†ìœ¼ë©´(ì˜µíŠ¸ì¸ ì•ˆ í•¨) ì œì•ˆí•˜ì§€ ì•ŠëŠ”ë‹¤.
-    const ppCh = PREPOST_CH_BY_N[n];
-    const offerPost = wasClass && ppCh && getPrepost(game.currentSlot, ppCh).pre;
-    startDialog(lines, mon.name, () => {
-      Sound.playMapBgm(MAPS[cfg.map].song);
-      if (offerPost) openPrepost('post', ppCh, 'world');
-    });
-  }
-
-  // íŒŒì´ë„ ë³´ìŠ¤(ê³ ìš”) í´ë¦¬ì–´ â€” goyoClear í”Œë˜ê·¸ + ì½”ì–´ ê°œë°© ì—°ì¶œ í›„ ì½”ì–´ë¡œ ì…ì¥.
-  // (í´ë¦¬ì–´ ì²˜ë¦¬ëŠ” goyoClear í”Œë˜ê·¸ë¡œ ê¸°ë¡í•œë‹¤)
-  function winGoyoBoss() {
-    const b = game.battle;
-    const mon = b.mon;
-    game.flags.goyoClear = true;
-    game.flags.goyoMercy = (b.mercyChoiceKind === 'mercy');
-    recordDexSeen(b.monId, b.mercyChoiceKind); // X-6 ì¹œêµ¬ ìˆ˜ì²©ì— ë§Œë‚¨ ê¸°ë¡(ì¬ëŒ€ê²° ì§„ì… ëŒ€ìƒ)
-    if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
-    save();
-    checkCosmeticUnlocks(game.currentSlot);
-    game.battle = null;
-    game.mode = 'world';
-    // ì½”ì–´ë¡œ ì…ì¥
-    game.map = 'coreroom';
-    const p = game.player;
-    p.x = 7; p.y = 8; p.px = 7 * TS; p.py = 8 * TS; p.moving = false; p.dir = 'up';
-    held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
-    stickDir = null; stickRepeatFrames = 0;
-    Sound.badge();
-    Sound.playMapBgm(MAPS.coreroom.song);
-    const lines = [mon.win];
-    if (b.mercyChoiceKind === 'mercy') {
-      lines.push('ğŸ’› ê³ ìš”ì˜ ì¹¨ë¬µ ë’¤ì— ìˆ¨ì–´ ìˆë˜ ë§ˆìŒì´\nì¡°ìš©íˆ í’€ë ¸ì–´ìš”. ë˜ í•œ ì¹œêµ¬ë¥¼ ë˜ëŒë ¸ë‹¤!');
-    }
-    lines.push('â˜† ê°€ì¥ ê¹Šì€ ê³³ì˜ ë¬¸ì´ ì—´ë ¸ë‹¤ â˜†\nâ€¦ê³ ìš”ë¥¼ ì§€ë‚˜, ì½”ì–´ë¡œ ë“¤ì–´ì„ ë‹¤.');
-    appendRankLine(b, lines, b.persuadeId); // B-2 íŒì • í•œ ì¤„ + ìµœê³  ë“±ê¸‰ ê¸°ë¡
-    grantDiaryShard('goyo', lines, b.mercyChoiceKind); // ë§ˆì§€ë§‰ ì¡°ê° â€” ì„œëª… ã€Œâ€” ì˜ã€ì´ ë“œëŸ¬ë‚œë‹¤
-    lines.push(bandiBossLine('goyo', b.mercyChoiceKind, game.flags));
-    if (game.flags.classSession) {
-      lines.push(CLASS_END_LINE); // X-8 ì°¨ì‹œ ë§ˆë¬´ë¦¬ ì•ˆë‚´(ìˆ˜ì—… ì„¸ì…˜ë§Œ)
-      // ì´ìŠˆ6: ì„¸ì…˜ ì¢…ë£Œ â€” ì•ˆë‚´ë¥¼ ë³´ì¸ ë’¤ í”Œë˜ê·¸ë¥¼ ë‚´ë ¤ ë°°ë„ˆ/ì•ˆë‚´ê°€ ì˜êµ¬ ì”ì¡´í•˜ì§€ ì•Šê²Œ í•œë‹¤.
-      game.flags.classSession = false; save();
-    }
-    startDialog(lines, mon.name, () => Sound.playMapBgm(MAPS.coreroom.song));
-  }
-
-  // B-2 ë°°í‹€ ë“±ê¸‰ â€” ì˜¤ë‹µ ë¬¸Â·í”¼ê²©(ì—°ìŠµ íŒŒë„ ì œì™¸)ìœ¼ë¡œ S/A/Bë¥¼ ì‚°ì¶œí•œë‹¤.
-  const RANK_LINE = {
-    S: 'íŒì •: S â€” ì™„ë²½í•œ ê²½ì²­!',
-    A: 'íŒì •: A â€” ì˜ ë“¤ì–´ ì¤¬ì–´.',
-    B: 'íŒì •: B â€” ë§ˆìŒì„ ë˜ëŒë ¸ì–´.',
-  };
-  function battleRank(b) {
-    const wrong = b.rankWrong || 0, hits = b.rankHits || 0;
-    if (wrong === 0 && hits === 0) return 'S';
-    if (wrong <= 1 && hits <= 2) return 'A';
-    return 'B';
-  }
-  const RANK_ORDER = { S: 3, A: 2, B: 1 };
-  // ë³´ìŠ¤ë³„ ìµœê³  ë“±ê¸‰ì„ ìŠ¬ë¡¯ ë©”íƒ€ì— ì €ì¥í•œë‹¤ (ëª…ì˜ˆì˜ ì „ë‹¹ Së“±ê¸‰ ìˆ˜ ë¶€ë¬¸ì—ì„œ ì¬ì‚¬ìš©).
-  function recordBossRank(slot, id, rank) {
-    try {
-      const m = getMeta(slot);
-      m.bossRank = m.bossRank || {};
-      if ((RANK_ORDER[rank] || 0) > (RANK_ORDER[m.bossRank[id]] || 0)) {
-        m.bossRank[id] = rank;
-        localStorage.setItem(metaKey(slot), JSON.stringify(m));
-      }
-    } catch (e) { /* ì €ì¥ ë¶ˆê°€ í™˜ê²½ì´ë©´ ë¬´ì‹œ */ }
-  }
-  // ìŠ¹ë¦¬ ëŒ€ì‚¬ lines ë’¤ì— íŒì • í•œ ì¤„ì„ ì–¹ê³ , ìµœê³  ë“±ê¸‰ì„ ê¸°ë¡í•œë‹¤.
-  function appendRankLine(b, lines, id) {
-    const rank = battleRank(b);
-    recordBossRank(game.currentSlot, id, rank);
-    lines.push(RANK_LINE[rank]);
-  }
-
-  // X-6 ê¸°ì–µì˜ ë°© â€” ì¹œêµ¬ ìˆ˜ì²©(dex)ì—ì„œ ë§Œë‚œ ë³´ìŠ¤ì™€ ë‹¤ì‹œ ì´ì•¼ê¸°í•˜ê¸°.
-  // monId(ìŠ¤í”„ë¼ì´íŠ¸/ë„ê° í‚¤) â†’ ì„¤ë“ í”„ë¡œí•„ í‚¤. ë³´ìŠ¤ë³„ë¡œ í”„ë¡œí•„ í‚¤ê°€ ë‹¤ë¥´ë¯€ë¡œ ë§¤í•‘ì´ í•„ìš”í•˜ë‹¤.
-  const DEX_REMATCH = {
-    bekkyeomon: 'bekkyeomon', sujipmon: 'sujipmon_boss', pyeonhyangmon: 'pyeonhyang_boss',
-    hwangakmon: 'hwangak_boss', yuhokmon: 'yuhok_boss', hollimmon: 'hollim_boss',
-    finalboss: 'goyo_boss', yeongi: 'yeongi_boss',
-  };
-  const CHAPTER_MON_NUM = { sujipmon: 1, pyeonhyangmon: 2, hwangakmon: 3, yuhokmon: 4, hollimmon: 5 };
-  // ì´ ë³´ìŠ¤ë¥¼ ì˜ˆì „ì— ìë¹„ë¡œ ë˜ëŒë ¸ëŠ”ê°€ â€” ë³´ìŠ¤ë³„ ì •ì‹ ë§ˆì»¤(chapterNMercyÂ·goyoMercyÂ·mercyChoice)ë¥¼ ë³¸ë‹¤.
-  function bossWasSpared(monId) {
-    const f = game.flags;
-    if (monId === 'bekkyeomon') return !!(f.mercyChoice && f.mercyChoice.bekkyeomon === 'mercy');
-    if (monId === 'finalboss') return !!f.goyoMercy;
-    if (monId === 'yeongi') return !!(f.mercyChoice && f.mercyChoice.yeongi === 'mercy');
-    const n = CHAPTER_MON_NUM[monId];
-    return n ? !!f['chapter' + n + 'Mercy'] : false;
-  }
-  // ì´ ë³´ìŠ¤ë¥¼ 'ì§€ê¸ˆ ìŠ¬ë¡¯'ì—ì„œ ì‹¤ì œë¡œ ë§Œë‚˜ í´ë¦¬ì–´í–ˆëŠ”ê°€ â€” ê³µìš© ìˆ˜ì²©(seen)ì€ ìŠ¬ë¡¯ì„ ë„˜ë‚˜ë“¤ì–´
-  // ë‹¤ë¥¸ í•™ìƒì´ ê¹¬ ì•„ì´ë„ ë³´ì´ë¯€ë¡œ, ì¬ëŒ€ê²°ì€ í˜„ì¬ ìŠ¬ë¡¯ ì§„í–‰ í”Œë˜ê·¸ë¡œ í•œ ë²ˆ ë” ì ê·¼ë‹¤.
-  function bossClearedInSlot(monId) {
-    const f = game.flags;
-    if (!f) return false;
-    if (monId === 'bekkyeomon') return !!(f.defeated && f.defeated.bekkyeomon);
-    if (monId === 'finalboss') return !!f.goyoClear;
-    if (monId === 'yeongi') return !!(f.defeated && f.defeated.yeongi);
-    const n = CHAPTER_MON_NUM[monId];
-    return n ? !!f['chapter' + n + 'Clear'] : false;
-  }
-  // ì´ ë³´ìŠ¤ë¥¼ ìë¹„ë¡œ ë˜ëŒë ¸ìŒì„ ì •ì‹ ë§ˆì»¤ì— ìƒí–¥ ê¸°ë¡í•œë‹¤(íšŒìˆ˜ ë£¨í”„ â€” í•˜í–¥ì€ ì—†ë‹¤).
-  function markBossSpared(monId) {
-    const f = game.flags;
-    if (monId === 'bekkyeomon') { if (!f.mercyChoice) f.mercyChoice = {}; f.mercyChoice.bekkyeomon = 'mercy'; }
-    else if (monId === 'finalboss') f.goyoMercy = true;
-    else if (monId === 'yeongi') { if (!f.mercyChoice) f.mercyChoice = {}; f.mercyChoice.yeongi = 'mercy'; }
-    else { const n = CHAPTER_MON_NUM[monId]; if (n) f['chapter' + n + 'Mercy'] = true; }
-  }
-  // X-6 ì¬ëŒ€ê²° ìŠ¹ë¦¬ â€” ì§„í–‰ í”Œë˜ê·¸(chapterNClear ë“±)ëŠ” ì¬ë¶€ì—¬í•˜ì§€ ì•ŠëŠ”ë‹¤. ë“±ê¸‰ê³¼ ìë¹„ë§Œ
-  // ê°±ì‹ í•˜ê³ (ìë¹„ëŠ” ë¹„ìë¹„â†’ìë¹„ ìƒí–¥ë§Œ, ì´ë¯¸ ìë¹„ë©´ ë³€í™” ì—†ìŒ â€” ì¤‘ë³µ ì¹´ìš´íŠ¸ ë°©ì§€) ìˆ˜ì²©ìœ¼ë¡œ ë³µê·€.
-  // ì˜ì´ ì¬ëŒ€ê²°ë„ ì—¬ê¸°ì„œ ê°„ë‹¨íˆ ì²˜ë¦¬í•œë‹¤(ì—”ë”© ì¬ê³„ì‚° ì—†ì´ ìˆ˜ì²© ë³µê·€).
-  function winRematch() {
-    const b = game.battle;
-    if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
-    const wasSpared = bossWasSpared(b.monId);
-    const nowMercy = b.mercyChoiceKind === 'mercy';
-    const upgraded = nowMercy && !wasSpared;
-    if (upgraded) { game.flags.mercy += 1; markBossSpared(b.monId); } // ë”± 1 ìƒìŠ¹
-    // dex ì‘ë³„ í‘œê¸°ë„ ìƒí–¥ë§Œ (ì´ë¯¸ mercyë©´ ìœ ì§€)
-    const seen = getDexSeen();
-    const prevKind = seen[b.monId] && seen[b.monId].mercy;
-    recordDexSeen(b.monId, nowMercy ? 'mercy' : (prevKind || b.mercyChoiceKind || null));
-    const ret = b.rematchRet || 'world';
-    const name = b.mon.name;
-    const lines = [b.mon.win || 'â€¦ë‹¤ì‹œ ì´ì•¼ê¸°í•´ ì¤˜ì„œ, ê³ ë§ˆì›Œ.'];
-    if (upgraded) lines.push('ğŸ’› ë˜ëŒì•„ì™€, ë‹¤ì‹œ ë§ˆìŒì„ ì•ˆì•„ ì¤¬ì–´ìš”.\n(â˜… ì•ˆì•„ ì¤€ ë§ˆìŒì´ í•˜ë‚˜ ëŠ˜ì—ˆë‹¤)');
-    appendRankLine(b, lines, b.persuadeId); // ë“±ê¸‰ ê°±ì‹ (ìµœê³  ë“±ê¸‰ ê¸°ë¡)
-    save();
-    checkCosmeticUnlocks(game.currentSlot); // Y-9 ì¬ëŒ€ê²°ë¡œ Së“±ê¸‰ì´ ì±„ì›Œì§€ë©´ ã€Œì™„ë²½í•œ ê²½ì²­ìã€ íŒ¡íŒŒë¥´
-    game.battle = null;
-    game.mode = 'world';
-    Sound.badge();
-    Sound.playMapBgm(MAPS[game.map].song);
-    startDialog(lines, name, () => openDex(ret));
-  }
-
-  function winBattle() {
-    const b = game.battle;
-    const mon = b.mon;
-    // X-6 ì¬ëŒ€ê²°(ê¸°ì–µì˜ ë°©)ì€ ì§„í–‰ í”Œë˜ê·¸ë¥¼ ê±´ë“œë¦¬ì§€ ì•Šê³  ë³„ë„ ì²˜ë¦¬í•œë‹¤ â€” ëª¨ë“  ìŠ¹ë¦¬ ê²½ë¡œë³´ë‹¤ ì•.
-    if (b.rematch) { winRematch(); return; }
-    // ì±•í„° ë³´ìŠ¤ â€” ë³„ë„ ì§„í–‰ í”Œë˜ê·¸(chapterNClear)ë¡œ ì²˜ë¦¬í•œë‹¤
-    if (b.persuadeId === 'sujipmon_boss') { winChapterBoss(1); return; }
-    if (b.persuadeId === 'pyeonhyang_boss') { winChapterBoss(2); return; }
-    if (b.persuadeId === 'hwangak_boss') { winChapterBoss(3); return; }
-    if (b.persuadeId === 'yuhok_boss') { winChapterBoss(4); return; }
-    if (b.persuadeId === 'hollim_boss') { winChapterBoss(5); return; }
-    if (b.persuadeId === 'goyo_boss') { winGoyoBoss(); return; }
-    // ì˜ì´(yeongi_boss) â€” ë³„ë„ ì¡°ê¸° ë°˜í™˜ ì—†ìŒ. monIdê°€ 'yeongi'ì´ë¯€ë¡œ ì•„ë˜ ì¼ë°˜ ê²½ë¡œë¥¼ ê±°ì³
-    // ê¸°ì¡´ v1 yeongi ë¶„ê¸°(ì§„ì—”ë”© ê³„ì‚°)ë¡œ ìì—°ìŠ¤ëŸ½ê²Œ ì´ì–´ì§„ë‹¤.
-    game.flags.defeated[b.monId] = true;
-    recordDexSeen(b.monId, b.mercyChoiceKind);
-    if (!game.flags.mercyChoice) game.flags.mercyChoice = {};
-    game.flags.mercyChoice[b.monId] = b.mercyChoiceKind || null;
-    save();
-    checkCosmeticUnlocks(game.currentSlot);
-
-    game.battle = null;
-    game.mode = 'world';
-    Sound.badge();
-
-    const lines = [mon.win];
-    // ê°±ìƒ ì—°ì¶œ: ë§ˆìŒì„ ì•ˆì•„ ì¤€(ìë¹„) ê²½ìš°, ì¹œêµ¬ê°€ ë˜ì—ˆìŒì„ ë¶„ëª…íˆ ë³´ì—¬ ì¤€ë‹¤
-    if (b.mercyChoiceKind === 'mercy' && b.monId !== 'yeongi') {
-      lines.push(`ğŸ’› ${mon.name}ì˜ êµ³ì–´ ìˆë˜ ë§ˆìŒì´\ní™˜í•˜ê²Œ í’€ë ¸ì–´ìš”. ë˜ í•œ ì¹œêµ¬ë¥¼ ë˜ëŒë ¸ë‹¤!`);
-    }
-    if (b.monId === 'bekkyeomon') {
-      game.flags.prologueClosed = true;
-      game.map = 'freestreet';
-      const p = game.player;
-      p.x = 18; p.y = 21; p.px = 18 * TS; p.py = 21 * TS; p.moving = false; p.dir = 'up';
-      held.delete('up'); held.delete('down'); held.delete('left'); held.delete('right');
-      stickDir = null; stickRepeatFrames = 0;
-      lines.push('ìˆ² ì•ˆìª½ ê³µí„°ì˜ ì¢…ì´ë“¤ì´ ì¡°ìš©íˆ ì ‘íŒë‹¤.\në©€ë¦¬ì„œ ë„¤ì˜¨ ê°„íŒ í•˜ë‚˜ê°€ ë°˜ì§ì´ë©° ë¬¸ì²˜ëŸ¼ ì—´ë¦°ë‹¤.');
-      lines.push('í”„ë¡¤ë¡œê·¸ ë.\nì´ì œ 1ì¥ â€” ã€Œì „ë¶€ ê³µì§œ ê±°ë¦¬ã€ë¡œ ë“¤ì–´ê°„ë‹¤.');
-      save();
-    }
-    if (mon.clear) lines.push(mon.clear);
-    if (b.monId === 'bekkyeomon') {
-      appendRankLine(b, lines, b.persuadeId); // B-2 íŒì • í•œ ì¤„ + ìµœê³  ë“±ê¸‰ ê¸°ë¡
-      grantDiaryShard('prologue', lines, b.mercyChoiceKind); // ì²« ì¼ê¸° ì¡°ê°(Q-2) â€” ë¯¸ìŠ¤í„°ë¦¬ì˜ ì‹œì‘
-      lines.push(bandiBossLine('prologue', b.mercyChoiceKind, game.flags));
-    }
-    // ì˜ì´(ìµœì¢…)ëŠ” ê³§ì¥ ì§„ì—”ë”©ìœ¼ë¡œ ì´ì–´ì§€ëŠ” ê°ì • ì¥ë©´ì´ë¼ íŒì • ë¼ë²¨ì„ ì–¹ì§€ ì•ŠëŠ”ë‹¤(í†¤ ë³´ì¡´).
-    if (b.monId === 'yeongi') {
-      // ìµœì¢… ì—”ë”© ë¶„ê¸°: ì—¬ì • ì „ì²´ì˜ ìë¹„ + ë§ˆì§€ë§‰ ì„ íƒ
-      const endingId = computeEnding(b.mercyChoiceKind, game.flags.mercy);
-      game.flags.endingId = endingId;
-      game.flags.trueEnding = endingId === 'home';
-      recordEndingSeen(endingId);
-      save();
-      startDialog(lines, mon.name, () => {
-        game.mode = 'ending';
-        game.endingType = 'true';
-        game.endingT = 0;
-        Sound.playMapBgm('ending');
-      });
-    } else if (b.monId === 'bekkyeomon') {
-      // X-1â‘  ë”°ë¼ ë°°í‹€ ìŠ¹ë¦¬ ì§í›„ â€” ì£¼ì¸ê³µì˜ ë°˜ì‘ í•œ ë²ˆ(ì •ë‹µ ì—†ìŒ). ë°˜ë””ê°€ ê·¸ ë§ì„ ë°›ì•„ ì¤€ë‹¤.
-      startDialog(lines, mon.name, () => {
-        Sound.playMapBgm(MAPS[game.map].song);
-        startPlayerVoice('ttara',
-          'ë”°ë¼ì˜ í•˜ì–€ ì¢…ì´ë“¤ì´ ì¡°ìš©íˆ ì ‘í˜€ ì‚¬ë¼ì§„ë‹¤.\nâ€¦ë„ˆëŠ” ë”°ë¼ì—ê²Œ ë­ë¼ê³  ë§í•´ ì¤„ê¹Œ?',
-          ['"ì„œíˆ´ëŸ¬ë„, ë„¤ ê·¸ë¦¼ì€ ë„¤ ê±°ì•¼."', '"â€¦ë‹¤ìŒì—”, ê°™ì´ ê·¸ë¦¬ì."'],
-          'ë°˜ë””',
-          ['ë°˜ë””: â€¦ì‘. ì„œíˆ° ê²Œ, ì œì¼ ì‚¬ëŒ ê°™ì€ ê±°ë˜.\n(ë°˜ë””ê°€ ì¡°ê¸ˆ ì›ƒì—ˆë‹¤.)',
-            'ë°˜ë””: â€¦ê°™ì´. ì¢‹ì€ ë§ì´ì•¼.\nâ€¦ë‚˜ë„, ë¼ì›Œ ì¤„ ê±°ì§€?']);
-      });
-    } else {
-      startDialog(lines, mon.name, () => {
-        Sound.playMapBgm(MAPS[game.map].song);
-      });
-    }
-  }
-
-  // ---------- ã€Œë§ˆìŒ ì¡°ê° ë°°í‹€ã€(M-2 í„´ì œ ì„¤ë“ ëŒ€í™”) ----------
-  // ì–¸ë”í…Œì¼ ë¬¸ë²•: [ë‚´ í„´ ë©”ë‰´] â†” [ìƒëŒ€ í„´ íƒ„ë§‰]ì„ ì˜¤ê°€ë©° ëŒ€í™”ë¡œ ë§ˆìŒì„ ë˜ëŒë¦°ë‹¤.
-  //   menu  : ë§ ê±¸ê¸°(ì£¼ì¥ì— ë§ëŠ” ì‘ë‹µ ê³ ë¥´ê¸°) / ì¦ê±° ë³´ì—¬ì£¼ê¸° / ê°€ë§Œíˆ ë“£ê¸° / ë§ˆìŒ ì•ˆì•„ ì£¼ê¸°
-  //   react : ë‚´ í–‰ë™ì— ëŒ€í•œ ìƒëŒ€ì˜ ë°˜ì‘ ëŒ€ì‚¬ (Zë¡œ ì§„í–‰ â†’ ìƒëŒ€ í„´)
-  //   wave  : ìƒëŒ€ í„´ â€” íƒ„ë§‰ íšŒí”¼. ã€Œê°€ë§Œíˆ ë“£ê¸°ã€ í„´ì—ë§Œ ì†ë§ˆìŒ ì¡°ê° âœ¦ì´ ë‚˜ì˜¨ë‹¤ (+2/ê°œ)
-  //   mercy/mercyReply : ê²Œì´ì§€ ë§Œì¶© í›„ ã€Œë§ˆìŒ ì•ˆì•„ ì£¼ê¸°ã€ â†’ ë§ˆìŒì˜ ì„ íƒ (ê¸°ì¡´ ê·¸ëŒ€ë¡œ)
-  // ë§ˆìŒ ìƒíƒœ: closed(ë‹«í˜) â†’ shaken(ë™ìš”) â†’ open(ì—´ë¦¼). closedì—ì„  ë§ì´ ë‹¿ì§€ ì•ŠëŠ”ë‹¤(ë“£ê¸°ë¶€í„°).
-  // ê²Œì´ì§€ ë§Œì¶© = spareReady â€” ì´ë¦„ì´ ë…¸ë—ê²Œ ë³€í•˜ê³ , ì•ˆì•„ ì£¼ê¸°ë¡œë§Œ ë°°í‹€ì´ ëë‚œë‹¤.
-  const P_STATE_LABEL = { closed: 'ë‹«í˜', shaken: 'ë™ìš”', open: 'ì—´ë¦¼' };
-
-  function ownedCards() {
-    return (game.flags.evCards || []).filter((id) => EVIDENCE_CARDS[id]);
-  }
-
-  // ---------- ì½”ì–´ ì œë‹¨ì˜ ë´‰í—Œ í¼ì¦ ----------
-  // ì–´ë‘ ì´ ë‚¨ê¸´ ë§ˆì§€ë§‰ ì†ì‚­ì„ 8ê°œ(SHRINE_WHISPERS)ì—, ì†Œì§€í•œ ì¦ê±° ì¹´ë“œ ì¤‘ ë§ëŠ” ê²ƒì„
-  // startChoiceë¡œ ê³¨ë¼ ê½‚ëŠ”ë‹¤. ì˜¤ë‹µë„ í—ˆìš©í•˜ê³  ê¸°ë¡ë§Œ í•œë‹¤(shrineWrong). 8ê°œë¥¼ ëª¨ë‘
-  // ì§€ë‚˜ë©´ finishShrine()ì´ ì˜ì´ë¥¼ ë“±ì¥ì‹œí‚¨ë‹¤(show: flags.shrineDone).
-  function interactAltar() {
-    if (game.flags.shrineDone) {
-      startDialog(['ì œë‹¨ì´ ê³ ìš”í•˜ë‹¤.\nâ€¦ë´‰í—Œì€ ì´ë¯¸ ëë‚¬ë‹¤.'], 'ì œë‹¨');
-      return;
-    }
-    if ((game.flags.shrineIdx || 0) === 0) {
-      startDialog([
-        'ì œë‹¨ ìœ„, ì–´ë‘ ì´ ë‚¨ê¸´ ë§ˆì§€ë§‰ ì†ì‚­ì„ë“¤ì´\ní¬ë¯¸í•˜ê²Œ ìƒˆê²¨ì ¸ ìˆë‹¤.\nâ€¦ê°€ì§„ ì¦ê±° ì¹´ë“œë¥¼, ë§ëŠ” ìë¦¬ì— ê½‚ì•„ ë³´ì.',
-      ], 'ì œë‹¨', () => openShrineWhisper());
-      return;
-    }
-    openShrineWhisper();
-  }
-  function openShrineWhisper() {
-    const idx = game.flags.shrineIdx || 0;
-    if (idx >= SHRINE_WHISPERS.length) { finishShrine(); return; }
-    const w = SHRINE_WHISPERS[idx];
-    const owned = ownedCards();
-    const labels = owned.map((id) => EVIDENCE_CARDS[id].title);
-    labels.push('ê·¸ë§Œë‘ê¸°');
-    startChoice(`ì†ì‚­ì„ ${idx + 1}/${SHRINE_WHISPERS.length}\n${w.text}`, labels, (i) => {
-      if (i < 0 || i >= owned.length) return; // ê·¸ë§Œë‘ê¸°/ì·¨ì†Œ â€” ì§„í–‰í•˜ì§€ ì•ŠëŠ”ë‹¤
-      const picked = owned[i];
-      game.flags.shrineIdx = idx + 1;
-      if (picked === w.answer) {
-        Sound.correct();
-        // ì •ë‹µì€ ë¹„ì°¨ë‹¨ ë§í’ì„ ìœ¼ë¡œ í™•ì¸í•˜ê³  ë‹¤ìŒ ì†ì‚­ì„ì„ ë°”ë¡œ ì‡ëŠ”ë‹¤
-        // (ì—¬ëŸ ë²ˆì˜ í™•ì¸ ìƒìë¥¼ ì—†ì•° â€” ì„ íƒì°½ì˜ ã€Œê·¸ë§Œë‘ê¸°ã€ë¡œ ì–¸ì œë“  ì¤‘ë‹¨ ê°€ëŠ¥)
-        game.notice = { text: `ã€Œ${EVIDENCE_CARDS[picked].title}ã€ â€” ì†ì‚­ì„ì´ ì˜…ì–´ì§„ë‹¤. (${game.flags.shrineIdx}/${SHRINE_WHISPERS.length})`, t: 150 };
-        save();
-        if (game.flags.shrineIdx >= SHRINE_WHISPERS.length) { finishShrine(); return; }
-        openShrineWhisper();
-      } else {
-        game.flags.shrineWrong = (game.flags.shrineWrong || 0) + 1;
-        Sound.wrong();
-        startDialog(['â€¦ê·¸ ì¹´ë“œëŠ”, ì´ ì†ì‚­ì„ì—ëŠ”\në§ì§€ ì•ŠëŠ” ë“¯í•˜ë‹¤.'], 'ì œë‹¨', () => {
-          save();
-          if (game.flags.shrineIdx >= SHRINE_WHISPERS.length) { finishShrine(); return; }
-          openShrineWhisper();
-        });
-      }
-    });
-  }
-  function finishShrine() {
-    if (game.flags.shrineDone) return;
-    game.flags.shrineDone = true;
-    game.flags.bandiRevealed = true; // ë™í–‰ ì¢…ë£Œ â€” ê°€ë©´ì„ ë²—ëŠ”ë‹¤
-    save();
-    startDialog([
-      'ë§ˆì§€ë§‰ ì†ì‚­ì„ì´ ì‚¬ë¼ì§€ì,\nì–´ê¹¨ ì˜†ì˜ ë°˜ë””ê°€\nì²œì²œíˆ ë– ì˜¤ë¥¸ë‹¤.',
-      'ë°˜ë””: "â€¦ìˆì§€. ì•„ê¹Œ í•˜ë ¤ë˜ ë§,\nì§€ê¸ˆ í• ê²Œ."',
-      'ë°˜ë””: "ë‚˜â€¦ ì•ˆë‚´ ë„ìš°ë¯¸ê°€ ì•„ë‹ˆì•¼.\nì´ ì„¸ê³„ì—”, ê·¸ëŸ° ê±° ì—†ì–´."',
-      '(ì‘ì€ ë¹›ì´ ì œë‹¨ì˜ ë¹› ì†ìœ¼ë¡œ ë…¹ì•„ë“¤ê³  â€”\nê·¸ ì•ˆì—, ì‘ì€ ì•„ì´ê°€ ì„œ ìˆë‹¤.)',
-      '"â€¦ì²˜ìŒë¶€í„°, ë‚˜ì˜€ì–´."',
-    ], null, () => startRevealBeat());
-  }
-
-  // U-2 ë°˜ë”” ë¦¬ë¹Œ ì •ì§€ ë¹„íŠ¸ â€” "â€¦ì²˜ìŒë¶€í„°, ë‚˜ì˜€ì–´." ì§í›„ì˜ ì¹¨ë¬µ.
-  //   â€¢ BGMì„ ëŠê³ (Sound.stopSong) ì¹¨ë¬µìœ¼ë¡œ ë‘”ë‹¤.
-  //   â€¢ ë°˜ë”” ë™í–‰ ìŠ¤í”„ë¼ì´íŠ¸ê°€ ì–´ê¹¨ ì˜†ì—ì„œ ìœ„ë¡œ ë– ì˜¤ë¥´ë©° ì‚¬ë¼ì§„ë‹¤(y ì˜¤í”„ì…‹ + í˜ì´ë“œ).
-  //   â€¢ ìŠ¤í‚µ ë¶ˆê°€ëŠ” ì•„ë‹ˆë‹¤ â€” Zë¡œ ë„˜ê¸¸ ìˆ˜ ìˆë˜, ê¸°ë³¸ì€ 90~120í”„ë ˆì„ ëŒ€ê¸°.
-  //   â€¢ reduceFxë©´ ì—°ì¶œì„ ìƒëµí•˜ê³  ë§ˆì§€ë§‰ ëŒ€ì‚¬ë§Œ ë‚¸ë‹¤(ê´‘ê³¼ë¯¼ì„± ë°°ë ¤).
-  function startRevealBeat() {
-    Sound.stopSong(); // ê³¡ì„ ëŠê³  ì¹¨ë¬µìœ¼ë¡œ
-    if (game.reduceFx) { revealBeatFinalLine(); return; }
-    game.revealBeat = { t: 0 };
-    game.mode = 'revealbeat';
-  }
-  const REVEAL_BEAT_FRAMES = 108; // 90~120 ì‚¬ì´ â€” ìŠ¤í‚µí•˜ì§€ ì•Šìœ¼ë©´ ì´ë§Œí¼ ê¸°ë‹¤ë¦°ë‹¤
-  function updateRevealBeat() {
-    const rb = game.revealBeat;
-    if (!rb) { revealBeatFinalLine(); return; }
-    rb.t += 1;
-    // ê¸°ë³¸ì€ ëŒ€ê¸°, Zë¡œ ì¡°ê¸° ì¢…ë£Œ ê°€ëŠ¥(ìŠ¤í‚µ ë¶ˆê°€ ì•„ë‹˜)
-    if (rb.t >= REVEAL_BEAT_FRAMES || justPressed('action')) {
-      game.revealBeat = null;
-      revealBeatFinalLine();
-    }
-  }
-  function revealBeatFinalLine() {
-    // ê°€ë©´ì„ ë²—ê² ë‹¤ëŠ” ë§ˆì§€ë§‰ í•œ ì¤„ â€” ê·¸ ë’¤ì—ì•¼ ë³´ìŠ¤ì „(ì˜ì´) ì•ì— ì„ ë‹¤.
-    // X-1â‘¢ ë°˜ë”” ë¦¬ë¹Œ ì§í›„ â€” ì£¼ì¸ê³µì˜ ë°˜ì‘ í•œ ë²ˆ(ì •ë‹µ ì—†ìŒ). ì˜ì´ê°€ ê·¸ ë§ì„ ë°›ì•„ ì¤€ë‹¤.
-    startDialog(['"â€¦ë¯¸ì•ˆí•´. ì´ì œ, ê°€ë©´ì„ ë²—ì„ê²Œ."'], 'ì˜ì´', () => {
-      startPlayerVoice('reveal',
-        'ê°€ë©´ì´ ìŠ¤ë¥´ë¥´ ë²—ê²¨ì§„ë‹¤.\nâ€¦ë„ˆëŠ” ë°˜ë””ì—ê²Œ, ë­ë¼ê³  í• ê¹Œ?',
-        ['"ê´œì°®ì•„. â€¦ê³„ì†, ì•Œê³  ìˆì—ˆì–´."', '"â€¦ì™œ, ì§„ì‘ ë§ ì•ˆ í–ˆì–´."'],
-        'ì˜ì´',
-        ['ì˜ì´: â€¦ì•Œê³ ë„, ê³ì— ìˆì–´ ì¤¬êµ¬ë‚˜.\nâ€¦ê·¸ ì‹œê°„ì´, ë‚˜í•œí… ì „ë¶€ ì§„ì§œì˜€ì–´.',
-          'ì˜ì´: â€¦ë¬´ì„œì› ì–´.\në„¤ê°€, ë‚˜ë¥¼ ì§€ìš¸ê¹Œ ë´. â€¦ë¯¸ì•ˆí•´.'],
-        // Y-1 ìƒì‹¤ ì²´í—˜ ë¹„íŠ¸ â€” ë°˜ë””ê°€ ì‚¬ë¼ì§„ ë’¤, ì½”ì–´ë£¸ì„ í™€ë¡œ ê±·ëŠ” ì§§ì€ êµ¬ê°„.
-        //   ë™í–‰ ìŠ¤í”„ë¼ì´íŠ¸ëŠ” bandiRevealedë¡œ ì´ë¯¸ ìˆ¨ê²¨ì ¸ ìˆê³ (ë¶€ì¬ ìì²´ê°€ ì—°ì¶œ â€” reduceFx ë¬´ê´€),
-        //   ë§µ ì§„ì… ì¡°ì–¸ ë§í’ì„  ìë¦¬ì—ëŠ” ì´ì œ "â€¦â€¦"ë§Œ ëœ¬ë‹¤. ì˜ì´(7,4) ì•ì— ìŠ¤ìŠ¤ë¡œ ê±¸ì–´ê°€
-        //   ë§ì„ ê±¸ ë•Œì—ë§Œ ë§ˆì§€ë§‰ ë°°í‹€ì´ ì‹œì‘ëœë‹¤(ê¸°ì¡´ ì½”ì–´ë£¸â†’ì˜ì´ ë™ì„ ì„ ê·¸ëŒ€ë¡œ ìœ ì§€).
-        () => { game.notice = { text: 'â€¦â€¦', t: 240 }; });
-    });
-  }
-  function drawRevealBeat() {
-    drawWorld();
-    const rb = game.revealBeat;
-    if (!rb) return;
-    const prog = Math.min(1, rb.t / REVEAL_BEAT_FRAMES);
-    const { cx, cy } = camera();
-    const p = game.player;
-    // ì–´ê¹¨ ì˜† â†’ ìœ„ë¡œ ë– ì˜¤ë¥´ë©° ì‚¬ë¼ì§„ë‹¤
-    const sx = Math.round(p.px - cx + 16);
-    const sy = Math.round(p.py - cy - 18 - prog * 46);
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, 1 - prog);
-    if (!game.reduceFx) {
-      const pulse = 0.14 + Math.sin(game.time / 18) * 0.05;
-      ctx.fillStyle = `rgba(255,220,130,${pulse * (1 - prog)})`;
-      ctx.beginPath();
-      ctx.arc(sx + 16, sy + 14, 15 + prog * 6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    drawMon(ctx, 'bandi', sx, sy, 2);
-    ctx.restore();
-  }
-
-  // êµì‚¬ ì§„ë‹¨ìš© ë¡œê·¸ â€” ë§ˆìŒ ì¡°ê° ë°°í‹€ ê°œí¸íŒ
-  function pStats() {
-    if (!game.flags.pStats || game.flags.pStats.fragments === undefined) {
-      // gateTimeoutì€ ì˜› ã€Œì‘ë‹µì˜ ë¬¸ã€ ì‹œì ˆì˜ ì”ì¬ â€” êµ¬ ì„¸ì´ë¸Œ í˜¸í™˜ì„ ìœ„í•´ í•„ë“œë§Œ ìœ ì§€ (ë”ëŠ” ì¦ê°€í•˜ì§€ ì•ŠìŒ)
-      game.flags.pStats = { fragments: 0, gateRight: 0, gateWrong: 0, gateTimeout: 0, perfectWaves: 0, backfire: 0, verifyWrong: 0 };
-    }
-    return game.flags.pStats;
-  }
-
-  // ì„¤ë“ í”„ë¡œí•„(persuadeKey)ì˜ ì¸ë¬¼ ë°ì´í„°ë¥¼ í•´ì„í•œë‹¤.
-  // ë³´ìŠ¤ì²˜ëŸ¼ ë³„ë„ í”„ë¡œí•„ì„ ì“°ë˜ ìŠ¤í”„ë¼ì´íŠ¸/ì´ë¦„ì€ ì¬ì‚¬ìš©í•˜ëŠ” ê²½ìš°(spriteIdâ‰ persuadeKey),
-  // MONSTERS[spriteId]ë¥¼ ë°”íƒ•ìœ¼ë¡œ í”„ë¡œí•„ì˜ mercy/winì„ ë®ì–´ì¨ ë°°í‹€ìš© monì„ ë§Œë“ ë‹¤.
-  function resolvePersuadeMon(spriteId, persuadeKey) {
-    const base = MONSTERS[spriteId];
-    const p = getPersuade(persuadeKey);
-    if (persuadeKey === spriteId || !p) return base;
-    return Object.assign({}, base, {
-      mercy: p.mercy || base.mercy,
-      win: p.win || base.win,
-    });
-  }
-
-  function startPersuadeIntro(monId, persuadeKey) {
-    persuadeKey = persuadeKey || monId;
-    const p = getPersuade(persuadeKey);
-    const mon = resolvePersuadeMon(monId, persuadeKey);
-    Sound.encounter();
-    // ì½œë°± ì¸íŠ¸ë¡œ: í”„ë¡œí•„ introê°€ í•¨ìˆ˜ë©´ í˜„ì¬ í”Œë˜ê·¸ë¡œ ì²« ëŒ€ì‚¬ë¥¼ ë¶„ê¸°í•œë‹¤ (ì—†ìœ¼ë©´ ê¸°ë³¸ ì¸íŠ¸ë¡œ)
-    const introText = (typeof p.intro === 'function') ? p.intro(game.flags) : (p.intro || mon.intro);
-    const lines = [introText];
-    // X-4 ì˜ì´ ë©”íƒ€ ì¸ì‹ â€” ì„¸ì´ë¸Œì— ì˜í–¥ ì—†ëŠ” flags ì¡°ê±´ ë‘ ê°€ì§€ë¡œ í•œ ì¤„ì„ ë§ë¶™ì¸ë‹¤.
-    //   â€¢ ì¬ë„ì „(ì´ì „ ì¡°ìš°ì—ì„œ ë¬¼ëŸ¬ë‚˜ persuadeMemoryê°€ ë‚¨ìŒ): "â€¦ë˜ ì™”ë„¤. ëª‡ ë²ˆì´ê³ â€¦"
-    //   â€¢ 2íšŒì°¨(flags.ng): "â€¦ë„ˆ, ì´ ì´ì•¼ê¸°ë¥¼ ì•Œê³  ìˆêµ¬ë‚˜."
-    if (persuadeKey === 'yeongi_boss') {
-      if (game.flags.persuadeMemory && game.flags.persuadeMemory.yeongi_boss) {
-        lines.push('ì˜ì´: "â€¦ë˜ ì™”ë„¤.\nëª‡ ë²ˆì´ê³ , ë‹¤ì‹œ ì˜¤ëŠ”êµ¬ë‚˜. â€¦ê³ ë§ˆì›Œ."');
-      } else if (game.flags.ng) {
-        lines.push('ì˜ì´: "â€¦ë„ˆ, ì´ ì´ì•¼ê¸°ë¥¼ ì•Œê³  ìˆêµ¬ë‚˜.\nê·¸ëŸ°ë°ë„, ì™€ ì¤¬ë„¤."');
-      }
-    }
-    // ì¡°ìš° ì‹œ ì¦ê±° ì¹´ë“œ ì§€ê¸‰ì€ í”„ë¡¤ë¡œê·¸ íŠœí† ë¦¬ì–¼(ë² ê»´ëª¬)ë§Œì„ ìœ„í•œ ê²ƒ â€”
-    // starterCardsê°€ ìˆëŠ” í”„ë¡œí•„ì—ì„œë§Œ ì§€ê¸‰í•œë‹¤. ë³´ìŠ¤ ì¹´ë“œëŠ” ë°©íƒˆì¶œ ë³´ìƒìœ¼ë¡œë§Œ ì–»ìœ¼ë¯€ë¡œ
-    // starterCardsê°€ ì—†ì–´ ì—¬ê¸°ì„œ ì§€ê¸‰ë˜ì§€ ì•ŠëŠ”ë‹¤.
-    if (!game.flags.evCards) game.flags.evCards = [];
-    const fresh = (p.starterCards || []).filter((id) => !game.flags.evCards.includes(id));
-    if (fresh.length > 0) {
-      game.flags.evCards = game.flags.evCards.concat(fresh);
-      lines.push(`â—† ì¦ê±° ì¹´ë“œ ${fresh.length}ì¥ì„ ì–»ì—ˆë‹¤!\n(ì„¤ë“ ë°°í‹€ì—ì„œ ã€Œì¦ê±° ë³´ì—¬ì£¼ê¸°ã€ë¡œ ì‚¬ìš©í•´ìš”)`);
-    }
-    if (!game.flags.sawPersuadeTip) {
-      game.flags.sawPersuadeTip = true;
-      lines.push(
-        '[ë§ˆìŒ ì¡°ê° ë°°í‹€]\nì„œë¡œ ë²ˆê°ˆì•„ ì´ì•¼ê¸°í•´ìš”.\në‚´ ì°¨ë¡€ì—” ã€Œë§ ê±¸ê¸°Â·ì¦ê±°Â·ë“£ê¸°Â·ì•ˆì•„ ì£¼ê¸°ã€\nì¤‘ í•˜ë‚˜ë¥¼ ê³¨ë¼ìš”.',
-        'ã€Œê°€ë§Œíˆ ë“£ê¸°ã€ë¡œ ì†ë§ˆìŒì„ ë“¤ìœ¼ë©´\në§ˆìŒì´ ì¡°ê¸ˆ ì—´ë¦¬ê³ , íŒíŠ¸ë¥¼ ì–»ì–´ìš”.\në“¤ì€ ë§ˆìŒì—” ã€Œë§ ê±¸ê¸°ã€ë¡œ ëŒ€ë‹µí•´ì•¼\nëê¹Œì§€ ì—´ë ¤ìš” â€” ì˜ ì½ê³  ê³¨ë¼ìš”!',
-        'ìƒëŒ€ ì°¨ë¡€ì—” ' + (isTouchDevice ? 'ìŠ¤í‹±' : 'í™”ì‚´í‘œ') + 'ë¡œ í•˜íŠ¸ë¥¼ ì›€ì§ì—¬\në§ˆìŒì˜ íŒŒë„(íƒ„ë§‰)ë¥¼ í”¼í•´ìš”.',
-        'ì´ë¦„ì´ ë…¸ë—ê²Œ ë³€í•˜ë©´ â€”\nã€Œë§ˆìŒ ì•ˆì•„ ì£¼ê¸°ã€ë¡œ ë°°í‹€ì´ ëë‚˜ìš”.\ní•˜íŠ¸ê°€ ë‹¤ ë‹³ìœ¼ë©´ ì ì‹œ ë¬¼ëŸ¬ë‚¬ë‹¤ ë‹¤ì‹œ ì™€ìš”.'
-      );
-    }
-    startDialog(lines, mon.name, () => startPersuadeBattle(monId, persuadeKey));
-  }
-
-  // â”€â”€ ë°°í‹€ ìƒìÂ·í•˜íŠ¸ ì§€ì˜¤ë©”íŠ¸ë¦¬ (íŒŒë„Â·ë¬¸ ê³µìš©) â”€â”€
-  // y=190(ê³¼ê±° 150) â€” ìƒì ìœ„ ì•ˆë‚´ ë¬¸êµ¬ ë‘ ì¤„ì´ í•˜íŠ¸ HUD(y100~144) ì•„ë˜ë¡œ
-  // ë‚´ë ¤ì˜¤ë„ë¡ 40px ë” ë‚´ë ¸ë‹¤(ë ˆì´ì•„ì›ƒ ê²¹ì¹¨ ìˆ˜ì •, drawArenaGuide ì°¸ê³ ).
-  const PBOX = { w: 320, h: 180 };
-  const PBOX_CENTER_Y = 280; // 190 + 180/2 â€” shrink ì¶•ì†Œ ì‹œ ì¤‘ì‹¬ì„ ìœ ì§€í•˜ëŠ” ê¸°ì¤€
-  function persuadeBox() { return { x: Math.round(LW / 2 - PBOX.w / 2), y: 190, w: PBOX.w, h: PBOX.h }; }
-  // ë£¨ë¯¸(ë³´ìŠ¤) open í˜ì´ì¦ˆ ê³ ìœ  ê¸°ë¯¹ â€” ìƒì ì¶•ì†Œ(shrink). íŒŒë„ë§ˆë‹¤ í•œ ë‹¨ê³„ì”© ì¢ì•„ì§€ê³ 
-  // (b.shrinkLevel â€” íŒŒë„ ë„˜ì–´ ì˜ì†), ì •ë‹µ ë¬¸ì„ í†µê³¼í•˜ë©´ í•œ ë‹¨ê³„ íšŒë³µëœë‹¤. ìµœì†Œ 200Ã—120.
-  const SHRINK_STEP = { w: 24, h: 12 };
-  const SHRINK_MIN = { w: 200, h: 120 };
-  const SHRINK_MAX_LEVEL = 5; // (320-200)/24 = (180-120)/12 = 5ë‹¨ê³„ë¡œ í•˜í•œì— ë„ë‹¬
-  function applyShrinkBox(b) {
-    if (b.p.openMechanic !== 'shrink') return;
-    const lvl = Math.max(0, Math.min(SHRINK_MAX_LEVEL, b.shrinkLevel || 0));
-    b.shrinkLevel = lvl;
-    const box = b.arena.box;
-    box.w = Math.max(SHRINK_MIN.w, PBOX.w - lvl * SHRINK_STEP.w);
-    box.h = Math.max(SHRINK_MIN.h, PBOX.h - lvl * SHRINK_STEP.h);
-    box.x = Math.round(LW / 2 - box.w / 2);
-    box.y = Math.round(PBOX_CENTER_Y - box.h / 2); // ì›ë˜ ìƒì ì¤‘ì‹¬ì„ ìœ ì§€í•˜ë©° ì¢ì•„ì§„ë‹¤
-    // í•˜íŠ¸ê°€ ì¢ì•„ì§„ ìƒì ë°–ì— ë‚¨ì§€ ì•Šë„ë¡ ì¦‰ì‹œ ë‹¤ì‹œ ê°€ë‘”ë‹¤
-    const arena = b.arena;
-    arena.soul.x = Math.max(box.x + SOUL_R, Math.min(box.x + box.w - SOUL_R, arena.soul.x));
-    arena.soul.y = Math.max(box.y + SOUL_R, Math.min(box.y + box.h - SOUL_R, arena.soul.y));
-  }
-  const SOUL_R = 7;
-
-  function startPersuadeBattle(monId, persuadeKey) {
-    persuadeKey = persuadeKey || monId;
-    const p = getPersuade(persuadeKey);
-    const mon = resolvePersuadeMon(monId, persuadeKey);
-    game.mode = 'battle';
-    Sound.playMapBgm(p.song || mon.song || 'battle'); // ë³´ìŠ¤ë³„ ì „ìš© í…Œë§ˆ (N-2)
-    // ë¬¼ëŸ¬ë‚¬ë˜ ìƒëŒ€ëŠ” ì´ì•¼ê¸°ë¥¼ ì ˆë°˜ì¯¤ ê¸°ì–µí•œë‹¤ (ì¬ë„ì „ì€ ë” ì§§ê²Œ). ê¸°ì–µì€ í”„ë¡œí•„ë³„ë¡œ êµ¬ë¶„í•œë‹¤.
-    const memo = (game.flags.persuadeMemory || {})[persuadeKey];
-    const maxHearts = 4 + (game.difficulty === 'easy' ? 1 : 0);
-    const box = persuadeBox();
-    game.battle = {
-      isPersuade: true,
-      monId,              // ìŠ¤í”„ë¼ì´íŠ¸Â·ë°ì´í„° ì¡°íšŒìš© id
-      persuadeId: persuadeKey, // ì„¤ë“ í”„ë¡œí•„ id (í´ë¦¬ì–´ ì²˜ë¦¬Â·ê¸°ì–µ í‚¤). ë³´í†µì€ monIdì™€ ê°™ë‹¤.
-      mon,
-      p,
-      gauge: memo ? memo.gauge : 0,
-      // gaugeMaxëŠ” ê³ ì •ê°’ ë˜ëŠ” flagsë¥¼ ë°›ëŠ” í•¨ìˆ˜(ê³ ìš”ì˜ ì¹¨ë¬µ ë£¨íŠ¸ ê°•í™”ìš©) â€” ë°°í‹€ ì‹œì‘ ì‹œ 1íšŒë§Œ ê³„ì‚°í•´ êµ³íŒë‹¤
-      gaugeMax: (typeof p.gaugeMax === 'function') ? p.gaugeMax(game.flags) : (p.gaugeMax || 100),
-      pState: memo ? memo.state : 'closed',
-      // í›„í‡´ ì „ íŒ¨í„´ ì¹´ìš´í„°Â·ì—°ìŠµ ì†Œì§„ ë³µì› â€” ì¬ì…ì¥ íŒŒë° ì°¨ë‹¨ (S-1)
-      parcelDeliveries: memo && memo.pat ? memo.pat.parcelDeliveries : 0,
-      tiltDeliveries: memo && memo.pat ? memo.pat.tiltDeliveries : 0,
-      temptResisted: memo && memo.pat ? memo.pat.temptResisted : 0,
-      verifyJudged: memo && memo.pat ? memo.pat.verifyJudged : 0,
-      verifyIdx: memo && memo.pat ? memo.pat.verifyIdx : 0,
-      cozyExits: memo && memo.pat ? memo.pat.cozyExits : 0,
-      quietWarm: memo && memo.pat ? memo.pat.quietWarm : 0,
-      shadowTired: memo && memo.pat ? memo.pat.shadowTired : 0,
-      practiceDone: !!(memo && memo.pat && memo.pat.practiceDone),
-      capNudged: !!(memo && memo.pat && memo.pat.capNudged),
-      claimIdx: 0,
-      playerHp: maxHearts,
-      maxHearts,
-      // M-2 í„´ì œ ì„¤ë“ ëŒ€í™”: menu(ë‚´ í„´) â†’ sub(í•˜ìœ„ ì„ íƒ) â†’ react(ìƒëŒ€ ë°˜ì‘ ëŒ€ì‚¬)
-      //   â†’ wave(ìƒëŒ€ í„´: íƒ„ë§‰ íšŒí”¼) â†’ menu â€¦ ë°˜ë³µ. ë§ˆìŒì´ ë‹¤ ì—´ë¦¬ë©´ mercy.
-      phase: 'menu', // menu | sub | react | wave | mercy | mercyReply
-      menuIdx: 0,
-      sub: null,        // { kind: 'act'|'evidence', options: [...] }
-      subIdx: 0,
-      react: null,      // { text } â€” ìƒëŒ€ ë°˜ì‘ ëŒ€ì‚¬ (Zë¡œ ì§„í–‰)
-      afterReact: 'wave',
-      listenTurn: false, // ã€Œê°€ë§Œíˆ ë“£ê¸°ã€ë¥¼ ê³ ë¥¸ í„´ì—ë§Œ ì†ë§ˆìŒ ì¡°ê° âœ¦ì´ ë‚˜ì˜¨ë‹¤
-      turnCount: 0,
-      spareReady: false, // ê²Œì´ì§€ ë§Œì¶© â€” ã€Œë§ˆìŒ ì•ˆì•„ ì£¼ê¸°ã€ë¡œ ë§ˆë¬´ë¦¬ ê°€ëŠ¥ (ì´ë¦„ì´ ë…¸ë˜ì§„ë‹¤)
-      prologueTutorial: !!(p.tutorial && monId === 'bekkyeomon'),
-      cursor: 0,
-      fragmentTotal: 0, // ëˆ„ì  ìˆ˜ì§‘ ì¡°ê° (closedâ†’shaken ì„ê³„ íŒì •)
-      pIntense: false,  // ì˜¤ë‹µ ë¬¸ â†’ ë‹¤ìŒ íŒŒë„ ê°•í™”
-      // íƒ„ë§‰Â·í•˜íŠ¸ê°€ ì‚¬ëŠ” ê³µìš© í•„ë“œ (íŒŒë„â†”ë¬¸ ì‚¬ì´ì— ìœ„ì¹˜Â·íƒ„ë§‰ ìœ ì§€)
-      arena: {
-        box, soul: { x: box.x + box.w / 2, y: box.y + box.h - 30 },
-        bullets: [], spiralA: 0, sf: 1, rateMul: 1, inv: 0, carrying: false,
-      },
-      floatActive: null, // í™”ë©´ ìœ„ ë¹„ì°¨ë‹¨ í”Œë¡œíŒ… (ë™ì‹œ 1ì¤„)
-      floatQ: [],
-      wave: null,
-      shake: 0,
-      flash: 0,
-      hitstop: 0,
-      flinchT: 0, // ì •ë‹µ ì§í›„ í ì¹« í‘œì • (N-1)
-      attack: null,
-      // B-2 ë°°í‹€ ë“±ê¸‰ ì§‘ê³„ â€” ì´ ë°°í‹€ì—ì„œì˜ ì˜¤ë‹µ ë¬¸ ìˆ˜Â·í”¼ê²© ìˆ˜(ì—°ìŠµ íŒŒë„ ì œì™¸).
-      // ìŠ¹ë¦¬ ì‹œ S(ì˜¤ë‹µ0Â·í”¼ê²©0) / A(ì˜¤ë‹µâ‰¤1Â·í”¼ê²©â‰¤2) / B(ê·¸ ì™¸)ë¡œ ì‚°ì¶œí•œë‹¤.
-      rankWrong: 0,
-      rankHits: 0,
-    };
-    game.flags.battleCount += 1;
-    enterMenuPhase(game.battle);
-    if (game.battle.prologueTutorial) {
-      pushFloat('* ë¨¼ì € ã€Œê°€ë§Œíˆ ë“£ê¸°ã€ë¡œ\nì†ë§ˆìŒì„ ë“¤ì–´ ë³´ì.');
-    }
-  }
-
-  // ë°°í‹€ íŒíŠ¸(H/í„°ì¹˜ íŒíŠ¸ ë²„íŠ¼) â€” ì§€ê¸ˆ ë§ˆìŒ ìƒíƒœì— ë§ëŠ” ë‹¤ìŒ í–‰ë™ì„ ë§í’ì„ ìœ¼ë¡œ
-  function battleHint() {
-    const b = game.battle;
-    let tip;
-    if (b.gauge >= b.gaugeMax) tip = 'íŒíŠ¸: ì´ë¦„ì´ ë…¸ë—ë‹¤ â€” ã€Œë§ˆìŒ ì•ˆì•„ ì£¼ê¸°ã€ë¡œ ëë‚´ì.';
-    else if (b.pState === 'closed') tip = 'íŒíŠ¸: ë§ˆìŒì´ ë‹«í˜€ ìˆë‹¤ â€” ã€Œê°€ë§Œíˆ ë“£ê¸°ã€ë¶€í„°.';
-    else {
-      const claim = currentClaim();
-      const cardId = (!claim.best && claim.counters && claim.counters[0]) || null;
-      if (cardId && !ownedCards().includes(cardId)) {
-        tip = 'íŒíŠ¸: ë§ëŠ” ì¦ê±° ì¹´ë“œê°€ ì•„ì§ ì—†ë‹¤ â€” ê±°ë¦¬ì˜ ë°©íƒˆì¶œ êµ¬ì—­ì„ ëŒì.';
-      } else if (claim.best) {
-        tip = 'íŒíŠ¸: ì¹´ë“œë³´ë‹¤ ã€Œë§ ê±¸ê¸°ã€ â€” ë§ˆìŒì— ë‹¿ëŠ” ë§ì„ ê³ ë¥´ì.';
-      } else {
-        tip = 'íŒíŠ¸: ã€Œì¦ê±° ë³´ì—¬ì£¼ê¸°ã€ë‚˜ ã€Œë§ ê±¸ê¸°ã€ë¡œ ëŒ€ë‹µí•´ ë³´ì.';
-      }
-    }
-    game.notice = { text: tip, t: 260 };
-    if (game.tts) Speech.speak(tip);
-    Sound.blip();
-  }
-
-  // â”€â”€ M-2 ë‚´ í„´(ë©”ë‰´): ë§ ê±¸ê¸° / ì¦ê±° ë³´ì—¬ì£¼ê¸° / ê°€ë§Œíˆ ë“£ê¸° / ë§ˆìŒ ì•ˆì•„ ì£¼ê¸° â”€â”€
-  const P_MENU = ['ë§ ê±¸ê¸°', 'ì¦ê±° ë³´ì—¬ì£¼ê¸°', 'ê°€ë§Œíˆ ë“£ê¸°', 'ë§ˆìŒ ì•ˆì•„ ì£¼ê¸°'];
-  function enterMenuPhase(b) {
-    b.phase = 'menu';
-    b.sub = null;
-    b.turnCount += 1;
-    if (game.tts) Speech.speak(battleObserve(b).replace(/^\* /, '') + '. ë‚´ ì°¨ë¡€.'); // ì½ì–´ì£¼ê¸° ì ‘ê·¼ì„±
-    if (b.gauge >= b.gaugeMax && !b.spareReady) {
-      b.spareReady = true;
-      pushFloat('* ë§ˆìŒì´ í™œì§ ì—´ë ¸ë‹¤!\nã€Œë§ˆìŒ ì•ˆì•„ ì£¼ê¸°ã€ë¡œ ë°°í‹€ì„ ëë‚´ì.');
-    }
-  }
-  // í„´ ì‹œì‘ ê´€ì°° í•œ ì¤„ (* í”Œë ˆì´ë²„) â€” í”„ë¡œí•„ observeê°€ ìˆìœ¼ë©´ ìˆœí™˜, ì—†ìœ¼ë©´ ìƒíƒœ ê¸°ë°˜
-  function battleObserve(b) {
-    const obs = b.p.observe;
-    if (obs && obs.length) return obs[(b.turnCount - 1) % obs.length];
-    if (b.spareReady) return `* ${b.mon.name}ì˜ ë§ˆìŒì´ í™œì§ ì—´ë ¸ë‹¤.`;
-    if (b.pState === 'open') return `* ${b.mon.name}ì˜ ë§ˆìŒì´ ì—´ë¦¬ê³  ìˆë‹¤.`;
-    if (b.pState === 'shaken') return `* ${b.mon.name}ì˜ ë§ˆìŒì´ í”ë“¤ë¦¬ê³  ìˆë‹¤.`;
-    return `* ${b.mon.name}ì˜ ë§ˆìŒì´ êµ³ê²Œ ë‹«í˜€ ìˆë‹¤.`;
-  }
-  // ë§ ê±¸ê¸° ì„ íƒì§€ â€” í˜„ì¬ ì£¼ì¥ì— ë§ëŠ” ë§(ì •ë‹µ gateLabel) + ë¯¸ë¼ 2ê°œ.
-  // ì¹´ë“œí˜• ì£¼ì¥ì˜ ì •ë‹µ ë§ì€ ê·¸ ì¹´ë“œë¥¼ ëª¨ì•„ ì™€ì•¼ ì ê¸ˆì´ í’€ë¦°ë‹¤ (ë°©íƒˆì¶œ ë³´ìƒ ë™ì„  ìœ ì§€).
-  function buildActOptions(b) {
-    const claim = currentClaim();
-    // ê°™ì€ ì£¼ì¥ ë™ì•ˆì—ëŠ” ì„ íƒì§€ ë°°ì¹˜ë¥¼ ê³ ì •í•œë‹¤ â€” ì—´ ë•Œë§ˆë‹¤ ìœ„ì¹˜ê°€ ë’¤ì„ì´ë©´
-    // ì•„ì´ê°€ ë°©ê¸ˆ ì½ì€ ì„ íƒì§€ë¥¼ ë‹¤ì‹œ ì°¾ì•„ì•¼ í•œë‹¤ (ì£¼ì¥ì´ ë°”ë€Œë©´ ì¬ìƒì„±)
-    if (b.actCache && b.actCache.claim === claim) return b.actCache.options;
-    const owned = ownedCards();
-    const cardId = (!claim.best && claim.counters && claim.counters[0]) || null;
-    const correct = {
-      label: claim.gateLabel || 'â€¦', correct: true,
-      locked: !!(cardId && !owned.includes(cardId)), lockCard: cardId,
-    };
-    const pool = b.p.claims.map((c) => c.gateLabel).filter((l) => l && l !== correct.label)
-      .concat(b.p.decoys || []);
-    const wrongLabels = shuffled(pool).slice(0, 2);
-    while (wrongLabels.length < 2) wrongLabels.push('ê¸€ì„â€¦');
-    const options = shuffled([correct,
-      { label: wrongLabels[0], correct: false, locked: false },
-      { label: wrongLabels[1], correct: false, locked: false }]);
-    b.actCache = { claim, options };
-    return options;
-  }
-  function setReact(b, text, after) {
-    b.react = { text: String(text), chars: 0 }; // íƒ€ìê¸° íš¨ê³¼ (M-3)
-    b.afterReact = after || 'wave';
-    b.phase = 'react';
-    if (game.tts) Speech.speak(b.react.text);
-  }
-  // ë°°í‹€ ë°˜ì‘ ëŒ€ì‚¬ì˜ ëª©ì†Œë¦¬ â€” ë‚´ë ˆì´ì…˜(*)ì€ ë‚®ì€ ì¤‘ë¦½ìŒ, ì¸ë¬¼ ëŒ€ì‚¬ëŠ” ì¸ë¬¼ ìŒì •
-  function battleVoice(b) {
-    if (b.react && /^\*/.test(b.react.text)) return 700;
-    return VOICE_PITCH[b.mon.name] || 880;
-  }
-  // ì‘ë‹µ íŒì • â€” ì˜› ã€Œì‘ë‹µì˜ ë¬¸ã€ íŒì •ê³¼ ê°™ì€ ìˆ˜ì¹˜ (+26/32 Â· -6 ì—­íš¨ê³¼)
-  function resolveResponse(b, correct, viaNote) {
-    const claim = currentClaim();
-    const st = pStats();
-    const r = b.p.react;
-    let text;
-    if (correct) {
-      const delta = b.pState === 'open' ? 32 : 26;
-      b.gauge = clamp(b.gauge + delta, 0, b.gaugeMax);
-      // ì •ë‹µ(=ì„¤ë“ ì„±ê³µ)ì€ í•˜íŠ¸ 1 íšŒë³µ â€” íšŒí”¼ê°€ ì•„ë‹ˆë¼ 'ì˜ ì„¤ë“í•œ' ì‹¤ë ¥ì— ë³´ìƒ
-      b.playerHp = Math.min(b.maxHearts, b.playerHp + 1);
-      st.gateRight += 1;
-      const cardId = (!claim.best && claim.counters && claim.counters[0]) || null;
-      const topic = cardId ? EVIDENCE_CARDS[cardId].topic : monTopic(b);
-      recordTopicResult(game.currentSlot, topic, true);
-      text = claim.okLine || r.evidenceRight || 'â€¦ê·¸ë¬êµ¬ë‚˜.';
-      b.shake = 14; b.flinchT = 40; Sound.correct(); // í ì¹« â€” ë§ì´ ë‹¿ì•˜ë‹¤ (N-1)
-      // ì—°ì† ì •ë‹µ ì½¤ë³´(Q-5) â€” ì˜ ì½ê³  ì—°ë‹¬ì•„ ë§íˆëŠ” ê²ƒ ìì²´ê°€ ë³´ìƒì´ ë˜ê²Œ.
-      // 2ì—°ì†ë¶€í„° +4 ë³´ë„ˆìŠ¤, 3ì—°ì†ì—” ë°˜ë””ê°€ ê°íƒ„í•œë‹¤ (ì½¤ë³´ëŠ” ì˜¤ë‹µì—ì„œ ëŠê¸´ë‹¤)
-      b.combo = (b.combo || 0) + 1;
-      if (b.combo >= 2) {
-        b.gauge = clamp(b.gauge + 4, 0, b.gaugeMax);
-        b.shake = 20;
-        pushFloat(`âœ¦ ${b.combo}ì—°ì†ìœ¼ë¡œ ë§ˆìŒì— ë‹¿ì•˜ë‹¤! (+4)`, true);
-        if (b.combo === 3) pushFloat('ë°˜ë””: "â€¦ëŒ€ë‹¨í•´. ì „ë¶€\nì œëŒ€ë¡œ ë“£ê³  ìˆì—ˆêµ¬ë‚˜."', true);
-        // Y-7 ì½¤ë³´ ì‹œê°í™” â€” blip ìŒì •ì„ ì½¤ë³´ë§Œí¼ ì˜¬ë¦°ë‹¤(Ã—N ì¹´ìš´í„°ëŠ” b.comboë¥¼ ì§ì ‘ ì½ëŠ”ë‹¤).
-        Sound.blip(660 + b.combo * 90);
-      }
-      b.claimIdx += 1; // ë‹¤ìŒ ì£¼ì¥ìœ¼ë¡œ
-      if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.max(0, (b.shrinkLevel || 0) - 1);
-    } else {
-      b.combo = 0; // ì½¤ë³´(Q-5)ëŠ” ì˜¤ë‹µì—ì„œ ëŠê¸´ë‹¤ â€” Ã—N ì¹´ìš´í„°(Y-7)ë„ ì´ ê°’ìœ¼ë¡œ í•¨ê»˜ êº¼ì§„ë‹¤
-      b.rankWrong = (b.rankWrong || 0) + 1; // B-2 ë“±ê¸‰ ì§‘ê³„ â€” ì˜¤ë‹µ ë¬¸ ì¹´ìš´íŠ¸
-      b.gauge = clamp(b.gauge - 6, 0, b.gaugeMax);
-      st.gateWrong += 1; st.backfire += 1;
-      recordTopicResult(game.currentSlot, monTopic(b), false);
-      text = claim.onWrong || 'â€¦ì•„ë‹ˆì•¼. ê·¸ëŸ° ê²Œ ì•„ë‹ˆì•¼.';
-      if (viaNote) text += '\n' + viaNote;
-      // ì½ê¸° ê²Œì´íŠ¸(Q-1): í‹€ë¦¬ë©´ ì†ë§ˆìŒì„ í•œ ë²ˆ ë” ë¹„ì¶° ì¤€ë‹¤ â€” ì½ê³  ë‹¤ì‹œ ê³ ë¥´ëŠ” ìˆœí™˜.
-      // ì•„ì§ ì•ˆ ë“¤ì—ˆë‹¤ë©´ ë“£ê¸°ë¶€í„° í•˜ë¼ê³  ì§šì–´ ì¤€ë‹¤ (ë²Œì´ ì•„ë‹ˆë¼ ë°°ìš°ëŠ” ì˜¤ë‹µ).
-      if (b.listened && b.listened[b.claimIdx]) {
-        const echo = (claim.hint || '').split('\n')[0];
-        if (echo) text += `\n* ë“¤ì—ˆë˜ ì†ë§ˆìŒì´ ìŠ¤ì¹œë‹¤ â€”\n${echo}`;
-      } else {
-        text += '\n(ë¨¼ì € ã€Œê°€ë§Œíˆ ë“£ê¸°ã€ë¡œ\nì†ë§ˆìŒì„ ë“¤ì–´ ë³´ì)';
-      }
-      b.pIntense = true; // ë‹¤ìŒ íƒ„ë§‰ í„´ ê°•í™”
-      b.flash = 14; Sound.wrong();
-      if (b.p.openMechanic === 'shrink' && b.pState === 'open') b.shrinkLevel = Math.min(SHRINK_MAX_LEVEL, (b.shrinkLevel || 0) + 1);
-    }
-    persuadeGaugeSync(b);
-    setReact(b, text, 'wave');
-  }
-  function selectBattleMenu(b) {
-    const idx = b.menuIdx;
-    if (idx === 0) { // ë§ ê±¸ê¸°
-      if (b.pState === 'closed') {
-        Sound.select();
-        setReact(b, '* ë§ˆìŒì´ êµ³ê²Œ ë‹«í˜€ ìˆì–´\nì–´ë–¤ ë§ë„ ë‹¿ì§€ ì•ŠëŠ”ë‹¤.\n(ë¨¼ì € ã€Œê°€ë§Œíˆ ë“£ê¸°ã€ë¡œ ì†ë§ˆìŒì„ ë“£ì)', 'wave');
-        return;
-      }
-      b.sub = { kind: 'act', options: buildActOptions(b) };
-      b.subIdx = 0; b.phase = 'sub'; Sound.select();
-      if (game.tts) Speech.speak('ë¬´ìŠ¨ ë§ì„ ê±´ë„¬ê¹Œ? ' + b.sub.options[0].label);
-      return;
-    }
-    if (idx === 1) { // ì¦ê±° ë³´ì—¬ì£¼ê¸°
-      const owned = ownedCards();
-      if (!owned.length) { setReact(b, '* ë³´ì—¬ ì¤„ ì¦ê±° ì¹´ë“œê°€ ì•„ì§ ì—†ë‹¤.\n(ë°©íƒˆì¶œ êµ¬ì—­ì—ì„œ ì¹´ë“œë¥¼ ëª¨ìœ¼ì)', 'menu'); return; }
-      b.sub = { kind: 'evidence', options: owned.map((id) => ({ id, label: EVIDENCE_CARDS[id].title })) };
-      b.subIdx = 0; b.phase = 'sub'; Sound.select();
-      return;
-    }
-    if (idx === 2) { // ê°€ë§Œíˆ ë“£ê¸° â€” ì£¼ì¥ + ì†ë§ˆìŒì´ ì¦‰ì‹œ íë¥¸ë‹¤ (ì¡°ê° ì¤ê¸° ì—†ìŒ)
-      Sound.select();
-      const claim = currentClaim();
-      const inner = claim.hint ||
-        ((claim.fragments && claim.fragments.length) ? claim.fragments.join('\n') : 'â€¦â€¦');
-      // ì½ê¸° ê²Œì´íŠ¸(Q-1): ê°™ì€ ì£¼ì¥ì€ ë‹¤ì‹œ ë“¤ì–´ë„ ë§ˆìŒì´ ë” ì—´ë¦¬ì§€ ì•ŠëŠ”ë‹¤ â€”
-      // ë“¤ì€ ì†ë§ˆìŒì—ëŠ” ã€Œë§ ê±¸ê¸°ã€ë¡œ ëŒ€ë‹µí•´ì•¼ ë‹¤ìŒìœ¼ë¡œ ë‚˜ì•„ê°„ë‹¤.
-      if (!b.listened) b.listened = {};
-      if (b.listened[b.claimIdx]) {
-        setReact(b, `${b.mon.name}: "${claim.text}"\n\n* ê°™ì€ ì´ì•¼ê¸°ë¥¼ ë‹¤ì‹œ ë“¤ë ¤ì¤€ë‹¤â€¦\n${inner}\n(ë“¤ì€ ë§ˆìŒì€ ëŒ€ë‹µì„ ê¸°ë‹¤ë¦°ë‹¤ â€” ã€Œë§ ê±¸ê¸°ã€)`, 'wave');
-        return;
-      }
-      b.listened[b.claimIdx] = true;
-      // ë“¤ì–´ ì¤€ ë§Œí¼ ë§ˆìŒì´ ì¡°ê¸ˆ ì—´ë¦°ë‹¤ â€” ë‹¨, ë“£ê¸°ë§Œìœ¼ë¡œëŠ” ë§Œì¶© ì§ì „ê¹Œì§€.
-      // ë§ˆì§€ë§‰ í•œ ê±¸ìŒì€ ë°˜ë“œì‹œ ë§ˆìŒì— ë‹¿ëŠ” 'ëŒ€ë‹µ'(ì •ë‹µ +26/32)ì´ì–´ì•¼ í•œë‹¤.
-      const n = b.p.fragmentsPerWave || 3;
-      b.fragmentTotal += n;
-      pStats().fragments += n;
-      const listenCap = Math.max(0, b.gaugeMax - 24);
-      b.gauge = clamp(Math.min(b.gauge + n * 2, Math.max(b.gauge, listenCap)), 0, b.gaugeMax);
-      persuadeGaugeSync(b);
-      setReact(b, `${b.mon.name}: "${claim.text}"\n\n* ê°€ë§Œíˆ ê·€ë¥¼ ê¸°ìš¸ì˜€ë‹¤ â€”\n${inner}`, 'wave');
-      return;
-    }
-    // ë§ˆìŒ ì•ˆì•„ ì£¼ê¸°
-    if (b.gauge >= b.gaugeMax) {
-      // ìµœì¢… ê´€ë¬¸(Q-3): ì˜ì´ë§Œì€, ì•ˆì•„ ì£¼ê¸° ì „ì— ì´ì•¼ê¸°ë¥¼ ì´í•´í–ˆëŠ”ì§€ ë¬»ëŠ”ë‹¤.
-      // ì¼ê¸° ì¡°ê°(Q-2)ì„ ì½ì–´ ì˜¨ ì•„ì´ëŠ” í•œ ë²ˆì— ë‹µí•œë‹¤ â€” í´ë¼ì´ë§¥ìŠ¤ = ë…í•´ ê´€ë¬¸.
-      if (b.persuadeId === 'yeongi_boss' && !b.finalGateDone) {
-        b.sub = {
-          kind: 'finalgate',
-          options: shuffled([
-            { label: 'ëˆ„êµ°ê°€ ì´ì•¼ê¸°ë¥¼ ëê¹Œì§€ ë“¤ì–´ ì£¼ëŠ” ê²ƒ', correct: true },
-            { label: 'ëª¨ë‘ë³´ë‹¤ ë°˜ì§ë°˜ì§ ë¹›ë‚˜ëŠ” ê²ƒ', correct: false },
-            { label: 'ì™„ë²½í•œ ê°€ë©´ì„ ì™„ì„±í•˜ëŠ” ê²ƒ', correct: false },
-          ]),
-        };
-        b.subIdx = 0; b.phase = 'sub'; Sound.select();
-        if (game.tts) Speech.speak('ì˜ì´ê°€ ì •ë§ ë°”ë€ ê±´ ë­ì˜€ì„ê¹Œ? ' + b.sub.options[0].label);
-        return;
-      }
-      persuadeTriumph(); return;
-    }
-    if (b.pState === 'open') {
-      setReact(b, '* ë§ˆìŒì´ ì—´ë¦¬ê³  ìˆë‹¤.\nâ€¦ì¡°ê¸ˆë§Œ ë” ì´ì•¼ê¸°ë¥¼ ë‚˜ëˆ„ì.', 'wave');
-    } else {
-      setReact(b, '* ì•„ì§ ë§ˆìŒì´ ë‹«í˜€ ìˆë‹¤.\nì§€ê¸ˆ ì•ˆê¸°ì—”â€¦ ì´ë¥´ë‹¤.', 'wave');
-    }
-  }
-  function selectBattleSub(b) {
-    const opt = b.sub.options[b.subIdx];
-    if (b.sub.kind === 'finalgate') { // ìµœì¢… ê´€ë¬¸(Q-3) â€” ê²Œì´ì§€ ì¦ê° ì—†ìŒ, ì´í•´í–ˆëŠ”ì§€ë§Œ ë¬»ëŠ”ë‹¤
-      if (opt.correct) {
-        b.finalGateDone = true;
-        Sound.correct();
-        setReact(b, 'ì˜ì´: "â€¦â€¦ì–´ë–»ê²Œ, ì•Œì•˜ì–´."\n\n* ê°€ë©´ ë„ˆë¨¸ì˜ ëˆˆì´, ì²˜ìŒìœ¼ë¡œ\në„ˆë¥¼ ë˜‘ë°”ë¡œ ë³¸ë‹¤.\n(ë‹¤ì‹œ í•œë²ˆ â€” ã€Œë§ˆìŒ ì•ˆì•„ ì£¼ê¸°ã€)', 'menu');
-      } else {
-        Sound.wrong();
-        // ì˜¤ë‹µ ì‹¤ì½”ìŠ¤íŠ¸ â€” ë§ˆìŒì´ ì‚´ì§ ë‹«í˜€(ë§Œì¶©-2) íƒ„ë§‰ í„´ì´ ì‹¤ì œë¡œ ì˜¤ê³ ,
-        // ì •ë‹µ ì‘ë‹µ í•œ ë²ˆìœ¼ë¡œ ë‹¤ì‹œ ë§Œì¶©í•´ì•¼ í•œë‹¤ (ë¬´ë¹„ìš© ì°ê¸° ë°©ì§€)
-        b.gauge = Math.min(b.gauge, b.gaugeMax - 2);
-        persuadeGaugeSync(b);
-        const hasLastShard = game.flags.diaryShards && game.flags.diaryShards.goyo;
-        setReact(b, 'ì˜ì´: "â€¦ì•„ë‹ˆì•¼. ê·¸ëŸ° ê²Œ ì•„ë‹ˆì•¼."\n\n' +
-          (hasLastShard
-            ? '* ì¼ê¸° ì¡°ê°ì˜ ë§ˆì§€ë§‰ ì¤„ì´ ìŠ¤ì¹œë‹¤ â€”\nã€Œë§ì„ ê±¸ì–´ë„ ì•„ë¬´ë„ ëŒ€ë‹µí•˜ì§€ ì•Šë˜ ë‚ ã€'
-            : '* ì§€ë‚˜ì˜¨ ì•„ì´ë“¤ì˜ ì´ì•¼ê¸°ë¥¼\në‹¤ì‹œ ë– ì˜¬ë ¤ ë³´ì.') +
-          '\n(ë§ˆìŒì´ ì‚´ì§ ë‹«í˜”ë‹¤ â€” í•œ ë²ˆ ë” ëŒ€ë‹µí•˜ì)', 'wave');
-      }
-      return;
-    }
-    if (b.sub.kind === 'act') {
-      if (opt.locked) {
-        Sound.bump(); b.flash = 6;
-        const cardName = opt.lockCard && EVIDENCE_CARDS[opt.lockCard] ? EVIDENCE_CARDS[opt.lockCard].title : 'ì¦ê±°';
-        setReact(b, `* ã€Œ${opt.label}ã€â€¦\në§ì´ ëª©ì— ê±¸ë¦°ë‹¤.\n(ã€Œ${cardName}ã€ ì¦ê±° ì¹´ë“œê°€ í•„ìš”í•˜ë‹¤ â€”\nì´ ê±°ë¦¬ì˜ ë°©íƒˆì¶œ êµ¬ì—­ì—ì„œ ì–»ì„ ìˆ˜ ìˆë‹¤)`, 'menu');
-        return;
-      }
-      resolveResponse(b, opt.correct);
-      return;
-    }
-    // evidence
-    const claim = currentClaim();
-    if (claim.best) {
-      resolveResponse(b, false, claim.revealNote || '(ì¹´ë“œë¡œëŠ” ì•ˆ í†µí•˜ëŠ” ì´ì•¼ê¸° ê°™ë‹¤â€¦)');
-      return;
-    }
-    const ok = (claim.counters || []).includes(opt.id);
-    resolveResponse(b, ok);
-  }
-
-  // ì§€ê¸ˆ ìˆœí™˜ í’€ì— ì˜¬ë¼ì˜¨ ì£¼ì¥ë“¤ â€” unlockAtì´ ê±¸ë¦° ì£¼ì¥ì€ ê²Œì´ì§€ê°€ ê·¸ ê°’ ì´ìƒì¼ ë•Œë§Œ ë“±ì¥í•œë‹¤.
-  function availableClaims(b) {
-    const avail = b.p.claims.filter((c) => !c.unlockAt || b.gauge >= c.unlockAt);
-    return avail.length ? avail : b.p.claims; // ì•ˆì „ì¥ì¹˜: ë¹„ë©´ ì „ì²´
-  }
-  function currentClaim() {
-    const b = game.battle;
-    const avail = availableClaims(b);
-    return avail[b.claimIdx % avail.length];
-  }
-  function monTopic(b) { return Array.isArray(b.mon.topic) ? b.mon.topic[0] : b.mon.topic; }
-
-  // ë¹„ì°¨ë‹¨ í”Œë¡œíŒ… í…ìŠ¤íŠ¸ â€” íì— ë„£ê³  í•œ ë²ˆì— í•œ ì¤„ì”© ìƒì ìœ„ë¥¼ íë¥¸ë‹¤.
-  // speak=trueë©´ game.ttsì¼ ë•Œ Speech.speakë¡œë„ ì½ì–´ ì¤€ë‹¤ â€” ê³¼ë„í•œ ìˆ˜ë‹¤ë¥¼ ë§‰ê¸° ìœ„í•´
-  // ê¸°ë¯¹ì˜ "ê²°ê³¼ì„±" ì´ë²¤íŠ¸(ìš´ë°˜Â·ë²„í‹°ê¸°Â·ì§„ìœ„ íŒì • ì™„ë£Œ ë“±)ì—ë§Œ ì„ íƒì ìœ¼ë¡œ ë¶™ì¸ë‹¤.
-  function pushFloat(text, speak) {
-    // ëŒ€ê¸°ì—´ ìƒí•œ 2 â€” ì˜¤ë˜ëœ ì¤„ë¶€í„° ë°€ì–´ë‚¸ë‹¤ (ë„íŒŒë¯¼ì€ ì‹ ì„ í•  ë•Œë§Œ)
-    if (game.battle && game.battle.floatQ.length >= 2) game.battle.floatQ.shift();
-    if (!text) return;
-    game.battle.floatQ.push(text);
-    if (speak && game.tts) Speech.speak(text);
-  }
-  function updateFloats(b) {
-    // ë³´ìƒ í”¼ë“œë°±ì´ í–‰ë™ë³´ë‹¤ ëŠ¦ì§€ ì•Šê²Œ â€” ëŒ€ê¸°ì—´ì´ ìˆìœ¼ë©´ í˜„ì¬ ì¤„ì„ 90í”„ë ˆì„ìœ¼ë¡œ ë‹¨ì¶• (S-3)
-    if (b.floatActive && b.floatQ.length && b.floatActive.dur > 90) b.floatActive.dur = 90;
-    if (!b.floatActive && b.floatQ.length) b.floatActive = { text: b.floatQ.shift(), t: 0, dur: 150 };
-    if (b.floatActive) { b.floatActive.t += 1; if (b.floatActive.t >= b.floatActive.dur) b.floatActive = null; }
-  }
-
-  // ë§ˆìŒ ìƒíƒœ ì „ì´ + ê²Œì´ì§€ ë§Œì¶© íŒì •ì„ í•œê³³ì—ì„œ ì²˜ë¦¬í•œë‹¤.
-  function persuadeGaugeSync(b) {
-    b.gauge = clamp(b.gauge, 0, b.gaugeMax);
-    const thr = b.p.closedThreshold || 3;
-    if (b.pState === 'closed' && (b.fragmentTotal >= thr || b.gauge >= 30)) {
-      b.pState = 'shaken';
-      pushFloat('â€¦ë„ˆ, ë“£ê³  ìˆì—ˆì–´?');
-    }
-    if (b.pState !== 'open' && b.gauge >= 55) {
-      b.pState = 'open';
-      pushFloat(b.p.react.open);
-    }
-  }
-  // ê²Œì´ì§€ ë§Œì¶© â†’ ë§ˆìŒì˜ ì„ íƒ(ìë¹„)ìœ¼ë¡œ. (mercy/mercyReplyëŠ” ê¸°ì¡´ ê·¸ëŒ€ë¡œ)
-  function enterMercyPhase(b) {
-    b.phase = 'mercy'; b.cursor = 0; Sound.badge();
-    if (game.tts) Speech.speak('ë§ˆìŒì˜ ì„ íƒ. ' + b.mon.mercy.prompt);
-    if (!game.reduceFx) b.shake = 12; // ë§ˆìŒì´ ì—´ë¦¬ëŠ” ìˆœê°„ì˜ ìš¸ë¦¼ (M-3)
-  }
-  function persuadeTriumph() {
-    const b = game.battle;
-    if (game.flags.persuadeMemory) delete game.flags.persuadeMemory[b.persuadeId];
-    b.arena.carrying = false;
-    if (b.mon.mercy && !b.mercyDone) {
-      // X-1â‘£ ì˜ì´ ìë¹„ ì„ íƒ ì§ì „(ë§ˆìŒì˜ ì„ íƒ í”„ë¡¬í”„íŠ¸ ì•) â€” ì£¼ì¸ê³µì˜ ë°˜ì‘ í•œ ë²ˆ.
-      // ë°°í‹€ ëª¨ë“œë¡œ ë³µê·€í•˜ë©° ê³ ë¥¸ ê°’ì„ ì €ì¥í•˜ê³ , ì˜ì´ì˜ ë‹µì„ í† ìŠ¤íŠ¸ë¡œ ë³´ì—¬ ì¤€ ë’¤ ë§ˆìŒì˜ ì„ íƒìœ¼ë¡œ.
-      if (b.persuadeId === 'yeongi_boss' && !b.voiceAsked) {
-        b.voiceAsked = true;
-        const replies = ['ì˜ì´: â€¦í˜¼ì, ì•„ë‹ˆì—ˆêµ¬ë‚˜. â€¦ê·¸ ë§, ì˜¤ë˜ ê¸°ë‹¤ë ¸ì–´.',
-          'ì˜ì´: â€¦ëê¹Œì§€ ë“¤ì–´ ì¤€ ì‚¬ëŒì€, ë„¤ê°€ ì²˜ìŒì´ì•¼.'];
-        startReactionChoice('ì˜ì´ê°€ ë§ˆì§€ë§‰ìœ¼ë¡œ ë„ˆë¥¼ ë°”ë¼ë³¸ë‹¤.\nâ€¦ë„ˆëŠ” ë­ë¼ê³  ë§í•´ ì¤„ê¹Œ?',
-          ['"ì´ì œ, í˜¼ì ë‘ì§€ ì•Šì„ê²Œ."', '"â€¦ë„¤ ì´ì•¼ê¸°, ëê¹Œì§€ ë“¤ì—ˆì–´."'], (i) => {
-            const idx = (i < 0 || i > 1) ? 0 : i;
-            if (!game.flags.playerVoice) game.flags.playerVoice = {};
-            game.flags.playerVoice.yeongi = idx;
-            // ì´ìŠˆ3: game.noticeëŠ” drawBattleì—ì„œ ì•ˆ ê·¸ë ¤ì§„ë‹¤(ì›”ë“œ ì „ìš©) â€” ë°°í‹€ ë„¤ì´í‹°ë¸Œ
-            //        ë°˜ì‘(react)ìœ¼ë¡œ ì˜ì´ì˜ ë‹µì„ ë³´ì—¬ ì¤€ ë’¤ ë§ˆìŒì˜ ì„ íƒìœ¼ë¡œ ë„˜ì–´ê°„ë‹¤.
-            if (game.notice) game.notice.t = 0; // í˜¹ì‹œ ë‚¨ì•„ ìˆì„ ì›”ë“œ í† ìŠ¤íŠ¸ ì •ë¦¬
-            setReact(game.battle, replies[idx], 'mercy');
-          });
-        return;
-      }
-      enterMercyPhase(b);
-    } else {
-      winBattle();
-    }
-  }
-
-  // â”€â”€ íŒŒë„(wave): ìƒëŒ€ í„´ â€” íƒ„ë§‰ì„ í”¼í•˜ë©° ë²„í‹´ë‹¤ â”€â”€
-  function enterWave() {
-    const b = game.battle;
-    const claim = currentClaim();
-    b.attack = claim.attack;
-    b.phase = 'wave';
-    applyShrinkBox(b); // ë£¨ë¯¸(ë³´ìŠ¤) â€” íŒŒë„ ì‹œì‘ ì‹œ í˜„ì¬ ì¶•ì†Œ ë‹¨ê³„ë¥¼ ìƒìì— ë°˜ì˜
-    const box = b.arena.box;
-    // ìŠ¤í…Œì´ì§€ 1(1ì¥) ê³ ì • ë‚œì´ë„ + í”„ë¡œí•„ë³„ íƒ„ì† ì™„í™”/ê°•í™” + ì˜¤ë‹µ ì—­íš¨ê³¼ ê°•í™”
-    // waveBulletMulì€ ê³ ì •ê°’ ë˜ëŠ” flagsë¥¼ ë°›ëŠ” í•¨ìˆ˜(ê³ ìš”ì˜ ì¹¨ë¬µ ë£¨íŠ¸ ê°•í™”ìš©)ì¼ ìˆ˜ ìˆë‹¤
-    const bulletMul = (typeof b.p.waveBulletMul === 'function') ? b.p.waveBulletMul(game.flags) : b.p.waveBulletMul;
-    let sf = dodgeSpeedFactor() * (bulletMul || 1);
-    let rateMul = 1;
-    if (b.pIntense) { sf *= 1.3; rateMul *= 0.75; b.pIntense = false; }
-    b.arena.sf = sf; b.arena.rateMul = rateMul; b.arena.bullets = []; b.arena.spiralA = 0; b.arena.inv = 0;
-    b.arena.carrying = false;
-    b.wave = {
-      // ì €í•™ë…„(easy)ì€ íƒ„ë§‰ í„´ì„ 20% ì§§ê²Œ â€” ì†ë„(dodgeSpeedFactor)ì— ë”í•´ ì‹œê°„ ë¶€ë‹´ë„ ì¤„ì¸ë‹¤
-      t: 0, dur: Math.round((b.p.waveDur || 300) * (game.difficulty === 'easy' ? 0.8 : 1)), spawnTimer: 30,
-      // fragmentsëŠ” íì§€(ë“£ê¸° ì¦‰ì‹œ ê³µê°œ) â€” ê¸°ë¯¹Â·í…ŒìŠ¤íŠ¸ í˜¸í™˜ì„ ìœ„í•´ ë¹ˆ ë°°ì—´ ìœ ì§€
-      fragments: [], fragTotal: 0, collected: 0, hits: 0,
-    };
-    // Rë¼ìš´ë“œ í–‰ë™ ë°°í‹€ì˜ íŒ¨í„´ í•˜ìœ„ ìƒíƒœëŠ” ì „ë¶€ ë ˆì§€ìŠ¤íŠ¸ë¦¬ initì—ì„œ ë§Œë“ ë‹¤(Y-14).
-    // íŒŒë„ë§ˆë‹¤ ëª¨ë“  íŒ¨í„´ ìƒíƒœë¥¼ ì´ˆê¸°í™”í•œë‹¤ â€” ì˜ì´(rotate)ëŠ” íŒŒë„ë§ˆë‹¤ ë‹¤ë¥¸ íŒ¨í„´ì„ ì“°ê³ ,
-    // ëˆ„ì  ì¹´ìš´í„°(b.parcelDeliveries ë“±)ì™€ ë¯¸ë¼/í•¨ì • ìŠ¬ë¡¯ì€ ê° initì´ ìŠ¹ê³„Â·ì´ˆê¸°í™”í•œë‹¤.
-    for (const key of Object.keys(PATTERNS)) b.wave[key] = PATTERNS[key].init(b, box);
-    // ì—°ìŠµ íŒŒë„(Rë¼ìš´ë“œ) â€” íŒ¨í„´ì´ 'ì‹¤ì œë¡œ ì²˜ìŒ ë“±ì¥í•˜ëŠ”' íŒŒë„ê°€ ë¬´í”¼í•´ ë¦¬í—ˆì„¤ì´ ëœë‹¤.
-    // (closed ìƒíƒœë¡œ í˜ë ¤ë³´ë‚¸ íŒŒë„ì— ì—°ìŠµê¶Œì´ ì†Œëª¨ë˜ì§€ ì•Šê²Œ activePatternìœ¼ë¡œ íŒì •)
-    b.waveCount = (b.waveCount || 0) + 1;
-    // quiet(ê³ ìš”)ëŠ” ì›ë˜ ë²Œì´ ì—†ëŠ” íŒ¨í„´ â€” ì—°ìŠµ ë¼ë²¨ì´ ê°ì • ì¥ë©´ì„ ê¹¨ì§€ ì•Šê²Œ ìƒëµ
-    const apNow = activePattern(b);
-    b.wave.practice = !b.practiceDone && !!apNow && apNow !== 'quiet';
-    if (b.wave.practice) b.practiceDone = true;
-    // (ë¯¸ë¼/í¸ì‹ í•¨ì • ìŠ¬ë¡¯ì€ initParcelÂ·initTiltì—ì„œ í•¨ê»˜ ì´ˆê¸°í™”ëœë‹¤ â€” Y-15)
-    // ê³µê²© ì˜ˆê³  (N-5) â€” ìƒëŒ€ í„´ ì‹œì‘ í”Œë ˆì´ë²„ + 20í”„ë ˆì„ ìˆ¨ ê³ ë¥´ê¸°
-    if (b.p.announce && b.p.announce.length) {
-      pushFloat(b.p.announce[b.turnCount % b.p.announce.length]);
-    }
-    b.wave.spawnTimer += 20;
-    // ê³ ìš”(ë³´ìŠ¤) open í˜ì´ì¦ˆ ê³ ìœ  ê¸°ë¯¹ â€” ì–´ë‘  ì†, í•˜íŠ¸ ì£¼ë³€ë§Œ ë³´ì¸ë‹¤. ë°°í‹€ ì „ì²´ì—ì„œ ë”± í•œ ë²ˆ,
-    // ì²« open íŒŒë„ì—ì„œ íƒ„ë§‰ì´ ë‚˜ì˜¤ê¸° ì „ ìŠ¤í° ìœ„ì¹˜ë¥¼ ì ê¹ ê¹œë¹¡ì—¬ ì˜ˆê³ í•œë‹¤(darkWarnT).
-    if (b.p.openMechanic === 'dark' && b.pState === 'open' && !b.darkWarned) {
-      b.darkWarned = true;
-      b.wave.darkWarnT = 30;
-      b.wave.spawnTimer += 30; // ì˜ˆê³ ê°€ ëë‚œ ë’¤ì—ì•¼ ì²« íƒ„ë§‰ì´ ë‚˜ì˜¨ë‹¤
-    }
-    if (game.tts) Speech.speak(claim.text);
-    // Rë¼ìš´ë“œ ì ‘ê·¼ì„± â€” íŒ¨í„´ì´ ì²˜ìŒ í™œì„±í™”ë˜ëŠ” íŒŒë„ì— ì¡°ì‘ ì•ˆë‚´ë¥¼ ë‚­ë…Â·í”Œë¡œíŒ… 1íšŒ
-    const patNew = activePattern(b);
-    if (patNew && !b.patternIntroDone) {
-      b.patternIntroDone = true;
-      const g0 = PATTERN_GUIDES[patNew];
-      if (g0) {
-        pushFloat('* ' + g0, true);
-        if (game.tts) Speech.speak(g0);
-      }
-    }
-  }
-
-  function moveSoul(arena, box, speedMul) {
-    const sp = 3.4 * speedMul;
-    if (held.has('left')) arena.soul.x -= sp;
-    if (held.has('right')) arena.soul.x += sp;
-    if (held.has('up')) arena.soul.y -= sp;
-    if (held.has('down')) arena.soul.y += sp;
-    arena.soul.x = clamp(arena.soul.x, box.x + SOUL_R, box.x + box.w - SOUL_R);
-    arena.soul.y = clamp(arena.soul.y, box.y + SOUL_R, box.y + box.h - SOUL_R);
-  }
-
-  // í•˜íŠ¸-íƒ„ë§‰ ì¶©ëŒ: ë‹¿ìœ¼ë©´ í•˜íŠ¸ -1, ë‹¤ ë‹³ìœ¼ë©´ íƒˆì§„.
-  function bulletHits(b, arena) {
-    if (arena.inv > 0) { arena.inv -= 1; return false; }
-    for (const bu of arena.bullets) {
-      const dx = bu.x - arena.soul.x, dy = bu.y - arena.soul.y;
-      if (dx * dx + dy * dy < (SOUL_R + bu.r) * (SOUL_R + bu.r)) {
-        b.playerHp = Math.max(0, b.playerHp - 1);
-        arena.inv = 42; b.flash = 12; Sound.bump();
-        if (!game.reduceFx) b.hitstop = 3; // í”¼ê²© íˆíŠ¸ìŠ¤í†± (M-3)
-        return true;
-      }
-    }
-    return false;
-  }
-
-  function updateWave() {
-    const b = game.battle, w = b.wave, arena = b.arena, box = arena.box;
-    // íˆíŠ¸ìŠ¤í†± (M-3) â€” í”¼ê²© ìˆœê°„ ëª‡ í”„ë ˆì„ ë©ˆì¶° íƒ€ê²©ê°ì„ ì¤€ë‹¤ (íƒ„ë§‰ í„´ì—ì„œë§Œ)
-    // shake/flash ê°ì‚°ì€ updateBattle ìƒë‹¨ì—ì„œ ê³µí†µ ì²˜ë¦¬ â€” ì—¬ê¸°ì„œ ë˜ í•˜ë©´ 2ë°°ì†ì´ ëœë‹¤
-    if (b.hitstop > 0) { b.hitstop -= 1; return; }
-    w.t += 1;
-    updateFloats(b);
-    // ê³ ìš”(ë³´ìŠ¤) â€” ì²« open íŒŒë„ì˜ íƒ„ë§‰ ì˜ˆê³  ê¹œë¹¡ì„ ì¹´ìš´íŠ¸ë‹¤ìš´
-    if (w.darkWarnT > 0) w.darkWarnT -= 1;
-
-    moveSoul(arena, box, arena.carrying ? 0.6 : 1);
-
-    // ê¸°ìš¸(ë³´ìŠ¤) open í˜ì´ì¦ˆ â€” ê¸°ìš¸ê¸° ë“œë¦¬í”„íŠ¸: í•˜íŠ¸ê°€ ë‚®ì€ ìª½(ì™¼ìª½)ìœ¼ë¡œ ì¡°ê¸ˆì”© ë¯¸ë„ëŸ¬ì§„ë‹¤
-    const patNow = activePattern(b);
-    const tiltActive = patNow === 'tilt';
-    if (tiltActive) {
-      arena.soul.x -= w.tilt.drift;
-      arena.soul.x = clamp(arena.soul.x, box.x + SOUL_R, box.x + box.w - SOUL_R);
-    }
-
-    // íƒ„ë§‰ ìƒì„± (ëë‚˜ê¸° ì§ì „ì—” ë©ˆì¶¤). Rë¼ìš´ë“œ: íŒ¨í„´ì´ ë³¸ì²´ê°€ ë˜ë©´ì„œ íƒ„ë§‰ì€
-    // ë°°ê²½ ë¦¬ë“¬ìœ¼ë¡œ ê°•ë“± â€” íŒ¨í„´ ë³´ìŠ¤ëŠ” ê°„ê²© Ã—1.4(ë°€ë„ ì•½ 30% í•˜í–¥).
-    // ê·¸ëŸ´ì‹¸ì˜ ë©ˆì¶¤ì¡´(verify.slowT)ì´ ì‚´ì•„ ìˆìœ¼ë©´ íƒ„ë§‰ ìƒì„±Â·ì´ë™ì´ ì ˆë°˜ ì†ë„.
-    const slowMul = (w.verify && w.verify.slowT > 0) ? 2 : 1;
-    w.spawnTimer -= (w.t % slowMul === 0) ? 1 : 0;
-    // C-2 ì²« ë°°í‹€ ê·œì¹™ í•˜ë‚˜ì”© â€” ë”°ë¼(í”„ë¡¤ë¡œê·¸ íŠœí† ë¦¬ì–¼)ì˜ ì²« íŒŒë„ëŠ” íƒ„ë§‰ ì—†ì´
-    // ê·¸ë¦¼ì íŒ¨í„´ë§Œ ìµíŒë‹¤. 2íŒŒë„ë¶€í„° íƒ„ë§‰ì´ í•©ë¥˜í•œë‹¤(ì²«ì¸ìƒ ë¶€ë‹´ ì™„í™”).
-    const suppressBullets = b.prologueTutorial && b.waveCount === 1;
-    if (!suppressBullets && w.spawnTimer <= 0 && w.t < w.dur - 40) {
-      const pat = currentPattern({ t: w.t, dur: w.dur }, b.attack);
-      spawnBullets(arena, pat, arena.soul);
-      // ë‹´ì•„: ë¯¸ë¼ì— ì •ë³´ë¥¼ ë‚´ì¤€ ë§Œí¼ ë‹¤ìŒ ìŠ¤í°ì´ ã€Œë§ì¶¤ ê´‘ê³  ì¡°ì¤€íƒ„ã€ì´ ëœë‹¤
-      if (patNow === 'parcel' && b.adShots > 0) {
-        b.adShots -= 1;
-        spawnBullets(arena, 'aimed', arena.soul);
-        pushFloat('ë°˜ì§ë°˜ì§ ë§ì¶¤ ê´‘ê³ ê°€ ë”°ë¼ì˜¨ë‹¤!', true);
-      }
-      const baseRate = pat === 'burst' ? 24 : pat === 'spiral' ? 8
-        : pat === 'wall' ? 42 : pat === 'zigzag' ? 18 : pat === 'aimed' ? 16 : 15;
-      const patternEase = b.p.pattern ? 1.4 : 1;
-      w.spawnTimer = Math.max(4, Math.round(baseRate * (arena.rateMul || 1) * patternEase));
-    }
-    // íƒ„ë§‰ ì´ë™ + í™”ë©´ ë°– ì œê±° (ê¸°ìš¸ê¸° ë“œë¦¬í”„íŠ¸ì˜ ì ˆë°˜ì´ íƒ„ë§‰ì—ë„ ì‹¤ë¦°ë‹¤)
-    // ê·¸ëŸ´ì‹¸ ë©ˆì¶¤ì¡´ì´ ì‚´ì•„ ìˆìœ¼ë©´ íƒ„ë§‰ì´ ì ˆë°˜ ì†ë„ë¡œ íë¥¸ë‹¤ (ëŒ€ì¡°í•  ì‹œê°„)
-    const tiltBulletDrift = tiltActive ? w.tilt.drift * 0.5 : 0;
-    const slowF = slowMul === 2 ? 0.5 : 1;
-    for (const bu of arena.bullets) {
-      if (bu.zig) { bu.zigT = (bu.zigT || 0) + 1; bu.vy = Math.sin(bu.zigT / 7) * bu.zig; }
-      bu.x += (bu.vx - tiltBulletDrift) * slowF; bu.y += bu.vy * slowF;
-    }
-    arena.bullets = arena.bullets.filter((bu) =>
-      bu.x > box.x - 24 && bu.x < box.x + box.w + 24 && bu.y > box.y - 24 && bu.y < box.y + box.h + 24);
-
-    // ì—°ìŠµ íŒŒë„ì—ì„œëŠ” í”¼ê²©ì´ ì—†ë‹¤ â€” íŒ¨í„´ì„ ì•ˆì „í•˜ê²Œ ì‚´í´ë³´ëŠ” ë¦¬í—ˆì„¤
-    if (!w.practice && bulletHits(b, arena)) { w.hits += 1; b.rankHits = (b.rankHits || 0) + 1; if (b.playerHp <= 0) { persuadeExhaust(); return; } }
-
-    // â”€â”€ Rë¼ìš´ë“œ í–‰ë™ ë°°í‹€ â€” ë³´ìŠ¤ì˜ ì´ë¦„ì´ ê³§ íŒ¨í„´ (shakenÂ·openì—ì„œ ê°€ë™) â”€â”€
-    // íŒ¨í„´ë³„ ë¡œì§ì€ ë ˆì§€ìŠ¤íŠ¸ë¦¬ë¡œ í†µí•©(Y-14) â€” íŒŒë„ë§ˆë‹¤ í™œì„± íŒ¨í„´ì€ í•˜ë‚˜ë¿ì´ë¯€ë¡œ
-    // ì›ë˜ì˜ if ì²´ì¸ê³¼ ë™ì‘ì´ ì™„ì „íˆ ê°™ë‹¤. tempt ì ‘ì´‰ í”¼í•´ ë“±ìœ¼ë¡œ íƒˆì§„í•˜ë©´ ì•„ë˜ ë°©ì–´ë¡œ ì¤‘ë‹¨.
-    const activeP = patNow && PATTERNS[patNow];
-    if (activeP && activeP.update) activeP.update(b);
-    if (!game.battle) return; // íŒ¨í„´ ì²˜ë¦¬ ì¤‘ íƒˆì§„ ê°€ëŠ¥ì„± ë°©ì–´
-
-    // ê²Œì´ì§€ ë§Œì¶© â€” íƒ„ë§‰ í„´ì„ ë°”ë¡œ ëë‚´ê³  ë‚´ í„´ìœ¼ë¡œ (ã€Œë§ˆìŒ ì•ˆì•„ ì£¼ê¸°ã€ ë§ˆë¬´ë¦¬)
-    if (b.gauge >= b.gaugeMax) { enterMenuPhase(b); return; }
-
-    // íƒ„ë§‰ í„´ ì¢…ë£Œ: ì‹œê°„ ë§Œë£Œ â†’ ë‚´ í„´(ë©”ë‰´)ìœ¼ë¡œ
-    if (w.t >= w.dur) {
-      // ë¬´í”¼í•´ ë³´ë„ˆìŠ¤ â€” ì—°ìŠµ íŒŒë„ ì œì™¸ + gaugeMax-2 ìƒí•œ (íšŒí”¼ë§Œìœ¼ë¡œëŠ” ë§Œì¶© ë¶ˆê°€)
-      if (w.hits === 0 && !w.practice) { grantPatternGauge(b, 6); pStats().perfectWaves += 1;
-        pushFloat('* ëê¹Œì§€ ë“¤ì–´ ì¤¬ë‹¤ â€” ë§ˆìŒ +6'); }
-      enterMenuPhase(b);
-    }
-  }
-  // â”€â”€ Rë¼ìš´ë“œ: í˜„ì¬ íŒŒë„ì˜ í™œì„± íŒ¨í„´ â”€â”€
-  // closed(êµ³ê²Œ ë‹«í˜)ì—ì„œëŠ” íŒ¨í„´ì´ ì—†ë‹¤ â€” ë¨¼ì € ë“¤ì–´ì•¼ í•œë‹¤. ì˜ì´(rotate)ëŠ”
-  // íŒŒë„(í„´)ë§ˆë‹¤ ì§€ë‚˜ì˜¨ ë³´ìŠ¤ì˜ íŒ¨í„´ì„ ê°€ë³ê²Œ ìˆœí™˜í•œë‹¤: ê²Œì„ ì „ì²´ê°€ ìµœì¢…ì „ì˜ ì—°ìŠµ.
-  const ROTATE_SEQ = ['shadow', 'parcel', 'tilt', 'verify', 'tempt', 'cozy', 'quiet'];
-  function activePattern(b) {
-    if (!b.p.pattern) return null;
-    if (b.pState === 'closed') return null;
-    if (b.p.pattern === 'rotate') {
-      // verifyëŠ” ì›ë³¸ ì¹´ë“œÂ·ì¡°ê° ë°ì´í„°ê°€ ìˆì–´ì•¼ ì„±ë¦½ â€” ì—†ìœ¼ë©´ ê±´ë„ˆë›´ë‹¤ (ì£½ì€ UI ë°©ì§€)
-      const seq = b.p.verifyPieces ? ROTATE_SEQ : ROTATE_SEQ.filter((k) => k !== 'verify');
-      return seq[(b.waveCount - 1) % seq.length];
-    }
-    return b.p.pattern;
-  }
-
-  // â”€â”€ Së¼ìš´ë“œ ê³µìš© í—¬í¼ â”€â”€
-  // íŒ¨í„´ ë³´ìƒ â€” ì–´ë–¤ í–‰ë™ ë³´ìƒë„ gaugeMax-2ë¥¼ ë„˜ì§€ ëª»í•œë‹¤. ë§ˆì§€ë§‰ ë‘ ì¹¸ì€
-  // ë°˜ë“œì‹œ 'ëŒ€ë‹µ'(ì •ë‹µ +26/32)ë§Œ ì±„ìš¸ ìˆ˜ ìˆë‹¤ (Q-1 ì½ê¸° ê²Œì´íŠ¸ ë¶ˆë³€ì‹).
-  function grantPatternGauge(b, amount) {
-    b.gauge = clamp(Math.min(b.gauge + amount, Math.max(b.gauge, b.gaugeMax - 2)), 0, b.gaugeMax);
-    persuadeGaugeSync(b);
-  }
-  // 3íšŒ ìƒí•œ ë„ë‹¬ ì•ˆë‚´ â€” ë°°í‹€ë‹¹ 1íšŒ, "ì´ì œ ëŒ€ë‹µí•  ì°¨ë¡€"ë¥¼ ì§šì–´ ì¤€ë‹¤
-  function patternCapNudge(b) {
-    if (b.capNudged) return;
-    b.capNudged = true;
-    pushFloat('ë°˜ë””: "ëª¸ìœ¼ë¡œëŠ” ì¶©ë¶„íˆ ë³´ì—¬ ì¤¬ì–´!\nì´ì œ ë„¤ ë§ë¡œ ëŒ€ë‹µí•´ â€” ã€Œë§ ê±¸ê¸°ã€"', true);
-  }
-  // ë‚œì´ë„ ê³„ìˆ˜ â€” ì €í•™ë…„(easy)ì€ íŒ¨í„´ íŒì • ì°½ì´ ë” ê´€ëŒ€í•˜ë‹¤ (S-4)
-  function patEase() {
-    return game.difficulty === 'easy'
-      ? { gaze: 30, door: 130, shadowDelay: 120, slow: 130 }
-      : { gaze: 45, door: 90, shadowDelay: 90, slow: 90 };
-  }
-
-  // íŒ¨í„´ ì˜¤ë¸Œì íŠ¸ ìŠ¤í° ì¢Œí‘œ â€” í•˜íŠ¸ì—ì„œ 60px ì´ìƒ ë–¨ì–´ì§„ ê³³ìœ¼ë¡œ (ë°˜ì‘í•  í‹ˆ ë³´ì¥)
-  function spawnAway(box, soul, mx, my, w, h) {
-    for (let i = 0; i < 8; i++) {
-      const x = box.x + mx + Math.random() * (w != null ? w : box.w - mx * 2);
-      const y = box.y + my + Math.random() * (h != null ? h : box.h - my * 2);
-      if (Math.hypot(x - soul.x, y - soul.y) >= 60 || i === 7) return { x, y };
-    }
-  }
-
-  // ë”°ë¼ ã€Œê·¸ë¦¼ì í•˜íŠ¸ã€ â€” 2ì´ˆ(90í”„ë ˆì„) ì „ì˜ ë‚´ ìœ„ì¹˜ë¥¼ ê·¸ëŒ€ë¡œ ë”°ë¼ì˜¤ëŠ” ê·¸ë¦¼ì.
-  // ê°™ì€ ìë¦¬ë¥¼ ë§´ëŒë©´(ë”°ë¼ í•˜ê¸° ì‰¬ìš´ ë™ì„ ) ê·¸ë¦¼ìì— ì¡í˜€ í”¼í•´. 60í”„ë ˆì„ë§ˆë‹¤
-  // ì¶©ë¶„íˆ ìƒˆë¡œìš´ ìë¦¬ë¡œ ì´ë™í•´ ìˆìœ¼ë©´ ë”°ë¼ê°€ ì§€ì¹œë‹¤(+ê²Œì´ì§€, íŒŒë„ë‹¹ ìµœëŒ€ 3íšŒ).
-  function updateShadow(b) {
-    const w = b.wave, sh = w.shadow, arena = b.arena;
-    const shadowDelay = patEase().shadowDelay; // ì €í•™ë…„ì€ ê·¸ë¦¼ìê°€ ë” ëŠ¦ê²Œ ë”°ë¼ì˜¨ë‹¤
-    sh.trail.push({ x: arena.soul.x, y: arena.soul.y });
-    if (sh.trail.length > shadowDelay) sh.trail.shift();
-    const ghost = sh.trail[0];
-    if (sh.trail.length >= shadowDelay && !w.practice && arena.inv <= 0) {
-      const dx = ghost.x - arena.soul.x, dy = ghost.y - arena.soul.y;
-      if (dx * dx + dy * dy < (SOUL_R + 8) * (SOUL_R + 8)) {
-        sh.trail.length = 0; // ê¶¤ì  ì´ˆê¸°í™” â€” ê·¸ë¦¼ìê°€ ë‹¤ì‹œ ë‹¤ê°€ì˜¤ëŠ” 1.5ì´ˆì˜ ìœ ì˜ˆ
-        if (!b.shadowWarned) {
-          // ë°°í‹€ë‹¹ ì²« ì ‘ì´‰ì€ ê²½ê³ ë§Œ â€” ì–¼ì–´ë¶™ì€ ì•„ì´ë¥¼ ì—°íƒ€í•˜ì§€ ì•ŠëŠ”ë‹¤
-          b.shadowWarned = true;
-          arena.inv = 42; b.flash = 8; Sound.bump();
-          pushFloat('ë”°ë¼: "ì¡ì•˜ë‹¤! â€¦ì´ë²ˆë§Œ ë´ì¤„ê²Œ.\ní¬ê²Œ ì›€ì§ì—¬ ë´!"', true);
-          return;
-        }
-        // ìƒì•  ì²« ë°°í‹€(ë”°ë¼)ì—ì„œëŠ” í•˜íŠ¸ ëŒ€ì‹  ê²Œì´ì§€ê°€ ì‚´ì§ ë‹«íŒë‹¤ â€” ê²ë¨¹ê³ 
-        // ë©ˆì¶˜ ì•„ì´ë¥¼ í•˜íŠ¸ ì—°íƒ€ë¡œ ë²Œí•˜ì§€ ì•ŠëŠ”ë‹¤. ì‹¤í”¼í•´ëŠ” ì˜ì´(rotate)ì—ì„œë§Œ.
-        if (b.p.pattern !== 'rotate') {
-          arena.inv = 42; b.flash = 10; Sound.bump();
-          b.gauge = clamp(b.gauge - 4, 0, b.gaugeMax);
-          persuadeGaugeSync(b);
-          pushFloat('ë”°ë¼: "ì¡ì•˜ë‹¤!\nâ€¦ë˜‘ê°™ì´ ì›€ì§ì˜€ì–ì•„."\n(ë§ˆìŒì´ ì‚´ì§ ë‹«í˜”ë‹¤)', true);
-          w.hits += 1;
-          return;
-        }
-        b.playerHp = Math.max(0, b.playerHp - 1);
-        arena.inv = 42; b.flash = 12; Sound.bump();
-        pushFloat('ë”°ë¼: "ì¡ì•˜ë‹¤!\nâ€¦ë˜‘ê°™ì´ ì›€ì§ì˜€ì–ì•„."', true);
-        w.hits += 1;
-        if (b.playerHp <= 0) { persuadeExhaust(); return; }
-      }
-    }
-    sh.checkT -= 1;
-    if (sh.checkT <= 0) {
-      const dx = arena.soul.x - sh.refX, dy = arena.soul.y - sh.refY;
-      if (Math.hypot(dx, dy) > 70 && sh.tired < 3 && !w.practice) {
-        sh.tired += 1; b.shadowTired = sh.tired;
-        grantPatternGauge(b, 8);
-        if (sh.tired >= 3) patternCapNudge(b);
-        pushFloat((b.p.shadowReply || 'â€¦ì–´ë–»ê²Œ ë”°ë¼ê°€ì§€?') + `\n(ë”°ë¼ê°€ ì§€ì³¤ë‹¤! ${sh.tired}/3)`, true);
-        Sound.correct(); persuadeGaugeSync(b);
-      }
-      sh.refX = arena.soul.x; sh.refY = arena.soul.y; sh.checkT = 60;
-    }
-  }
-
-  // ê·¸ëŸ´ì‹¸ ã€Œê²€ì¦ ì ˆì°¨ã€ â€” ìƒë‹¨ ì›ë³¸ ì¹´ë“œì™€ [ì†ë³´] ì¡°ê°ì˜ ë”±ì§€ë¥¼ ëŒ€ì¡°í•´,
-  // ì™¼ìª½ [ì°¸] / ì˜¤ë¥¸ìª½ [ê±°ì§“] êµ¬ë©ì— ë°°ë‹¬í•œë‹¤. ë©ˆì¶¤ì¡´(ğŸ›‘)ì— ì„œë©´ ì ì‹œ ì„¸ìƒì´ ëŠë ¤ì§„ë‹¤.
-  // ì¡°ê° ì¤‘ ì¼ë¶€ëŠ” ì§„ì§œ â€” ë¬´ì¡°ê±´ [ê±°ì§“]ì„ ì°ìœ¼ë©´ í‹€ë¦°ë‹¤ ("ì˜ì‹¬ì´ ì•„ë‹ˆë¼ í™•ì¸").
-  function updateVerify(b) {
-    const w = b.wave, vf = w.verify, arena = b.arena, box = arena.box;
-    const pieces = b.p.verifyPieces || [];
-    if (!pieces.length) return;
-    if (vf.slowT > 0) vf.slowT -= 1;
-    if (vf.stopCd > 0) vf.stopCd -= 1;
-    // ì¡°ê°ì„ ë“¤ê³  ìˆëŠ” ë™ì•ˆì€ ìë™ ìŠ¬ë¡œ â€” ì½ê³  ëŒ€ì¡°í•˜ëŠ” ì‹œê°„ì€ ì„¸ìƒì´ ê¸°ë‹¤ë ¤ ì¤€ë‹¤ (S-3)
-    if (arena.carrying && vf.carry) vf.slowT = Math.max(vf.slowT, 2);
-    // ë©ˆì¶¤ì¡´ â€” ìƒì í•˜ë‹¨ ì¤‘ì•™. ì„œ ìˆìœ¼ë©´ 90í”„ë ˆì„ ìŠ¬ë¡œ (ì¿¨ë‹¤ìš´ 150)
-    const sz = { x: box.x + box.w / 2, y: box.y + box.h - 18 };
-    const sdx = sz.x - arena.soul.x, sdy = sz.y - arena.soul.y;
-    if (vf.stopCd <= 0 && sdx * sdx + sdy * sdy < 20 * 20) {
-      vf.slowT = patEase().slow; vf.stopCd = 240;
-      pushFloat('ğŸ›‘ ë©ˆì¶¤ â€” ì„¸ìƒì´ ì ê¹ ëŠë ¤ì¡Œë‹¤.\n(ì›ë³¸ê³¼ ëŒ€ì¡°í•  ì‹œê°„!)', true);
-      Sound.blip();
-    }
-    if (!vf.obj && !arena.carrying) {
-      vf.spawnTimer -= 1;
-      if (vf.spawnTimer <= 0) {
-        const piece = pieces[vf.idx % pieces.length];
-        vf.idx += 1; b.verifyIdx = vf.idx;
-        vf.obj = Object.assign(spawnAway(box, arena.soul, 40, 30, box.w - 80, box.h / 2), { piece });
-        if (game.tts) Speech.speak('ì†ë³´. ' + piece.label); // ì½ì–´ì£¼ê¸° â€” ë”±ì§€ ë‚´ìš© ë‚­ë…
-      }
-    }
-    if (vf.obj) {
-      const dx = vf.obj.x - arena.soul.x, dy = vf.obj.y - arena.soul.y;
-      if (dx * dx + dy * dy < (SOUL_R + 12) * (SOUL_R + 12)) {
-        arena.carrying = true; vf.carry = vf.obj.piece; vf.obj = null; Sound.blip();
-      }
-    }
-    if (arena.carrying && vf.carry) {
-      const holes = [
-        { x: box.x + 16, y: box.y + box.h / 2, judge: true },   // [ì°¸]
-        { x: box.x + box.w - 16, y: box.y + box.h / 2, judge: false }, // [ê±°ì§“]
-      ];
-      for (const h of holes) {
-        const dx = h.x - arena.soul.x, dy = h.y - arena.soul.y;
-        if (dx * dx + dy * dy < (SOUL_R + 13) * (SOUL_R + 13)) {
-          arena.carrying = false;
-          const ok = vf.carry.truth === h.judge;
-          if (ok) {
-            vf.judged += 1; b.verifyJudged = vf.judged;
-            if (vf.judged <= 3) grantPatternGauge(b, 8); // [D4] 3íšŒ ìƒí•œ
-            if (vf.judged >= 3) { b.gauge = Math.max(b.gauge, b.gaugeMax - 2); patternCapNudge(b); }
-            pushFloat((b.p.truthReply || 'â€¦í™•ì¸í–ˆêµ¬ë‚˜.') + `\n(ì›ë³¸ê³¼ ëŒ€ì¡°í–ˆë‹¤! ${Math.min(3, vf.judged)}/3)`, true);
-            Sound.correct(); persuadeGaugeSync(b);
-          } else if (!w.practice) {
-            b.gauge = clamp(b.gauge - 4, 0, b.gaugeMax);
-            b.flash = 12;
-            // êµì‚¬ ê³„ì¸¡(S-5) â€” 'í™•ì¸ ì—†ì´ ì°ê¸°' ì˜¤ê°œë…ì„ ì§ì ‘ ê³„ëŸ‰í•œë‹¤
-            const st5 = pStats(); st5.verifyWrong = (st5.verifyWrong || 0) + 1;
-            pushFloat('ê·¸ëŸ´ì‹¸: "ê±°ë´, ê¸‰í•˜ë‹ˆê¹Œ ë‚šì´ì§€?"\n(ì›ë³¸ ì¹´ë“œì™€ ë‹¤ì‹œ ëŒ€ì¡°í•˜ì)', true);
-            Sound.bump(); persuadeGaugeSync(b);
-          } else {
-            pushFloat('* ì—°ìŠµ: ë”±ì§€ë¥¼ ìœ„ì˜ ì›ë³¸ ì¹´ë“œì™€\në¹„êµí•˜ê³  íŒì •í•˜ì.', true);
-          }
-          vf.carry = null; vf.spawnTimer = 80;
-          break;
-        }
-      }
-    }
-  }
-
-  // ë£¨ë¯¸ ã€Œí¬ê·¼í•œ ë°©ã€ â€” ì¤‘ì•™ ë‹´ìš”ëŠ” ì•„ëŠ‘í•˜ì§€ë§Œ ëŠë ¤ì§€ê³  ì‹œê°„ì´ ìƒŒë‹¤(ë²½ì‹œê³„ ê°€ì†).
-  // ê°€ë” ì—´ë¦¬ëŠ” ë¬¸ìœ¼ë¡œ ë‚˜ê°€ëŠ” ê²°ë‹¨ì´ ì¹´ìš´í„° â€” ì‹œê³„ê°€ ë©ˆì¶”ê³  ìƒìê°€ í•œ ë‹¨ê³„ ë„“ì–´ì§„ë‹¤.
-  function updateCozy(b) {
-    const w = b.wave, cz = w.cozy, arena = b.arena, box = arena.box;
-    // ë‹´ìš”(ì¤‘ì•™ ì›) â€” ì•ˆì— ìˆìœ¼ë©´ ì´ë™ì´ ëŠë ¤ì§€ê³  60í”„ë ˆì„ë§ˆë‹¤ ê²Œì´ì§€ê°€ ìƒŒë‹¤
-    const bx = box.x + box.w / 2, by = box.y + box.h / 2;
-    const dx = bx - arena.soul.x, dy = by - arena.soul.y;
-    cz.inBlanket = dx * dx + dy * dy < 42 * 42;
-    if (cz.inBlanket && !w.practice) {
-      cz.drainT += 1;
-      if (cz.drainT % 60 === 0) {
-        b.gauge = clamp(b.gauge - 2, 0, b.gaugeMax);
-        pushFloat('* í¬ê·¼í•˜ë‹¤â€¦ ì‹œê³—ë°”ëŠ˜ë§Œ ë¹¨ë¼ì§„ë‹¤.', true);
-        persuadeGaugeSync(b);
-      }
-    } else if (!cz.inBlanket) cz.drainT = 0;
-    // ë¬¸ â€” 150í”„ë ˆì„ë§ˆë‹¤ ìƒì ê°€ì¥ìë¦¬ì— 90í”„ë ˆì„ ë™ì•ˆ ì—´ë¦°ë‹¤
-    if (!cz.door) {
-      cz.doorT -= 1;
-      if (cz.doorT <= 0) {
-        const side = Math.floor(Math.random() * 4);
-        cz.door = side === 0 ? { x: box.x + 14, y: box.y + 30 + Math.random() * (box.h - 60) }
-          : side === 1 ? { x: box.x + box.w - 14, y: box.y + 30 + Math.random() * (box.h - 60) }
-          : side === 2 ? { x: box.x + 30 + Math.random() * (box.w - 60), y: box.y + 14 }
-          : { x: box.x + 30 + Math.random() * (box.w - 60), y: box.y + box.h - 14 };
-        cz.doorOpenT = patEase().door;
-        pushFloat('* ë¬¸ì´ ì—´ë ¸ë‹¤ â€” ì§€ê¸ˆì´ì•¼!', true);
-      }
-    } else {
-      cz.doorOpenT -= 1;
-      const ddx = cz.door.x - arena.soul.x, ddy = cz.door.y - arena.soul.y;
-      if (ddx * ddx + ddy * ddy < (SOUL_R + 12) * (SOUL_R + 12)) {
-        if (w.practice) { // ì—°ìŠµ: ë¬¸ ê²°ë‹¨ ì²´í—˜ë§Œ, ê²Œì´ì§€ ì—†ìŒ
-          pushFloat('* ì—°ìŠµ: ë¬¸ì´ ì—´ë¦¬ë©´ ì €ë¦¬ë¡œ!\n(ì‹¤ì „ì—ì„  ë§ˆìŒì´ í¬ê²Œ ì—´ë¦°ë‹¤)', true);
-          cz.door = null; cz.doorT = 150;
-          return;
-        }
-        cz.exits += 1; b.cozyExits = cz.exits;
-        if (cz.exits <= 3) grantPatternGauge(b, 10); // [D4] 3íšŒ ìƒí•œ
-        if (cz.exits >= 3) patternCapNudge(b);
-        if (cz.exits >= 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2);
-        if (b.shrinkLevel) b.shrinkLevel = Math.max(0, b.shrinkLevel - 1);
-        pushFloat((b.p.doorReply || 'â€¦ì˜ ê°”ë‹¤ ì™€.') + `\n(ì´ë¶ˆ ë°–ìœ¼ë¡œ! ${Math.min(3, cz.exits)}/3 â€” ì‹œê³„ê°€ ë©ˆì·„ë‹¤)`, true);
-        Sound.correct(); persuadeGaugeSync(b);
-        cz.door = null; cz.doorT = 180;
-      } else if (cz.doorOpenT <= 0) {
-        cz.door = null; cz.doorT = 150;
-        if (!w.practice) pushFloat('* â€¦ë¬¸ì´ ë‹¤ì‹œ ë‹«í˜”ë‹¤.', true);
-      }
-    }
-  }
-
-  // ê³ ìš” ã€Œì•„ë¬´ ë§ ì—†ìŒã€ â€” í¬ë¯¸í•œ ì¡´ì¬ê°€ ì²œì²œíˆ ë– ëˆë‹¤. ê³ì— ë¨¸ë¬´ë¥´ë©´(60px)
-  // ì–´ë‘ ì´ ê±·íˆê³  ë§ˆìŒì´ ì¡°ê¸ˆì”© ì—´ë¦°ë‹¤. ë©€ì–´ì ¸ë„ ë²Œì€ ì—†ë‹¤ â€” ë‹¤ì •í•œ ë³´ìŠ¤.
-  function updateQuiet(b) {
-    const w = b.wave, q = w.quiet, arena = b.arena, box = arena.box;
-    q.spot.x = clamp(q.spot.x + Math.sin(w.t / 40) * 0.8, box.x + 30, box.x + box.w - 30);
-    q.spot.y = clamp(q.spot.y + Math.cos(w.t / 55) * 0.5, box.y + 24, box.y + box.h - 24);
-    const dx = q.spot.x - arena.soul.x, dy = q.spot.y - arena.soul.y;
-    q.near = dx * dx + dy * dy < 60 * 60;
-    if (q.near) {
-      q.nearT += 1;
-      if (q.nearT % 45 === 0 && q.warm < 5 && !w.practice) {
-        q.warm += 1; b.quietWarm = q.warm;
-        grantPatternGauge(b, 6);
-        pushFloat((b.p.nearReply || 'â€¦â€¦ì•„ì§, ìˆë„¤.') + `\n(ì–´ë‘ ì´ ì¡°ê¸ˆ ê±·í˜”ë‹¤ ${q.warm}/5)`, true);
-        Sound.blip(); persuadeGaugeSync(b);
-      }
-    } else q.nearT = 0;
-  }
-
-  function updateParcel(b) {
-    const w = b.wave, pc = w.parcel, arena = b.arena, box = arena.box;
-    // ë¯¸ë¼ ã€Œê³µì§œ ì„ ë¬¼ã€ â€” ë§Œì§€ë©´ ì •ë³´ë¥¼ ë‚´ì£¼ê³ (ê²Œì´ì§€-4) ë‹¤ìŒ ìŠ¤í°ì´ ë§ì¶¤ ê´‘ê³  ì¡°ì¤€íƒ„ì´ ëœë‹¤
-    if (!pc.decoy) {
-      pc.decoyTimer -= 1;
-      if (pc.decoyTimer <= 0) {
-        pc.decoy = Object.assign(spawnAway(box, arena.soul, 30, 30), { age: 0 });
-      }
-    } else {
-      pc.decoy.age += 1;
-      if (pc.decoy.age > 220) { pc.decoy = null; pc.decoyTimer = 220; }
-      else {
-        const ddx = pc.decoy.x - arena.soul.x, ddy = pc.decoy.y - arena.soul.y;
-        if (ddx * ddx + ddy * ddy < (SOUL_R + 11) * (SOUL_R + 11)) {
-          pc.decoy = null; pc.decoyTimer = 260;
-          if (!w.practice) {
-            b.gauge = clamp(b.gauge - 4, 0, b.gaugeMax);
-            b.adShots = (b.adShots || 0) + 2;
-            b.flash = 10;
-            pushFloat((b.p.decoyReply || 'íˆíˆâ€¦ ê³µì§œ ì¢‹ì•„í•˜ëŠ”êµ¬ë‚˜?') + '\n(ë‚´ ì •ë³´ê°€ ê´‘ê³ ê°€ ë˜ì–´ ëŒì•„ì˜¨ë‹¤â€¦)', true);
-            Sound.bump(); persuadeGaugeSync(b);
-          } else {
-            pushFloat('* ì—°ìŠµ: ê³µì§œ ì„ ë¬¼ì€ ë¯¸ë¼ â€”\në§Œì§€ë©´ ë‚´ ì •ë³´ë¥¼ ë‚´ì£¼ê²Œ ëœë‹¤.', true);
-          }
-        }
-      }
-    }
-    if (!pc.obj && !arena.carrying) {
-      pc.spawnTimer -= 1;
-      if (pc.spawnTimer <= 0) {
-        pc.obj = { x: box.x + 40 + Math.random() * (box.w - 80), y: box.y + 40 + Math.random() * (box.h - 80) };
-      }
-    }
-    if (pc.obj) {
-      const dx = pc.obj.x - arena.soul.x, dy = pc.obj.y - arena.soul.y;
-      if (dx * dx + dy * dy < (SOUL_R + 10) * (SOUL_R + 10)) { // ì§‘ê¸° (1ê°œë§Œ)
-        arena.carrying = true; pc.obj = null; Sound.blip();
-      }
-    }
-    if (arena.carrying) {
-      const dx = pc.hole.x - arena.soul.x, dy = pc.hole.y - arena.soul.y;
-      if (dx * dx + dy * dy < (SOUL_R + 12) * (SOUL_R + 12)) { // ë°°ë‹¬
-        arena.carrying = false;
-        if (w.practice) { pushFloat('* ì—°ìŠµ: ê¾¸ëŸ¬ë¯¸ëŠ” ì´ë ‡ê²Œ ëŒë ¤ì¤€ë‹¤!', true); pc.spawnTimer = 90; return; }
-        pc.deliveries += 1; b.parcelDeliveries = pc.deliveries;
-        // [D4] 3íšŒ ì´í›„ì—ëŠ” ê²Œì´ì§€ ì§€ê¸‰ ì—†ìŒ â€” ë§ˆì§€ë§‰ í•œ ê±¸ìŒì€ ë°˜ë“œì‹œ 'ëŒ€ë‹µ'ìœ¼ë¡œ
-        if (pc.deliveries <= 3) grantPatternGauge(b, 10);
-        if (pc.deliveries === 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3íšŒ â†’ ë§Œì¶© ì§ì „
-        if (pc.deliveries >= 3) patternCapNudge(b);
-        pushFloat(b.p.parcelReply || 'â€¦ëŒë ¤ì¤„ê²Œ.', true);
-        pc.spawnTimer = 90;
-        Sound.correct();
-        persuadeGaugeSync(b);
-      }
-    }
-  }
-  // ê¸°ìš¸(ë³´ìŠ¤) open í˜ì´ì¦ˆ ê³ ìœ  ê¸°ë¯¹ â€” ê¸°ìš¸ì–´ì§€ëŠ” ìƒì: ã€Œë°˜ë¡€ êµ¬ìŠ¬ã€ì„ ì €ìš¸ ì ‘ì‹œë¡œ ìš´ë°˜
-  const TILT_DRIFT_STEPS = [0.9, 0.6, 0.3, 0];
-  function updateTilt(b) {
-    const w = b.wave, tl = w.tilt, arena = b.arena, box = arena.box;
-    // í¸ì‹ êµ¬ìŠ¬(ì–´ë‘ìš´ êµ¬ìŠ¬) â€” ë‚®ì€ ìª½ì— ì„ì—¬ ìŠ¤í°. ë§Œì§€ë©´ "ê°™ì€ ìª½ ì´ì•¼ê¸°ë§Œ ë‹´ì€" ì…ˆ:
-    // ê²Œì´ì§€-4ì— ê¸°ìš¸ê¸°ê°€ í•œ ë‹¨ê³„ ë˜ëŒì•„ê°„ë‹¤. ë°˜ë¡€(ë°ì€ êµ¬ìŠ¬)ì™€ êµ¬ë³„í•´ ë‹´ì•„ì•¼ í•œë‹¤.
-    if (!tl.junk) {
-      tl.junkTimer -= 1;
-      if (tl.junkTimer <= 0) {
-        tl.junk = Object.assign(spawnAway(box, arena.soul, 20, 40, box.w / 2 - 40, box.h - 80), { age: 0 });
-      }
-    } else {
-      tl.junk.age += 1;
-      if (tl.junk.age > 240) { tl.junk = null; tl.junkTimer = 200; }
-      else {
-        const jdx = tl.junk.x - arena.soul.x, jdy = tl.junk.y - arena.soul.y;
-        if (jdx * jdx + jdy * jdy < (SOUL_R + 10) * (SOUL_R + 10)) {
-          tl.junk = null; tl.junkTimer = 240;
-          if (!w.practice) {
-            b.gauge = clamp(b.gauge - 4, 0, b.gaugeMax);
-            tl.deliveries = Math.max(0, tl.deliveries - 1); b.tiltDeliveries = tl.deliveries;
-            tl.drift = TILT_DRIFT_STEPS[Math.min(tl.deliveries, TILT_DRIFT_STEPS.length - 1)];
-            b.flash = 10;
-            pushFloat((b.p.junkReply || 'ê±°ë´, ì—­ì‹œ ì´ìª½ ì´ì•¼ê¸°ê°€ ë§ë‹¤ë‹ˆê¹Œ!') + '\n(ì €ìš¸ì´ ë‹¤ì‹œ ê¸°ìš¸ì—ˆë‹¤â€¦)', true);
-            Sound.bump(); persuadeGaugeSync(b);
-          } else {
-            pushFloat('* ì—°ìŠµ: ì–´ë‘ìš´ êµ¬ìŠ¬ì€ í¸ì‹ â€”\në°ì€ ë°˜ë¡€ êµ¬ìŠ¬ë§Œ ì ‘ì‹œì— ë‹´ì.', true);
-          }
-        }
-      }
-    }
-    if (!tl.orb && !arena.carrying) {
-      tl.spawnTimer -= 1;
-      if (tl.spawnTimer <= 0) { // ë‚®ì€ ìª½(ì™¼ìª½) ì ˆë°˜ì—ë§Œ ìŠ¤í°
-        tl.orb = { x: box.x + 20 + Math.random() * (box.w / 2 - 40), y: box.y + 40 + Math.random() * (box.h - 80) };
-      }
-    }
-    if (tl.orb) {
-      const dx = tl.orb.x - arena.soul.x, dy = tl.orb.y - arena.soul.y;
-      if (dx * dx + dy * dy < (SOUL_R + 10) * (SOUL_R + 10)) { // ì§‘ê¸° (1ê°œë§Œ)
-        arena.carrying = true; tl.orb = null; Sound.blip();
-      }
-    }
-    if (arena.carrying) {
-      const dx = tl.plate.x - arena.soul.x, dy = tl.plate.y - arena.soul.y;
-      if (dx * dx + dy * dy < (SOUL_R + 12) * (SOUL_R + 12)) { // ë†’ì€ ìª½(ì˜¤ë¥¸ìª½) ì €ìš¸ ì ‘ì‹œì— ë°°ë‹¬
-        arena.carrying = false;
-        if (w.practice) { pushFloat('* ì—°ìŠµ: ë°˜ë¡€ êµ¬ìŠ¬ì€ ì´ë ‡ê²Œ ì ‘ì‹œë¡œ!', true); tl.spawnTimer = 90; return; }
-        tl.deliveries += 1; b.tiltDeliveries = tl.deliveries;
-        if (tl.deliveries <= 3) grantPatternGauge(b, 10); // [D4] 3íšŒ ìƒí•œ
-        if (tl.deliveries === 3) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3íšŒ â†’ ë§Œì¶© ì§ì „
-        if (tl.deliveries >= 3) patternCapNudge(b);
-        // 0.9 â†’ 0.6 â†’ 0.3 â†’ 0 (í‘œë¥¼ ì‚¬ìš©í•´ ë¶€ë™ì†Œìˆ˜ì  ì˜¤ì°¨ ì—†ì´ ì •í™•í•œ ê°’ìœ¼ë¡œ)
-        tl.drift = TILT_DRIFT_STEPS[Math.min(tl.deliveries, TILT_DRIFT_STEPS.length - 1)];
-        pushFloat((b.p.tiltReply || 'â€¦ì–´? ì €ìš¸ì´â€¦ ì›€ì§ì˜€ë‹¤?') + '\n(ê¸°ìš¸ê¸°ê°€ ì¤„ì—ˆë‹¤!)', true);
-        tl.spawnTimer = 90;
-        Sound.correct();
-        persuadeGaugeSync(b);
-      }
-    }
-  }
-  // ë°˜ì§(ë³´ìŠ¤) open í˜ì´ì¦ˆ ê³ ìœ  ê¸°ë¯¹ â€” ë°˜ì§ì´ëŠ” ë³´ìƒ ì•„ì´í…œ: 240í”„ë ˆì„ ë™ì•ˆ ê±´ë“œë¦¬ì§€
-  // ì•Šê³  ë²„í‹°ë©´ ì†Œë©¸+ê²Œì´ì§€ +10+ì¡°ëª… í•˜ë‚˜ êº¼ì§(ìµœëŒ€ 3íšŒ). ì ‘ì´‰í•˜ë©´ í”¼í•´+ê´‘ê³  ì–¼ë£©(ì—­íš¨ê³¼).
-  const TEMPT_SURVIVE_FRAMES = 240;
-  function updateTempt(b) {
-    const w = b.wave, tp = w.tempt, arena = b.arena, box = arena.box;
-    if (!tp.obj) {
-      tp.spawnTimer -= 1;
-      if (tp.spawnTimer <= 0) {
-        tp.obj = Object.assign(spawnAway(box, arena.soul, 30, 30), { age: 0 });
-      }
-      return;
-    }
-    tp.obj.age += 1;
-    const dx = tp.obj.x - arena.soul.x, dy = tp.obj.y - arena.soul.y;
-    const d2 = dx * dx + dy * dy;
-    if (d2 < (SOUL_R + 10) * (SOUL_R + 10)) {
-      if (arena.inv > 0) return; // ë¬´ì  ì¤‘ì—” ì ‘ì´‰ íŒì • ì—†ìŒ (íƒ„ë§‰ í”¼ê²©ê³¼ ê°™ì€ í”„ë ˆì„ 2ì¤‘ í”¼í•´ ë°©ì§€)
-      // ì‘ì‹œ ë„ì¤‘ ì‚´ì§ ìŠ¤ì¹œ ê²ƒì€ ë²Œí•˜ì§€ ì•ŠëŠ”ë‹¤ â€” ì‘ì‹œë§Œ ì²˜ìŒë¶€í„° ë‹¤ì‹œ (ì¡°ì‘ ë¯¸ìˆ™ ë°°ë ¤)
-      if (tp.obj.gazeT > 0 && !w.practice) {
-        tp.obj.gazeT = 0;
-        pushFloat('* ì•—, ë„ˆë¬´ ê°€ê¹Œì›Œ!\n(ë°˜ ë°œì§ ë–¨ì–´ì ¸ì„œ ì½ì)', true);
-        arena.inv = 20;
-        return;
-      }
-      // ì ‘ì´‰ â€” ì—­íš¨ê³¼: í”¼í•´ + ê´‘ê³  ì–¼ë£© (ì—°ìŠµ íŒŒë„ì—ì„œëŠ” ì•ˆë‚´ë§Œ)
-      tp.obj = null;
-      tp.spawnTimer = 60;
-      if (w.practice) {
-        pushFloat('* ì—°ìŠµ: ëŒ€ë°• ë²„íŠ¼ì€ ë§Œì§€ì§€ ë§ê³ ,\nê³ì—ì„œ ì‘ì€ í™•ë¥ í‘œë¥¼ ì½ì.', true);
-        return;
-      }
-      b.playerHp = Math.max(0, b.playerHp - 1);
-      arena.inv = 42; b.flash = 12;
-      addAdSticker();
-      pushFloat('ë°˜ì§: "ê±°ë´, ë°˜ì§ì´ëŠ” ê²Œ ì¢‹ì–ì•„!"\n(ê´‘ê³  ì–¼ë£©ì´ í•˜ë‚˜ ë” ë¶™ì—ˆë‹¤!)', true);
-      Sound.bump();
-      if (b.playerHp <= 0) { persuadeExhaust(); return; }
-      return;
-    }
-    // í™•ë¥ í‘œ ì‘ì‹œ(Rë¼ìš´ë“œÂ·10ì°¨ì‹œ) â€” ë§Œì§€ì§€ ì•Šì„ ë§Œí¼ ê°€ê¹Œì´(20~44px)ì„œ 45í”„ë ˆì„
-    // ë²„íŠ¼ì˜ ì‘ì€ í™•ë¥ í‘œë¥¼ ì½ìœ¼ë©´, ìœ í˜¹ì˜ ë¹›ì´ êº¼ì§„ë‹¤ (+8, ë²„í‹°ê¸°ì™€ ê°™ì€ ëˆ„ì  ì¹´ìš´íŠ¸)
-    if (d2 < 44 * 44) {
-      tp.obj.gazeT = (tp.obj.gazeT || 0) + 1;
-      if (tp.obj.gazeT >= patEase().gaze) {
-        tp.obj = null; tp.spawnTimer = 60;
-        if (w.practice) { pushFloat('* ì—°ìŠµ: í™•ë¥ ì„ ì½ìœ¼ë©´\në¹›ì´ êº¼ì§„ë‹¤!', true); return; }
-        const wasMax = tp.resisted >= 3;
-        tp.resisted = Math.min(3, tp.resisted + 1);
-        b.temptResisted = tp.resisted;
-        if (!wasMax) grantPatternGauge(b, 8); // [D4] 3íšŒ ìƒí•œ
-        if (tp.resisted === 3 && !wasMax) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3íšŒ â†’ ë§Œì¶© ì§ì „
-        if (tp.resisted >= 3) patternCapNudge(b);
-        pushFloat((b.p.gazeReply || 'â€¦í™•ë¥ ì„, ì½ì—ˆì–´?') + `\n(ë ˆì „ë“œ 1.5%â€¦ ë¹›ì´ êº¼ì¡Œë‹¤ ${tp.resisted}/3)`, true);
-        Sound.correct(); persuadeGaugeSync(b);
-        return;
-      }
-    } else if (tp.obj.gazeT) tp.obj.gazeT = 0;
-    if (tp.obj.age >= TEMPT_SURVIVE_FRAMES) {
-      // ë²„í…¨ ëƒ„ â€” ì†Œë©¸ + ë³´ìƒ(ê²Œì´ì§€ +10, ì¡°ëª… í•˜ë‚˜ êº¼ì§, ìµœëŒ€ 3íšŒ)
-      tp.obj = null;
-      tp.spawnTimer = 60;
-      if (w.practice) { pushFloat('* ì—°ìŠµ: ì•ˆ ë§Œì§€ê³  ë²„í‹°ë©´\nìœ í˜¹ì€ ì‚¬ë¼ì§„ë‹¤!', true); return; }
-      const wasMax = tp.resisted >= 3;
-      tp.resisted = Math.min(3, tp.resisted + 1);
-      b.temptResisted = tp.resisted;
-      if (!wasMax) grantPatternGauge(b, 10); // [D4] 3íšŒ ìƒí•œ
-      if (tp.resisted === 3 && !wasMax) b.gauge = Math.max(b.gauge, b.gaugeMax - 2); // 3íšŒ â†’ ë§Œì¶© ì§ì „
-      if (tp.resisted >= 3) patternCapNudge(b);
-      pushFloat((b.p.temptReply || 'â€¦ë²„í…¼ë‹¤.') + `\n(ì¡°ëª…ì´ í•˜ë‚˜ êº¼ì¡Œë‹¤! ${tp.resisted}/3)`, true);
-      Sound.correct();
-      persuadeGaugeSync(b);
-    }
-  }
-  // í•˜íŠ¸ê°€ ë‹¤ ë‹³ìœ¼ë©´ ë¬¼ëŸ¬ë‚œë‹¤ â€” ë‹¨, ìƒëŒ€ëŠ” ì´ì•¼ê¸°ë¥¼ ì ˆë°˜ì¯¤ ê¸°ì–µí•œë‹¤
-  function persuadeExhaust() {
-    const b = game.battle;
-    if (!game.flags.persuadeMemory) game.flags.persuadeMemory = {};
-    // ì €í•™ë…„(easy)ì€ ê²Œì´ì§€ë¥¼ ê·¸ëŒ€ë¡œ ê¸°ì–µí•œë‹¤ â€” íƒˆì§„í•´ë„ ì§„í–‰ì´ ê¹ì´ì§€ ì•Šì•„
-    // ì¬ë„ì „ ì˜ìš•ì´ êº¾ì´ì§€ ì•ŠëŠ”ë‹¤ (ê¸°ë³¸/ê³ í•™ë…„ì€ ì ˆë°˜)
-    game.flags.persuadeMemory[b.persuadeId] = {
-      gauge: game.difficulty === 'easy' ? b.gauge : Math.floor(b.gauge / 2),
-      state: b.pState === 'closed' ? 'closed' : 'shaken',
-      // íŒ¨í„´ 3íšŒ ìƒí•œ ì¹´ìš´í„°Â·ì—°ìŠµ ì†Œì§„ì„ í•¨ê»˜ ê¸°ì–µ â€” í›„í‡´-ì¬ì…ì¥ íŒŒë° ì°¨ë‹¨ (S-1)
-      pat: {
-        parcelDeliveries: b.parcelDeliveries || 0, tiltDeliveries: b.tiltDeliveries || 0,
-        temptResisted: b.temptResisted || 0, verifyJudged: b.verifyJudged || 0,
-        verifyIdx: b.verifyIdx || 0, cozyExits: b.cozyExits || 0,
-        quietWarm: b.quietWarm || 0, shadowTired: b.shadowTired || 0,
-        practiceDone: !!b.practiceDone, capNudged: !!b.capNudged,
-      },
-    };
-    save();
-    const nm = b.mon.name;
-    game.battle = null;
-    game.mode = 'world';
-    Sound.playMapBgm(MAPS[game.map].song);
-    startDialog([
-      'ë§ˆìŒì´ ì§€ì³ì„œ, í•œ ë°œ ë¬¼ëŸ¬ë‚¬ë‹¤â€¦',
-      `ê´œì°®ì•„. ${nm}ëŠ” ë„¤ ì´ì•¼ê¸°ë¥¼\nì¡°ê¸ˆì€ ê¸°ì–µí•˜ê³  ìˆì„ ê±°ì•¼.\nìˆ¨ì„ ê³ ë¥´ê³  ë‹¤ì‹œ ê°€ ë³´ì.`,
-    ]);
-  }
-
-  function updatePersuadeBattle() {
-    const b = game.battle;
-    if (b.phase === 'wave') updateWave();
-  }
-
-  // ---------- ì¹œêµ¬ ìˆ˜ì²© ----------
-  function openDex(ret) {
-    game.dex.ret = ret;
-    game.dex.cursor = 0;
-    game.dex.hint = null; // ì´ì „ì— ë„ìš´ ì¬ëŒ€ê²° ì•ˆë‚´ê°€ ë‚¨ì•„ ìˆì§€ ì•Šê²Œ ì´ˆê¸°í™”
-    game.mode = 'dex';
-    Sound.select();
-  }
-
-  function closeDex() {
-    game.mode = game.dex.ret;
-    Sound.select();
-  }
-
-  function updateDex() {
-    const n = DEX_ORDER.length;
-    if (game.dex.hint && game.dex.hint.t > 0) game.dex.hint.t -= 1; // ì¬ëŒ€ê²° ì•ˆë‚´ í† ìŠ¤íŠ¸ ì¹´ìš´íŠ¸ë‹¤ìš´
-    if (justPressed('up')) { game.dex.cursor = (game.dex.cursor + n - 1) % n; Sound.blip(); }
-    if (justPressed('down')) { game.dex.cursor = (game.dex.cursor + 1) % n; Sound.blip(); }
-    if (justPressed('left')) { game.dex.cursor = (game.dex.cursor + n - 5) % n; Sound.blip(); }
-    if (justPressed('right')) { game.dex.cursor = (game.dex.cursor + 5) % n; Sound.blip(); }
-    if (justPressed('cancel') || justPressed('menu')) { closeDex(); return; }
-    // X-6 Z â€” ë§Œë‚œ ë³´ìŠ¤ ìœ„ì—ì„œ ëˆ„ë¥´ë©´ ì¬ëŒ€ê²°ì„ ì œì•ˆí•œë‹¤(ë§Œë‚˜ì§€ ì•Šì•˜ìœ¼ë©´ ë‹«ê¸°).
-    if (justPressed('action')) {
-      const id = DEX_ORDER[game.dex.cursor];
-      const seen = getDexSeen();
-      // ê³µìš© ìˆ˜ì²©ì— ê¸°ë¡ì¡°ì°¨ ì—†ìœ¼ë©´(ì •ë§ë¡œ ëª» ë§Œë‚œ ì•„ì´) ê·¸ëƒ¥ ë‹«ëŠ”ë‹¤.
-      if (!(seen[id] && seen[id].seen && DEX_REMATCH[id])) { closeDex(); return; }
-      // ì´ìŠˆ1: ì´ì–´í•˜ê¸° ì „(íƒ€ì´í‹€)ì—ëŠ” flagsê°€ ì—†ë‹¤ â€” startPersuadeBattleì˜ persuadeMemory
-      //        ì ‘ê·¼ì´ í¬ë˜ì‹œë‚˜ë¯€ë¡œ, ì¬ëŒ€ê²° ëŒ€ì‹  ë¶€ë“œëŸ¬ìš´ ì•ˆë‚´ë§Œ ë„ìš´ë‹¤.
-      if (!game.flags) { game.dex.hint = { text: 'ì´ì–´í•˜ê¸° í›„ì— ë‹¤ì‹œ ì´ì•¼ê¸°í•  ìˆ˜ ìˆì–´ìš”', t: 220 }; Sound.blip(); return; }
-      // ì´ìŠˆ2: ê³µìš© ìˆ˜ì²©(seen)ì€ ìŠ¬ë¡¯ì„ ë„˜ë‚˜ë“ ë‹¤ â€” ë‹¤ë¥¸ í•™ìƒì´ ê¹¬ ì•„ì´ë¡œ ì¬ëŒ€ê²°ì„ ì—´ë©´
-      //        í˜„ì¬ ìŠ¬ë¡¯ì˜ ìë¹„/ì§„í–‰ì´ ì˜¤ì—¼ë˜ê³  ìŠ¤í¬ì¼ëŸ¬ê°€ ìƒŒë‹¤. 'ì§€ê¸ˆ ìŠ¬ë¡¯'ì—ì„œ ë§Œë‚œ ì•„ì´ë§Œ í—ˆìš©.
-      if (!(bossWasSpared(id) || bossClearedInSlot(id))) {
-        game.dex.hint = { text: 'ì•„ì§ ë§Œë‚˜ì§€ ëª»í•œ ì•„ì´ì˜ˆìš”', t: 220 }; Sound.blip(); return;
-      }
-      startDexRematch(id);
-    }
-  }
-  // X-6 ì¬ëŒ€ê²° ì œì•ˆ â€” ã€Œë‹¤ì‹œ ì´ì•¼ê¸°í•´ ë³¼ë˜?ã€ ì„ íƒ â†’ ì‹¤ì „ ê·œì¹™ì˜ ì„¤ë“ ë°°í‹€ ì¬ì‹œì‘(b.rematch).
-  function startDexRematch(id) {
-    if (!game.flags) return; // ì´ìŠˆ1: flags ì—†ëŠ” íƒ€ì´í‹€ ë¬¸ë§¥ì—ì„  ì¬ëŒ€ê²° ì§„ì… ê¸ˆì§€(ë°©ì–´)
-    const ret = game.dex.ret;
-    startChoice(`${monName(id)}ì™€(ê³¼) ë‹¤ì‹œ ì´ì•¼ê¸°í•´ ë³¼ë˜?`, ['ë‹¤ì‹œ ì´ì•¼ê¸°í•œë‹¤', 'ì•„ë‹ˆ, ëì–´'], (i) => {
-      if (i !== 0) { openDex(ret); return; } // ì·¨ì†ŒÂ·ì•„ë‹ˆ â†’ ìˆ˜ì²©ìœ¼ë¡œ ë³µê·€
-      startPersuadeBattle(id, DEX_REMATCH[id]);
-      game.battle.rematch = true;      // ìŠ¹ë¦¬ ì‹œ ì§„í–‰ í”Œë˜ê·¸ ì¬ë¶€ì—¬ ì—†ì´ ìˆ˜ì²© ë³µê·€(winRematch)
-      game.battle.rematchRet = ret;
-    });
-    // ì´ìŠˆ5: Z ìŠµê´€(ë‹«ê¸° ëŒ€ì‹  ì¬ëŒ€ê²° í™•ì •)ë¡œ ì¸í•œ ì˜¤ì¡°ì‘ ë°©ì§€ â€” ì•ˆì „í•œ ê¸°ë³¸ê°’ 'ì•„ë‹ˆ, ëì–´'.
-    if (game.choice) game.choice.cursor = 1;
-  }
-
-  const MERCY_LABEL = {
-    mercy: 'ë§ˆìŒì„ ì•ˆì•„ ì¤Œ â™¥', neutral: 'ë°”ë¥´ê²Œ íƒ€ì´ë¦„', harsh: 'ì°¨ê°‘ê²Œ ì‘ë³„',
-  };
-
-  // ì¹œêµ¬ ìˆ˜ì²©ì˜ ì¥ í‘œê¸° â€” stage: 0=í”„ë¡¤ë¡œê·¸, 1~5=Nì¥, 6=íŒŒì´ë„
-  function dexChapterShort(stage) { return stage === 0 ? 'P' : stage === 6 ? 'F' : `${stage}ì¥`; }
-  function dexChapterLabel(stage) { return stage === 0 ? 'í”„ë¡¤ë¡œê·¸' : stage === 6 ? 'íŒŒì´ë„' : `${stage}ì¥`; }
-
-  function drawDex() {
-    const seen = getDexSeen();
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
-
-    // í—¤ë”
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(22, true);
-    ctx.fillText('â™¥ ì¹œêµ¬ ìˆ˜ì²©', 24, 38);
-    ctx.fillStyle = '#888';
-    ctx.font = fs(15);
-    ctx.fillText(`ì¹œêµ¬ ${dexSeenCount()} / ${DEX_ORDER.length}`, 24, 62);
-
-    // ì™¼ìª½: ëª©ë¡ (ì»¤ì„œ ì£¼ë³€ìœ¼ë¡œ ìŠ¤í¬ë¡¤)
-    const listX = 24, listY = 84, rowH = 30, visible = 13;
-    const cur = game.dex.cursor;
-    let start = Math.max(0, Math.min(cur - 6, DEX_ORDER.length - visible));
-    if (DEX_ORDER.length <= visible) start = 0;
-    for (let i = 0; i < visible && start + i < DEX_ORDER.length; i++) {
-      const idx = start + i;
-      const id = DEX_ORDER[idx];
-      const isSeen = seen[id] && seen[id].seen;
-      const y = listY + i * rowH;
-      if (idx === cur) {
-        ctx.fillStyle = '#e0453a';
-        ctx.font = fs(14);
-        ctx.fillText('â™¥', listX - 18, y);
-      }
-      ctx.fillStyle = '#666';
-      ctx.font = fs(12);
-      ctx.fillText(dexChapterShort(MONSTER_DEX[id].stage), listX, y);
-      ctx.fillStyle = isSeen ? (idx === cur ? '#fff' : '#aaa') : '#444';
-      ctx.font = fs(15, idx === cur);
-      ctx.fillText(isSeen ? monName(id) : '??? (ì•„ì§ ëª» ë§Œë‚¨)', listX + 34, y);
-    }
-    // ìŠ¤í¬ë¡¤ í‘œì‹œ
-    if (start > 0) { ctx.fillStyle = '#888'; ctx.fillText('â–²', listX + 130, listY - 24); }
-    if (start + visible < DEX_ORDER.length) { ctx.fillStyle = '#888'; ctx.fillText('â–¼', listX + 130, listY + visible * rowH); }
-
-    // ì˜¤ë¥¸ìª½: ìƒì„¸ íŒ¨ë„
-    const id = DEX_ORDER[cur];
-    const info = MONSTER_DEX[id];
-    const isSeen = seen[id] && seen[id].seen;
-    const panelX = 330, panelW = LW - panelX - 24;
-    utBox(panelX, 84, panelW, 400, 6);
-
-    const cx = panelX + panelW / 2;
-    // ìŠ¤í”„ë¼ì´íŠ¸ (ê°€ìš´ë°, 6ë°°)
-    if (isSeen) {
-      const ss = 6;
-      const bob = Math.sin(game.time / 22) * 4;
-      drawMon(ctx, id, Math.round(cx - 16 * ss / 2), Math.round(110 + bob), ss);
-    } else {
-      // ì‹¤ë£¨ì—£
-      ctx.strokeStyle = '#444';
-      ctx.lineWidth = 2;
-      roundRect(cx - 44, 116, 88, 88, 6);
-      ctx.stroke();
-      ctx.fillStyle = '#444';
-      ctx.font = fs(48, true);
-      ctx.textAlign = 'center';
-      ctx.fillText('?', cx, 178);
-      ctx.textAlign = 'left';
-    }
-
-    ctx.textAlign = 'center';
-    ctx.fillStyle = isSeen ? '#fff' : '#555';
-    ctx.font = fs(22, true);
-    ctx.fillText(isSeen ? monName(id) : '???', cx, 238);
-    ctx.fillStyle = '#888';
-    ctx.font = fs(13);
-    ctx.fillText(dexChapterLabel(info.stage), cx, 260);
-    ctx.textAlign = 'left';
-
-    if (isSeen) {
-      ctx.fillStyle = '#ffd644';
-      ctx.font = fs(15, true);
-      wrapText(`ì£¼ì œ Â· ${info.theme}`, panelX + 24, 296, panelW - 48, 22);
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(15);
-      const usedLines = wrapText(info.learn, panelX + 24, 330, panelW - 48, 24);
-      const my = 330 + usedLines * 24 + 16;
-      const mk = seen[id].mercy;
-      ctx.fillStyle = '#e0453a';
-      ctx.font = fs(14);
-      ctx.fillText(`ì‘ë³„ Â· ${mk ? MERCY_LABEL[mk] : 'â€”'}`, panelX + 24, my);
-      // X-6 ì¬ëŒ€ê²° ì•ˆë‚´ â€” ë§Œë‚œ ë³´ìŠ¤ë¼ë©´ Zë¡œ ë‹¤ì‹œ ì´ì•¼ê¸°í•  ìˆ˜ ìˆë‹¤. (ì´ìŠˆ5: ë‹«ê¸° í‚¤ë„ í•¨ê»˜ ì•ˆë‚´)
-      if (DEX_REMATCH[id]) {
-        ctx.fillStyle = Math.floor(game.time / 30) % 2 === 0 ? '#ffd644' : '#8a7a2a';
-        ctx.font = fs(13, true);
-        ctx.fillText('Z Â· ë‹¤ì‹œ ì´ì•¼ê¸°í•´ ë³¼ë˜?', panelX + 24, my + 30);
-        ctx.fillStyle = '#888';
-        ctx.font = fs(12);
-        ctx.fillText('ë‹«ê¸° Â· X', panelX + 24, my + 50);
-      }
-    } else {
-      ctx.fillStyle = '#666';
-      ctx.font = fs(15);
-      ctx.fillText('ì•„ì§ ë§Œë‚˜ì§€ ëª»í•œ ë§ˆìŒì…ë‹ˆë‹¤.', panelX + 24, 300);
-      ctx.fillText('ëª¨í—˜ì—ì„œ ê¹¨ìš°ì¹˜ë©´ ê¸°ë¡ë©ë‹ˆë‹¤.', panelX + 24, 326);
-    }
-
-    // ì¬ëŒ€ê²° ì•ˆë‚´ í† ìŠ¤íŠ¸(ì´ìŠˆ1Â·2) â€” dex í™”ë©´ì—” game.noticeê°€ ì•ˆ ê·¸ë ¤ì§€ë¯€ë¡œ ì—¬ê¸°ì„œ ì§ì ‘ ë„ìš´ë‹¤.
-    if (game.dex.hint && game.dex.hint.t > 0) {
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#ffd644';
-      ctx.font = fs(14, true);
-      ctx.fillText(game.dex.hint.text, LW / 2, 486);
-      ctx.textAlign = 'left';
-    }
-
-    // í‘¸í„°
-    ctx.fillStyle = '#777';
-    ctx.font = fs(13);
-    ctx.textAlign = 'center';
-    ctx.fillText('â†‘â†“â†â†’ ë„˜ê¸°ê¸° Â· Z ë‹¤ì‹œ ì´ì•¼ê¸° Â· Xë¡œ ë‹«ê¸°', LW / 2, 510);
-    ctx.textAlign = 'left';
-  }
-
-  // ---------- ì˜¤ë‹µ ë³µìŠµ ë…¸íŠ¸ ----------
-  function openReview(ret) {
-    const r = game.review;
-    r.ret = ret;
-    r.slot = activeSlot();
-    r.ids = Object.keys(getMistakes(r.slot));
-    r.cursor = 0;
-    r.phase = 'list';
-    game.mode = 'review';
-    Sound.select();
-  }
-
-  function closeReview() {
-    game.mode = game.review.ret;
-    Speech.stop();
-    Sound.select();
-  }
-
-  function startReviewQuestion() {
-    const r = game.review;
-    const m = getMistakes(r.slot)[r.ids[r.cursor]];
-    r.choiceOrder = shuffled(m.a.map((_, i) => i));
-    r.qCursor = 0;
-    r.feedback = null;
-    r.phase = 'question';
-    speakQuiz(m.q, r.choiceOrder.map((ai) => m.a[ai]));
-  }
-
-  function updateReview() {
-    const r = game.review;
-    if (r.phase === 'list') {
-      const n = r.ids.length;
-      if (n === 0) {
-        if (justPressed('cancel') || justPressed('action') || justPressed('menu')) closeReview();
-        return;
-      }
-      if (justPressed('up')) { r.cursor = (r.cursor + n - 1) % n; Sound.blip(); }
-      if (justPressed('down')) { r.cursor = (r.cursor + 1) % n; Sound.blip(); }
-      if (justPressed('action')) { startReviewQuestion(); Sound.select(); }
-      if (justPressed('cancel') || justPressed('menu')) closeReview();
-      return;
-    }
-
-    if (r.phase === 'question') {
-      const m = getMistakes(r.slot)[r.ids[r.cursor]];
-      if (!m) { r.phase = 'list'; return; }
-      const len = m.a.length;
-      if (justPressed('up')) { r.qCursor = (r.qCursor + len - 1) % len; Sound.blip(); }
-      if (justPressed('down')) { r.qCursor = (r.qCursor + 1) % len; Sound.blip(); }
-      if (justPressed('cancel')) { r.phase = 'list'; Sound.select(); return; }
-      if (justPressed('action')) {
-        const correct = r.choiceOrder[r.qCursor] === m.c;
-        r.feedback = { correct, why: m.why };
-        r.phase = 'feedback';
-        speakFeedback(correct, m.why);
-        if (correct) { Sound.correct(); clearMistake(r.slot, r.ids[r.cursor]); } else { Sound.wrong(); }
-      }
-      return;
-    }
-
-    if (r.phase === 'feedback') {
-      if (justPressed('action') || justPressed('cancel')) {
-        if (r.feedback.correct) {
-          r.ids = Object.keys(getMistakes(r.slot));
-          if (r.cursor >= r.ids.length) r.cursor = Math.max(0, r.ids.length - 1);
-        }
-        r.phase = 'list';
-        Sound.select();
-      }
-      return;
-    }
-  }
-
-  function drawReview() {
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
-    const r = game.review;
-    const ids = r.ids;
-
-    if (r.phase === 'list') {
-      ctx.textAlign = 'left';
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(22, true);
-      ctx.fillText('â˜… ë‹¤ì‹œ ë§Œë‚˜ê¸°', 24, 38);
-      ctx.fillStyle = '#888';
-      ctx.font = fs(15);
-      ctx.fillText(`ë‹¤ì‹œ ë§Œë‚  ì´ì•¼ê¸° ${ids.length}ê°œ`, 24, 62);
-
-      if (ids.length === 0) {
-        ctx.fillStyle = '#aaa';
-        ctx.font = fs(16);
-        ctx.fillText('ì•„ì§ í‹€ë¦° ë¬¸ì œê°€ ì—†ì–´ìš”!', 24, 120);
-        ctx.fillText('ëª¨í—˜ì„ í•˜ë©° í‹€ë¦° ë¬¸ì œê°€ ìˆìœ¼ë©´', 24, 148);
-        ctx.fillText('ì—¬ê¸°ì— ëª¨ì—¬ìš”.', 24, 174);
-      } else {
-        const listX = 24, listY = 96, rowH = 34, visible = 11;
-        let start = Math.max(0, Math.min(r.cursor - 5, ids.length - visible));
-        if (ids.length <= visible) start = 0;
-        const mistakes = getMistakes(r.slot);
-        for (let i = 0; i < visible && start + i < ids.length; i++) {
-          const idx = start + i;
-          const m = mistakes[ids[idx]];
-          const y = listY + i * rowH;
-          if (idx === r.cursor) {
-            ctx.fillStyle = '#e0453a';
-            ctx.font = fs(14);
-            ctx.fillText('â™¥', listX - 18, y);
-          }
-          ctx.fillStyle = idx === r.cursor ? '#fff' : '#aaa';
-          ctx.font = fs(15, idx === r.cursor);
-          const firstLine = m ? m.q.split('\n')[0] : '???';
-          ctx.fillText(firstLine, listX, y);
-        }
-        if (start > 0) { ctx.fillStyle = '#888'; ctx.fillText('â–²', LW - 40, listY - 24); }
-        if (start + visible < ids.length) { ctx.fillStyle = '#888'; ctx.fillText('â–¼', LW - 40, listY + visible * rowH); }
-      }
-
-      ctx.fillStyle = '#777';
-      ctx.font = fs(13);
-      ctx.textAlign = 'center';
-      if (ids.length > 0) ctx.fillText('â†‘â†“ ì„ íƒ Â· Z/ìŠ¤í˜ì´ìŠ¤ë¡œ ë‹¤ì‹œ í’€ê¸° Â· Xë¡œ ë‹«ê¸°', LW / 2, 510);
-      else ctx.fillText('X ë˜ëŠ” Zë¡œ ë‹«ê¸°', LW / 2, 510);
-      ctx.textAlign = 'left';
-      return;
-    }
-
-    // question / feedback phase â€” ë°°í‹€ í€´ì¦ˆ í™”ë©´ê³¼ ê°™ì€ í˜•íƒœë¡œ í‘œì‹œ
-    const m = getMistakes(r.slot)[ids[r.cursor]];
-    ctx.font = fs(16);
-    let boxH = game.largeText ? 280 : 238;
-    if (r.phase === 'question' && m) {
-      const qMaxW = LW - 24 - 56;
-      const cMaxW = LW - 24 - 38 - 28 - 16;
-      const gap = game.largeText ? lh(16) : lh(14);
-      let cl = 0;
-      for (let i = 0; i < r.choiceOrder.length; i++) cl += measureWrap(`${i + 1}. ${m.a[r.choiceOrder[i]]}`, cMaxW);
-      const needed = 30 + measureWrap(m.q, qMaxW) * lh(24) + lh(10) + cl * lh(22) + r.choiceOrder.length * gap + 16;
-      boxH = Math.min(Math.max(boxH, needed), LH - 64 - 12);
-    }
-    const boxY = LH - boxH - 12;
-    const hintY = boxY + boxH - 18;
-
-    ctx.fillStyle = '#888';
-    ctx.font = fs(14);
-    ctx.fillText('â˜… ë‹¤ì‹œ ë§Œë‚˜ê¸°', 24, 32);
-
-    utBox(12, boxY, LW - 24, boxH, 8);
-
-    if (r.phase === 'question') {
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(16);
-      let ty = drawQuestionText(m.q, 34, boxY + 30, LW - 24 - 56, lh(24)) + lh(10);
-      const cMaxW = LW - 24 - 38 - 28 - 16;
-      const gap = game.largeText ? lh(16) : lh(14);
-      for (let i = 0; i < r.choiceOrder.length; i++) {
-        ty += drawChoiceWrapped(`${i + 1}. ${m.a[r.choiceOrder[i]]}`, 38, ty, i === r.qCursor, cMaxW, lh(22)) + gap;
-      }
-    } else if (r.phase === 'feedback') {
-      const f = r.feedback;
-      ctx.font = fs(22, true);
-      ctx.fillStyle = f.correct ? okColor() : badColor();
-      ctx.fillText(f.correct ? 'â—‹ ì •ë‹µ! ì˜ ê¸°ì–µí–ˆì–´ìš”!' : 'Ã— ë‹¤ì‹œ í•œë²ˆ ì‚´í´ë´ìš”.', 34, boxY + 38);
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(16);
-      drawQuestionText(f.why, 34, boxY + (game.largeText ? 86 : 78), LW - 24 - 44, lh(24));
-      if (Math.floor(game.time / 20) % 2 === 0) {
-        ctx.fillStyle = '#ffd644';
-        ctx.font = fs(16);
-        ctx.fillText('â–¼ (Z/ìŠ¤í˜ì´ìŠ¤)', LW - 150, hintY);
-      }
-    }
-  }
-
-  // ---------- ì„¤ì •Â·ì¼ì‹œì •ì§€ ë©”ë‰´ ----------
-  // í„°ì¹˜ ê¸°ê¸°ì—ëŠ” í‚¤ë³´ë“œ ë‹¨ì¶•í‚¤(J/Q/B/I ë“±)ê°€ ì—†ìœ¼ë¯€ë¡œ, ëª¨ë“  ê¸°ëŠ¥ì„ ë©”ë‰´ë¡œ ì—°ë‹¤.
-  // êµì‚¬ ì „ìš© ê¸°ëŠ¥(ëŒ€ì‹œë³´ë“œÂ·ë¦¬í¬íŠ¸Â·ìˆ˜ì—… ëª¨ë“œÂ·ì»¤ìŠ¤í…€ í€´ì¦ˆÂ·ìˆ˜ë£Œì¦)ì€ ã€Œì„ ìƒë‹˜ ë°©ã€ìœ¼ë¡œ
-  // ì˜®ê²¨ì¡Œë‹¤ â€” í•™ìƒ í‘œë©´(ì¼ì‹œì •ì§€ ë©”ë‰´)ì—ëŠ” êµì‚¬ ì–´íœ˜ê°€ ë³´ì´ì§€ ì•ŠëŠ”ë‹¤(ìŠ¤í…”ìŠ¤ êµìœ¡ ì›ì¹™).
-  // ë‹¨, ë°ì´í„° ë°±ì—…ì€ í•™ìƒë„ ì“°ëŠ” ê¸°ëŠ¥ì´ë¼ ê·¸ëŒ€ë¡œ ë‚¨ê²¨ ë‘”ë‹¤.
-  // Y-8 ì¼ì‹œì •ì§€ ë©”ë‰´ ë‹¤ì´ì–´íŠ¸ â€” ìˆ˜ì§‘ ê³„ì—´(ì¼ì§€Â·ì¡°ê°Â·ìˆ˜ì²©Â·ë„ì „ê³¼ì œÂ·ê¾¸ë¯¸ê¸°Â·ì „ë‹¹Â·ì¼ê¸°)ì€
-  //   ã€Œê¸°ì–µì˜ ë°©ã€ í—ˆë¸Œ í•˜ìœ„ë¡œ ì˜®ê²¼ë‹¤. ì—¬ê¸°ì—ëŠ” í—ˆë¸Œ ì§„ì…ì (memoryroom)ê³¼ í™œë™Â·ì„¤ì •ë§Œ ë‚¨ëŠ”ë‹¤.
-  const PAUSE_ITEMS = ['memoryroom', 'challenge', 'review',
-    'backup', 'difficulty', 'textspeed', 'tts',
-    'largetext', 'colorblind', 'reducefx', 'lowgraphics', 'volume', 'mute', 'help', 'close'];
-  // ë°©íƒˆì¶œ ì¤‘ì—ëŠ” ã€ŒíŒíŠ¸ã€ í•­ëª©ì„ ë§¨ ìœ„ì— ë¶™ì¸ë‹¤ (í„°ì¹˜ ê¸°ê¸°ì—ì„œ Hí‚¤ ëŒ€ì²´).
-  function pauseItems() {
-    return game.puzzleRun ? ['hint'].concat(PAUSE_ITEMS) : PAUSE_ITEMS;
-  }
-  // Y-8 ã€Œê¸°ì–µì˜ ë°©ã€ í•˜ìœ„ í•­ëª© â€” ê° í•­ëª©ì€ ê¸°ì¡´ í™”ë©´ì„ ê·¸ëŒ€ë¡œ ì—°ë‹¤(í—ˆë¸Œë§Œ ìƒˆë¡œ ë§Œë“ ë‹¤).
-  //   ã€Œë‚¡ì€ ì¼ê¸°ã€(Q-2)ëŠ” ì²« ì¡°ê°ì„ ì¤ê¸° ì „ì—ëŠ” ëª©ë¡ì— ì—†ë‹¤ â€” ë¯¸ìŠ¤í„°ë¦¬ëŠ” ì£¼ìš´ ë’¤ë¶€í„°.
-  const MEMORY_ITEMS_BASE = ['journal', 'cards', 'dex', 'awards', 'cosmetics', 'halloffame'];
-  function memoryItems() {
-    const items = MEMORY_ITEMS_BASE.slice();
-    if (diaryCount() > 0) items.splice(items.indexOf('cards') + 1, 0, 'diary');
-    items.push('close');
-    return items;
-  }
-  const PAUSE_LABELS = {
-    hint: 'ğŸ’¡ íŒíŠ¸',
-    memoryroom: 'â– ê¸°ì–µì˜ ë°©',
-    journal: 'â—† ëª¨í—˜ ì¼ì§€',
-    cards: 'ğŸ“š ê¸°ì–µ ì¡°ê°',
-    diary: 'âœ‰ ë‚¡ì€ ì¼ê¸°',
-    halloffame: 'ğŸ† ëª…ì˜ˆì˜ ì „ë‹¹',
-    dashboard: 'â–¤ êµì‚¬ìš© ëŒ€ì‹œë³´ë“œ',
-    leaderboard: 'ğŸ… ë°˜ ìˆœìœ„í‘œ (ë°±ì—… ëª¨ìœ¼ê¸°)',
-    report: 'ğŸ©º í•™ìƒ ì§„ë‹¨ ë¦¬í¬íŠ¸',
-    classmode: 'â–¶ ìˆ˜ì—… ëª¨ë“œ (ì±•í„° ì‹œì‘)',
-    awards: 'â˜† ë„ì „ê³¼ì œ',
-    cosmetics: 'âœ¿ ê¾¸ë¯¸ê¸° (ì¹­í˜¸Â·í…Œë§ˆ)',
-    cert: 'ğŸ“ ìˆ˜ë£Œì¦',
-    challenge: 'â–¶ ë„ì „ ê·¹ì¥',
-    review: 'â˜… ë‹¤ì‹œ ë§Œë‚˜ê¸°',
-    dex: 'â™¥ ì¹œêµ¬ ìˆ˜ì²©',
-    quizedit: 'âœ ì»¤ìŠ¤í…€ í€´ì¦ˆ',
-    backup: 'â‡„ ë°ì´í„° ë°±ì—…Â·ë³µì›',
-    difficulty: 'ë‚œì´ë„',
-    textspeed: 'ìë§‰ ì†ë„',
-    tts: 'ì½ì–´ì£¼ê¸°',
-    largetext: 'í° ê¸€ì”¨',
-    colorblind: 'ìƒ‰ì•½ ëª¨ë“œ',
-    reducefx: 'í™”ë©´ íš¨ê³¼ ì¤„ì´ê¸°',
-    lowgraphics: 'ì €ì‚¬ì–‘ ê·¸ë˜í”½',
-    volume: 'ìŒëŸ‰',
-    mute: 'ì†Œë¦¬',
-    help: '? ë„ì›€ë§',
-    close: 'ë‹«ê¸°',
-  };
-  const PAUSE_VISIBLE = 12; // í•œ í™”ë©´ì— ë³´ì´ëŠ” ë©”ë‰´ í•­ëª© ìˆ˜ (ë„˜ìœ¼ë©´ ìŠ¤í¬ë¡¤)
-
-  function pauseValueLabel(item) {
-    if (item === 'textspeed') return TEXT_SPEED_LABEL[game.textSpeed];
-    if (item === 'difficulty') return DIFF_LABEL[game.difficulty];
-    if (item === 'tts') return game.tts ? 'ON' : 'OFF';
-    if (item === 'largetext') return game.largeText ? 'ON' : 'OFF';
-    if (item === 'colorblind') return game.colorBlind ? 'ON' : 'OFF';
-    if (item === 'reducefx') return game.reduceFx ? 'ON' : 'OFF';
-    if (item === 'lowgraphics') return game.lowGraphics ? 'ON' : 'OFF';
-    if (item === 'volume') return VOLUME_LABEL[game.volume];
-    if (item === 'mute') return Sound.muted ? 'ìŒì†Œê±°' : 'ON';
-    if (item === 'review') return `${mistakeCount(game.currentSlot)}ê°œ`;
-    if (item === 'awards') return `${countAchievements(game.currentSlot)}/${ACHIEVEMENTS.length}`;
-    if (item === 'cosmetics') return `${unlockedCount(game.currentSlot)}/${TITLES.length + THEMES.length}`;
-    if (item === 'cards') return `${collectedCards(game.currentSlot)}/${LEARN_CARDS.length}`;
-    if (item === 'diary') return `${diaryCount()}/${DIARY_SHARDS.length}`;
-    if (item === 'quizedit') return `${getCustomQuizzes().length}ê°œ`;
-    if (item === 'journal') {
-      const s = buildLearningSummary(game.currentSlot);
-      return s.attempted ? `${Math.round(s.overallRate * 100)}%` : 'â€”';
-    }
-    return '';
-  }
-
-  function openPause() {
-    game.pauseCursor = 0;
-    game.pauseScroll = 0;
-    game.mode = 'pause';
-    Sound.select();
-  }
-
-  function closePause() {
-    game.mode = 'world';
-    Sound.select();
-  }
-
-  function clampPauseScroll() {
-    const maxScroll = Math.max(0, pauseItems().length - PAUSE_VISIBLE);
-    if (game.pauseCursor < game.pauseScroll) game.pauseScroll = game.pauseCursor;
-    if (game.pauseCursor >= game.pauseScroll + PAUSE_VISIBLE) game.pauseScroll = game.pauseCursor - PAUSE_VISIBLE + 1;
-    game.pauseScroll = Math.max(0, Math.min(game.pauseScroll, maxScroll));
-  }
-  function speakPauseCursor() {
-    if (!game.tts) return;
-    const it = pauseItems()[game.pauseCursor];
-    const val = pauseValueLabel(it);
-    Speech.speak((PAUSE_LABELS[it] || '') + (val ? ', ' + val : ''));
-  }
-  function updatePause() {
-    const items = pauseItems();
-    const n = items.length;
-    if (justPressed('up')) { game.pauseCursor = (game.pauseCursor + n - 1) % n; clampPauseScroll(); Sound.blip(); speakPauseCursor(); }
-    if (justPressed('down')) { game.pauseCursor = (game.pauseCursor + 1) % n; clampPauseScroll(); Sound.blip(); speakPauseCursor(); }
-    if (justPressed('cancel')) { closePause(); return; }
-    if (justPressed('action')) {
-      const item = items[game.pauseCursor];
-      if (item === 'hint') { const had = game.puzzleRun; closePause(); if (had) openHint(); }
-      else if (item === 'memoryroom') openMemoryRoom('pause'); // Y-8 ê¸°ì–µì˜ ë°© í—ˆë¸Œë¡œ
-      else if (item === 'journal') openJournal('pause');
-      else if (item === 'cards') openCards('pause');
-      else if (item === 'diary') openDiary('pause');
-      else if (item === 'halloffame') openHof('pause');
-      else if (item === 'cert') openCert('pause');
-      else if (item === 'dashboard') openDashboard('pause');
-      else if (item === 'report') openReport('pause');
-      else if (item === 'classmode') openClassMode('pause');
-      else if (item === 'awards') openAwards('pause');
-      else if (item === 'cosmetics') openCosmetics('pause');
-      else if (item === 'review') openReview('pause');
-      else if (item === 'challenge') openChallenge('pause');
-      else if (item === 'dex') openDex('pause');
-      else if (item === 'quizedit') openQuizEdit('pause');
-      else if (item === 'backup') openBackup('pause');
-      else if (item === 'difficulty') cycleDifficulty();
-      else if (item === 'textspeed') cycleTextSpeed();
-      else if (item === 'tts') toggleTTS();
-      else if (item === 'largetext') toggleLargeText();
-      else if (item === 'colorblind') toggleColorBlind();
-      else if (item === 'reducefx') toggleReduceFx();
-      else if (item === 'lowgraphics') toggleLowGraphics();
-      else if (item === 'volume') {
-        game.volume = VOLUME_ORDER[(VOLUME_ORDER.indexOf(game.volume) + 1) % VOLUME_ORDER.length];
-        Sound.setVolume(VOLUME_LEVELS[game.volume]);
-        saveSettings();
-      }
-      else if (item === 'mute') Sound.toggleMute();
-      else if (item === 'help') openHelp('pause');
-      else if (item === 'close') closePause();
-    }
-  }
-
-  function drawPause() {
-    drawWorld();
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(0, 0, LW, LH);
-
-    const items = pauseItems();
-    const rowH = 34;
-    const shown = Math.min(PAUSE_VISIBLE, items.length);
-    const boxW = 340, boxH = 64 + shown * rowH;
-    const boxX = Math.round(LW / 2 - boxW / 2);
-    const boxY = Math.round(LH / 2 - boxH / 2);
-    utBox(boxX, boxY, boxW, boxH, 8);
-
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(17, true);
-    ctx.fillText('ë©”ë‰´', boxX + 22, boxY + 30);
-
-    const start = game.pauseScroll;
-    let ty = boxY + 62;
-    for (let k = 0; k < shown; k++) {
-      const i = start + k;
-      if (i >= items.length) break;
-      const item = items[i];
-      drawChoiceLine(PAUSE_LABELS[item], boxX + 22, ty, i === game.pauseCursor);
-      const val = pauseValueLabel(item);
-      if (val) {
-        ctx.fillStyle = warnColor();
-        ctx.font = fs(13);
-        ctx.textAlign = 'right';
-        ctx.fillText(val, boxX + boxW - 22, ty);
-        ctx.textAlign = 'left';
-      }
-      ty += rowH;
-    }
-    // ìŠ¤í¬ë¡¤ í‘œì‹œ
-    if (start > 0) { ctx.fillStyle = '#888'; ctx.textAlign = 'center'; ctx.fillText('â–²', boxX + boxW - 16, boxY + 56); }
-    if (start + shown < items.length) { ctx.fillStyle = '#888'; ctx.textAlign = 'center'; ctx.fillText('â–¼', boxX + boxW - 16, boxY + boxH - 22); }
-
-    ctx.fillStyle = '#777';
-    ctx.font = fs(12);
-    ctx.textAlign = 'center';
-    ctx.fillText('â†‘â†“ ì„ íƒ Â· Z ê²°ì • Â· X ë‹«ê¸°', LW / 2, boxY + boxH - 12);
-    ctx.textAlign = 'left';
-  }
-
-  // ---------- Y-8 ã€Œê¸°ì–µì˜ ë°©ã€ ê°¤ëŸ¬ë¦¬ í—ˆë¸Œ ----------
-  // í•œ í™”ë©´ì— ìˆ˜ì§‘ë¥  ìš”ì•½(ì¹´ë“œÂ·ìˆ˜ì²©Â·ë„ì „ê³¼ì œÂ·ì¼ê¸°Â·ì—”ë”©Â·Së“±ê¸‰)ì„ ë³´ì—¬ ì£¼ê³ ,
-  // í•­ëª©ì„ ê³ ë¥´ë©´ ê¸°ì¡´ í™”ë©´(ì¼ì§€Â·ì¡°ê°Â·ìˆ˜ì²©Â·ë„ì „ê³¼ì œÂ·ê¾¸ë¯¸ê¸°Â·ì „ë‹¹Â·ì¼ê¸°)ìœ¼ë¡œ ì´ë™í•œë‹¤.
-  // ìƒˆë¡œ ë§Œë“œëŠ” ê±´ ì´ í—ˆë¸Œë¿ â€” ê°œë³„ í™”ë©´ì€ ì „ë¶€ ì¬ì‚¬ìš©í•œë‹¤(ret='memoryroom'ìœ¼ë¡œ ë³µê·€).
-  function openMemoryRoom(ret) {
-    game.memory = { ret: ret || 'pause', cursor: 0 };
-    game.mode = 'memoryroom';
-    Sound.select();
-  }
-  function closeMemoryRoom() {
-    game.mode = (game.memory && game.memory.ret) || 'pause';
-    Sound.select();
-  }
-  // í—ˆë¸Œì—ì„œ ê° í•­ëª©ì„ ì—´ ë•Œì˜ ë¼ìš°íŒ… â€” ì „ë¶€ ê¸°ì¡´ open* ì¬ì‚¬ìš©
-  function openMemoryItem(item) {
-    if (item === 'close') { closeMemoryRoom(); return; }
-    if (item === 'journal') openJournal('memoryroom');
-    else if (item === 'cards') openCards('memoryroom');
-    else if (item === 'dex') openDex('memoryroom');
-    else if (item === 'awards') openAwards('memoryroom');
-    else if (item === 'cosmetics') openCosmetics('memoryroom');
-    else if (item === 'diary') openDiary('memoryroom');
-    else if (item === 'halloffame') openHof('memoryroom');
-  }
-  function updateMemoryRoom() {
-    const m = game.memory;
-    const items = memoryItems();
-    const n = items.length;
-    if (justPressed('up')) { m.cursor = (m.cursor + n - 1) % n; Sound.blip(); }
-    if (justPressed('down')) { m.cursor = (m.cursor + 1) % n; Sound.blip(); }
-    if (justPressed('cancel') || justPressed('menu')) { closeMemoryRoom(); return; }
-    if (justPressed('action')) openMemoryItem(items[m.cursor]);
-  }
-  // í—ˆë¸Œ í•œ í•­ëª©ì˜ ìˆ˜ì§‘ ìˆ˜ì¹˜ ë¼ë²¨ â€” ë¬´ê±°ìš´ ì§‘ê³„(achievementCtxÂ·buildLearningSummaryÂ·ì—”ë”© ìˆ˜)ëŠ”
-  // drawMemoryRoomì´ í”„ë ˆì„ë‹¹ 1íšŒë§Œ ê³„ì‚°í•´ preë¡œ ë„˜ê¸´ë‹¤(í—¤ë”ì™€ í–‰ì´ ê°™ì€ ê°’ì„ ê³µìœ ).
-  function memoryValueLabel(item, pre) {
-    const slot = game.currentSlot;
-    if (item === 'cards') return `${collectedCards(slot)}/${LEARN_CARDS.length}`;
-    if (item === 'dex') return `${dexSeenCount()}/${DEX_ORDER.length}`;
-    if (item === 'awards') return `${countAchievements(slot)}/${ACHIEVEMENTS.length}`;
-    if (item === 'diary') return `${diaryCount()}/${DIARY_SHARDS.length}`;
-    if (item === 'cosmetics') return `${unlockedCount(slot)}/${TITLES.length + THEMES.length}`;
-    if (item === 'halloffame') return `ì—”ë”© ${pre.endN}/4 Â· S ${pre.a.sRankCount}/${pre.a.sRankTotal}`;
-    if (item === 'journal') {
-      const s = pre.learn;
-      return s.attempted ? `${Math.round(s.overallRate * 100)}%` : 'â€”';
-    }
-    return '';
-  }
-  function drawMemoryRoom() {
-    drawWorld();
-    ctx.fillStyle = 'rgba(0,0,0,0.72)';
-    ctx.fillRect(0, 0, LW, LH);
-    const slot = game.currentSlot;
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(22, true);
-    ctx.fillText('â– ê¸°ì–µì˜ ë°©', 24, 40);
-    // ìˆ˜ì§‘ë¥  ìš”ì•½ í•œ ì¤„ (ì¹´ë“œÂ·ìˆ˜ì²©Â·ë„ì „ê³¼ì œÂ·ì¼ê¸°Â·ì—”ë”©Â·Së“±ê¸‰) â€” ì•„ë˜ í–‰ ë¼ë²¨ê³¼ ê³µìœ (pre)
-    const es = getEndingsSeen();
-    const endN = ['home', 'dawn', 'farewell', 'silent'].filter((k) => es[k]).length;
-    const a = achievementCtx(slot);
-    const pre = { endN, a, learn: buildLearningSummary(slot) };
-    ctx.fillStyle = warnColor();
-    ctx.font = fs(13, true);
-    ctx.fillText(`ì¹´ë“œ ${collectedCards(slot)}/${LEARN_CARDS.length} Â· ìˆ˜ì²© ${dexSeenCount()}/${DEX_ORDER.length} Â· ë„ì „ê³¼ì œ ${countAchievements(slot)}/${ACHIEVEMENTS.length} Â· ì¼ê¸° ${diaryCount()}/${DIARY_SHARDS.length} Â· ì—”ë”© ${endN}/4 Â· Së“±ê¸‰ ${a.sRankCount}/${a.sRankTotal}`, 24, 64);
-
-    const items = memoryItems();
-    const boxW = 420, rowH = 40;
-    const boxX = Math.round(LW / 2 - boxW / 2), boxY = 84;
-    const boxH = 20 + items.length * rowH;
-    utBox(boxX, boxY, boxW, boxH, 8);
-    let ty = boxY + 34;
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      drawChoiceLine(PAUSE_LABELS[item], boxX + 22, ty, i === game.memory.cursor);
-      const val = memoryValueLabel(item, pre);
-      if (val) {
-        ctx.fillStyle = warnColor();
-        ctx.font = fs(12);
-        ctx.textAlign = 'right';
-        ctx.fillText(val, boxX + boxW - 22, ty);
-        ctx.textAlign = 'left';
-      }
-      ty += rowH;
-    }
-    ctx.fillStyle = '#777';
-    ctx.font = fs(12);
-    ctx.textAlign = 'center';
-    ctx.fillText('â†‘â†“ ì„ íƒ Â· Z ì—´ê¸° Â· X ë‹«ê¸°', LW / 2, boxY + boxH + 22);
-    ctx.textAlign = 'left';
-  }
-
-  // ---------- ì„ ìƒë‹˜ ë°© (êµì‚¬ ì „ìš© ë©”ë‰´) ----------
-  // íƒ€ì´í‹€ í™”ë©´ì—ì„œ T í‚¤ë¡œ ì—°ë‹¤. í•™ìƒìš© ì¼ì‹œì •ì§€ ë©”ë‰´ì™€ ì™„ì „íˆ ë¶„ë¦¬í•´ ë‘ì–´,
-  // í•™ìƒì´ ë³´ëŠ” í™”ë©´ì—ëŠ” êµì‚¬ ì–´íœ˜Â·ê¸°ëŠ¥ì´ ë…¸ì¶œë˜ì§€ ì•ŠëŠ”ë‹¤(ìŠ¤í…”ìŠ¤ êµìœ¡ ì›ì¹™).
-  // ê° í•­ëª©ì€ ê¸°ì¡´ í™”ë©´(ëŒ€ì‹œë³´ë“œÂ·ë¦¬í¬íŠ¸Â·ìˆ˜ì—… ëª¨ë“œÂ·ì»¤ìŠ¤í…€ í€´ì¦ˆÂ·ìˆ˜ë£Œì¦)ì„ ê·¸ëŒ€ë¡œ ì¬ì‚¬ìš©í•˜ë˜,
-  // retì— 'teacher'ë¥¼ ë„˜ê²¨ ë‹«ì„ ë•Œ ì´ ë°©ìœ¼ë¡œ ë˜ëŒì•„ì˜¤ê²Œ í•œë‹¤.
-  const TEACHER_ITEMS = ['dashboard', 'leaderboard', 'report', 'classmode', 'quizedit', 'cert', 'close'];
-
-  function openTeacherRoom() {
-    game.teacherCursor = 0;
-    game.mode = 'teacher';
-    Sound.select();
-  }
-  function closeTeacherRoom() {
-    game.mode = 'title';
-    Sound.select();
-  }
-  function updateTeacherRoom() {
-    const n = TEACHER_ITEMS.length;
-    if (justPressed('up') || justPressed('down')) {
-      game.teacherCursor = justPressed('up') ? (game.teacherCursor + n - 1) % n : (game.teacherCursor + 1) % n;
-      Sound.blip();
-      if (game.tts) Speech.speak(PAUSE_LABELS[TEACHER_ITEMS[game.teacherCursor]] || ''); // ì½ì–´ì£¼ê¸° ì ‘ê·¼ì„±
-    }
-    if (justPressed('cancel')) { closeTeacherRoom(); return; }
-    if (justPressed('action')) {
-      const item = TEACHER_ITEMS[game.teacherCursor];
-      if (item === 'dashboard') openDashboard('teacher');
-      else if (item === 'leaderboard') openLeaderboard('teacher');
-      else if (item === 'report') openReport('teacher');
-      else if (item === 'classmode') openClassMode('teacher');
-      else if (item === 'quizedit') openQuizEdit('teacher');
-      else if (item === 'cert') openCert('teacher');
-      else if (item === 'close') closeTeacherRoom();
-    }
-  }
-  function drawTeacherRoom() {
-    ctx.fillStyle = '#0b0e1a';
-    ctx.fillRect(0, 0, LW, LH);
-
-    const rowH = 34;
-    const boxW = 340, boxH = 64 + TEACHER_ITEMS.length * rowH;
-    const boxX = Math.round(LW / 2 - boxW / 2);
-    const boxY = Math.round(LH / 2 - boxH / 2);
-    utBox(boxX, boxY, boxW, boxH, 8);
-
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(17, true);
-    ctx.fillText('ì„ ìƒë‹˜ ë°©', boxX + 22, boxY + 30);
-
-    let ty = boxY + 62;
-    for (let i = 0; i < TEACHER_ITEMS.length; i++) {
-      const item = TEACHER_ITEMS[i];
-      drawChoiceLine(PAUSE_LABELS[item], boxX + 22, ty, i === game.teacherCursor);
-      const val = pauseValueLabel(item);
-      if (val) {
-        ctx.fillStyle = warnColor();
-        ctx.font = fs(13);
-        ctx.textAlign = 'right';
-        ctx.fillText(val, boxX + boxW - 22, ty);
-        ctx.textAlign = 'left';
-      }
-      ty += rowH;
-    }
-
-    ctx.fillStyle = '#777';
-    ctx.font = fs(12);
-    ctx.textAlign = 'center';
-    ctx.fillText('â†‘â†“ ì„ íƒ Â· Z ê²°ì • Â· X ë‹«ê¸°', LW / 2, boxY + boxH - 12);
-    ctx.textAlign = 'left';
-  }
-
-  // ---------- ìˆ˜í˜¸ì ì¼ì§€ (í•™ìŠµ ì§„ì²™ë„) ----------
-  function openJournal(ret) {
-    game.journal.ret = ret;
-    game.journal.slot = activeSlot();
-    game.journal.scroll = 0;
-    game.journal.toast = 0;
-    game.mode = 'journal';
-    Sound.select();
-  }
-
-  function closeJournal() {
-    game.mode = game.journal.ret;
-    Sound.select();
-  }
-
-  // í•™ìŠµ ë¦¬í¬íŠ¸(êµì‚¬Â·í•™ë¶€ëª¨ìš©)ë¥¼ í…ìŠ¤íŠ¸ë¡œ ë§Œë“¤ì–´ í´ë¦½ë³´ë“œì— ë³µì‚¬
-  function buildReportText(slot) {
-    if (slot == null) slot = game.journal.slot;
-    const s = buildLearningSummary(slot);
-    const pct = (r) => Math.round(r * 100) + '%';
-    let date = '';
-    try { date = new Date().toLocaleDateString('ko-KR'); } catch (e) {}
-    const lines = [];
-    const title = selectedTitle(slot);
-    lines.push('[AI ìœ¤ë¦¬ ì–´ë“œë²¤ì²˜ â€” í•™ìŠµ ë¦¬í¬íŠ¸]');
-    if (date) lines.push('ë‚ ì§œ: ' + date);
-    lines.push('ì´ë¦„: ' + slotLearnName(slot) + (title ? ` (ì¹­í˜¸: ${title.name})` : ''));
-    lines.push('â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€');
-    lines.push(`í‘¼ ë¬¸ì œ: ${s.attempted}ê°œ Â· ì •ë‹µ ${s.correct}ê°œ (${s.attempted ? pct(s.overallRate) : 'â€”'})`);
-    lines.push('');
-    lines.push('ì£¼ì œë³„ ì •ë‹µë¥ :');
-    if (s.rows.length === 0) lines.push('  (ì•„ì§ í‘¼ ë¬¸ì œê°€ ì—†ì–´ìš”)');
-    for (const r of s.rows) {
-      const mark = r.total >= 2 && r.rate < 0.6 ? '  â† ë” ì‚´í´ë´ìš”' : '';
-      lines.push(`  - ${r.label}: ${r.correct}/${r.total} (${pct(r.rate)})${mark}`);
-    }
-    lines.push('');
-    if (s.weak.length) lines.push('ë” ì‚´í´ë³¼ ì£¼ì œ: ' + s.weak.join(', '));
-    const endSeen = getEndingsSeen();
-    const endN = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
-    lines.push(`ë°œê²¬ ì—”ë”©: ${endN}/4 Â· ì¹œêµ¬ ìˆ˜ì²©: ${dexSeenCount()}/${DEX_ORDER.length}`);
-    lines.push(`ë³µìŠµ ë…¸íŠ¸ ë‚¨ì€ ë¬¸ì œ: ${mistakeCount(slot)}ê°œ`);
-    const starlit = starlitClearCount(slot); // Y-11 íŒíŠ¸ ì—†ì´ ë¹ ì ¸ë‚˜ì˜¨ ë°© ìˆ˜(ë³„ë¹› í´ë¦¬ì–´)
-    if (starlit) lines.push(`ë³„ë¹› í´ë¦¬ì–´(íŒíŠ¸ ì—†ì´ ë°© íƒˆì¶œ): ${starlit}ê°œ`);
-    const rm = getMeta(slot);
-    if (rm.streak || rm.bestStreak) lines.push(`ì—°ì† ì¶œì„: ${rm.streak || 0}ì¼ (ìµœê³  ${rm.bestStreak || 0}ì¼)`);
-    return lines.join('\n');
-  }
-
-  function copyReport() {
-    const ok = copyTextToClipboard(buildReportText(game.journal.slot));
-    game.journal.toast = ok ? 120 : -120; // ì–‘ìˆ˜=ì„±ê³µ, ìŒìˆ˜=ì‹¤íŒ¨ ì•ˆë‚´
-    Sound.badge();
-  }
-
-  function updateJournal() {
-    const j = game.journal;
-    if (j.toast > 0) j.toast -= 1;
-    else if (j.toast < 0) j.toast += 1;
-    const s = buildLearningSummary(j.slot);
-    const maxScroll = Math.max(0, s.rows.length - JOURNAL_VISIBLE);
-    if (justPressed('up')) { j.scroll = Math.max(0, j.scroll - 1); Sound.blip(); }
-    if (justPressed('down')) { j.scroll = Math.min(maxScroll, j.scroll + 1); Sound.blip(); }
-    if (justPressed('action')) { copyReport(); return; }
-    if (justPressed('cancel') || justPressed('menu')) closeJournal();
-  }
-
-  const JOURNAL_VISIBLE = 8;
-  function drawJournal() {
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
-    const slot = game.journal.slot;
-    const s = buildLearningSummary(slot);
-
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(22, true);
-    ctx.fillText(`â—† ëª¨í—˜ ì¼ì§€ â€” ${slotLearnName(slot)}`, 24, 38);
-    // ê³ ë¥¸ ì¹­í˜¸
-    const title = selectedTitle(slot);
-    if (title) {
-      ctx.fillStyle = themeAccent();
-      ctx.font = fs(13, true);
-      ctx.textAlign = 'right';
-      ctx.fillText(`ã€Œ${title.name}ã€`, LW - 24, 38);
-      ctx.textAlign = 'left';
-    }
-
-    // ìš”ì•½ ì¤„
-    ctx.fillStyle = warnColor();
-    ctx.font = fs(16, true);
-    ctx.fillText(`í‘¼ ë¬¸ì œ ${s.attempted}ê°œ  Â·  ì •ë‹µ ${s.correct}ê°œ  Â·  ì •ë‹µë¥  ${s.attempted ? Math.round(s.overallRate * 100) + '%' : 'â€”'}`, 24, 66);
-    const endSeen = getEndingsSeen();
-    const endN = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
-    const jm = getMeta(slot);
-    ctx.fillStyle = '#888';
-    ctx.font = fs(13);
-    const starlit = starlitClearCount(slot); // Y-11 íŒíŠ¸ ì—†ì´ ë¹ ì ¸ë‚˜ì˜¨ ë°© ìˆ˜
-    ctx.fillText(`ë°œê²¬ ì—”ë”© ${endN}/4  Â·  ì¹œêµ¬ ìˆ˜ì²© ${dexSeenCount()}/${DEX_ORDER.length}  Â·  ë³µìŠµ ë…¸íŠ¸ ${mistakeCount(slot)}ê°œ${starlit ? `  Â·  âœ§ ë³„ë¹› í´ë¦¬ì–´ ${starlit}ê°œ` : ''}`, 24, 88);
-    if (jm.streak || jm.bestStreak) {
-      ctx.fillStyle = themeAccent();
-      ctx.fillText(`ğŸ”¥ ì—°ì† ì¶œì„ ${jm.streak || 0}ì¼ (ìµœê³  ${jm.bestStreak || 0}ì¼)`, 24, 106);
-    }
-
-    // ì£¼ì œë³„ ì •ë‹µë¥  ë§‰ëŒ€
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(14, true);
-    ctx.fillText('ì£¼ì œë³„ ì •ë‹µë¥  (ë‚®ì€ ìˆœ)', 24, 118);
-
-    if (s.rows.length === 0) {
-      ctx.fillStyle = '#888';
-      ctx.font = fs(15);
-      ctx.fillText('ì•„ì§ í‘¼ ë¬¸ì œê°€ ì—†ì–´ìš”. ëª¨í—˜ì—ì„œ í€´ì¦ˆë¥¼ í’€ë©´ ì—¬ê¸°ì— ìŒ“ì—¬ìš”!', 24, 150);
-    } else {
-      const barX = 230, barW = LW - barX - 90, rowH = 38;
-      const start = game.journal.scroll;
-      for (let i = 0; i < JOURNAL_VISIBLE && start + i < s.rows.length; i++) {
-        const r = s.rows[start + i];
-        const y = 140 + i * rowH;
-        const weak = r.total >= 2 && r.rate < 0.6;
-        ctx.fillStyle = weak ? badColor() : '#ddd';
-        ctx.font = fs(14);
-        ctx.fillText(r.label, 24, y + 14);
-        // ë§‰ëŒ€ ë°°ê²½/ì±„ì›€
-        ctx.fillStyle = '#222';
-        ctx.fillRect(barX, y, barW, 16);
-        ctx.fillStyle = r.rate >= 0.8 ? okColor() : r.rate >= 0.6 ? warnColor() : badColor();
-        ctx.fillRect(barX, y, Math.round(barW * r.rate), 16);
-        ctx.fillStyle = '#fff';
-        ctx.font = fs(12);
-        ctx.fillText(`${Math.round(r.rate * 100)}% (${r.correct}/${r.total})`, barX + barW + 8, y + 13);
-      }
-      // ìŠ¤í¬ë¡¤ í‘œì‹œ
-      if (start > 0) { ctx.fillStyle = '#888'; ctx.font = fs(14); ctx.fillText('â–²', LW - 40, 132); }
-      if (start + JOURNAL_VISIBLE < s.rows.length) { ctx.fillStyle = '#888'; ctx.font = fs(14); ctx.fillText('â–¼', LW - 40, 140 + JOURNAL_VISIBLE * rowH - 8); }
-    }
-
-    // ì•½í•œ ì£¼ì œ ì•ˆë‚´
-    if (s.weak.length) {
-      ctx.fillStyle = badColor();
-      ctx.font = fs(13);
-      ctx.fillText('ë” ì‚´í´ë³¼ ì£¼ì œ: ' + s.weak.slice(0, 3).join(', '), 24, 470);
-    }
-
-    // í† ìŠ¤íŠ¸ (ë¦¬í¬íŠ¸ ë³µì‚¬ ê²°ê³¼)
-    if (game.journal.toast !== 0) {
-      const ok = game.journal.toast > 0;
-      ctx.textAlign = 'center';
-      ctx.fillStyle = ok ? okColor() : badColor();
-      ctx.font = fs(15, true);
-      ctx.fillText(ok ? 'âœ“ í•™ìŠµ ë¦¬í¬íŠ¸ë¥¼ í´ë¦½ë³´ë“œì— ë³µì‚¬í–ˆì–´ìš”!' : 'ë³µì‚¬í•  ìˆ˜ ì—†ëŠ” í™˜ê²½ì´ì—ìš” (ì§ì ‘ í™”ë©´ì„ ë³´ì—¬ ì£¼ì„¸ìš”)', LW / 2, 490);
-      ctx.textAlign = 'left';
-    }
-
-    // í‘¸í„°
-    ctx.fillStyle = '#777';
-    ctx.font = fs(13);
-    ctx.textAlign = 'center';
-    ctx.fillText('â†‘â†“ ìŠ¤í¬ë¡¤ Â· Z ë¦¬í¬íŠ¸ ë³µì‚¬(êµì‚¬ìš©) Â· X ë‹«ê¸°', LW / 2, 512);
-    ctx.textAlign = 'left';
-  }
-
-  // ---------- ììœ  í€´ì¦ˆ ì±Œë¦°ì§€ ----------
-  const CHALLENGE_LEN = 10;
-  function challengeTopics() {
-    // ì‹¤ì œ í€´ì¦ˆê°€ ìˆëŠ” ì£¼ì œë§Œ, í‘œì‹œ ë¼ë²¨ê³¼ í•¨ê»˜ (ì»¤ìŠ¤í…€ ë¬¸ì œ í¬í•¨)
-    const src = quizSource();
-    return quizTopicKeys().map((t) => ({ key: t, label: topicLabel(t), n: src[t].length }));
-  }
-
-  function openChallenge(ret) {
-    game.challenge = {
-      ret, slot: activeSlot(), phase: 'topic', topics: challengeTopics(), sel: 0,
-      questions: [], idx: 0, cursor: 0, choiceOrder: null, score: 0, feedback: null,
-    };
-    game.mode = 'challenge';
-    Sound.select();
-  }
-
-  function closeChallenge() {
-    const ret = game.challenge ? game.challenge.ret : 'title';
-    game.challenge = null;
-    game.mode = ret;
-    Speech.stop();
-    Sound.select();
-  }
-
-  function startChallengeQuiz() {
-    const c = game.challenge;
-    c.daily = false;
-    c.adaptive = false;
-    let pool = [];
-    if (c.sel === 0) {            // ì˜¤ëŠ˜ì˜ ë„ì „ (ë‚ ì§œ ê¸°ë°˜ ê²°ì •ì  ì¶œì œ)
-      c.daily = true;
-      pool = buildDailyPool(c.slot);
-    } else if (c.sel === 1) {     // ë§ì¶¤ í•™ìŠµ (ì•½ì  ì§‘ì¤‘)
-      c.adaptive = true;
-      pool = buildAdaptivePool(c.slot);
-    } else if (c.sel === 2) {     // ì „ì²´ ëœë¤
-      for (const t of c.topics) for (let i = 0; i < t.n; i++) pool.push(quizQ(t.key, i));
-      pool = shuffled(pool).slice(0, CHALLENGE_LEN);
-    } else {                      // íŠ¹ì • ì£¼ì œ
-      const t = c.topics[c.sel - 3];
-      for (let i = 0; i < t.n; i++) pool.push(quizQ(t.key, i));
-      pool = shuffled(pool).slice(0, CHALLENGE_LEN);
-    }
-    c.questions = pool;
-    c.idx = 0;
-    c.score = 0;
-    c.cursor = 0;
-    c.feedback = null;
-    c.choiceOrder = shuffled(pool[0].a.map((_, i) => i));
-    c.phase = 'quiz';
-    speakQuiz(pool[0].q, c.choiceOrder.map((ai) => pool[0].a[ai]));
-  }
-
-  function challengeNext() {
-    const c = game.challenge;
-    c.idx += 1;
-    if (c.idx >= c.questions.length) {
-      c.phase = 'result';
-      recordChallengeResult(c.slot, c.score, c.questions.length);
-      // Y-10 ë‚´ì¼ ì£¼ì œ í‹°ì € â€” ê²°ê³¼ í™”ë©´ì´ ë–  ìˆëŠ” ë™ì•ˆ ë§¤ í”„ë ˆì„ í’€ ì „ì²´ë¥¼ ì…”í”Œí•˜ì§€ ì•Šê²Œ,
-      // ì™„ë£Œ ì‹œì ì— í•œ ë²ˆë§Œ ê³„ì‚°í•´ ìºì‹œí•œë‹¤(ë‚ ì§œ ì‹œë“œë¼ ê°’ì€ ì–´ì°¨í”¼ í•˜ë£¨ ë™ì•ˆ ë¶ˆë³€).
-      if (c.daily) { recordDailyDone(c.slot, c.score, c.questions.length); c.tomorrowTopic = tomorrowTopicLabel(c.slot); }
-      checkCosmeticUnlocks(c.slot);
-      Sound.badge();
-      return;
-    }
-    c.cursor = 0;
-    c.feedback = null;
-    const nq = c.questions[c.idx];
-    c.choiceOrder = shuffled(nq.a.map((_, i) => i));
-    c.phase = 'quiz';
-    speakQuiz(nq.q, c.choiceOrder.map((ai) => nq.a[ai]));
-  }
-
-  function updateChallenge() {
-    const c = game.challenge;
-    if (!c) { game.mode = 'title'; return; }
-
-    if (c.phase === 'topic') {
-      const n = c.topics.length + 3; // 0=ì˜¤ëŠ˜ì˜ ë„ì „, 1=ë§ì¶¤ í•™ìŠµ, 2=ì „ì²´ ëœë¤, 3.. ì£¼ì œ
-      if (justPressed('up')) { c.sel = (c.sel + n - 1) % n; Sound.blip(); }
-      if (justPressed('down')) { c.sel = (c.sel + 1) % n; Sound.blip(); }
-      if (justPressed('cancel') || justPressed('menu')) { closeChallenge(); return; }
-      if (justPressed('action')) { startChallengeQuiz(); Sound.select(); }
-      return;
-    }
-
-    if (c.phase === 'quiz') {
-      const q = c.questions[c.idx];
-      const len = q.a.length;
-      if (justPressed('up')) { c.cursor = (c.cursor + len - 1) % len; Sound.blip(); }
-      if (justPressed('down')) { c.cursor = (c.cursor + 1) % len; Sound.blip(); }
-      if (justPressed('cancel')) { closeChallenge(); return; }
-      if (justPressed('action')) {
-        const correct = c.choiceOrder[c.cursor] === q.c;
-        c.feedback = { correct, why: q.why };
-        c.phase = 'feedback';
-        speakFeedback(correct, q.why);
-        recordTopicResult(c.slot, q._topic, correct);
-        if (correct) { c.score += 1; clearMistake(c.slot, q._qid); Sound.correct(); }
-        else { recordMistake(c.slot, q); Sound.wrong(); }
-      }
-      return;
-    }
-
-    if (c.phase === 'feedback') {
-      if (justPressed('action')) challengeNext();
-      return;
-    }
-
-    if (c.phase === 'result') {
-      if (justPressed('action') || justPressed('cancel') || justPressed('menu')) closeChallenge();
-      return;
-    }
-  }
-
-  function drawChallenge() {
-    const c = game.challenge;
-    if (!c) return; // ê°™ì€ í”„ë ˆì„ì— ë‹«í˜”ì„ ìˆ˜ ìˆìŒ
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
-
-    if (c.phase === 'topic') {
-      ctx.textAlign = 'left';
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(22, true);
-      ctx.fillText('â–¶ ë„ì „ ê·¹ì¥', 24, 40);
-      ctx.fillStyle = '#888';
-      ctx.font = fs(14);
-      ctx.fillText(`ì£¼ì œë¥¼ ê³¨ë¼ ${CHALLENGE_LEN}ë¬¸ì œì— ë„ì „! (ëª¨í—˜ê³¼ ë³„ê°œë¡œ ì¦ê²¨ìš”)`, 24, 64);
-      // ì—°ì† ì¶œì„(ìŠ¤íŠ¸ë¦­) í‘œì‹œ
-      const meta = getMeta(c.slot);
-      if (meta.streak) {
-        ctx.fillStyle = themeAccent();
-        ctx.font = fs(13, true);
-        ctx.textAlign = 'right';
-        ctx.fillText(`ğŸ”¥ ì—°ì† ì¶œì„ ${meta.streak}ì¼`, LW - 24, 40);
-        ctx.textAlign = 'left';
-      }
-
-      const dailyDone = dailyDoneToday(c.slot);
-      const items = [
-        dailyDone ? 'â—· ì˜¤ëŠ˜ì˜ ë„ì „ (ì™„ë£Œ âœ“)' : 'â—· ì˜¤ëŠ˜ì˜ ë„ì „ (ë‚ ë§ˆë‹¤ ìƒˆ ë¬¸ì œ!)',
-        'â— ë§ì¶¤ í•™ìŠµ (ì•½ì  ì§‘ì¤‘)',
-        'â˜… ì „ì²´ ëœë¤',
-      ].concat(c.topics.map((t) => `${t.label}  (${t.n})`));
-      const listX = 40, listY = 100, rowH = 30, visible = 12;
-      let start = Math.max(0, Math.min(c.sel - 6, items.length - visible));
-      if (items.length <= visible) start = 0;
-      for (let i = 0; i < visible && start + i < items.length; i++) {
-        const idx = start + i;
-        drawChoiceLine(items[idx], listX, listY + i * rowH, idx === c.sel);
-      }
-      if (start > 0) { ctx.fillStyle = '#888'; ctx.font = fs(14); ctx.fillText('â–²', LW - 50, listY - 8); }
-      if (start + visible < items.length) { ctx.fillStyle = '#888'; ctx.font = fs(14); ctx.fillText('â–¼', LW - 50, listY + visible * rowH - 8); }
-
-      ctx.fillStyle = '#777';
-      ctx.font = fs(13);
-      ctx.textAlign = 'center';
-      ctx.fillText('â†‘â†“ ì„ íƒ Â· Z ì‹œì‘ Â· X ë‹«ê¸°', LW / 2, 512);
-      ctx.textAlign = 'left';
-      return;
-    }
-
-    if (c.phase === 'result') {
-      const total = c.questions.length;
-      ctx.textAlign = 'center';
-      ctx.fillStyle = warnColor();
-      ctx.font = fs(26, true);
-      ctx.fillText('â˜… ì±Œë¦°ì§€ ì™„ë£Œ!', LW / 2, 150);
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(40, true);
-      ctx.fillText(`${c.score} / ${total}`, LW / 2, 220);
-      const rate = total ? c.score / total : 0;
-      const msg = rate >= 0.9 ? 'ëŒ€ë‹¨í•´ìš”! ì§„ì •í•œ ë§ˆìŒì˜ ìˆ˜í˜¸ì!'
-        : rate >= 0.7 ? 'ì˜í–ˆì–´ìš”! ì¡°ê¸ˆë§Œ ë” í•˜ë©´ ì™„ë²½!'
-        : rate >= 0.5 ? 'ì¢‹ì•„ìš”! ë³µìŠµ ë…¸íŠ¸ë¡œ ë‹¤ì‹œ ì‚´í´ë´ìš”.'
-        : 'ê´œì°®ì•„ìš”. í‹€ë¦° ë¬¸ì œëŠ” ë³µìŠµ ë…¸íŠ¸ì— ëª¨ì˜€ì–´ìš”!';
-      ctx.fillStyle = '#aaa';
-      ctx.font = fs(16);
-      ctx.fillText(msg, LW / 2, 270);
-      // Y-10 ì˜¤ëŠ˜ì˜ ë„ì „ ì™„ë£Œ í™”ë©´ì—ë§Œ ë‚´ì¼ ì£¼ì œ í‹°ì € 1ì¤„(ì™„ë£Œ ì‹œì ì— 1íšŒ ê³„ì‚°Â·ìºì‹œ)
-      if (c.daily) {
-        const tmr = c.tomorrowTopic;
-        if (tmr) {
-          ctx.fillStyle = themeAccent();
-          ctx.font = fs(14, true);
-          ctx.fillText(`â—· ë‚´ì¼ì˜ ë„ì „ ì£¼ì œ: ${tmr}`, LW / 2, 300);
-        }
-      }
-      ctx.fillStyle = '#777';
-      ctx.font = fs(13);
-      ctx.fillText('Z ë˜ëŠ” Xë¡œ ëŒì•„ê°€ê¸°', LW / 2, 336);
-      ctx.textAlign = 'left';
-      return;
-    }
-
-    // quiz / feedback â€” ì§„í–‰ í‘œì‹œ + ë¬¸ì œ ë°•ìŠ¤
-    const q = c.questions[c.idx];
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#888';
-    ctx.font = fs(14);
-    ctx.fillText(`ë¬¸ì œ ${c.idx + 1} / ${c.questions.length}`, 24, 32);
-    ctx.fillStyle = warnColor();
-    ctx.fillText(`ì ìˆ˜ ${c.score}`, LW - 110, 32);
-    // ì§„í–‰ ë§‰ëŒ€
-    ctx.fillStyle = '#222';
-    ctx.fillRect(24, 42, LW - 48, 6);
-    ctx.fillStyle = okColor();
-    ctx.fillRect(24, 42, Math.round((LW - 48) * (c.idx / c.questions.length)), 6);
-
-    ctx.font = fs(16);
-    let boxH = game.largeText ? 300 : 260;
-    if (c.phase === 'quiz') {
-      const qMaxW = LW - 24 - 56;
-      const cMaxW = LW - 24 - 38 - 28 - 16;
-      const gap = game.largeText ? lh(16) : lh(14);
-      let cl = 0;
-      for (let i = 0; i < c.choiceOrder.length; i++) cl += measureWrap(`${i + 1}. ${q.a[c.choiceOrder[i]]}`, cMaxW);
-      const needed = 32 + measureWrap(q.q, qMaxW) * lh(24) + lh(10) + cl * lh(22) + c.choiceOrder.length * gap + 16;
-      boxH = Math.min(Math.max(boxH, needed), LH - 64 - 16);
-    }
-    const boxY = LH - boxH - 16;
-    const hintY = boxY + boxH - 18;
-    utBox(12, boxY, LW - 24, boxH, 8);
-
-    if (c.phase === 'quiz') {
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(16);
-      let ty = drawQuestionText(q.q, 34, boxY + 32, LW - 24 - 56, lh(24)) + lh(10);
-      const cMaxW = LW - 24 - 38 - 28 - 16;
-      const gap = game.largeText ? lh(16) : lh(14);
-      for (let i = 0; i < c.choiceOrder.length; i++) {
-        ty += drawChoiceWrapped(`${i + 1}. ${q.a[c.choiceOrder[i]]}`, 38, ty, i === c.cursor, cMaxW, lh(22)) + gap;
-      }
-    } else if (c.phase === 'feedback') {
-      const f = c.feedback;
-      ctx.font = fs(22, true);
-      ctx.fillStyle = f.correct ? okColor() : badColor();
-      ctx.fillText(f.correct ? 'â—‹ ì •ë‹µ!' : 'Ã— ì•„ì‰¬ì›Œìš”!', 34, boxY + 38);
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(16);
-      drawQuestionText(f.why, 34, boxY + (game.largeText ? 86 : 78), LW - 24 - 44, lh(24));
-      if (Math.floor(game.time / 20) % 2 === 0) {
-        ctx.fillStyle = '#ffd644';
-        ctx.font = fs(16);
-        ctx.fillText('â–¼ (Z/ìŠ¤í˜ì´ìŠ¤)', LW - 150, hintY);
-      }
-    }
-  }
-
-  // ---------- ë„ì „ê³¼ì œ (ì—…ì ) ----------
-  // ê° ê³¼ì œëŠ” ìŠ¬ë¡¯ë³„ í•™ìŠµ ë°ì´í„° + ê¸°ê¸° ê³µìš© ì»¬ë ‰ì…˜(ì¹œêµ¬ ìˆ˜ì²©Â·ì—”ë”©)ì—ì„œ ì¦‰ì„ íŒì •í•œë‹¤.
-  const ACHIEVEMENTS = [
-    { id: 'firstwin', cat: 'battle', name: 'ì²« ê¹¨ìš°ì¹¨', desc: 'ì²˜ìŒìœ¼ë¡œ ë§ˆìŒì„ ë˜ëŒë ¸ì–´ìš”', check: (c) => c.defeatedCount >= 1 },
-    { id: 'mercy1', cat: 'battle', name: 'ë”°ëœ»í•œ ë§ˆìŒ', desc: 'ë§ˆìŒì„ í•œ ë²ˆ ì•ˆì•„ ì£¼ì—ˆì–´ìš”', check: (c) => c.mercy >= 1 },
-    // v2 ìŠ¤ì¼€ì¼(ìë¹„ ìµœëŒ€ 8íšŒ) â€” v1ì˜ 10 ì„ê³„ê°’ì€ ì‚¬ì‹¤ìƒ ë„ë‹¬ ë¶ˆê°€ëŠ¥í•´ 7ë¡œ ë‚®ì·„ë‹¤.
-    { id: 'mercy10', cat: 'battle', name: 'ë§ˆìŒì˜ ìˆ˜í˜¸ì', desc: 'ë§ˆìŒì„ ì¼ê³± ë²ˆ ì•ˆì•„ ì£¼ì—ˆì–´ìš”', check: (c) => c.mercy >= 7 },
-    { id: 'solved50', cat: 'learn', name: 'ê¾¸ì¤€í•œ ê³µë¶€', desc: 'ë¬¸ì œë¥¼ 50ê°œ ì´ìƒ í’€ì—ˆì–´ìš”', check: (c) => c.attempted >= 50 },
-    { id: 'perfectTopic', cat: 'learn', name: 'ì™„ë²½í•œ í•œ ì£¼ì œ', desc: 'í•œ ì£¼ì œ 100% (3ë¬¸ì œ ì´ìƒ)', check: (c) => c.perfectTopic },
-    { id: 'wellRounded', cat: 'learn', name: 'ë‘ë£¨ ë°•í•™', desc: '5ê°œ ì£¼ì œì—ì„œ 80% ì´ìƒ', check: (c) => c.strongTopics >= 5 },
-    { id: 'dexHalf', cat: 'collect', name: 'ë°˜ì¯¤ ì±„ìš´ ìˆ˜ì²©', desc: 'ì¹œêµ¬ ìˆ˜ì²©ì„ ì ˆë°˜ ì´ìƒ ì±„ì› ì–´ìš”', check: (c) => c.dex > 0 && c.dex * 2 >= c.dexTotal },
-    { id: 'dexAll', cat: 'collect', name: 'ì—¬ëŸ ì¡°ê°ì˜ ì¹œêµ¬', desc: 'ì¹œêµ¬ ìˆ˜ì²©ì„ ëª¨ë‘ ì±„ì› ì–´ìš”', check: (c) => c.dexTotal > 0 && c.dex >= c.dexTotal },
-    { id: 'ending1', cat: 'collect', name: 'ì´ì•¼ê¸°ê¾¼', desc: 'ì—”ë”©ì„ í•˜ë‚˜ ë³´ì•˜ì–´ìš”', check: (c) => c.endings >= 1 },
-    { id: 'endingAll', cat: 'collect', name: 'ëª¨ë“  ê²°ë§', desc: 'ì—”ë”© ë„¤ ê°€ì§€ë¥¼ ëª¨ë‘ ë³´ì•˜ì–´ìš”', check: (c) => c.endings >= 4 },
-    { id: 'challengeDone', cat: 'challenge', name: 'ì±Œë¦°ì§€ ë„ì „', desc: 'í€´ì¦ˆ ì±Œë¦°ì§€ë¥¼ ì™„ì£¼í–ˆì–´ìš”', check: (c) => c.challengeRuns >= 1 },
-    { id: 'challengePerfect', cat: 'challenge', name: 'ì±Œë¦°ì§€ ë§Œì ', desc: 'í€´ì¦ˆ ì±Œë¦°ì§€ì—ì„œ ë§Œì !', check: (c) => c.challengeBest > 0 && c.challengeBest === c.challengeBestTotal },
-    // B-4 íƒí—˜ ë³´ìƒ ë°€ë„ â€” ì²˜ìŒ ì¡°ì‚¬í•œ í”Œë ˆì´ë²„ ëˆ„ì (10Â·25Â·40ê°œ) ë§ˆì¼ìŠ¤í†¤. descëŠ” ìµœì¢… ë‹¨ê³„ë¥¼ ì•ˆë‚´.
-    { id: 'explorer', cat: 'collect', name: 'êµ¬ì„êµ¬ì„ íƒí—˜ê°€', desc: 'ì´ê³³ì €ê³³ 25êµ°ë° ì´ìƒ ì¡°ì‚¬í–ˆì–´ìš”', check: (c) => c.flavorsSeen >= 25 },
-  ];
-  const ACH_CAT = {
-    battle: { icon: 'â™¥', color: '#e0453a' },
-    learn: { icon: 'â˜…', color: '#ffd644' },
-    collect: { icon: 'â—†', color: '#5aa9e6' },
-    challenge: { icon: 'âœ¦', color: '#b48ce0' },
-  };
-  function achievementCtx(slot) {
-    const s = buildLearningSummary(slot);
-    const f = slotFlags(slot) || {};
-    const meta = getMeta(slot);
-    const defeatedCount = f.defeated ? Object.keys(f.defeated).filter((k) => f.defeated[k]).length : 0;
-    const endSeen = getEndingsSeen();
-    const endings = ['home', 'dawn', 'farewell', 'silent'].filter((k) => endSeen[k]).length;
-    // Y-9 ì¬ëŒ€ê²° ëŒ€ìƒ ë³´ìŠ¤(DEX_REMATCH 8ì¢…)ì˜ ìµœê³  ë“±ê¸‰ì´ ì „ë¶€ Sì¸ì§€ â€” ã€Œì™„ë²½í•œ ê²½ì²­ìã€ ì¡°ê±´.
-    const bossRank = meta.bossRank || {};
-    const rematchIds = Object.keys(DEX_REMATCH);
-    const sRankCount = rematchIds.filter((id) => bossRank[DEX_REMATCH[id]] === 'S').length;
-    const ctx = {
-      attempted: s.attempted, strongTopics: s.strongTopics, perfectTopic: s.perfectTopic,
-      mercy: f.mercy || 0, defeatedCount,
-      dex: dexSeenCount(), dexTotal: DEX_ORDER.length, endings,
-      challengeRuns: meta.challengeRuns || 0,
-      challengeBest: meta.challengeBest || 0, challengeBestTotal: meta.challengeBestTotal || 0,
-      flavorsSeen: f.flavorSeen ? Object.keys(f.flavorSeen).length : 0, // B-4 ì²˜ìŒ ì¡°ì‚¬í•œ í”Œë ˆì´ë²„ ìˆ˜
-      sRankCount, sRankTotal: rematchIds.length, // Y-9 ì¬ëŒ€ê²° Së“±ê¸‰ ì§„í–‰ (n/8)
-    };
-    // ë„ì „ê³¼ì œ ë‹¬ì„± ê°œìˆ˜ â€” ì¹­í˜¸/í…Œë§ˆ í•´ê¸ˆ ì¡°ê±´ì—ì„œ ì‚¬ìš© (ìœ„ í•„ë“œë§Œ ì°¸ì¡°í•˜ë¯€ë¡œ ìˆœí™˜ ì—†ìŒ)
-    ctx.achieved = ACHIEVEMENTS.filter((a) => a.check(ctx)).length;
-    return ctx;
-  }
-  function countAchievements(slot) {
-    const ctx = achievementCtx(slot);
-    return ACHIEVEMENTS.filter((a) => a.check(ctx)).length;
-  }
-
-  function openAwards(ret) {
-    game.awards.ret = ret;
-    game.awards.slot = activeSlot();
-    game.mode = 'awards';
-    Sound.select();
-  }
-  function closeAwards() {
-    game.mode = game.awards.ret;
-    Sound.select();
-  }
-  function updateAwards() {
-    if (justPressed('cancel') || justPressed('menu') || justPressed('action')) closeAwards();
-  }
-  function drawAwards() {
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
-    const slot = game.awards.slot;
-    const actx = achievementCtx(slot);
-    const got = ACHIEVEMENTS.filter((a) => a.check(actx)).length;
-
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(22, true);
-    ctx.fillText(`â˜† ë„ì „ê³¼ì œ â€” ${slotLearnName(slot)}`, 24, 38);
-    ctx.fillStyle = warnColor();
-    ctx.font = fs(15, true);
-    ctx.fillText(`ë‹¬ì„± ${got} / ${ACHIEVEMENTS.length}`, 24, 62);
-
-    const colW = (LW - 48) / 2, cellH = 66;
-    for (let i = 0; i < ACHIEVEMENTS.length; i++) {
-      const a = ACHIEVEMENTS[i];
-      const unlocked = a.check(actx);
-      const col = i % 2, row = Math.floor(i / 2);
-      const x = 24 + col * colW, y = 86 + row * cellH;
-      const cat = ACH_CAT[a.cat];
-      // ì•„ì´ì½˜ í‘œì‹œ
-      ctx.fillStyle = unlocked ? cat.color : '#333';
-      ctx.font = fs(26, true);
-      ctx.fillText(unlocked ? cat.icon : 'Â·', x + 4, y + 26);
-      // ì´ë¦„Â·ì„¤ëª…
-      ctx.fillStyle = unlocked ? '#fff' : '#555';
-      ctx.font = fs(15, true);
-      ctx.fillText(a.name, x + 42, y + 18);
-      ctx.fillStyle = unlocked ? '#aaa' : '#444';
-      ctx.font = fs(12);
-      ctx.fillText(unlocked ? a.desc : '???  ' + a.desc, x + 42, y + 40);
-    }
-
-    ctx.fillStyle = '#777';
-    ctx.font = fs(13);
-    ctx.textAlign = 'center';
-    ctx.fillText('Z ë˜ëŠ” Xë¡œ ë‹«ê¸°', LW / 2, 512);
-    ctx.textAlign = 'left';
-  }
-
-  // ---------- ë„ì›€ë§ (v2 â€” ë°©íƒˆì¶œ + ë§ˆìŒ ì¡°ê° ë°°í‹€ ê¸°ì¤€ìœ¼ë¡œ ë‹¤ì‹œ ì”€) ----------
-  // v1ì€ "í€´ì¦ˆë¡œ ê¹¨ìš°ì¹˜ê³  50:50 íŒíŠ¸" ì„¤ëª…ì´ì—ˆì§€ë§Œ, v2 ë©”ì¸ í”Œë¡œìš°ëŠ” ë°©íƒˆì¶œ(H 3ë‹¨ê³„ íŒíŠ¸)ê³¼
-  // ë§ˆìŒ ì¡°ê° ë°°í‹€(í–‰ë™ìœ¼ë¡œ ì„¤ë“)ì´ ì¤‘ì‹¬ì´ë¼ í†µì§¸ë¡œ ìƒˆë¡œ ì¼ë‹¤. í€´ì¦ˆëŠ” ì´ì œ ë„ì „ ê·¹ì¥ì—ë§Œ
-  // ë‚¨ì•„ ìˆê³  ê·¸ ìì²´ì—” 50:50 íŒíŠ¸ê°€ ì—†ìœ¼ë¯€ë¡œ(í€´ì¦ˆ ë°°í‹€ ì „ìš© ê¸°ëŠ¥) ì˜› ì„¤ëª…ì€ ì œê±°í•œë‹¤.
-  // êµê³¼ ì–´íœ˜Â·í›ˆê³„ ë¬¸êµ¬ ì—†ì´, ì•„ì´ ëˆˆë†’ì´ì˜ ì§§ì€ ë¬¸ì¥ìœ¼ë¡œ.
-  const HELP_LINES = [
-    ['head', 'â—† ê²Œì„ ëª©í‘œ'],
-    ['', 'ë§ˆìŒì´ êµ³ì–´ ë²„ë¦° ì¹œêµ¬ë“¤ì„ ë§Œë‚˜ìš”.'],
-    ['', 'ë¬´ì°Œë¥´ëŠ” ê²Œ ì•„ë‹ˆë¼, ë§ˆìŒì„ ë‹¤ì‹œ ì—´ì–´ ì£¼ëŠ” ì—¬í–‰ì´ì—ìš”.'],
-    ['', ''],
-    ['head', 'â—† ê¸°ë³¸ ì¡°ì‘'],
-    ['', isTouchDevice ? 'ì´ë™: í™”ë©´ ì™¼ìª½ ìŠ¤í‹±       ë§ ê±¸ê¸°Â·ì¡°ì‚¬Â·í™•ì¸: â’¶ ë²„íŠ¼'
-                       : 'ì´ë™: í™”ì‚´í‘œ / W A S D       ë§ ê±¸ê¸°Â·ì¡°ì‚¬Â·í™•ì¸: Z / ìŠ¤í˜ì´ìŠ¤'],
-    ['', isTouchDevice ? 'ì¹œêµ¬ ìˆ˜ì²© ë°”ë¡œ ë³´ê¸°: [ìˆ˜ì²©] ë²„íŠ¼       ê·¸ ì™¸ ì „ë¶€: [ë©”ë‰´] ë²„íŠ¼'
-                       : 'ë©”ë‰´ ì—´ê¸°: X / Esc       ì¹œêµ¬ ìˆ˜ì²© ë°”ë¡œ ë³´ê¸°: C'],
-    ['', ''],
-    ['head', 'â—† ë§ˆìŒ ì¡°ê° ë°°í‹€'],
-    ['', isTouchDevice ? 'ìŠ¤í‹±ìœ¼ë¡œ í•˜íŠ¸ë¥¼ ì›€ì§ì—¬ íƒ„ë§‰ì„ í”¼í•´ìš”.'
-                       : 'í™”ì‚´í‘œë¡œ í•˜íŠ¸ë¥¼ ì›€ì§ì—¬ íƒ„ë§‰ì„ í”¼í•´ìš”.'],
-    ['', 'âœ¦ ì¡°ê°ì„ ì£¼ìš°ë©´ ë§ˆìŒì˜ ì†Œë¦¬ê°€ ë“¤ë ¤ìš”.'],
-    ['', 'ë¬¸ì´ ì—´ë¦¬ë©´, ë§ˆìŒì— ë‹¿ëŠ” ë¬¸ìœ¼ë¡œ í•˜íŠ¸ë¥¼ í†µê³¼ì‹œì¼œìš”!'],
-    ['', 'í•˜íŠ¸ê°€ ë‹¤ ë‹³ìœ¼ë©´ ì ì‹œ ë¬¼ëŸ¬ë‚¬ë‹¤ê°€, ë‹¤ì‹œ ë„ì „í•˜ë©´ ë¼ìš”.'],
-  ];
-  const HELP_LINES2 = [
-    ['head', 'â—† ë°©íƒˆì¶œ'],
-    ['', 'ë°© ê³³ê³³ì„ ì‚´í´ë³´ê³ , ë§Œì§€ê³ , ì‹¤ë§ˆë¦¬ë¥¼ ì´ì–´ ë´ìš”.'],
-    ['', isTouchDevice ? 'ë§‰íˆë©´ [ë©”ë‰´] ë²„íŠ¼ â†’ íŒíŠ¸! ëˆ„ë¥¼ìˆ˜ë¡ ë” ìì„¸íˆ ì•Œë ¤ì¤˜ìš”.'
-                       : 'ë§‰íˆë©´ Hë¡œ íŒíŠ¸! ëˆ„ë¥¼ìˆ˜ë¡ ë” ìì„¸íˆ ì•Œë ¤ì¤˜ìš”(ìµœëŒ€ 3ë‹¨ê³„).'],
-    ['', 'ã€ì ê¹€ã€‘ ë¬¸ì€ Zë¡œ ì¡°ì‚¬ Â· ã€ì—´ë¦¼ã€‘ ë¬¸ì€ ê·¸ëƒ¥ ê±¸ì–´ ë“¤ì–´ê°€ìš”.'],
-    ['', ''],
-    ['head', 'â—† ê¸°ì–µì„ ëª¨ì•„ìš”'],
-    ['', (isTouchDevice ? 'ğŸ“š ê¸°ì–µ ì¡°ê°' : 'ğŸ“š ê¸°ì–µ ì¡°ê° (L)') + ' â€” ë°°ìš´ ìˆœê°„ì´ ì¹´ë“œë¡œ ìŒ“ì—¬ìš”.'],
-    ['', (isTouchDevice ? 'â™¥ ì¹œêµ¬ ìˆ˜ì²©' : 'â™¥ ì¹œêµ¬ ìˆ˜ì²© (C)') + ' â€” ë§Œë‚œ ì¹œêµ¬ë“¤ì˜ ì´ì•¼ê¸°ë¥¼ ë‹¤ì‹œ ë´ìš”.'],
-    ['', (isTouchDevice ? 'â˜… ë‹¤ì‹œ ë§Œë‚˜ê¸°' : 'â˜… ë‹¤ì‹œ ë§Œë‚˜ê¸° (V)') + ' â€” í—·ê°ˆë ¸ë˜ ë¬¸ì œë¥¼ ë‹¤ì‹œ í’€ì–´ìš”.'],
-    ['', (isTouchDevice ? 'â–¶ ë„ì „ ê·¹ì¥' : 'â–¶ ë„ì „ ê·¹ì¥ (Q)') + ' â€” ì§§ì€ í€´ì¦ˆë¡œ ì‹¤ë ¥ì„ í™•ì¸í•´ìš”.'],
-    ['', ''],
-    ['head', 'â—† ê·¸ ì™¸'],
-    ['', isTouchDevice
-      ? 'ìŒì•…Â·ë°±ì—…Â·ì„¤ì •ì€ [ë©”ë‰´] Â· ì„ ìƒë‹˜ì€ ì˜¤ë¥¸ìª½ ì•„ë˜ ë²„íŠ¼'
-      : 'J ì¼ì§€ Â· B ë„ì „ê³¼ì œ Â· K ê¾¸ë¯¸ê¸° Â· U ë°±ì—… Â· F ëª…ì „ Â· T ì„ ìƒë‹˜ ë°© Â· M ìŒì•…'],
-  ];
-  // í•œ í™”ë©´(528px)ì— ë‹¤ ë“¤ì–´ê°€ì§€ ì•Šì•„ 2ì¥ìœ¼ë¡œ ë‚˜ëˆˆë‹¤. (â† â†’ ë¡œ ë„˜ê¹€)
-  const HELP_PAGES = [
-    HELP_LINES,   // ê²Œì„ ëª©í‘œ Â· ê¸°ë³¸ ì¡°ì‘ Â· ë§ˆìŒ ì¡°ê° ë°°í‹€
-    HELP_LINES2,  // ë°©íƒˆì¶œ Â· ê¸°ì–µì„ ëª¨ì•„ìš” Â· ê·¸ ì™¸
-  ];
-  function openHelp(ret) {
-    game.helpRet = ret;
-    game.helpPage = 0;
-    game.mode = 'help';
-    Sound.select();
-  }
-  function closeHelp() {
-    game.mode = game.helpRet || 'title';
-    Sound.select();
-  }
-  function updateHelp() {
-    const pages = HELP_PAGES.length;
-    if (justPressed('right')) { game.helpPage = (game.helpPage + 1) % pages; Sound.blip(); return; }
-    if (justPressed('left')) { game.helpPage = (game.helpPage + pages - 1) % pages; Sound.blip(); return; }
-    // ë§ˆì§€ë§‰ ì¥ì—ì„œ ZëŠ” ë‹«ê¸°, ì•„ë‹ˆë©´ ë‹¤ìŒ ì¥ìœ¼ë¡œ (ìì—°ìŠ¤ëŸ¬ìš´ ë„˜ê¹€)
-    if (justPressed('action')) {
-      if (game.helpPage < pages - 1) { game.helpPage += 1; Sound.blip(); }
-      else closeHelp();
-      return;
-    }
-    if (justPressed('cancel') || justPressed('menu')) closeHelp();
-  }
-  function drawHelp() {
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
-    ctx.textAlign = 'left';
-    const page = Math.min(game.helpPage || 0, HELP_PAGES.length - 1);
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(22, true);
-    ctx.fillText('? ë„ì›€ë§', 24, 38);
-    ctx.font = fs(13);
-    ctx.fillStyle = '#888';
-    ctx.textAlign = 'right';
-    ctx.fillText(`${page + 1} / ${HELP_PAGES.length}`, LW - 24, 36);
-    ctx.textAlign = 'left';
-
-    let y = 84;
-    for (const [kind, text] of HELP_PAGES[page]) {
-      if (text === '') { y += 14; continue; }
-      if (kind === 'head') { ctx.fillStyle = warnColor(); ctx.font = fs(16, true); }
-      else { ctx.fillStyle = '#ddd'; ctx.font = fs(14); }
-      ctx.fillText(text, 28, y);
-      y += 28;
-    }
-
-    ctx.fillStyle = '#777';
-    ctx.font = fs(13);
-    ctx.textAlign = 'center';
-    const nav = page < HELP_PAGES.length - 1
-      ? 'â† â†’ í˜ì´ì§€ ë„˜ê¸°ê¸° Â· Z ë‹¤ìŒ Â· X ë‹«ê¸°'
-      : 'â† â†’ í˜ì´ì§€ ë„˜ê¸°ê¸° Â· ZÂ·X ë‹«ê¸°';
-    ctx.fillText(nav, LW / 2, 512);
-    ctx.textAlign = 'left';
-  }
-
-  // ---------- ê¾¸ë¯¸ê¸° (ì¹­í˜¸ Â· í…Œë§ˆ) ----------
-  function openCosmetics(ret) {
-    const slot = activeSlot();
-    game.cosmetics.ret = ret;
-    game.cosmetics.slot = slot;
-    game.cosmetics.col = 0;
-    game.cosmetics.toast = 0;
-    // í˜„ì¬ ê³ ë¥¸ ì¹­í˜¸/í…Œë§ˆì— ì»¤ì„œë¥¼ ë§ì¶° ë‘”ë‹¤
-    const cos = getCosmetic(slot);
-    game.cosmetics.rowTitle = Math.max(0, TITLES.findIndex((t) => t.id === cos.title));
-    game.cosmetics.rowTheme = Math.max(0, THEMES.findIndex((t) => t.id === cos.theme));
-    // í™”ë©´ì„ ì—´ ë•Œ í•´ê¸ˆ í˜„í™©ì„ ë™ê¸°í™”(ì¤‘ë³µ ì•Œë¦¼ ë°©ì§€)
-    const u = getCosmetic(slot); u.ack = unlockedCount(slot); setCosmetic(slot, u);
-    game.mode = 'cosmetics';
-    Sound.select();
-  }
-  function closeCosmetics() {
-    game.mode = game.cosmetics.ret;
-    Sound.select();
-  }
-  function updateCosmetics() {
-    const cm = game.cosmetics;
-    if (cm.toast > 0) cm.toast -= 1;
-    const list = cm.col === 0 ? TITLES : THEMES;
-    const rowKey = cm.col === 0 ? 'rowTitle' : 'rowTheme';
-    if (justPressed('left') || justPressed('right')) { cm.col = cm.col === 0 ? 1 : 0; Sound.blip(); }
-    if (justPressed('up')) { cm[rowKey] = (cm[rowKey] + list.length - 1) % list.length; Sound.blip(); }
-    if (justPressed('down')) { cm[rowKey] = (cm[rowKey] + 1) % list.length; Sound.blip(); }
-    if (justPressed('cancel') || justPressed('menu')) { closeCosmetics(); return; }
-    if (justPressed('action')) {
-      const c = achievementCtx(cm.slot);
-      const item = list[cm[rowKey]];
-      if (!item.check(c)) { cm.toast = 90; Sound.bump(); return; } // ì•„ì§ ì ê¹€
-      const cos = getCosmetic(cm.slot);
-      if (cm.col === 0) cos.title = item.id; else cos.theme = item.id;
-      setCosmetic(cm.slot, cos);
-      Sound.unlock();
-    }
-  }
-  function drawCosmetics() {
-    const cm = game.cosmetics;
-    const slot = cm.slot;
-    const c = achievementCtx(slot);
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(22, true);
-    ctx.fillText(`âœ¿ ê¾¸ë¯¸ê¸° â€” ${slotLearnName(slot)}`, 24, 38);
-
-    const st = selectedTitle(slot), sth = selectedTheme(slot);
-    ctx.fillStyle = sth ? sth.color : '#ffd644';
-    ctx.font = fs(15, true);
-    ctx.fillText(`ì§€ê¸ˆ: ã€Œ${st ? st.name : 'â€”'}ã€ Â· í…Œë§ˆ ${sth ? sth.name : 'â€”'}`, 24, 62);
-
-    const cols = [{ label: 'ì¹­í˜¸', list: TITLES, row: cm.rowTitle, selId: getCosmetic(slot).title },
-      { label: 'í…Œë§ˆ', list: THEMES, row: cm.rowTheme, selId: getCosmetic(slot).theme }];
-    const colW = (LW - 48) / 2;
-    for (let ci = 0; ci < 2; ci++) {
-      const col = cols[ci];
-      const x = 24 + ci * colW;
-      ctx.fillStyle = ci === cm.col ? themeAccent() : '#888';
-      ctx.font = fs(15, true);
-      ctx.fillText(`â—† ${col.label}`, x, 92);
-      for (let i = 0; i < col.list.length; i++) {
-        const item = col.list[i];
-        const unlocked = item.check(c);
-        const y = 118 + i * 52;
-        const active = ci === cm.col && i === col.row;
-        if (active) { ctx.fillStyle = '#e0453a'; ctx.font = fs(14); ctx.fillText('â™¥', x - 2, y); }
-        // í…Œë§ˆëŠ” ìƒ‰ ìŠ¤ì™€ì¹˜ë¥¼ ë³´ì—¬ ì¤€ë‹¤
-        if (ci === 1) {
-          ctx.fillStyle = unlocked ? item.color : '#333';
-          ctx.fillRect(x + 16, y - 11, 14, 14);
-        }
-        const equipped = item.id === col.selId || (!col.selId && i === 0);
-        ctx.fillStyle = !unlocked ? '#555' : active ? '#fff' : '#bbb';
-        ctx.font = fs(15, active);
-        ctx.fillText((unlocked ? item.name : '???') + (equipped && unlocked ? ' âœ“' : ''), x + (ci === 1 ? 38 : 18), y);
-        ctx.fillStyle = unlocked ? '#777' : '#444';
-        ctx.font = fs(11);
-        ctx.fillText(unlocked ? item.desc : 'ì ê¹€ Â· ' + item.desc, x + (ci === 1 ? 38 : 18), y + 16);
-      }
-    }
-
-    if (cm.toast > 0) {
-      ctx.textAlign = 'center';
-      ctx.fillStyle = badColor();
-      ctx.font = fs(14, true);
-      ctx.fillText('ì•„ì§ ì ê¸´ ë³´ìƒì´ì—ìš”. ì¡°ê±´ì„ ì±„ì›Œ ë³´ì„¸ìš”!', LW / 2, 490);
-      ctx.textAlign = 'left';
-    }
-    ctx.fillStyle = '#777';
-    ctx.font = fs(13);
-    ctx.textAlign = 'center';
-    ctx.fillText('â†â†’ ì¹­í˜¸/í…Œë§ˆ Â· â†‘â†“ ì„ íƒ Â· Z ì ìš© Â· X ë‹«ê¸°', LW / 2, 512);
-    ctx.textAlign = 'left';
-  }
-
-  // ---------- í•™ìŠµ ì¹´ë“œ ì»¬ë ‰ì…˜ í™”ë©´ ----------
-  const CARDS_VISIBLE = 4; // í•œ í™”ë©´ì— ë³´ì´ëŠ” ì¹´ë“œ ìˆ˜
-  function openCards(ret) {
-    game.cards.ret = ret;
-    game.cards.slot = activeSlot();
-    game.cards.scroll = 0;
-    game.mode = 'cards';
-    Sound.select();
-  }
-  function closeCards() {
-    game.mode = game.cards.ret;
-    Sound.select();
-  }
-  function updateCards() {
-    const cd = game.cards;
-    const maxScroll = Math.max(0, LEARN_CARDS.length - CARDS_VISIBLE);
-    if (justPressed('up')) { cd.scroll = Math.max(0, cd.scroll - 1); Sound.blip(); }
-    if (justPressed('down')) { cd.scroll = Math.min(maxScroll, cd.scroll + 1); Sound.blip(); }
-    if (justPressed('cancel') || justPressed('menu') || justPressed('action')) closeCards();
-  }
-  function drawCards() {
-    const cd = game.cards, slot = cd.slot;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(22, true);
-    ctx.fillText(`ğŸ“š ê¸°ì–µ ì¡°ê° â€” ${slotLearnName(slot)}`, 24, 36);
-    const got = collectedCards(slot);
-    ctx.fillStyle = warnColor();
-    ctx.font = fs(14, true);
-    ctx.fillText(`ëª¨ì€ ì¹´ë“œ ${got} / ${LEARN_CARDS.length}`, 24, 58);
-    ctx.fillStyle = '#888';
-    ctx.font = fs(11);
-    ctx.fillText('ê° ì£¼ì œì—ì„œ í•œ ë²ˆì´ë¼ë„ ì •ë‹µì„ ë§íˆë©´ ê·¸ ì¹´ë“œê°€ ì—´ë ¤ìš”.', 220, 58);
-
-    const cardH = 96, top = 74, w = LW - 48;
-    for (let k = 0; k < CARDS_VISIBLE; k++) {
-      const i = cd.scroll + k;
-      if (i >= LEARN_CARDS.length) break;
-      const card = LEARN_CARDS[i];
-      const unlocked = cardUnlocked(slot, card.topic);
-      const x = 24, y = top + k * (cardH + 6);
-      utBox(x, y, w, cardH, 6);
-      // ì•„ì´ì½˜
-      ctx.textAlign = 'center';
-      ctx.font = fs(38);
-      ctx.fillStyle = unlocked ? '#fff' : '#444';
-      ctx.fillText(unlocked ? card.icon : 'ğŸ”’', x + 44, y + 58);
-      // ì œëª© + í•´ì„¤
-      ctx.textAlign = 'left';
-      ctx.fillStyle = unlocked ? themeAccent() : '#555';
-      ctx.font = fs(17, true);
-      ctx.fillText(`${i + 1}. ${topicLabel(card.topic)}`, x + 86, y + 32);
-      ctx.fillStyle = unlocked ? '#ddd' : '#444';
-      ctx.font = fs(13);
-      if (unlocked) wrapText(card.lesson, x + 86, y + 58, w - 110, 19);
-      else ctx.fillText('ì•„ì§ ì ê¸´ ì¹´ë“œì˜ˆìš” â€” ì´ ì£¼ì œ ë¬¸ì œë¥¼ ë§í˜€ ë³´ì„¸ìš”!', x + 86, y + 58);
-    }
-    // ìŠ¤í¬ë¡¤ í‘œì‹œ
-    ctx.fillStyle = '#888'; ctx.font = fs(14); ctx.textAlign = 'center';
-    if (cd.scroll > 0) ctx.fillText('â–²', LW / 2, top - 2);
-    if (cd.scroll + CARDS_VISIBLE < LEARN_CARDS.length) ctx.fillText('â–¼', LW / 2, top + CARDS_VISIBLE * (cardH + 6) + 2);
-
-    ctx.fillStyle = '#777';
-    ctx.font = fs(13);
-    ctx.textAlign = 'center';
-    ctx.fillText('â†‘â†“ ë„˜ê¸°ê¸° Â· Z ë˜ëŠ” Xë¡œ ë‹«ê¸°', LW / 2, 514);
-    ctx.textAlign = 'left';
-  }
-
-  // ---------- ë‚¡ì€ ì¼ê¸° (Q-2 ê¸°ì–µ ë¯¸ìŠ¤í„°ë¦¬) ----------
-  // ë³´ìŠ¤ë¥¼ ìë¹„ë¡œ ë˜ëŒë¦¬ë©´ ë–¨ì–´ì§€ëŠ” ì¼ê¸° ì¡°ê° ëª¨ìŒ. ì¼ê³± ì¡°ê°ì„ ì´ì–´ ì½ìœ¼ë©´
-  // ë‹¤ì„¯ ê±°ë¦¬ì˜ ì•„ì´ë“¤ì´ ì „ë¶€ 'í•œ ì‚¬ëŒì´ ë²„ë¦° ë§ˆìŒ'ì´ì—ˆìŒì´ ë“œëŸ¬ë‚œë‹¤.
-  function diaryCount() {
-    const d = game.flags && game.flags.diaryShards;
-    return d ? DIARY_SHARDS.filter((s) => d[s.key]).length : 0;
-  }
-  // mercyKindë¥¼ ì¸ìë¡œ ë°›ëŠ”ë‹¤ â€” ìŠ¹ë¦¬ ì²˜ë¦¬ë“¤ì´ game.battleì„ ë¨¼ì € ë¹„ìš°ê¸° ë•Œë¬¸
-  function grantDiaryShard(key, lines, mercyKind) {
-    if (mercyKind !== 'mercy') return;
-    const shard = DIARY_SHARDS.find((s) => s.key === key);
-    if (!shard) return;
-    if (!game.flags.diaryShards) game.flags.diaryShards = {};
-    if (game.flags.diaryShards[key]) return;
-    game.flags.diaryShards[key] = true;
-    save();
-    lines.push(`âœ¦ ë‚¡ì€ ì¼ê¸° ì¡°ê° ${shard.no}ì„ ì£¼ì› ë‹¤.\n\nã€Œ${shard.text}ã€`);
-    lines.push(shard.bandi);
-    if (diaryCount() === 1) lines.push('(ì£¼ìš´ ì¡°ê°ì€ ë©”ë‰´ì˜ ã€Œë‚¡ì€ ì¼ê¸°ã€ì—ì„œ\nì–¸ì œë“  ë‹¤ì‹œ ì½ì„ ìˆ˜ ìˆë‹¤)');
-  }
-  function openDiary(ret) {
-    game.diary = { ret, scroll: 0 };
-    game.mode = 'diary';
-    Sound.select();
-  }
-  function updateDiary() {
-    const d = game.diary;
-    const maxScroll = Math.max(0, DIARY_SHARDS.length - DIARY_VISIBLE);
-    if (justPressed('up')) { d.scroll = Math.max(0, d.scroll - 1); Sound.blip(); }
-    if (justPressed('down')) { d.scroll = Math.min(maxScroll, d.scroll + 1); Sound.blip(); }
-    if (justPressed('cancel') || justPressed('menu') || justPressed('action')) {
-      game.mode = d.ret || 'pause';
-      Sound.select();
-    }
-  }
-  const DIARY_VISIBLE = 4;
-  function drawDiary() {
-    const d = game.diary;
-    const shards = game.flags.diaryShards || {};
-    ctx.fillStyle = '#0b0e1a';
-    ctx.fillRect(0, 0, LW, LH);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(22, true);
-    ctx.fillText('âœ‰ ë‚¡ì€ ì¼ê¸°', 24, 36);
-    ctx.fillStyle = warnColor();
-    ctx.font = fs(14, true);
-    ctx.fillText(`ì¡°ê° ${diaryCount()} / ${DIARY_SHARDS.length}`, 24, 58);
-    ctx.fillStyle = '#888';
-    ctx.font = fs(11);
-    ctx.fillText('ë§ˆìŒì„ ì•ˆì•„ ì¤€ ì•„ì´ê°€ í•˜ë‚˜ì”© ëŒë ¤ì¤€ë‹¤. â€¦ëˆ„êµ¬ì˜ ì¼ê¸°ì¼ê¹Œ.', 200, 58);
-    const rowH = 100, top = 74, w = LW - 48;
-    for (let k = 0; k < DIARY_VISIBLE; k++) {
-      const i = d.scroll + k;
-      if (i >= DIARY_SHARDS.length) break;
-      const s = DIARY_SHARDS[i];
-      const got = !!shards[s.key];
-      const x = 24, y = top + k * (rowH + 6);
-      utBox(x, y, w, rowH, 6);
-      ctx.textAlign = 'center';
-      ctx.font = fs(26);
-      ctx.fillStyle = got ? themeAccent() : '#444';
-      ctx.fillText(got ? s.no : '?', x + 40, y + 56);
-      ctx.textAlign = 'left';
-      ctx.fillStyle = got ? '#ddd' : '#444';
-      ctx.font = fs(13);
-      if (got) {
-        let ty = y + 26;
-        for (const line of s.text.split('\n')) {
-          if (!line) { ty += lh(9); continue; }
-          ctx.fillText(line, x + 78, ty);
-          ty += lh(19);
-        }
-        // Y-5 NG+ íšŒì°¨ â€” ì •ì²´ë¥¼ ì•„ëŠ” ì˜ì´ì˜ ë§ë§ì„ ì¡°ê° ì•„ë˜ íšŒìƒ‰ í•œ ì¤„ë¡œ ì–¹ëŠ”ë‹¤(ì¬í•´ì„ ì¸µ)
-        if (game.flags.ng && s.ngNote) {
-          ctx.fillStyle = '#6b7280';
-          ctx.font = fs(11);
-          ctx.fillText(s.ngNote, x + 78, y + rowH - 12);
-          ctx.fillStyle = '#ddd';
-          ctx.font = fs(13);
-        }
-      } else {
-        ctx.fillText('â€¦ì•„ì§ ì°¾ì§€ ëª»í•œ ì¡°ê°.', x + 78, y + 54);
-      }
-    }
-    ctx.fillStyle = '#888'; ctx.font = fs(14); ctx.textAlign = 'center';
-    if (d.scroll > 0) ctx.fillText('â–²', LW / 2, top - 2);
-    if (d.scroll + DIARY_VISIBLE < DIARY_SHARDS.length) ctx.fillText('â–¼', LW / 2, top + DIARY_VISIBLE * (rowH + 6) + 2);
-    ctx.fillStyle = '#777';
-    ctx.font = fs(13);
-    ctx.fillText('â†‘â†“ ë„˜ê¸°ê¸° Â· Z ë˜ëŠ” Xë¡œ ë‹«ê¸°', LW / 2, 514);
-    ctx.textAlign = 'left';
-  }
-
-  // ---------- ìˆ˜ë£Œì¦ Â· ì§„ë„ ì¸ì¦ì„œ ----------
-  function certDateStr() {
-    const d = new Date();
-    return `${d.getFullYear()}ë…„ ${d.getMonth() + 1}ì›” ${d.getDate()}ì¼`;
-  }
-  function buildCertText(slot) {
-    const s = buildLearningSummary(slot);
-    const sum = slotSummary(slot);
-    const title = selectedTitle(slot);
-    const acc = s.attempted ? Math.round(s.overallRate * 100) + '%' : 'â€”';
-    const prog = sum ? (sum.done ? 'ëª¨í—˜ ì™„ë£Œ' : sum.stage) : 'ì‹œì‘ ì „';
-    return [
-      'â•â•â•â•â•â•â•â• AI ìœ¤ë¦¬ ì–´ë“œë²¤ì²˜ ìˆ˜ë£Œì¦ â•â•â•â•â•â•â•â•',
-      '',
-      `  ì´ë¦„: ${slotLearnName(slot)}${title ? ` (${title.name})` : ''}`,
-      `  ë‚ ì§œ: ${certDateStr()}`,
-      '',
-      `  ì§„í–‰ë„   : ${prog}`,
-      `  í‘¼ ë¬¸ì œ  : ${s.attempted}ê°œ   Â·   ì •ë‹µë¥  ${acc}`,
-      `  ë°°ì›€ ì¹´ë“œ: ${collectedCards(slot)} / ${LEARN_CARDS.length}`,
-      `  ë„ì „ê³¼ì œ : ${countAchievements(slot)} / ${ACHIEVEMENTS.length}`,
-      `  ì•ˆì•„ì¤€ ë§ˆìŒ: â™¥ ${sum ? sum.mercy : 0}`,
-      '',
-      '  ìœ„ í•™ìƒì€ AIë¥¼ ë°”ë¥´ê³  ì•ˆì „í•˜ê²Œ ì“°ëŠ” ë²•ì„',
-      '  ì—´ì‹¬íˆ ìµí˜”ê¸°ì— ì´ ì¦ì„œë¥¼ ë“œë¦½ë‹ˆë‹¤.',
-      '',
-      '             â€” AI ìœ¤ë¦¬ ì—°êµ¬ì†Œ â€”',
-      'â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•',
-    ].join('\n');
-  }
-  function openCert(ret) {
-    game.cert.ret = ret;
-    game.cert.slot = activeSlot();
-    game.cert.toast = 0;
-    game.mode = 'cert';
-    Sound.select();
-  }
-  function closeCert() {
-    game.mode = game.cert.ret;
-    Sound.select();
-  }
-  function downloadCert() {
-    try {
-      const text = buildCertText(game.cert.slot);
-      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `ìˆ˜ë£Œì¦-${slotLearnName(game.cert.slot)}.txt`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      game.cert.toast = 1;
-    } catch (e) { game.cert.toast = -1; }
-    Sound.badge();
-  }
-  function updateCert() {
-    if (game.cert.toast > 0) { /* ìœ ì§€ */ }
-    if (justPressed('action')) { if (copyTextToClipboard(buildCertText(game.cert.slot))) { game.cert.toast = 2; Sound.badge(); } else { game.cert.toast = -1; } return; }
-    if (justPressed('menu')) { downloadCert(); return; }
-    if (justPressed('cancel')) { closeCert(); return; }
-  }
-  function drawCert() {
-    const slot = game.cert.slot;
-    ctx.fillStyle = '#1a1626';
-    ctx.fillRect(0, 0, LW, LH);
-    // ì¦ì„œ ì¹´ë“œ
-    const cx = LW / 2;
-    const bx = 90, by = 56, bw = LW - 180, bh = 392;
-    ctx.fillStyle = '#fbf6e9';
-    roundRect(bx, by, bw, bh, 10); ctx.fill();
-    ctx.strokeStyle = themeAccent(); ctx.lineWidth = 4;
-    roundRect(bx + 10, by + 10, bw - 20, bh - 20, 8); ctx.stroke();
-    ctx.lineWidth = 1;
-
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#7a5c12';
-    ctx.font = fs(15, true);
-    ctx.fillText('AI ìœ¤ë¦¬ ì–´ë“œë²¤ì²˜', cx, by + 50);
-    ctx.fillStyle = '#2a2417';
-    ctx.font = fs(30, true);
-    ctx.fillText('ìˆ˜ ë£Œ ì¦', cx, by + 92);
-
-    const s = buildLearningSummary(slot);
-    const sum = slotSummary(slot);
-    const title = selectedTitle(slot);
-    ctx.fillStyle = '#2a2417';
-    ctx.font = fs(22, true);
-    ctx.fillText(slotLearnName(slot), cx, by + 138);
-    if (title) { ctx.fillStyle = '#a07b1e'; ctx.font = fs(13, true); ctx.fillText(`ã€Œ${title.name}ã€`, cx, by + 160); }
-
-    ctx.fillStyle = '#3a3220';
-    ctx.font = fs(13);
-    ctx.fillText('ìœ„ í•™ìƒì€ AIë¥¼ ë°”ë¥´ê³  ì•ˆì „í•˜ê²Œ ì“°ëŠ” ë²•ì„', cx, by + 192);
-    ctx.fillText('ì—´ì‹¬íˆ ìµí˜”ê¸°ì— ì´ ì¦ì„œë¥¼ ë“œë¦½ë‹ˆë‹¤.', cx, by + 212);
-
-    const acc = s.attempted ? Math.round(s.overallRate * 100) + '%' : 'â€”';
-    const prog = sum ? (sum.done ? 'ëª¨í—˜ ì™„ë£Œ' : sum.stage) : 'ì‹œì‘ ì „';
-    const rows = [
-      ['ì§„í–‰ë„', prog], ['ì •ë‹µë¥ ', `${acc} (${s.attempted}ë¬¸ì œ)`],
-      ['ë°°ì›€ ì¹´ë“œ', `${collectedCards(slot)}/${LEARN_CARDS.length}`],
-      ['ë„ì „ê³¼ì œ', `${countAchievements(slot)}/${ACHIEVEMENTS.length}`],
-      ['ì•ˆì•„ì¤€ ë§ˆìŒ', `â™¥ ${sum ? sum.mercy : 0}`],
-    ];
-    let ry = by + 244;
-    ctx.font = fs(14);
-    for (const [k, v] of rows) {
-      ctx.textAlign = 'left'; ctx.fillStyle = '#6a5a2e'; ctx.fillText(k, bx + 70, ry);
-      ctx.textAlign = 'right'; ctx.fillStyle = '#2a2417'; ctx.fillText(v, bx + bw - 70, ry);
-      ry += 24;
-    }
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#7a5c12';
-    ctx.font = fs(13);
-    ctx.fillText(`${certDateStr()}   Â·   AI ìœ¤ë¦¬ ì—°êµ¬ì†Œ`, cx, by + bh - 24);
-
-    if (game.cert.toast !== 0) {
-      ctx.fillStyle = game.cert.toast < 0 ? badColor() : okColor();
-      ctx.font = fs(13, true);
-      ctx.fillText(game.cert.toast < 0 ? 'ë³µì‚¬Â·ì €ì¥ì— ì‹¤íŒ¨í–ˆì–´ìš” (ë¸Œë¼ìš°ì €ì—ì„œ ì‹œë„í•´ ì£¼ì„¸ìš”)'
-        : game.cert.toast === 1 ? 'âœ“ íŒŒì¼ë¡œ ì €ì¥í–ˆì–´ìš”!' : 'âœ“ ê¸€ìë¡œ ë³µì‚¬í–ˆì–´ìš”!', cx, 472);
-    }
-    ctx.fillStyle = '#aaa';
-    ctx.font = fs(13);
-    ctx.fillText('Z ê¸€ì ë³µì‚¬ Â· C íŒŒì¼ ì €ì¥(.txt) Â· X ë‹«ê¸°', cx, 500);
-    ctx.textAlign = 'left';
-  }
-
-  // ---------- ëª…ì˜ˆì˜ ì „ë‹¹ (ë¡œì»¬ ê¸°ë¡) ----------
-  const HOF_CATS = [
-    { key: 'challenge', label: 'ì±Œë¦°ì§€ ìµœê³ ì ', icon: 'âœ¦',
-      val: (i) => { const m = getMeta(i); return m.challengeBestTotal ? (m.challengeBest || 0) : -1; },
-      fmt: (i) => { const m = getMeta(i); return m.challengeBestTotal ? `${m.challengeBest || 0}/${m.challengeBestTotal}` : 'â€”'; } },
-    { key: 'streak', label: 'ìµœì¥ ì—°ì† ì¶œì„', icon: 'ğŸ”¥',
-      val: (i) => getMeta(i).bestStreak || 0, fmt: (i) => { const b = getMeta(i).bestStreak || 0; return b ? `${b}ì¼` : 'â€”'; } },
-    { key: 'mercy', label: 'ì•ˆì•„ì¤€ ë§ˆìŒ', icon: 'â™¥',
-      val: (i) => { const s = slotSummary(i); return s ? s.mercy : -1; }, fmt: (i) => { const s = slotSummary(i); return s ? `â™¥ ${s.mercy}` : 'â€”'; } },
-    { key: 'cards', label: 'ë°°ì›€ ì¹´ë“œ', icon: 'ğŸ“š',
-      val: (i) => slotSummary(i) ? collectedCards(i) : -1, fmt: (i) => slotSummary(i) ? `${collectedCards(i)}/${LEARN_CARDS.length}` : 'â€”' },
-    { key: 'awards', label: 'ë„ì „ê³¼ì œ', icon: 'â˜†',
-      val: (i) => slotSummary(i) ? countAchievements(i) : -1, fmt: (i) => slotSummary(i) ? `${countAchievements(i)}/${ACHIEVEMENTS.length}` : 'â€”' },
-    { key: 'dex', label: 'ì¹œêµ¬ ìˆ˜ì²©', icon: 'â—†',
-      val: () => dexSeenCount(), fmt: () => `${dexSeenCount()}/${DEX_ORDER.length}`, shared: true },
-  ];
-  function openHof(ret) {
-    game.hof.ret = ret;
-    game.hof.cat = 0;
-    game.mode = 'hof';
-    Sound.select();
-  }
-  function closeHof() {
-    game.mode = game.hof.ret;
-    Sound.select();
-  }
-  function updateHof() {
-    const n = HOF_CATS.length;
-    if (justPressed('up')) { game.hof.cat = (game.hof.cat + n - 1) % n; Sound.blip(); }
-    if (justPressed('down')) { game.hof.cat = (game.hof.cat + 1) % n; Sound.blip(); }
-    if (justPressed('cancel') || justPressed('menu') || justPressed('action')) closeHof();
-  }
-  function drawHof() {
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(22, true);
-    ctx.fillText('ğŸ† ëª…ì˜ˆì˜ ì „ë‹¹', 24, 36);
-    ctx.fillStyle = '#888';
-    ctx.font = fs(12);
-    ctx.fillText('ì´ ê¸°ê¸°ì—ì„œ í•¨ê»˜í•œ í•™ìƒë“¤ì˜ ìµœê³  ê¸°ë¡ì´ì—ìš”. â†‘â†“ë¡œ ë¶€ë¬¸ ì„ íƒ.', 24, 56);
-
-    // ë¶€ë¬¸ ëª©ë¡(ì™¼ìª½) + ìˆœìœ„(ì˜¤ë¥¸ìª½)
-    const listX = 24, listY = 84, rowH = 60;
-    for (let i = 0; i < HOF_CATS.length; i++) {
-      const cat = HOF_CATS[i];
-      const sel = i === game.hof.cat;
-      const y = listY + i * rowH;
-      if (sel) { utBox(listX - 4, y - 22, 200, 50, 6); }
-      ctx.textAlign = 'left';
-      ctx.font = fs(22);
-      ctx.fillStyle = sel ? '#fff' : '#666';
-      ctx.fillText(cat.icon, listX + 6, y + 8);
-      ctx.font = fs(14, sel);
-      ctx.fillStyle = sel ? themeAccent() : '#888';
-      ctx.fillText(cat.label, listX + 40, y + 4);
-    }
-
-    // ì„ íƒëœ ë¶€ë¬¸ì˜ ìˆœìœ„
-    const cat = HOF_CATS[game.hof.cat];
-    const panelX = 248, panelY = 84, panelW = LW - panelX - 24;
-    utBox(panelX, panelY, panelW, 380, 8);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(16, true);
-    ctx.fillText(`${cat.icon} ${cat.label}`, panelX + 20, panelY + 30);
-
-    if (cat.shared) {
-      ctx.fillStyle = warnColor();
-      ctx.font = fs(34, true);
-      ctx.textAlign = 'center';
-      ctx.fillText(cat.fmt(0), panelX + panelW / 2, panelY + 130);
-      ctx.fillStyle = '#888';
-      ctx.font = fs(13);
-      ctx.fillText('(ì¹œêµ¬ ìˆ˜ì²©ì€ ëª¨ë‘ê°€ í•¨ê»˜ ì±„ìš°ëŠ” ê³µë™ ê¸°ë¡ì´ì—ìš”)', panelX + panelW / 2, panelY + 170);
-      ctx.textAlign = 'left';
-    } else {
-      // ìŠ¬ë¡¯ë“¤ì„ ì ìˆ˜ë¡œ ì •ë ¬
-      const ranked = [];
-      for (let i = 0; i < SLOT_COUNT; i++) {
-        const sum = slotSummary(i);
-        ranked.push({ i, name: sum ? sum.name : null, v: cat.val(i), label: cat.fmt(i) });
-      }
-      ranked.sort((a, b) => b.v - a.v);
-      const medals = ['ğŸ¥‡', 'ğŸ¥ˆ', 'ğŸ¥‰'];
-      let ry = panelY + 70;
-      for (let r = 0; r < ranked.length; r++) {
-        const e = ranked[r];
-        const empty = e.name === null;       // ìŠ¬ë¡¯ ìì²´ê°€ ë¹„ì–´ ìˆìŒ
-        const noRecord = !empty && e.v < 0;  // í•™ìƒì€ ìˆì§€ë§Œ ì´ ë¶€ë¬¸ ê¸°ë¡ì´ ì—†ìŒ
-        const ranking = !empty && !noRecord; // ìˆœìœ„ ë§¤ê¹€ ëŒ€ìƒ
-        ctx.font = fs(26);
-        ctx.textAlign = 'left';
-        ctx.fillText(ranking ? (medals[r] || ' ') : 'Â·', panelX + 20, ry + 8);
-        ctx.fillStyle = ranking ? '#fff' : '#666';
-        ctx.font = fs(17, true);
-        ctx.fillText(empty ? `ìŠ¬ë¡¯ ${e.i + 1} â€” ë¹„ì–´ ìˆìŒ` : e.name, panelX + 64, ry);
-        if (!empty) {
-          ctx.fillStyle = ranking && r === 0 ? warnColor() : '#888';
-          ctx.font = fs(17, true);
-          ctx.textAlign = 'right';
-          ctx.fillText(noRecord ? 'â€”' : e.label, panelX + panelW - 20, ry);
-          ctx.textAlign = 'left';
-        }
-        ry += 64;
-      }
-    }
-
-    ctx.fillStyle = '#777';
-    ctx.font = fs(13);
-    ctx.textAlign = 'center';
-    ctx.fillText('â†‘â†“ ë¶€ë¬¸ Â· Z ë˜ëŠ” Xë¡œ ë‹«ê¸°', LW / 2, 512);
-    ctx.textAlign = 'left';
-  }
-
-  // ---------- ë°ì´í„° ë°±ì—… Â· ë³µì› í™”ë©´ ----------
-  // ë˜ëŒë¦¬ê¸° í•­ëª©ì€ ì§ì „ ë³µì› ìŠ¤ëƒ…ìƒ·ì´ ìˆì„ ë•Œë§Œ ëª©ë¡ì— ë‚€ë‹¤ (openBackupì—ì„œ ê°±ì‹ )
-  const BACKUP_ITEMS_BASE = ['exportClip', 'exportFile', 'importFile', 'close'];
-  let BACKUP_ITEMS = BACKUP_ITEMS_BASE.slice();
-  const BACKUP_LABELS = {
-    exportClip: 'ë‚´ë³´ë‚´ê¸° â€” í´ë¦½ë³´ë“œ ë³µì‚¬',
-    exportFile: 'ë‚´ë³´ë‚´ê¸° â€” íŒŒì¼ë¡œ ì €ì¥(.json)',
-    importFile: 'ê°€ì ¸ì˜¤ê¸° â€” íŒŒì¼ì—ì„œ ë³µì›',
-    undoRestore: 'â†© ë°©ê¸ˆ ë³µì› ë˜ëŒë¦¬ê¸°',
-    close: 'ë‹«ê¸°',
-  };
-  function openBackup(ret) {
-    game.backup.ret = ret;
-    game.backup.cursor = 0;
-    game.backup.toast = 0;
-    game.backup.confirm = false;
-    // ì§ì „ ë³µì›ì´ ìˆìœ¼ë©´ 'ë˜ëŒë¦¬ê¸°'ë¥¼ ë‹«ê¸° ì•ì— ë¼ìš´ë‹¤
-    BACKUP_ITEMS = hasRestoreUndo()
-      ? ['exportClip', 'exportFile', 'importFile', 'undoRestore', 'close']
-      : BACKUP_ITEMS_BASE.slice();
-    game.mode = 'backup';
-    Sound.select();
-  }
-  function closeBackup() {
-    game.mode = game.backup.ret;
-    Sound.select();
-  }
-  function downloadBackup() {
-    try {
-      const text = buildBackupText();
-      const a = document.createElement('a');
-      a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(text);
-      a.download = 'ai-ethics-save-' + todayStr() + '.json';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      return true;
-    } catch (e) { return false; }
-  }
-  function importBackupFile() {
-    try {
-      const inp = document.createElement('input');
-      inp.type = 'file';
-      inp.accept = 'application/json,.json';
-      const handler = () => {
-        inp.removeEventListener('change', handler);
-        const file = inp.files && inp.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-          const res = applyBackup(String(reader.result));
-          // ì¸ì‹ ê°€ëŠ¥í•œ ë°ì´í„°ê°€ ì—†ìœ¼ë©´(ì˜ëª»ëœ/ë¹ˆ íŒŒì¼) ë³„ë„ ì•ˆë‚´ â€” 'ì™„ë£Œ' ì˜¤í‘œì‹œ ë°©ì§€
-          game.backup.toast = res.ok ? 200 : (res.error === 'empty' ? -300 : -200);
-          if (res.ok) {
-            Object.assign(game, loadSettings());
-            Sound.setVolume(VOLUME_LEVELS[game.volume] || 1);
-            game.mode = 'title';
-            game.titleScreen = 'slots';
-          }
-          Sound.badge();
-        };
-        reader.onerror = () => { game.backup.toast = -200; Sound.badge(); };
-        reader.readAsText(file);
-      };
-      inp.addEventListener('change', handler);
-      inp.click();
-      return true;
-    } catch (e) { game.backup.toast = -200; return false; }
-  }
-  function updateBackup() {
-    const b = game.backup;
-    if (b.toast > 0) b.toast -= 1; else if (b.toast < 0) b.toast += 1;
-    const n = BACKUP_ITEMS.length;
-    if (justPressed('up') || justPressed('down')) {
-      b.cursor = justPressed('up') ? (b.cursor + n - 1) % n : (b.cursor + 1) % n;
-      b.confirm = false; Sound.blip();
-      if (game.tts) Speech.speak(BACKUP_LABELS[BACKUP_ITEMS[b.cursor]] || ''); // ì½ì–´ì£¼ê¸° ì ‘ê·¼ì„±
-    }
-    if (justPressed('cancel') || justPressed('menu')) {
-      if (b.confirm) { b.confirm = false; Sound.blip(); return; } // í™•ì¸ ë‹¨ê³„ë§Œ ì·¨ì†Œ
-      closeBackup();
-      return;
-    }
-    if (justPressed('action')) {
-      const item = BACKUP_ITEMS[b.cursor];
-      if (b.confirm) { // ê°€ì ¸ì˜¤ê¸° í™•ì¸ í›„ ì‹¤ì œ ì‹¤í–‰
-        b.confirm = false;
-        importBackupFile();
-        return;
-      }
-      if (item === 'exportClip') { b.toast = copyTextToClipboard(buildBackupText()) ? 200 : -200; Sound.badge(); }
-      else if (item === 'exportFile') { b.toast = downloadBackup() ? 200 : -200; Sound.badge(); }
-      else if (item === 'importFile') { b.confirm = true; Sound.blip(); } // ë®ì–´ì“°ê¸° ì „ í•œ ë²ˆ ë” í™•ì¸
-      else if (item === 'undoRestore') {
-        const res = undoRestore();
-        if (res.ok) {
-          Object.assign(game, loadSettings());
-          Sound.setVolume(VOLUME_LEVELS[game.volume] || 1);
-          b.toast = 200;
-          BACKUP_ITEMS = BACKUP_ITEMS_BASE.slice(); // ë˜ëŒë¦¬ê¸° ì†Œì§„
-          if (b.cursor >= BACKUP_ITEMS.length) b.cursor = BACKUP_ITEMS.length - 1;
-          game.mode = 'title'; game.titleScreen = 'slots';
-        } else { b.toast = -200; }
-        Sound.badge();
-      }
-      else if (item === 'close') { closeBackup(); }
-    }
-  }
-  function drawBackup() {
-    const b = game.backup;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(22, true);
-    ctx.fillText('â‡„ ë°ì´í„° ë°±ì—… Â· ë³µì›', 24, 40);
-    ctx.fillStyle = '#888';
-    ctx.font = fs(13);
-    ctx.fillText('ëª¨ë“  ìŠ¬ë¡¯Â·í•™ìŠµ ê¸°ë¡Â·ì¹œêµ¬ ìˆ˜ì²©Â·ì„¤ì •ì„ í•œ íŒŒì¼ë¡œ ì €ì¥í•˜ê³ ', 24, 66);
-    ctx.fillText('ë‹¤ë¥¸ ê¸°ê¸°ë‚˜ ë¸Œë¼ìš°ì €ì—ì„œ ë‹¤ì‹œ ë¶ˆëŸ¬ì˜¬ ìˆ˜ ìˆì–´ìš”.', 24, 86);
-
-    const listY = 130, rowH = 44;
-    for (let i = 0; i < BACKUP_ITEMS.length; i++) {
-      drawChoiceLine(BACKUP_LABELS[BACKUP_ITEMS[i]], 48, listY + i * rowH, i === b.cursor);
-    }
-
-    ctx.fillStyle = '#777';
-    ctx.font = fs(12);
-    ctx.fillText('â€» ê°€ì ¸ì˜¤ê¸°ë¥¼ í•˜ë©´ ì§€ê¸ˆ ì´ ê¸°ê¸°ì˜ ê¸°ë¡ì„ ë®ì–´ì”ë‹ˆë‹¤.', 24, listY + BACKUP_ITEMS.length * rowH + 24);
-
-    if (b.confirm) {
-      ctx.textAlign = 'center';
-      ctx.fillStyle = badColor();
-      ctx.font = fs(15, true);
-      ctx.fillText('ì§€ê¸ˆ ê¸°ë¡ì„ ë®ì–´ì“°ê³  ë³µì›í• ê¹Œìš”?', LW / 2, 452);
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(13);
-      ctx.fillText('Z: íŒŒì¼ ì„ íƒí•´ì„œ ë³µì›   Â·   X: ì·¨ì†Œ', LW / 2, 474);
-      ctx.textAlign = 'left';
-    } else if (b.toast !== 0) {
-      ctx.textAlign = 'center';
-      ctx.fillStyle = b.toast > 0 ? okColor() : badColor();
-      ctx.font = fs(15, true);
-      const msg = b.toast > 0 ? 'âœ“ ì™„ë£Œí–ˆì–´ìš”!'
-        : b.toast === -300 ? 'ì´ íŒŒì¼ì—ëŠ” ë¶ˆëŸ¬ì˜¬ ê¸°ë¡ì´ ì—†ì–´ìš” (ë‹¤ë¥¸ ë°±ì—… íŒŒì¼ì„ ê³¨ë¼ ì£¼ì„¸ìš”)'
-        : 'ì´ í™˜ê²½ì—ì„œëŠ” í•  ìˆ˜ ì—†ì–´ìš” (ë¸Œë¼ìš°ì €ì—ì„œ ì‹œë„í•´ ì£¼ì„¸ìš”)';
-      ctx.fillText(msg, LW / 2, 470);
-      ctx.textAlign = 'left';
-    }
-    ctx.fillStyle = '#777';
-    ctx.font = fs(13);
-    ctx.textAlign = 'center';
-    ctx.fillText('â†‘â†“ ì„ íƒ Â· Z ì‹¤í–‰ Â· X ë‹«ê¸°', LW / 2, 512);
-    ctx.textAlign = 'left';
-  }
-
-  // ---------- êµì‚¬ìš© ëŒ€ì‹œë³´ë“œ (ëª¨ë“  í•™ìƒ í•œëˆˆì—) ----------
-  // CSV í•œ ì¹¸ì„ ì•ˆì „í•˜ê²Œ ê°ì‹¼ë‹¤(ì‰¼í‘œÂ·ë”°ì˜´í‘œÂ·ì¤„ë°”ê¿ˆ í¬í•¨ ì‹œ í°ë”°ì˜´í‘œ ì²˜ë¦¬).
-  function csvCell(v) {
-    let s = String(v == null ? '' : v);
-    // CSV ìˆ˜ì‹ ì£¼ì… ë°©ì–´ â€” í•™ìƒì´ ì •í•œ ì´ë¦„/ì¹­í˜¸ê°€ =,+,-,@,íƒ­,CRë¡œ ì‹œì‘í•˜ë©´
-    // êµì‚¬ê°€ ì—‘ì…€Â·ì‹œíŠ¸ë¡œ ì—´ ë•Œ ìˆ˜ì‹ìœ¼ë¡œ ì‹¤í–‰ë  ìˆ˜ ìˆë‹¤. ì•ì— 'ë¥¼ ë¶™ì—¬ ë¬¸ìë¡œ ê³ ì •.
-    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
-    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-  }
-  // ì„¸ í•™ìƒ(ìŠ¬ë¡¯)ì˜ í•™ìŠµ í˜„í™©ì„ ìŠ¤í”„ë ˆë“œì‹œíŠ¸ë¡œ ì—´ ìˆ˜ ìˆëŠ” CSVë¡œ ë§Œë“ ë‹¤.
-  function buildClassCsv() {
-    const header = ['ìŠ¬ë¡¯', 'ì´ë¦„', 'ì¹­í˜¸', 'ì§„í–‰', 'ì™„ì£¼', 'í‘¼ ë¬¸ì œ', 'ì •ë‹µ ìˆ˜',
-      'ì •ë‹µë¥ (%)', 'ë³µìŠµ ë…¸íŠ¸', 'ë„ì „ê³¼ì œ', 'ì•ˆì•„ì¤€ ë§ˆìŒ', 'ì—°ì† ì¶œì„(ì¼)',
-      'ì‚¬ì „(%)', 'ì‚¬í›„(%)', 'í–¥ìƒë„(%p)', // Y-18 ìˆ˜ì—… íš¨ê³¼ ì¸¡ì •(ì‚¬ì „/ì‚¬í›„ ì ê²€)
-      'ê°œë…ë³„ ì„±ì·¨(ì •ë‹µ/ì‹œë„)', 'ìë¹„ ì„ íƒ(í”„ë¡¤ë¡œê·¸Â·1~5ì¥)', 'ì—”ë”©'];
-    const lines = [header.map(csvCell).join(',')];
-    for (let i = 0; i < SLOT_COUNT; i++) {
-      const sum = slotSummary(i);
-      if (!sum) { lines.push(csvCell(i + 1) + ',(ë¹„ì–´ ìˆìŒ)'); continue; }
-      const s = buildLearningSummary(i);
-      const meta = getMeta(i);
-      const title = selectedTitle(i);
-      const saved = loadSlot(i);
-      const flags = (saved && saved.flags) || {};
-      const conceptStats = (s.rows || [])
-        .map((r) => `${r.label} ${r.correct}/${r.total}`)
-        .join('; ');
-      const mercyParts = [
-        flags.defeated?.bekkyeomon
-          ? (flags.mercyChoice?.bekkyeomon === 'mercy' ? 'ë”°ë¼:ì•ˆì•„ì¤Œ' : 'ë”°ë¼:ë¬´ì°Œë¦„')
-          : 'ë”°ë¼:-',
-      ];
-      for (let n = 1; n <= 5; n++) {
-        mercyParts.push(
-          flags['chapter' + n + 'Clear']
-            ? (flags['chapter' + n + 'Mercy'] ? n + 'ì¥:ì•ˆì•„ì¤Œ' : n + 'ì¥:ë¬´ì°Œë¦„')
-            : n + 'ì¥:-'
-        );
-      }
-      const mercyStr = mercyParts.join(' / ');
-      const endingStr = flags.trueEnding
-        ? 'ì§‘ìœ¼ë¡œ(ë”°ëœ»)'
-        : (flags.defeated?.yeongi ? 'ì™„ì£¼' : 'ì§„í–‰ ì¤‘');
-      // Y-18 â€” ì‚¬ì „/ì‚¬í›„ ì ê²€ ì§‘ê³„(ì¥ ì „ì²´ í•©ì‚°). í–¥ìƒë„ = ì‚¬í›„% âˆ’ ì‚¬ì „%(ë‘˜ ë‹¤ ìˆì„ ë•Œë§Œ).
-      const pp = meta.prepost || {};
-      let preC = 0, preN = 0, postC = 0, postN = 0;
-      for (const ch of Object.keys(pp)) {
-        if (pp[ch].pre) { preC += pp[ch].pre.score; preN += pp[ch].pre.total; }
-        if (pp[ch].post) { postC += pp[ch].post.score; postN += pp[ch].post.total; }
-      }
-      const prePct = preN ? Math.round(preC / preN * 100) : '';
-      const postPct = postN ? Math.round(postC / postN * 100) : '';
-      const improvePct = (preN && postN) ? (postPct - prePct) : '';
-      lines.push([
-        i + 1,
-        sum.name,
-        title ? title.name : '',
-        sum.done ? 'ëª¨í—˜ ì™„ë£Œ' : sum.stage,
-        sum.done ? 'Y' : 'N',
-        s.attempted,
-        s.correct,
-        s.attempted ? Math.round(s.overallRate * 100) : '',
-        mistakeCount(i),
-        countAchievements(i) + '/' + ACHIEVEMENTS.length,
-        sum.mercy,
-        meta.streak || 0,
-        prePct,
-        postPct,
-        improvePct,
-        conceptStats,
-        mercyStr,
-        endingStr,
-      ].map(csvCell).join(','));
-    }
-    return lines.join('\r\n');
-  }
-  // CSVë¥¼ íŒŒì¼ë¡œ ë‚´ë ¤ë°›ëŠ”ë‹¤. ì—‘ì…€ í•œê¸€ ê¹¨ì§ ë°©ì§€ë¥¼ ìœ„í•´ UTF-8 BOMì„ ë¶™ì¸ë‹¤.
-  function downloadClassCsv() {
-    try {
-      const text = 'ï»¿' + buildClassCsv();
-      const a = document.createElement('a');
-      a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(text);
-      a.download = 'ai-ethics-class-' + todayStr() + '.csv';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      return true;
-    } catch (e) { return false; }
-  }
-  function openDashboard(ret) {
-    game.dashboard.ret = ret;
-    game.dashboard.cursor = 0;
-    game.dashboard.toast = 0;
-    game.mode = 'dashboard';
-    Sound.select();
-  }
-  function closeDashboard() {
-    game.mode = game.dashboard.ret;
-    Sound.select();
-  }
-  function updateDashboard() {
-    const d = game.dashboard;
-    if (d.toast > 0) d.toast -= 1; else if (d.toast < 0) d.toast += 1;
-    if (justPressed('cancel') || justPressed('menu')) { closeDashboard(); return; }
-    if (justPressed('action')) {
-      // íŒŒì¼ ì €ì¥ì´ ì•ˆ ë˜ëŠ” í™˜ê²½ì´ë©´ í´ë¦½ë³´ë“œ ë³µì‚¬ë¡œ ëŒ€ì‹ í•œë‹¤.
-      const ok = downloadClassCsv() || copyTextToClipboard(buildClassCsv());
-      d.toast = ok ? 200 : -200;
-      Sound.badge();
-    }
-  }
-  function drawDashboard() {
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(22, true);
-    ctx.fillText('â–¤ êµì‚¬ìš© ëŒ€ì‹œë³´ë“œ â€” í•™ìƒ í˜„í™©', 24, 36);
-    ctx.fillStyle = '#888';
-    ctx.font = fs(12);
-    ctx.fillText('í•œ ê¸°ê¸°ë¥¼ ë‚˜ëˆ  ì“°ëŠ” ì„¸ í•™ìƒ(ìŠ¬ë¡¯)ì˜ í•™ìŠµ í˜„í™©ì„ ë¹„êµí•©ë‹ˆë‹¤.', 24, 56);
-
-    const colW = (LW - 32) / SLOT_COUNT;
-    for (let i = 0; i < SLOT_COUNT; i++) {
-      const x = 16 + i * colW;
-      const y = 74, w = colW - 12, h = 410;
-      utBox(x, y, w, h, 6);
-      const sum = slotSummary(i);
-      ctx.textAlign = 'left';
-      ctx.fillStyle = '#888';
-      ctx.font = fs(12, true);
-      ctx.fillText(`ìŠ¬ë¡¯ ${i + 1}`, x + 14, y + 22);
-      if (!sum) {
-        ctx.fillStyle = '#555';
-        ctx.font = fs(14);
-        ctx.fillText('â€” ë¹„ì–´ ìˆìŒ â€”', x + 14, y + 56);
-        continue;
-      }
-      const s = buildLearningSummary(i);
-      const meta = getMeta(i);
-      const title = selectedTitle(i);
-      let ly = y + 46;
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(17, true);
-      ctx.fillText(sum.name, x + 14, ly); ly += 22;
-      if (title) {
-        ctx.fillStyle = themeAccent();
-        ctx.font = fs(11, true);
-        ctx.fillText(`ã€Œ${title.name}ã€`, x + 14, ly);
-      }
-      ly += 22;
-      const line = (label, val, col) => {
-        ctx.fillStyle = '#999'; ctx.font = fs(12);
-        ctx.fillText(label, x + 14, ly);
-        ctx.fillStyle = col || '#fff'; ctx.font = fs(13, true);
-        ctx.textAlign = 'right'; ctx.fillText(val, x + w - 14, ly); ctx.textAlign = 'left';
-        ly += 24;
-      };
-      line('ì§„í–‰', sum.done ? 'ëª¨í—˜ ì™„ë£Œ' : sum.stage);
-      line('í‘¼ ë¬¸ì œ', `${s.attempted}ê°œ`);
-      line('ì •ë‹µë¥ ', s.attempted ? `${Math.round(s.overallRate * 100)}%` : 'â€”',
-        s.attempted ? (s.overallRate >= 0.8 ? okColor() : s.overallRate >= 0.6 ? warnColor() : badColor()) : '#888');
-      line('ë³µìŠµ ë…¸íŠ¸', `${mistakeCount(i)}ê°œ`);
-      line('ë„ì „ê³¼ì œ', `${countAchievements(i)}/${ACHIEVEMENTS.length}`);
-      line('ì•ˆì•„ì¤€ ë§ˆìŒ', `â™¥ ${sum.mercy}`);
-      line('ì—°ì† ì¶œì„', meta.streak ? `ğŸ”¥ ${meta.streak}ì¼` : 'â€”');
-      // ì•½ì  ì£¼ì œ
-      ctx.fillStyle = '#999'; ctx.font = fs(12);
-      ctx.fillText('ë” ì‚´í´ë³¼ ì£¼ì œ', x + 14, ly); ly += 18;
-      ctx.fillStyle = badColor(); ctx.font = fs(11);
-      if (s.weak.length) {
-        for (const wlabel of s.weak.slice(0, 3)) { ctx.fillText('Â· ' + wlabel, x + 16, ly); ly += 16; }
-      } else {
-        ctx.fillStyle = '#5a8'; ctx.fillText('Â· ì•½ì  ì—†ìŒ ğŸ‘', x + 16, ly);
-      }
-    }
-
-    const d = game.dashboard;
-    ctx.textAlign = 'center';
-    if (d.toast > 0) {
-      ctx.fillStyle = okColor();
-      ctx.font = fs(14, true);
-      ctx.fillText('âœ“ ë°˜ í˜„í™© CSVë¥¼ ì €ì¥í–ˆì–´ìš” (ì—‘ì…€Â·êµ¬ê¸€ì‹œíŠ¸ì—ì„œ ì—´ê¸°)', LW / 2, 512);
-    } else if (d.toast < 0) {
-      ctx.fillStyle = badColor();
-      ctx.font = fs(14, true);
-      ctx.fillText('ì´ í™˜ê²½ì—ì„œëŠ” ë‚´ë³´ë‚¼ ìˆ˜ ì—†ì–´ìš” (ë¸Œë¼ìš°ì €ì—ì„œ ì‹œë„í•´ ì£¼ì„¸ìš”)', LW / 2, 512);
-    } else {
-      ctx.fillStyle = '#777';
-      ctx.font = fs(13);
-      ctx.fillText('Z: ë°˜ í˜„í™© CSV ë‚´ë³´ë‚´ê¸° Â· X: ë‹«ê¸° (ìƒì„¸ ë¦¬í¬íŠ¸ëŠ” ê° í•™ìƒ ìˆ˜í˜¸ì ì¼ì§€)', LW / 2, 512);
-    }
-    ctx.textAlign = 'left';
-  }
-
-  // ---------- Y-20 ë°˜ ìˆœìœ„í‘œ (ì—¬ëŸ¬ ê¸°ê¸° ë°±ì—… í•©ì‚°) ----------
-  // ì—¬ëŸ¬ ê¸°ê¸°ì˜ ë°ì´í„° ë°±ì—…(.json)ì„ ì°¨ë¡€ë¡œ ë¶ˆëŸ¬ì™€ í•™ìƒë³„ ì´ë¦„Â·ìë¹„Â·ì •ë‹µë¥ Â·Së“±ê¸‰ ìˆ˜ë¥¼ í•œ í‘œë¡œ
-  // ëª¨ì€ë‹¤. ë¡œì»¬ ì €ì¥ì†ŒëŠ” ì „í˜€ ê±´ë“œë¦¬ì§€ ì•Šê³ (í‘œì‹œ ì „ìš©), ì„œë²„Â·ë„¤íŠ¸ì›Œí¬ë„ ì“°ì§€ ì•ŠëŠ”ë‹¤(ê°œì¸ì •ë³´ ë³´í˜¸).
-  const LEADERBOARD_ITEMS = ['load', 'export', 'clear', 'close'];
-  const LEADERBOARD_LABELS = {
-    load: 'ï¼‹ ë°±ì—… íŒŒì¼ ë¶ˆëŸ¬ì˜¤ê¸° (ì—¬ëŸ¬ ê°œ ê°€ëŠ¥)',
-    export: 'â‡© ìˆœìœ„í‘œ CSV ë‚´ë³´ë‚´ê¸°',
-    clear: 'â†º í‘œ ë¹„ìš°ê¸°',
-    close: 'ë‹«ê¸°',
-  };
-  // ë°±ì—… ê°ì²´ì—ì„œ ìŠ¬ë¡¯(í•™ìƒ)ë³„ ìš”ì•½ í–‰ì„ ë½‘ëŠ”ë‹¤ â€” localStorageë¥¼ ì½ê±°ë‚˜ ì“°ì§€ ì•ŠëŠ”ë‹¤.
-  function backupSlotRows(obj) {
-    const rows = [];
-    const data = (obj && obj.data) || {};
-    for (let i = 0; i < SLOT_COUNT; i++) {
-      const sraw = data[slotKey(i)];
-      if (!sraw) continue;
-      let slot; try { slot = JSON.parse(sraw); } catch (e) { continue; }
-      if (!slot || !slot.flags) continue;
-      let stats = {}; try { stats = JSON.parse(data[statsKey(i)] || '{}') || {}; } catch (e) { stats = {}; }
-      let meta = {}; try { meta = JSON.parse(data[metaKey(i)] || '{}') || {}; } catch (e) { meta = {}; }
-      let totC = 0, totN = 0;
-      for (const t of Object.keys(stats)) { const e = stats[t]; if (e && e.total > 0) { totC += e.correct; totN += e.total; } }
-      const sRank = Object.values(meta.bossRank || {}).filter((r) => r === 'S').length;
-      rows.push({
-        // key â€” ê°™ì€ ë°±ì—… íŒŒì¼(savedAtì´ ê°™ìŒ)ì˜ ê°™ì€ ìŠ¬ë¡¯ì„ ë‘ ë²ˆ ë¶ˆëŸ¬ì˜¤ë©´ ì¤‘ë³µìœ¼ë¡œ ê±¸ëŸ¬ë‚¸ë‹¤.
-        // (êµì‚¬ê°€ 20ëª… ë°˜ì—ì„œ ê°™ì€ íƒœë¸”ë¦¿ ë°±ì—…ì„ ì‹¤ìˆ˜ë¡œ ì¬ì„ íƒí•´ë„ ì´ì¤‘ ì§‘ê³„ë˜ì§€ ì•Šê²Œ)
-        key: (obj.savedAt || 0) + '|' + i + '|' + sanitizeName(slot.name),
-        name: sanitizeName(slot.name), mercy: slot.flags.mercy || 0,
-        attempted: totN, correct: totC, rate: totN ? totC / totN : 0, sRank,
-        done: !!(slot.flags.defeated && slot.flags.defeated.yeongi),
-      });
-    }
-    return rows;
-  }
-  // ë°˜ ëŒ€í•­ì „ ìˆœìœ„ â€” Së“±ê¸‰ ìˆ˜ â†’ ì •ë‹µë¥  â†’ ìë¹„ ìˆœ.
-  function leaderboardSorted() {
-    return game.leaderboard.rows.slice().sort((a, b) =>
-      b.sRank - a.sRank || b.rate - a.rate || b.mercy - a.mercy);
-  }
-  function buildLeaderboardCsv() {
-    const header = ['ìˆœìœ„', 'ì´ë¦„', 'ì•ˆì•„ì¤€ ë§ˆìŒ', 'í‘¼ ë¬¸ì œ', 'ì •ë‹µ ìˆ˜', 'ì •ë‹µë¥ (%)', 'Së“±ê¸‰ ìˆ˜', 'ì™„ì£¼'];
-    const rows = leaderboardSorted();
-    const lines = [header.map(csvCell).join(',')];
-    rows.forEach((r, i) => {
-      lines.push([i + 1, r.name, r.mercy, r.attempted, r.correct,
-        r.attempted ? Math.round(r.rate * 100) : '', r.sRank, r.done ? 'Y' : 'N'].map(csvCell).join(','));
-    });
-    return lines.join('\r\n');
-  }
-  function downloadLeaderboardCsv() {
-    try {
-      const text = 'ï»¿' + buildLeaderboardCsv(); // ì—‘ì…€ í•œê¸€ ê¹¨ì§ ë°©ì§€ BOM
-      const a = document.createElement('a');
-      a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(text);
-      a.download = 'ai-ethics-leaderboard-' + todayStr() + '.csv';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      return true;
-    } catch (e) { return false; }
-  }
-  // ë°±ì—… íŒŒì¼ ì—´ê¸° UI ì¬ì‚¬ìš© â€” ì—¬ëŸ¬ íŒŒì¼ì„ í•œ ë²ˆì—(ë˜ëŠ” ë°˜ë³µ í˜¸ì¶œë¡œ) ì°¨ë¡€ë¡œ ì½ì–´ í–‰ì„ ëˆ„ì í•œë‹¤.
-  function importLeaderboardFiles() {
-    try {
-      const inp = document.createElement('input');
-      inp.type = 'file';
-      inp.accept = 'application/json,.json';
-      inp.multiple = true;
-      const handler = () => {
-        inp.removeEventListener('change', handler);
-        const files = inp.files ? Array.from(inp.files) : [];
-        if (!files.length) return;
-        let remaining = files.length, added = 0, okFiles = 0, skipped = 0;
-        const done = () => {
-          game.leaderboard.files += okFiles;
-          game.leaderboard.skipped = skipped;
-          // ìœ íš¨ ë°±ì—… ì—†ìœ¼ë©´ -300, ì „ë¶€ ì´ë¯¸ ë¶ˆëŸ¬ì˜¨ ì¤‘ë³µì´ë©´ -350ìœ¼ë¡œ êµ¬ë¶„í•´ ì•ˆë‚´
-          game.leaderboard.toast = added > 0 ? 200 : (skipped > 0 ? -350 : -300);
-          Sound.badge();
-        };
-        // ì´ë¯¸ í‘œì— ìˆëŠ” í•™ìƒ í–‰(key)ì€ ê±´ë„ˆë›´ë‹¤ â€” ê°™ì€ íŒŒì¼ ì¬ì„ íƒ ì‹œ ì´ì¤‘ ì§‘ê³„ ë°©ì§€
-        const seen = new Set(game.leaderboard.rows.map((r) => r.key));
-        files.forEach((file) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            let obj = null;
-            try { obj = JSON.parse(String(reader.result)); } catch (e) { obj = null; }
-            if (obj && obj.app === 'ai-ethics-adventure') {
-              const rows = backupSlotRows(obj);
-              const fresh = rows.filter((r) => !seen.has(r.key));
-              skipped += rows.length - fresh.length;
-              fresh.forEach((r) => seen.add(r.key));
-              if (fresh.length) { game.leaderboard.rows.push(...fresh); added += fresh.length; }
-              if (rows.length) okFiles += 1;
-            }
-            remaining -= 1; if (remaining === 0) done();
-          };
-          reader.onerror = () => { remaining -= 1; if (remaining === 0) done(); };
-          reader.readAsText(file);
-        });
-      };
-      inp.addEventListener('change', handler);
-      inp.click();
-      return true;
-    } catch (e) { game.leaderboard.toast = -200; return false; }
-  }
-  function openLeaderboard(ret) {
-    const lb = game.leaderboard;
-    lb.ret = ret; lb.cursor = 0; lb.toast = 0;
-    game.mode = 'leaderboard';
-    Sound.select();
-  }
-  function closeLeaderboard() { game.mode = game.leaderboard.ret; Sound.select(); }
-  function updateLeaderboard() {
-    const lb = game.leaderboard;
-    if (lb.toast > 0) lb.toast -= 1; else if (lb.toast < 0) lb.toast += 1;
-    const n = LEADERBOARD_ITEMS.length;
-    if (justPressed('up') || justPressed('down')) {
-      lb.cursor = justPressed('up') ? (lb.cursor + n - 1) % n : (lb.cursor + 1) % n;
-      Sound.blip();
-      if (game.tts) Speech.speak(LEADERBOARD_LABELS[LEADERBOARD_ITEMS[lb.cursor]] || '');
-    }
-    if (justPressed('cancel') || justPressed('menu')) { closeLeaderboard(); return; }
-    if (justPressed('action')) {
-      const item = LEADERBOARD_ITEMS[lb.cursor];
-      if (item === 'load') importLeaderboardFiles();
-      else if (item === 'export') {
-        if (!lb.rows.length) { lb.toast = -300; Sound.badge(); return; }
-        const ok = downloadLeaderboardCsv() || copyTextToClipboard(buildLeaderboardCsv());
-        lb.skipped = 0; // ë‚´ë³´ë‚´ê¸° ì„±ê³µ í† ìŠ¤íŠ¸ì— ë¶ˆëŸ¬ì˜¤ê¸° ì¤‘ë³µ ì•ˆë‚´ê°€ ì„ì´ì§€ ì•Šê²Œ
-        lb.toast = ok ? 200 : -200; Sound.badge();
-      } else if (item === 'clear') { lb.rows = []; lb.files = 0; lb.toast = 0; lb.skipped = 0; Sound.blip(); }
-      else if (item === 'close') closeLeaderboard();
-    }
-  }
-  function drawLeaderboard() {
-    const lb = game.leaderboard;
-    ctx.fillStyle = '#0b0e1a'; ctx.fillRect(0, 0, LW, LH);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff'; ctx.font = fs(21, true);
-    ctx.fillText('ğŸ… ë°˜ ìˆœìœ„í‘œ', 24, 36);
-    ctx.fillStyle = '#8a90a6'; ctx.font = fs(12);
-    ctx.fillText('ì—¬ëŸ¬ ê¸°ê¸°ì˜ ë°ì´í„° ë°±ì—…(.json)ì„ ë¶ˆëŸ¬ì™€ í•™ìƒë³„ ì„±ì·¨ë¥¼ í•œ í‘œë¡œ ëª¨ì•„ìš”.', 24, 56);
-    ctx.fillStyle = '#667088';
-    ctx.fillText('â€» ë„¤íŠ¸ì›Œí¬ ì—†ì´ ì´ ê¸°ê¸°ì—ì„œë§Œ í‘œì‹œí•˜ê³ , ì €ì¥í•˜ì§€ ì•Šì•„ìš”(ê°œì¸ì •ë³´ ë³´í˜¸).', 24, 74);
-
-    // ë©”ë‰´ (ì„¸ë¡œ 4í•­ëª©)
-    let my = 104;
-    for (let i = 0; i < LEADERBOARD_ITEMS.length; i++) {
-      drawChoiceLine(LEADERBOARD_LABELS[LEADERBOARD_ITEMS[i]], 40, my, i === lb.cursor);
-      my += 26;
-    }
-    // ë¶ˆëŸ¬ì˜¨ í˜„í™©
-    ctx.textAlign = 'right';
-    ctx.fillStyle = '#8a90a6'; ctx.font = fs(12);
-    ctx.fillText(`ë¶ˆëŸ¬ì˜¨ ë°±ì—… ${lb.files}ê°œ Â· í•™ìƒ ${lb.rows.length}ëª…`, LW - 24, 116);
-    ctx.textAlign = 'left';
-
-    // í‘œ í—¤ë”
-    const rows = leaderboardSorted();
-    const cols = [
-      { x: 30, label: 'ìˆœìœ„', align: 'left' },
-      { x: 66, label: 'ì´ë¦„', align: 'left' },
-      { x: 330, label: 'ì•ˆì•„ì¤€ ë§ˆìŒ', align: 'right' },
-      { x: 470, label: 'ì •ë‹µë¥ ', align: 'right' },
-      { x: 560, label: 'Së“±ê¸‰', align: 'right' },
-      { x: 640, label: 'ì™„ì£¼', align: 'right' },
-    ];
-    let ty = 232;
-    ctx.fillStyle = '#9aa0b6'; ctx.font = fs(12, true);
-    for (const c of cols) { ctx.textAlign = c.align; ctx.fillText(c.label, c.x, ty); }
-    ctx.strokeStyle = '#2a3050'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(24, ty + 6); ctx.lineTo(LW - 24, ty + 6); ctx.stroke();
-    ty += 26;
-
-    if (!rows.length) {
-      ctx.textAlign = 'center'; ctx.fillStyle = '#667088'; ctx.font = fs(14);
-      ctx.fillText('ì•„ì§ ë¶ˆëŸ¬ì˜¨ ë°±ì—…ì´ ì—†ì–´ìš” â€” ã€Œë°±ì—… íŒŒì¼ ë¶ˆëŸ¬ì˜¤ê¸°ã€ë¡œ ì‹œì‘í•˜ì„¸ìš”.', LW / 2, 300);
-    }
-    const visible = Math.min(rows.length, 11); // í™”ë©´ì— ë“¤ì–´ê°€ëŠ” ë§Œí¼ë§Œ
-    for (let i = 0; i < visible; i++) {
-      const r = rows[i];
-      const medal = i === 0 ? 'ğŸ¥‡' : i === 1 ? 'ğŸ¥ˆ' : i === 2 ? 'ğŸ¥‰' : String(i + 1);
-      ctx.font = fs(13);
-      ctx.textAlign = 'left';
-      ctx.fillStyle = i < 3 ? themeAccent() : '#c8ccdc';
-      ctx.fillText(medal, cols[0].x, ty);
-      ctx.fillStyle = '#fff'; ctx.font = fs(14, i < 3);
-      ctx.fillText(r.name + (r.done ? '' : ''), cols[1].x, ty);
-      ctx.font = fs(13);
-      ctx.textAlign = 'right';
-      ctx.fillStyle = '#e0453a'; ctx.fillText('â™¥ ' + r.mercy, cols[2].x, ty);
-      ctx.fillStyle = r.attempted ? (r.rate >= 0.8 ? okColor() : r.rate >= 0.6 ? warnColor() : badColor()) : '#667088';
-      ctx.fillText(r.attempted ? Math.round(r.rate * 100) + '%' : 'â€”', cols[3].x, ty);
-      ctx.fillStyle = r.sRank ? '#ffd644' : '#667088';
-      ctx.fillText(String(r.sRank), cols[4].x, ty);
-      ctx.fillStyle = r.done ? okColor() : '#667088';
-      ctx.fillText(r.done ? 'ì™„ì£¼' : 'ì§„í–‰', cols[5].x, ty);
-      ty += 22;
-    }
-    if (rows.length > visible) {
-      ctx.textAlign = 'left'; ctx.fillStyle = '#667088'; ctx.font = fs(11);
-      ctx.fillText(`â€¦ì™¸ ${rows.length - visible}ëª… (CSVë¡œ ì „ì²´ ë‚´ë³´ë‚´ê¸°)`, cols[1].x, ty + 2);
-    }
-
-    // í† ìŠ¤íŠ¸
-    ctx.textAlign = 'center';
-    if (lb.toast > 0) {
-      ctx.fillStyle = okColor(); ctx.font = fs(14, true);
-      ctx.fillText(lb.skipped
-        ? `âœ“ ì²˜ë¦¬í–ˆì–´ìš” (ì´ë¯¸ ìˆë˜ ${lb.skipped}ëª…ì€ ì¤‘ë³µì´ë¼ ê±´ë„ˆë›°ì—ˆì–´ìš”)`
-        : 'âœ“ ì²˜ë¦¬í–ˆì–´ìš” (CSVëŠ” ì—‘ì…€Â·êµ¬ê¸€ì‹œíŠ¸ì—ì„œ ì—´ë ¤ìš”)', LW / 2, 508);
-    } else if (lb.toast === -350) {
-      ctx.fillStyle = warnColor(); ctx.font = fs(13, true);
-      ctx.fillText('ì´ë¯¸ ë¶ˆëŸ¬ì˜¨ ë°±ì—…ì´ì—ìš” â€” ì¤‘ë³µì´ë¼ í‘œëŠ” ê·¸ëŒ€ë¡œì˜ˆìš”.', LW / 2, 508);
-    } else if (lb.toast === -300) {
-      ctx.fillStyle = warnColor(); ctx.font = fs(13, true);
-      ctx.fillText('ë¶ˆëŸ¬ì˜¬ í•™ìƒ ê¸°ë¡ì´ ì—†ì–´ìš” â€” ê²Œì„ì˜ ë°ì´í„° ë°±ì—…(.json)ì„ ê³¨ë¼ ì£¼ì„¸ìš”.', LW / 2, 508);
-    } else if (lb.toast < 0) {
-      ctx.fillStyle = badColor(); ctx.font = fs(13, true);
-      ctx.fillText('ì´ í™˜ê²½ì—ì„œëŠ” í•  ìˆ˜ ì—†ì–´ìš” (ë¸Œë¼ìš°ì €ì—ì„œ ì‹œë„í•´ ì£¼ì„¸ìš”)', LW / 2, 508);
-    } else {
-      ctx.fillStyle = '#667088'; ctx.font = fs(12);
-      ctx.fillText('â†‘â†“ ì„ íƒ Â· Z ì‹¤í–‰ Â· X ë‹«ê¸°', LW / 2, 508);
-    }
-    ctx.textAlign = 'left';
-  }
-
-  // ---------- ìˆ˜ì—… ëª¨ë“œ (ì±•í„° ë°”ë¡œ ì‹œì‘) ----------
-  // ì„ ìƒë‹˜ì´ ì˜¤ëŠ˜ ìˆ˜ì—…í•  ì±•í„°ë¶€í„° ë°”ë¡œ ì‹œì‘í•˜ê²Œ í•´ ì¤€ë‹¤.
-  // ìˆ˜ì—… ê¸°ë³¸ ìƒíƒœ flags â€” ìƒˆ ëª¨í—˜ + ë°•ì‚¬ ëŒ€í™” ì™„ë£Œ (ê° ì±•í„° í•­ëª©ì´ chapterNClearë¥¼ ì–¹ëŠ”ë‹¤)
-  function setupClassBaseFlags() {
-    const flags = newFlags();
-    flags.talkedProf = true;
-    flags.bandiJoined = true; // ìˆ˜ì—… ì í”„ëŠ” ì˜¤í”„ë‹(í•©ë¥˜ ì—°ì¶œ) ì´í›„ ìƒíƒœ
-    flags.classSession = true; // X-8 ìˆ˜ì—…(ì°¨ì‹œ) ì„¸ì…˜ â€” ìˆ˜ì—… ì§„ì… ê²½ë¡œì—ì„œë§Œ ì¼œì§„ë‹¤(ì¼ë°˜ ì„¸ì´ë¸Œ ì˜¤ì—¼ ì—†ìŒ)
-    return flags;
-  }
-  // ìˆ˜ì—… ëª¨ë“œ íŠ¹ë³„ í•­ëª© ã€Œ1ì¥ â€” ì „ë¶€ ê³µì§œ ê±°ë¦¬ã€ (ìŠ¤í…Œì´ì§€ ë²ˆí˜¸ê°€ ì•„ë‹Œ ë°©íƒˆì¶œ ìˆ˜ì—…ìš©)
-  const TRACE_SEL = 0;
-  // 2ì¥ ã€Œê¸°ìš¸ì–´ì§„ ê±°ë¦¬ã€ ìˆ˜ì—… íŠ¹ë³„ í•­ëª© (sel = -1)
-  const TILT_SEL = -1;
-  // 3ì¥ ã€ŒëŒ€ë¬¸ì§ ì‹ ë¬¸ì‚¬ã€ ìˆ˜ì—… íŠ¹ë³„ í•­ëª© (sel = -2)
-  const RUMOR_SEL = -2;
-  // 4ì¥ ã€Œë°˜ì§ ì•„ì¼€ì´ë“œã€ ìˆ˜ì—… íŠ¹ë³„ í•­ëª© (sel = -3)
-  const ARCADE_SEL = -3;
-  // 5ì¥ ã€Œí¬ê·¼í•œ ì§‘ã€ ìˆ˜ì—… íŠ¹ë³„ í•­ëª© (sel = -4)
-  const COZY_SEL = -4;
-  // íŒŒì´ë„ ã€Œê³ ìš”ì˜ ëœ° â†’ ì½”ì–´ã€ ìˆ˜ì—… íŠ¹ë³„ í•­ëª© (sel = -5)
-  const FINAL_SEL = -5;
-  const MIN_SEL = FINAL_SEL; // ì„ íƒê¸° í•˜í•œ
-  // Y-18 â€” ìˆ˜ì—… ì„ íƒê¸° ê°’ â†’ ì‚¬ì „/ì‚¬í›„ ì„¸íŠ¸ ì¥ í‚¤. íŒŒì´ë„(FINAL_SEL)ì€ ì„¸íŠ¸ ì—†ìŒ(null).
-  function classSelToChKey(sel) {
-    return sel === TRACE_SEL ? 'trace' : sel === TILT_SEL ? 'tilt' : sel === RUMOR_SEL ? 'rumor'
-      : sel === ARCADE_SEL ? 'arcade' : sel === COZY_SEL ? 'cozy' : null;
-  }
-  // ì§€ê¸ˆ ìŠ¬ë¡¯ì˜ ì§„í–‰(chapterNClear)ì— ë§ëŠ” íŠ¹ë³„ í•­ëª©ì„ ê³ ë¥¸ë‹¤ â€” ã€Œì„ ìƒë‹˜ ë°©ã€ì„ ì—´ ë•Œ
-  // ì»¤ì„œê°€ ì‹¤ì œ ì§„í–‰ì— ê°€ê¹Œìš´ ì¥ì—ì„œ ì‹œì‘í•˜ê²Œ í•œë‹¤(v1 ìˆ«ì ìŠ¤í…Œì´ì§€ëŠ” ë” ì´ìƒ ì“°ì§€ ì•ŠëŠ”ë‹¤).
-  function classSelForFlags(flags) {
-    if (flags.chapter5Clear) return FINAL_SEL;
-    if (flags.chapter4Clear) return COZY_SEL;
-    if (flags.chapter3Clear) return ARCADE_SEL;
-    if (flags.chapter2Clear) return RUMOR_SEL;
-    if (flags.chapter1Clear) return TILT_SEL;
-    return TRACE_SEL;
-  }
-  // 1ì¥ ì‹œì‘ ìƒíƒœë¡œ ë§ì¶”ê³ , ì „ë¶€ ê³µì§œ ê±°ë¦¬ ì…êµ¬ì— ì„œì„œ ì‹œì‘í•œë‹¤.
-  // defeated.bekkyeomon(í”„ë¡¤ë¡œê·¸ ã€Œë”°ë¼ã€ ê²©íŒŒ)ë„ trueë¡œ ë§ì¶˜ë‹¤ â€” 1ì¥ í—ˆë¸Œ ì•ˆì— ì´ë¯¸ ì„œ
-  // ìˆëŠ” ìƒíƒœì¸ë° í”„ë¡¤ë¡œê·¸ ë¯¸í´ë¦¬ì–´ë¡œ ë‚¨ê²¨ ë‘ë©´ ëª©í‘œ ë‚˜ì¹¨ë°˜(getObjectiveTarget)ì´ ìˆ²ì˜
-  // ë”°ë¼ë¥¼ ê³„ì† ê°€ë¦¬í‚¤ëŠ” ëª¨ìˆœì´ ìƒê¸´ë‹¤(ìˆ˜ì—… ëª¨ë“œ ì í”„ëŠ” "ì´ ì¥ë¶€í„° ë°”ë¡œ ìˆ˜ì—…" ì „ì œ).
-  function applyTraceRoomClass() {
-    const flags = setupClassBaseFlags();
-    flags.defeated.bekkyeomon = true;
-    game.flags = flags;
-    game.map = 'freestreet';
-    const p = game.player;
-    p.x = 18; p.y = 21; p.px = 18 * TS; p.py = 21 * TS;
-    p.moving = false; p.dir = 'up';
-    save();
-  }
-  // 2ì¥ ì‹œì‘ ìƒíƒœ(1ì¥ í´ë¦¬ì–´ ì§í›„)ë¡œ ë§ì¶”ê³ , ê¸°ìš¸ì–´ì§„ ê±°ë¦¬ ì…êµ¬ì— ì„œì„œ ì‹œì‘í•œë‹¤.
-  function applyTiltStreetClass() {
-    const flags = setupClassBaseFlags();
-    flags.defeated.bekkyeomon = true; // í”„ë¡¤ë¡œê·¸(ë”°ë¼)ëŠ” ì´ë¯¸ í´ë¦¬ì–´í•œ ìƒíƒœ
-    flags.chapter1Clear = true; // 2ì¥ì€ 1ì¥ í´ë¦¬ì–´ í›„ ìƒíƒœ
-    // ì¥ ì í”„ ìˆ˜ì—…ì€ ê´€ë¬¸ ë¬¸ë‹µ(Q-4)ë„ í†µê³¼ ì²˜ë¦¬ â€” ì•ˆ ë°°ìš´ ì¥ì˜ í€´ì¦ˆë¡œ ì°¨ë‹¨ë˜ì§€ ì•Šê²Œ
-    flags.gateQuiz1 = true;
-    game.flags = flags;
-    game.map = 'tiltstreet';
-    const p = game.player;
-    p.x = 18; p.y = 21; p.px = 18 * TS; p.py = 21 * TS;
-    p.moving = false; p.dir = 'up';
-    save();
-  }
-  // 3ì¥ ì‹œì‘ ìƒíƒœ(2ì¥ í´ë¦¬ì–´ ì§í›„)ë¡œ ë§ì¶”ê³ , ì†Œë¬¸ ê±°ë¦¬ ì…êµ¬ì— ì„œì„œ ì‹œì‘í•œë‹¤.
-  function applyRumorStreetClass() {
-    const flags = setupClassBaseFlags();
-    flags.defeated.bekkyeomon = true; // í”„ë¡¤ë¡œê·¸(ë”°ë¼)ëŠ” ì´ë¯¸ í´ë¦¬ì–´í•œ ìƒíƒœ
-    flags.chapter1Clear = true;
-    flags.chapter2Clear = true; // 3ì¥ì€ 2ì¥ í´ë¦¬ì–´ í›„ ìƒíƒœ
-    // ì¥ ì í”„ ìˆ˜ì—…ì€ ê´€ë¬¸ ë¬¸ë‹µ(Q-4)ë„ í†µê³¼ ì²˜ë¦¬ â€” ì•ˆ ë°°ìš´ ì¥ì˜ í€´ì¦ˆë¡œ ì°¨ë‹¨ë˜ì§€ ì•Šê²Œ
-    flags.gateQuiz1 = true; flags.gateQuiz2 = true;
-    game.flags = flags;
-    game.map = 'rumorstreet';
-    const p = game.player;
-    p.x = 18; p.y = 21; p.px = 18 * TS; p.py = 21 * TS;
-    p.moving = false; p.dir = 'up';
-    save();
-  }
-  // 4ì¥ ì‹œì‘ ìƒíƒœ(3ì¥ í´ë¦¬ì–´ ì§í›„)ë¡œ ë§ì¶”ê³ , ë°˜ì§ ì•„ì¼€ì´ë“œ ì…êµ¬ì— ì„œì„œ ì‹œì‘í•œë‹¤.
-  function applyArcadeClass() {
-    const flags = setupClassBaseFlags();
-    flags.defeated.bekkyeomon = true; // í”„ë¡¤ë¡œê·¸(ë”°ë¼)ëŠ” ì´ë¯¸ í´ë¦¬ì–´í•œ ìƒíƒœ
-    flags.chapter1Clear = true;
-    flags.chapter2Clear = true;
-    flags.chapter3Clear = true; // 4ì¥ì€ 3ì¥ í´ë¦¬ì–´ í›„ ìƒíƒœ
-    // ì¥ ì í”„ ìˆ˜ì—…ì€ ê´€ë¬¸ ë¬¸ë‹µ(Q-4)ë„ í†µê³¼ ì²˜ë¦¬ â€” ì•ˆ ë°°ìš´ ì¥ì˜ í€´ì¦ˆë¡œ ì°¨ë‹¨ë˜ì§€ ì•Šê²Œ
-    flags.gateQuiz1 = true; flags.gateQuiz2 = true; flags.gateQuiz3 = true;
-    game.flags = flags;
-    game.map = 'arcade';
-    const p = game.player;
-    p.x = 18; p.y = 20; p.px = 18 * TS; p.py = 20 * TS;
-    p.moving = false; p.dir = 'up';
-    save();
-  }
-  // 5ì¥ ì‹œì‘ ìƒíƒœ(4ì¥ í´ë¦¬ì–´ ì§í›„)ë¡œ ë§ì¶”ê³ , í¬ê·¼í•œ ì§‘ ì…êµ¬ì— ì„œì„œ ì‹œì‘í•œë‹¤.
-  function applyCozyhomeClass() {
-    const flags = setupClassBaseFlags();
-    flags.defeated.bekkyeomon = true; // í”„ë¡¤ë¡œê·¸(ë”°ë¼)ëŠ” ì´ë¯¸ í´ë¦¬ì–´í•œ ìƒíƒœ
-    flags.chapter1Clear = true;
-    flags.chapter2Clear = true;
-    flags.chapter3Clear = true;
-    flags.chapter4Clear = true; // 5ì¥ì€ 4ì¥ í´ë¦¬ì–´ í›„ ìƒíƒœ
-    // ì¥ ì í”„ ìˆ˜ì—…ì€ ê´€ë¬¸ ë¬¸ë‹µ(Q-4)ë„ í†µê³¼ ì²˜ë¦¬ â€” ì•ˆ ë°°ìš´ ì¥ì˜ í€´ì¦ˆë¡œ ì°¨ë‹¨ë˜ì§€ ì•Šê²Œ
-    flags.gateQuiz1 = true; flags.gateQuiz2 = true; flags.gateQuiz3 = true; flags.gateQuiz4 = true;
-    game.flags = flags;
-    game.map = 'cozyhome';
-    const p = game.player;
-    p.x = 3; p.y = 10; p.px = 3 * TS; p.py = 10 * TS;
-    p.moving = false; p.dir = 'down';
-    save();
-  }
-  // íŒŒì´ë„ ì‹œì‘ ìƒíƒœ(5ì¥ í´ë¦¬ì–´ ì§í›„)ë¡œ ë§ì¶”ê³ , í¬ê·¼í•œ ì§‘ ì•ˆìª½ ë¬¸ ì•ì— ì„œì„œ ì‹œì‘í•œë‹¤.
-  function applyFinalClass() {
-    const flags = setupClassBaseFlags();
-    flags.defeated.bekkyeomon = true; // í”„ë¡¤ë¡œê·¸(ë”°ë¼)ëŠ” ì´ë¯¸ í´ë¦¬ì–´í•œ ìƒíƒœ
-    flags.chapter1Clear = true;
-    flags.chapter2Clear = true;
-    flags.chapter3Clear = true;
-    flags.chapter4Clear = true;
-    flags.chapter5Clear = true; // íŒŒì´ë„ì€ 5ì¥ í´ë¦¬ì–´ í›„ ìƒíƒœ
-    // ì¥ ì í”„ ìˆ˜ì—…ì€ ê´€ë¬¸ ë¬¸ë‹µ(Q-4)ë„ í†µê³¼ ì²˜ë¦¬ â€” ì•ˆ ë°°ìš´ ì¥ì˜ í€´ì¦ˆë¡œ ì°¨ë‹¨ë˜ì§€ ì•Šê²Œ
-    flags.gateQuiz1 = true; flags.gateQuiz2 = true; flags.gateQuiz3 = true; flags.gateQuiz4 = true; flags.gateQuiz5 = true;
-    game.flags = flags;
-    game.map = 'cozyhome';
-    const p = game.player;
-    p.x = 31; p.y = 19; p.px = 31 * TS; p.py = 19 * TS;
-    p.moving = false; p.dir = 'down';
-    save();
-  }
-  function openClassMode(ret) {
-    // ã€Œì„ ìƒë‹˜ ë°©ã€ì€ íƒ€ì´í‹€ì—ì„œ ì—´ ìˆ˜ ìˆì–´, ì•„ì§ ì„¸ì…˜ì— ìŠ¬ë¡¯ì´ ë¡œë“œë˜ì§€ ì•Šì•˜ì„ ìˆ˜ ìˆë‹¤
-    // (ì´ì–´í•˜ê¸°ë¥¼ ëˆ„ë¥´ê¸° ì „). ê·¸ ê²½ìš° ì»¤ì„œê°€ ê°€ë¦¬í‚¤ëŠ” ìŠ¬ë¡¯ì„ ë¯¸ë¦¬ ë¶ˆëŸ¬ì™€, ì´ì–´í•˜ê¸°ì™€
-    // ê°™ì€ ìƒíƒœì—ì„œ ìŠ¤í…Œì´ì§€ë¥¼ ë§ì¶œ ìˆ˜ ìˆê²Œ í•œë‹¤.
-    if (!game.flags) {
-      const slot = activeSlot();
-      const s = loadSlot(slot);
-      game.currentSlot = slot;
-      if (s) {
-        game.playerName = s.name || 'ìˆ˜í˜¸ì';
-        game.map = (s.map && MAPS[s.map]) ? s.map : 'village';
-        const sf = s.flags || {};
-        game.flags = Object.assign(newFlags(), sf);
-        game.flags.defeated = Object.assign(newFlags().defeated, sf.defeated);
-      } else {
-        game.playerName = 'ìˆ˜í˜¸ì';
-        game.map = 'village';
-        game.flags = newFlags();
-      }
-      const p = game.player;
-      p.x = 13; p.y = 16; p.px = 13 * TS; p.py = 16 * TS; p.moving = false; p.dir = 'up';
-    }
-    const cm = game.classmode;
-    cm.ret = ret;
-    cm.sel = classSelForFlags(game.flags);
-    cm.confirm = false;
-    cm.toast = 0;
-    game.mode = 'classmode';
-    Sound.select();
-  }
-  function closeClassMode() {
-    game.mode = game.classmode.ret;
-    Sound.select();
-  }
-  function updateClassMode() {
-    const cm = game.classmode;
-    if (cm.toast > 0) cm.toast -= 1;
-    if (cm.toast > 0) return; // ì ìš© ì•ˆë‚´ í‘œì‹œ ì¤‘ì—” ì…ë ¥ ì ê¸ˆ
-    if (cm.confirm) {
-      if (justPressed('action')) {
-        if (cm.sel === FINAL_SEL) applyFinalClass();
-        else if (cm.sel === COZY_SEL) applyCozyhomeClass();
-        else if (cm.sel === ARCADE_SEL) applyArcadeClass();
-        else if (cm.sel === RUMOR_SEL) applyRumorStreetClass();
-        else if (cm.sel === TILT_SEL) applyTiltStreetClass();
-        else if (cm.sel === TRACE_SEL) applyTraceRoomClass();
-        cm.confirm = false;
-        // Y-18 â€” ê·¸ ì¥ì— ì‚¬ì „/ì‚¬í›„ ì„¸íŠ¸ê°€ ìˆìœ¼ë©´ ìˆ˜ì—… ì‹œì‘ ì§ì „ ì˜µíŠ¸ì¸ ì‚¬ì „ ì ê²€ì„ ì—°ë‹¤(ìŠ¤í‚µ ê°€ëŠ¥).
-        // íŒŒì´ë„ ë“± ì„¸íŠ¸ê°€ ì—†ëŠ” í•­ëª©ì€ ê¸°ì¡´ëŒ€ë¡œ ì ìš© ì•ˆë‚´(toast) í›„ ì›”ë“œë¡œ.
-        const chKey = classSelToChKey(cm.sel);
-        if (chKey && PREPOST_CH[chKey]) { openPrepost('pre', chKey, cm.ret); return; }
-        cm.toast = 90;
-        Sound.badge();
-        return;
-      }
-      if (justPressed('cancel') || justPressed('menu')) { cm.confirm = false; Sound.blip(); }
-      return;
-    }
-    // íŠ¹ë³„ í•­ëª© 6ê°œ(ã€Œ1ì¥ â€” ì „ë¶€ ê³µì§œ ê±°ë¦¬ã€~ã€ŒíŒŒì´ë„ â€” ê³ ìš”ì˜ ëœ° â†’ ì½”ì–´ã€)ë§Œ í•œ ë°”í€´ë¡œ ìˆœí™˜í•œë‹¤.
-    // v1 ìˆ«ì ìŠ¤í…Œì´ì§€(1~5) í•­ëª©ì€ ì œê±°ë˜ì—ˆë‹¤ â€” v2 í•­ëª©ë§Œ ë‚¨ëŠ”ë‹¤.
-    if (justPressed('left') || justPressed('up')) { cm.sel = cm.sel <= MIN_SEL ? TRACE_SEL : cm.sel - 1; Sound.blip(); }
-    if (justPressed('right') || justPressed('down')) { cm.sel = cm.sel >= TRACE_SEL ? MIN_SEL : cm.sel + 1; Sound.blip(); }
-    if (justPressed('action')) { cm.confirm = true; Sound.select(); return; }
-    if (justPressed('cancel') || justPressed('menu')) { closeClassMode(); }
-  }
-  function drawClassMode() {
-    const cm = game.classmode;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(22, true);
-    ctx.fillText('â–¶ ìˆ˜ì—… ëª¨ë“œ â€” ê±°ë¦¬(ì±•í„°) ë°”ë¡œ ì‹œì‘', 24, 40);
-    ctx.fillStyle = '#888';
-    ctx.font = fs(13);
-    ctx.fillText('ì˜¤ëŠ˜ ìˆ˜ì—…í•  ê±°ë¦¬ë¥¼ ê³¨ë¼ ë°”ë¡œ ì‹œì‘í•´ìš”. (ì§€ê¸ˆ í•™ìƒ ìŠ¬ë¡¯ì— ì ìš©)', 24, 64);
-
-    // íŠ¹ë³„ í•­ëª© 6ê°œ(v2 í•­ëª©ë§Œ ìˆœí™˜) â€” ã€Œ1ì¥ â€” ì „ë¶€ ê³µì§œ ê±°ë¦¬ã€ëŠ” ê·¸ ì™¸ ëª¨ë“  ê°’ì´ ì•„ë‹ ë•Œ(else)ë¡œ ì²˜ë¦¬í•œë‹¤.
-    const isTilt = cm.sel === TILT_SEL;
-    const isRumor = cm.sel === RUMOR_SEL;
-    const isArcade = cm.sel === ARCADE_SEL;
-    const isCozy = cm.sel === COZY_SEL;
-    const isFinal = cm.sel === FINAL_SEL;
-    const selLabel = isFinal ? 'íŒŒì´ë„ ì‹œì‘ ìƒíƒœ Â· í¬ê·¼í•œ ì§‘ ì•ˆìª½ ë¬¸ ì•'
-      : isCozy ? '5ì¥ ì‹œì‘ ìƒíƒœ Â· í¬ê·¼í•œ ì§‘ ì…êµ¬'
-      : isArcade ? '4ì¥ ì‹œì‘ ìƒíƒœ Â· ë°˜ì§ ì•„ì¼€ì´ë“œ ì…êµ¬'
-      : isRumor ? '3ì¥ ì‹œì‘ ìƒíƒœ Â· ëŒ€ë¬¸ì§ ì‹ ë¬¸ì‚¬ ì…êµ¬'
-      : isTilt ? '2ì¥ ì‹œì‘ ìƒíƒœ Â· ê¸°ìš¸ì–´ì§„ ê±°ë¦¬ ì…êµ¬'
-      : '1ì¥ ì‹œì‘ ìƒíƒœ Â· ì „ë¶€ ê³µì§œ ê±°ë¦¬ ì…êµ¬';
-
-    // ìŠ¤í…Œì´ì§€ ì„ íƒê¸°
-    ctx.textAlign = 'center';
-    ctx.fillStyle = themeAccent();
-    if (isFinal) {
-      ctx.font = fs(30, true);
-      ctx.fillText('íŒŒì´ë„ â€” ê³ ìš”ì˜ ëœ° â†’ ì½”ì–´', LW / 2, 176);
-    } else if (isCozy) {
-      ctx.font = fs(30, true);
-      ctx.fillText('5ì¥ â€” í¬ê·¼í•œ ì§‘', LW / 2, 176);
-    } else if (isArcade) {
-      ctx.font = fs(30, true);
-      ctx.fillText('4ì¥ â€” ë°˜ì§ ì•„ì¼€ì´ë“œ', LW / 2, 176);
-    } else if (isRumor) {
-      ctx.font = fs(30, true);
-      ctx.fillText('3ì¥ â€” ëŒ€ë¬¸ì§ ì‹ ë¬¸ì‚¬', LW / 2, 176);
-    } else if (isTilt) {
-      ctx.font = fs(30, true);
-      ctx.fillText('2ì¥ â€” ê¸°ìš¸ì–´ì§„ ê±°ë¦¬', LW / 2, 176);
-    } else {
-      ctx.font = fs(30, true);
-      ctx.fillText('1ì¥ â€” ì „ë¶€ ê³µì§œ ê±°ë¦¬', LW / 2, 176);
-    }
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(15);
-    ctx.fillText(isFinal ? 'ê³ ìš”ì˜ ëœ°(ê±·ê¸°) â†’ ê³ ìš” ë³´ìŠ¤ â†’ ì½”ì–´(ì—¬ëŸ ì˜ìÂ·ë´‰í—Œ í¼ì¦) â†’ ì˜ì´'
-      : isCozy ? 'AIì™€ì˜ ê´€ê³„ Â· ê²½ê³„ ì„¤ì • Â· í™•ì¸í•˜ëŠ” ìš©ê¸° (êµ¬ì—­ 3ê°œ â†’ ë£¨ë¯¸ ë³´ìŠ¤)'
-      : isArcade ? 'ë‹¤í¬íŒ¨í„´ Â· ê´‘ê³  Â· 2ë‹¨ê³„ ì¸ì¦ (êµ¬ì—­ 3ê°œ â†’ ë°˜ì§ ë³´ìŠ¤)'
-      : isRumor ? 'ê°€ì§œ ë‰´ìŠ¤ ë¶„ë³„ Â· ì¶œì²˜ í™•ì¸ Â· ì •ì • ë³´ë„ (êµ¬ì—­ 3ê°œ â†’ ê·¸ëŸ´ì‹¸ ë³´ìŠ¤)'
-      : isTilt ? 'ê²½ì²­ Â· í•„í„°ë²„ë¸” Â· ìŠ¤ìŠ¤ë¡œ ê³ ë¥´ê¸° (êµ¬ì—­ 3ê°œ â†’ ê¸°ìš¸ ë³´ìŠ¤)'
-      : 'ê°œì¸ì •ë³´ Â· ë””ì§€í„¸ ë°œìêµ­ Â· ë™ì˜ (êµ¬ì—­ 3ê°œ â†’ ë‹´ì•„ ë³´ìŠ¤)', LW / 2, 250);
-    ctx.fillStyle = '#666';
-    ctx.font = fs(13);
-    ctx.fillText('â—€ â–¶ ê±°ë¦¬ ê³ ë¥´ê¸°', LW / 2, 286);
-
-    if (cm.toast > 0) {
-      ctx.fillStyle = okColor();
-      ctx.font = fs(17, true);
-      ctx.fillText(`âœ“ ${selLabel} ìƒíƒœë¡œ ë§ì·„ì–´ìš”!`, LW / 2, 360);
-      ctx.fillStyle = '#aaa';
-      ctx.font = fs(13);
-      ctx.fillText('ì ì‹œ í›„ ëª¨í—˜ í™”ë©´ìœ¼ë¡œ ëŒì•„ê°‘ë‹ˆë‹¤â€¦', LW / 2, 386);
-      if (cm.toast === 1) { game.mode = cm.ret; }
-    } else if (cm.confirm) {
-      ctx.fillStyle = badColor();
-      ctx.font = fs(16, true);
-      ctx.fillText(`ì§€ê¸ˆ ì´ ìŠ¬ë¡¯ì„ ${selLabel} ìƒíƒœë¡œ ë°”ê¿€ê¹Œìš”?`, LW / 2, 360);
-      ctx.fillStyle = '#ddd';
-      ctx.font = fs(13);
-      ctx.fillText('ì´ì „ ì§„í–‰ì€ ì™„ë£Œ ì²˜ë¦¬ë˜ê³  ë˜ëŒë¦´ ìˆ˜ ì—†ì–´ìš”.', LW / 2, 384);
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(14, true);
-      ctx.fillText('Z: ì‹œì‘   Â·   X: ì·¨ì†Œ', LW / 2, 416);
-    } else {
-      ctx.fillStyle = '#777';
-      ctx.font = fs(13);
-      ctx.fillText('Z: ì´ ê±°ë¦¬ë¡œ ì‹œì‘ Â· X: ë‹«ê¸°', LW / 2, 360);
-      ctx.fillStyle = '#555';
-      ctx.font = fs(12);
-      ctx.fillText('â€» ë¯¸ë¦¬ ã€Œë°ì´í„° ë°±ì—…ã€ì„ í•´ ë‘ë©´ ì•ˆì „í•´ìš”.', LW / 2, 388);
-    }
-    ctx.textAlign = 'left';
-  }
-
-  // ---------- Y-18 ì‚¬ì „/ì‚¬í›„ ì ê²€ (ìˆ˜ì—… íš¨ê³¼ ì¸¡ì •) ----------
-  // ìˆ˜ì—… ì‹œì‘ ì‹œ ì˜µíŠ¸ì¸ ì‚¬ì „ ì ê²€ 5ë¬¸í•­(ê·¸ ì¥ ì£¼ì œ ê³ ì • ì„¸íŠ¸) â†’ ìŠ¬ë¡¯ ë©”íƒ€ì— ì €ì¥,
-  // ì¥ ë³´ìŠ¤ í´ë¦¬ì–´ í›„ ê°™ì€ ë¬¸í•­ìœ¼ë¡œ ì‚¬í›„ ì ê²€ â†’ í–¥ìƒë„ë¥¼ CSVì— ë‹´ëŠ”ë‹¤. ì „ë¶€ ë¡œì»¬Â·ìŠ¤í‚µ ê°€ëŠ¥.
-  // ì €ì¥ ìŠ¤í‚¤ë§ˆ ë³€ê²½(meta.prepost) â€” ì—†ë˜ ìŠ¬ë¡¯ì€ ê·¸ëƒ¥ ë¹ˆ ê°’ìœ¼ë¡œ ì·¨ê¸‰(í•˜ìœ„ í˜¸í™˜).
-  const PREPOST_CH = {
-    trace: { n: 1, label: '1ì¥ Â· ê°œì¸ì •ë³´Â·ë™ì˜', topics: ['privacy', 'consent', 'footprint', 'copyright', 'identity'] },
-    tilt: { n: 2, label: '2ì¥ Â· ê²½ì²­Â·í¸í–¥', topics: ['listen', 'bias', 'filterbubble', 'balance', 'emotion'] },
-    rumor: { n: 3, label: '3ì¥ Â· ê°€ì§œ ì •ë³´ ë¶„ë³„', topics: ['fake', 'rumor', 'genai', 'deepfake', 'transparency'] },
-    arcade: { n: 4, label: '4ì¥ Â· ì ˆì œÂ·ë‹¤í¬íŒ¨í„´', topics: ['balance', 'footprint', 'saving', 'persuasion', 'safety'] },
-    cozy: { n: 5, label: '5ì¥ Â· ê´€ê³„Â·ì±…ì„', topics: ['manners', 'emotion', 'responsibility', 'safety', 'excuse'] },
-  };
-  const PREPOST_CH_BY_N = { 1: 'trace', 2: 'tilt', 3: 'rumor', 4: 'arcade', 5: 'cozy' };
-  const PREPOST_LEN = 5;
-  // ê·¸ ì¥ ì£¼ì œì—ì„œ ê³ ì • ìˆœì„œë¡œ 5ë¬¸í•­ì„ ë½‘ëŠ”ë‹¤(ì‚¬ì „Â·ì‚¬í›„ê°€ ë°˜ë“œì‹œ ê°™ì€ ì„¸íŠ¸ê°€ ë˜ë„ë¡ ê²°ì •ë¡ ì ).
-  function prepostQuizzes(chKey) {
-    const spec = PREPOST_CH[chKey];
-    if (!spec) return [];
-    const out = [];
-    // 1ì°¨ â€” ê° ì£¼ì œì˜ ì²« ë¬¸ì œ í•˜ë‚˜ì”©
-    for (const t of spec.topics) {
-      const arr = QUIZZES[t];
-      if (arr && arr.length && out.length < PREPOST_LEN) out.push(Object.assign({ topic: t }, arr[0]));
-    }
-    // 2ì°¨ â€” 5ê°œê°€ ì•ˆ ì°¨ë©´ ê°™ì€ ì£¼ì œì˜ ë‹¤ìŒ ë¬¸ì œë¡œ ê²°ì •ë¡ ì ìœ¼ë¡œ ì±„ìš´ë‹¤
-    for (let round = 1; out.length < PREPOST_LEN && round < 6; round++) {
-      for (const t of spec.topics) {
-        const arr = QUIZZES[t] || [];
-        if (arr[round] && out.length < PREPOST_LEN) out.push(Object.assign({ topic: t }, arr[round]));
-      }
-    }
-    return out.slice(0, PREPOST_LEN);
-  }
-  // meta.prepost[ch] = { pre: {score,total,at}, post: {...} } â€” ìŠ¬ë¡¯ ë©”íƒ€ì— ì €ì¥(ë°±ì—…ì— ìë™ í¬í•¨).
-  function getPrepost(slot, ch) {
-    const m = getMeta(slot);
-    return (m.prepost && m.prepost[ch]) || {};
-  }
-  function recordPrepost(slot, ch, kind, score, total) {
-    try {
-      const m = getMeta(slot);
-      m.prepost = m.prepost || {};
-      m.prepost[ch] = m.prepost[ch] || {};
-      m.prepost[ch][kind] = { score, total, at: Date.now() };
-      localStorage.setItem(metaKey(slot), JSON.stringify(m));
-    } catch (e) { /* ì €ì¥ ë¶ˆê°€ í™˜ê²½ì´ë©´ ë¬´ì‹œ â€” í‘œì‹œëŠ” ê·¸ëŒ€ë¡œ ì§„í–‰ */ }
-  }
-  function openPrepost(kind, ch, ret) {
-    const quizzes = prepostQuizzes(ch);
-    if (!quizzes.length) { game.mode = ret; return; } // ì„¸íŠ¸ê°€ ì—†ìœ¼ë©´(íŒŒì´ë„ ë“±) ê·¸ëƒ¥ ê±´ë„ˆë›´ë‹¤
-    game.prepost = { ret, ch, kind, quizzes, idx: 0, qCursor: 0, choiceOrder: null, score: 0, phase: 'intro', feedback: null };
-    game.mode = 'prepost';
-    Sound.select();
-  }
-  function startPrepostQ() {
-    const pp = game.prepost;
-    const m = pp.quizzes[pp.idx];
-    pp.choiceOrder = shuffled(m.a.map((_, i) => i));
-    pp.qCursor = 0; pp.feedback = null; pp.phase = 'question';
-    speakQuiz(m.q, pp.choiceOrder.map((ai) => m.a[ai]));
-  }
-  function finishPrepost() {
-    const pp = game.prepost;
-    pp.phase = 'done';
-    recordPrepost(game.currentSlot, pp.ch, pp.kind, pp.score, pp.quizzes.length);
-    Sound.badge();
-  }
-  function updatePrepost() {
-    const pp = game.prepost;
-    if (!pp) { game.mode = 'world'; return; }
-    if (pp.phase === 'intro') {
-      if (justPressed('action')) { startPrepostQ(); Sound.select(); return; }
-      if (justPressed('cancel') || justPressed('menu')) { game.mode = pp.ret; game.prepost = null; Sound.select(); } // ê±´ë„ˆë›°ê¸°(ìŠ¤í‚µ ê°€ëŠ¥)
-      return;
-    }
-    if (pp.phase === 'question') {
-      const m = pp.quizzes[pp.idx];
-      const len = m.a.length;
-      if (justPressed('up')) { pp.qCursor = (pp.qCursor + len - 1) % len; Sound.blip(); }
-      if (justPressed('down')) { pp.qCursor = (pp.qCursor + 1) % len; Sound.blip(); }
-      if (justPressed('action')) {
-        const correct = pp.choiceOrder[pp.qCursor] === m.c;
-        if (correct) pp.score += 1;
-        pp.feedback = { correct, why: m.why };
-        pp.phase = 'feedback';
-        speakFeedback(correct, m.why);
-        Sound[correct ? 'correct' : 'wrong']();
-      }
-      return;
-    }
-    if (pp.phase === 'feedback') {
-      if (justPressed('action') || justPressed('cancel')) {
-        pp.idx += 1;
-        if (pp.idx >= pp.quizzes.length) finishPrepost();
-        else startPrepostQ();
-        Sound.select();
-      }
-      return;
-    }
-    if (pp.phase === 'done') {
-      if (justPressed('action') || justPressed('cancel') || justPressed('menu')) {
-        const ret = pp.ret; game.prepost = null; game.mode = ret; Sound.select();
-      }
-      return;
-    }
-  }
-  function drawPrepost() {
-    const pp = game.prepost;
-    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, LW, LH);
-    if (!pp) return;
-    const spec = PREPOST_CH[pp.ch] || { label: '' };
-    const kindLabel = pp.kind === 'pre' ? 'ì‚¬ì „ ì ê²€' : 'ì‚¬í›„ ì ê²€';
-    ctx.textAlign = 'left'; ctx.fillStyle = '#ffd644'; ctx.font = fs(15, true);
-    ctx.fillText(`${kindLabel} Â· ${spec.label}`, 24, 34);
-
-    if (pp.phase === 'intro') {
-      ctx.fillStyle = '#fff'; ctx.font = fs(18, true);
-      ctx.textAlign = 'center';
-      ctx.fillText(pp.kind === 'pre' ? 'ìˆ˜ì—… ì „, 5ë¬¸í•­ìœ¼ë¡œ ì§€ê¸ˆ ì‹¤ë ¥ì„ í™•ì¸í•´ìš”' : 'ìˆ˜ì—… í›„, ê°™ì€ 5ë¬¸í•­ìœ¼ë¡œ ì–¼ë§ˆë‚˜ ëŠ˜ì—ˆëŠ”ì§€ ë´ìš”', LW / 2, 200);
-      ctx.fillStyle = '#aaa'; ctx.font = fs(14);
-      ctx.fillText('ì •ë‹µì„ ëª°ë¼ë„ ê´œì°®ì•„ìš” â€” ì„±ì ì´ ì•„ë‹ˆë¼ ì„±ì¥ ê¸°ë¡ì´ì—ìš”.', LW / 2, 236);
-      ctx.fillText('ê±´ë„ˆë›°ì–´ë„ ìˆ˜ì—… ì§„í–‰ì—ëŠ” ì•„ë¬´ ì˜í–¥ì´ ì—†ì–´ìš”.', LW / 2, 262);
-      ctx.fillStyle = '#fff'; ctx.font = fs(15, true);
-      ctx.fillText('Z: 5ë¬¸í•­ í’€ê¸°   Â·   X: ê±´ë„ˆë›°ê¸°', LW / 2, 320);
-      ctx.textAlign = 'left';
-      return;
-    }
-    if (pp.phase === 'done') {
-      const total = pp.quizzes.length;
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#fff'; ctx.font = fs(20, true);
-      ctx.fillText(`${kindLabel} ê²°ê³¼ â€” ${pp.score} / ${total}`, LW / 2, 180);
-      const prev = getPrepost(game.currentSlot, pp.ch);
-      if (pp.kind === 'post' && prev.pre) {
-        const prePct = Math.round(prev.pre.score / prev.pre.total * 100);
-        const postPct = Math.round(pp.score / total * 100);
-        const diff = postPct - prePct;
-        ctx.fillStyle = '#aaa'; ctx.font = fs(15);
-        ctx.fillText(`ì‚¬ì „ ${prePct}%  â†’  ì‚¬í›„ ${postPct}%`, LW / 2, 224);
-        ctx.fillStyle = diff > 0 ? okColor() : diff < 0 ? warnColor() : '#aaa';
-        ctx.font = fs(17, true);
-        ctx.fillText(diff >= 0 ? `í–¥ìƒë„ +${diff}%p ğŸŒ±` : `í–¥ìƒë„ ${diff}%p`, LW / 2, 258);
-      } else if (pp.kind === 'pre') {
-        ctx.fillStyle = '#aaa'; ctx.font = fs(14);
-        ctx.fillText('ìˆ˜ì—…ì´ ëë‚˜ë©´ ê°™ì€ ë¬¸í•­ìœ¼ë¡œ ë‹¤ì‹œ í™•ì¸í•´ìš”.', LW / 2, 224);
-      }
-      ctx.fillStyle = '#777'; ctx.font = fs(13);
-      ctx.fillText('Z / X: ê³„ì†', LW / 2, 320);
-      ctx.textAlign = 'left';
-      return;
-    }
-    // question / feedback â€” ì§„í–‰ í‘œì‹œ + ë¬¸ì œ/ì„ íƒì§€(ë°°í‹€ í€´ì¦ˆì™€ ê°™ì€ í˜•íƒœ)
-    const m = pp.quizzes[pp.idx];
-    ctx.textAlign = 'right'; ctx.fillStyle = '#888'; ctx.font = fs(13);
-    ctx.fillText(`${pp.idx + 1} / ${pp.quizzes.length}`, LW - 24, 34);
-    ctx.textAlign = 'left';
-    const qMaxW = LW - 24 - 56, cMaxW = LW - 24 - 72, gap = 6;
-    const boxY = 70;
-    utBox(12, boxY, LW - 24, LH - boxY - 16, 8);
-    ctx.fillStyle = '#fff'; ctx.font = fs(16);
-    let ty = drawQuestionText(m.q, 34, boxY + 30, qMaxW, lh(24)) + lh(10);
-    if (pp.phase === 'question') {
-      for (let i = 0; i < pp.choiceOrder.length; i++) {
-        ty += drawChoiceWrapped(`${i + 1}. ${m.a[pp.choiceOrder[i]]}`, 38, ty, i === pp.qCursor, cMaxW, lh(22)) + gap;
-      }
-      ctx.fillStyle = '#777'; ctx.font = fs(12); ctx.textAlign = 'center';
-      ctx.fillText('â†‘â†“ ê³ ë¥´ê¸° Â· Z ê²°ì •', LW / 2, LH - 26); ctx.textAlign = 'left';
-    } else if (pp.phase === 'feedback') {
-      ctx.fillStyle = pp.feedback.correct ? okColor() : badColor();
-      ctx.font = fs(18, true);
-      ctx.fillText(pp.feedback.correct ? 'â—‹ ì •ë‹µ!' : 'âœ• ì•„ì‰¬ì›Œìš”', 38, ty + lh(6));
-      ty += lh(30);
-      ctx.fillStyle = '#ddd'; ctx.font = fs(14);
-      ty = drawQuestionText(pp.feedback.why, 38, ty, cMaxW, lh(22));
-      ctx.fillStyle = '#777'; ctx.font = fs(12); ctx.textAlign = 'center';
-      ctx.fillText('Z: ë‹¤ìŒ', LW / 2, LH - 26); ctx.textAlign = 'left';
-    }
-  }
-
-  // ---------- êµì‚¬ìš© í•™ìƒ ì§„ë‹¨ ë¦¬í¬íŠ¸ (U3) ----------
-  // ì£¼ì œ í‚¤ â†’ ì¶”ì²œ ì°¨ì‹œ(docs/ì°¨ì‹œë³„-í™œë™ì§€.md). ì•½ì  ì£¼ì œë¥¼ ë‹¤ìŒ ìˆ˜ì—…ê³¼ ì—°ê²°í•œë‹¤.
-  const TOPIC_SESSION = {
-    privacy: '1ì°¨ì‹œ (ê°œì¸ì •ë³´Â·ì €ì‘ê¶Œ)', copyright: '1ì°¨ì‹œ (ê°œì¸ì •ë³´Â·ì €ì‘ê¶Œ)',
-    consent: '1ì°¨ì‹œ (ê°œì¸ì •ë³´Â·ì €ì‘ê¶Œ)', security: '1ì°¨ì‹œ (ê°œì¸ì •ë³´Â·ì €ì‘ê¶Œ)', identity: '1ì°¨ì‹œ (ê°œì¸ì •ë³´Â·ì €ì‘ê¶Œ)',
-    fake: '2ì°¨ì‹œ (ê°€ì§œ ì •ë³´Â·ìƒì„±í˜• AI)', genai: '2ì°¨ì‹œ (ê°€ì§œ ì •ë³´Â·ìƒì„±í˜• AI)',
-    deepfake: '2ì°¨ì‹œ (ê°€ì§œ ì •ë³´Â·ìƒì„±í˜• AI)', rumor: '2ì°¨ì‹œ (ê°€ì§œ ì •ë³´Â·ìƒì„±í˜• AI)',
-    bias: '3ì°¨ì‹œ (ê³µì •í•¨Â·í¸í–¥)', filterbubble: '3ì°¨ì‹œ (ê³µì •í•¨Â·í¸í–¥)', listen: '3ì°¨ì‹œ (ê³µì •í•¨Â·í¸í–¥)',
-    balance: '4ì°¨ì‹œ (ì ˆì œÂ·ë””ì§€í„¸ ë°œìêµ­)', footprint: '4ì°¨ì‹œ (ì ˆì œÂ·ë””ì§€í„¸ ë°œìêµ­)',
-    saving: '4ì°¨ì‹œ (ì ˆì œÂ·ë””ì§€í„¸ ë°œìêµ­)', environment: '4ì°¨ì‹œ (ì ˆì œÂ·ë””ì§€í„¸ ë°œìêµ­)', persuasion: '4ì°¨ì‹œ (ì ˆì œÂ·ë””ì§€í„¸ ë°œìêµ­)',
-    manners: '5ì°¨ì‹œ (ê´€ê³„Â·ì±…ì„)', emotion: '5ì°¨ì‹œ (ê´€ê³„Â·ì±…ì„)', responsibility: '5ì°¨ì‹œ (ê´€ê³„Â·ì±…ì„)',
-    excuse: '5ì°¨ì‹œ (ê´€ê³„Â·ì±…ì„)', safety: '5ì°¨ì‹œ (ê´€ê³„Â·ì±…ì„)', transparency: '5ì°¨ì‹œ (ê´€ê³„Â·ì±…ì„)', core: '5ì°¨ì‹œ (ê´€ê³„Â·ì±…ì„)',
-  };
-  function topicSession(t) { return TOPIC_SESSION[t] || 'ì¢…í•© ë³µìŠµ (í€´ì¦ˆ ì±Œë¦°ì§€)'; }
-
-  // ìŠ¬ë¡¯ì˜ í•™ìŠµ ë°ì´í„°ë¥¼ ë¶„ì„í•´, ì•½ì  ì£¼ì œ â†’ ì¶”ì²œ ì°¨ì‹œë¡œ ë§¤ì¹­í•œ ì§„ë‹¨ì„ ë§Œë“ ë‹¤.
-  function buildDiagnosticReport(slot) {
-    if (slot == null) slot = activeSlot();
-    const sum = slotSummary(slot);
-    const s = buildLearningSummary(slot);
-    const weakRows = s.rows.filter((r) => r.total >= 2 && r.rate < 0.6);
-    const recommendations = weakRows.map((r) => ({
-      topic: r.topic, label: r.label, rate: r.rate, session: topicSession(r.topic),
-    }));
-    const sessions = [];
-    for (const r of recommendations) if (!sessions.includes(r.session)) sessions.push(r.session);
-    const pct = (r) => Math.round(r * 100) + '%';
-    let date = ''; try { date = new Date().toLocaleDateString('ko-KR'); } catch (e) {}
-    const lines = [];
-    lines.push('[AI ìœ¤ë¦¬ ì–´ë“œë²¤ì²˜ â€” í•™ìƒ ì§„ë‹¨ ë¦¬í¬íŠ¸]');
-    if (date) lines.push('ë‚ ì§œ: ' + date);
-    if (!sum) {
-      lines.push('(ë¹ˆ ìŠ¬ë¡¯ â€” ì•„ì§ í•™ìŠµ ê¸°ë¡ì´ ì—†ì–´ìš”)');
-      return { empty: true, name: '', recommendations: [], sessions: [], text: lines.join('\n') };
-    }
-    lines.push('ì´ë¦„: ' + slotLearnName(slot));
-    lines.push('ì§„í–‰: ' + (sum.done ? 'ëª¨í—˜ ì™„ë£Œ' : sum.stage));
-    lines.push(`í‘¼ ë¬¸ì œ: ${s.attempted}ê°œ Â· ì •ë‹µë¥  ${s.attempted ? pct(s.overallRate) : 'â€”'} Â· ë³µìŠµ ë…¸íŠ¸ ${mistakeCount(slot)}ê°œ`);
-    lines.push('â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€');
-    if (recommendations.length === 0) {
-      lines.push('ì•½ì  ì£¼ì œê°€ ì—†ì–´ìš” ğŸ‘ ì˜í•˜ê³  ìˆì–´ìš”!');
-      lines.push('ì‹¬í™”: í€´ì¦ˆ ì±Œë¦°ì§€ì˜ ã€Œì „ì²´ ëœë¤ã€ìœ¼ë¡œ ë³µìŠµì„ ê¶Œí•©ë‹ˆë‹¤.');
-    } else {
-      lines.push('ë” ì‚´í´ë³¼ ì£¼ì œ â†’ ì¶”ì²œ ì°¨ì‹œ:');
-      for (const r of recommendations) {
-        lines.push(`  Â· ${r.label} (${pct(r.rate)}) â†’ ${r.session}`);
-      }
-      lines.push('');
-      lines.push('ì¶”ì²œ ìˆ˜ì—…: ' + sessions.join(', '));
-    }
-    return { empty: false, name: slotLearnName(slot), recommendations, sessions, text: lines.join('\n') };
-  }
-  // ë°˜ ì „ì²´(ì„¸ ìŠ¬ë¡¯) ê³µí†µ ì•½ì ì„ ì§‘ê³„í•´ ìš°ì„  ìˆ˜ì—…ì„ ì œì•ˆí•œë‹¤.
-  function buildClassDiagnostic() {
-    const perTopic = {};
-    let students = 0;
-    for (let i = 0; i < SLOT_COUNT; i++) {
-      if (!slotSummary(i)) continue;
-      students++;
-      for (const r of buildLearningSummary(i).rows) {
-        if (r.total >= 2 && r.rate < 0.6) {
-          const e = perTopic[r.topic] || { topic: r.topic, label: r.label, count: 0 };
-          e.count++; perTopic[r.topic] = e;
-        }
-      }
-    }
-    const common = Object.keys(perTopic).map((k) => perTopic[k]).sort((a, b) => b.count - a.count);
-    let date = ''; try { date = new Date().toLocaleDateString('ko-KR'); } catch (e) {}
-    const lines = ['[AI ìœ¤ë¦¬ ì–´ë“œë²¤ì²˜ â€” ë°˜ ì „ì²´ ì§„ë‹¨]'];
-    if (date) lines.push('ë‚ ì§œ: ' + date);
-    lines.push('í•™ìŠµí•œ í•™ìƒ(ìŠ¬ë¡¯): ' + students + 'ëª…');
-    lines.push('â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€');
-    const sessions = [];
-    if (students === 0) {
-      lines.push('ì•„ì§ í•™ìŠµí•œ í•™ìƒì´ ì—†ì–´ìš”.');
-    } else if (common.length === 0) {
-      lines.push('ê³µí†µ ì•½ì ì´ ì—†ì–´ìš” ğŸ‘ ë°˜ ì „ì²´ê°€ ì˜í•˜ê³  ìˆì–´ìš”!');
-    } else {
-      lines.push('ê³µí†µ ì•½ì  (í•™ìƒ ìˆ˜ ë§ì€ ìˆœ):');
-      for (const c of common.slice(0, 5)) {
-        const sess = topicSession(c.topic);
-        lines.push(`  Â· ${c.label} â€” ${c.count}ëª… â†’ ${sess}`);
-        if (!sessions.includes(sess)) sessions.push(sess);
-      }
-      lines.push('');
-      lines.push('ìš°ì„  ì¶”ì²œ ìˆ˜ì—…: ' + sessions.slice(0, 3).join(', '));
-    }
-    return { students, common, sessions, text: lines.join('\n') };
-  }
-  // í…ìŠ¤íŠ¸ë¥¼ íŒŒì¼ë¡œ ë‚´ë ¤ë°›ëŠ”ë‹¤(ì§„ë‹¨ ë¦¬í¬íŠ¸ ì¸ì‡„Â·ë³´ê´€ìš©).
-  function downloadTextFile(text, filename) {
-    try {
-      const a = document.createElement('a');
-      a.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent('ï»¿' + text);
-      a.download = filename;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      return true;
-    } catch (e) { return false; }
-  }
-  function openReport(ret) {
-    game.report.ret = ret;
-    game.report.slot = activeSlot();
-    game.report.toast = 0;
-    game.mode = 'report';
-    Sound.select();
-  }
-  function closeReport() { game.mode = game.report.ret; Sound.select(); }
-  // slot 0..SLOT_COUNT-1 = í•™ìƒë³„, slot === SLOT_COUNT = ë°˜ ì „ì²´
-  function reportView(slot) { return slot >= SLOT_COUNT ? buildClassDiagnostic() : buildDiagnosticReport(slot); }
-  function updateReport() {
-    const r = game.report;
-    const N = SLOT_COUNT + 1; // í•™ìƒ 3ëª… + ë°˜ ì „ì²´
-    if (r.toast > 0) r.toast -= 1; else if (r.toast < 0) r.toast += 1;
-    // ì¢Œìš°ë¡œ í•™ìƒ(ìŠ¬ë¡¯)Â·ë°˜ ì „ì²´ ì „í™˜
-    if (justPressed('left')) { r.slot = (r.slot + N - 1) % N; Sound.blip(); }
-    if (justPressed('right')) { r.slot = (r.slot + 1) % N; Sound.blip(); }
-    if (justPressed('action')) {
-      const text = reportView(r.slot).text;
-      const ok = downloadTextFile(text, 'ai-ethics-diagnostic-' + todayStr() + '.txt') || copyTextToClipboard(text);
-      r.toast = ok ? 200 : -200; Sound.badge();
-    }
-    if (justPressed('cancel') || justPressed('menu')) closeReport();
-  }
-  function drawReport() {
-    const r = game.report;
-    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, LW, LH);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff'; ctx.font = fs(22, true);
-    ctx.fillText('ğŸ©º í•™ìƒ ì§„ë‹¨ ë¦¬í¬íŠ¸', 24, 38);
-    const isClass = r.slot >= SLOT_COUNT;
-    ctx.fillStyle = '#888'; ctx.font = fs(12);
-    ctx.fillText(`â—€ â–¶ ì „í™˜ Â· ${isClass ? 'ë°˜ ì „ì²´' : 'ìŠ¬ë¡¯ ' + (r.slot + 1)}`, 24, 58);
-
-    const rep = reportView(r.slot);
-    let y = 92;
-    const lines = rep.text.split('\n');
-    for (const ln of lines) {
-      if (ln.startsWith('[')) { ctx.fillStyle = themeAccent(); ctx.font = fs(15, true); }
-      else if (ln.startsWith('  Â· ')) { ctx.fillStyle = warnColor(); ctx.font = fs(13); }
-      else if (ln.startsWith('ì¶”ì²œ ìˆ˜ì—…') || ln.startsWith('ìš°ì„  ì¶”ì²œ')) { ctx.fillStyle = okColor(); ctx.font = fs(13, true); }
-      else if (ln.startsWith('â”€â”€')) { ctx.fillStyle = '#444'; ctx.font = fs(13); }
-      else { ctx.fillStyle = '#ddd'; ctx.font = fs(13); }
-      ctx.fillText(ln, 28, y);
-      y += 22;
-    }
-
-    ctx.textAlign = 'center';
-    if (r.toast > 0) { ctx.fillStyle = okColor(); ctx.font = fs(14, true); ctx.fillText('âœ“ ì§„ë‹¨ ë¦¬í¬íŠ¸ë¥¼ ì €ì¥í–ˆì–´ìš” (ì¸ì‡„Â·ë³´ê´€ìš©)', LW / 2, 512); }
-    else if (r.toast < 0) { ctx.fillStyle = badColor(); ctx.font = fs(14, true); ctx.fillText('ì´ í™˜ê²½ì—ì„œëŠ” ë‚´ë³´ë‚¼ ìˆ˜ ì—†ì–´ìš” (ë¸Œë¼ìš°ì €ì—ì„œ ì‹œë„)', LW / 2, 512); }
-    else { ctx.fillStyle = '#777'; ctx.font = fs(13); ctx.fillText('Z: ë¦¬í¬íŠ¸ ë‚´ë³´ë‚´ê¸°(.txt/í´ë¦½ë³´ë“œ) Â· â—€â–¶ í•™ìƒ ì „í™˜ Â· X: ë‹«ê¸°', LW / 2, 512); }
-    ctx.textAlign = 'left';
-  }
-
-  // ---------- ì»¤ìŠ¤í…€ í€´ì¦ˆ (ì„ ìƒë‹˜ ë¬¸ì œ) í¸ì§‘Â·ê°€ì ¸ì˜¤ê¸° ----------
-  const QUIZEDIT_ITEMS = ['importFile', 'importClip', 'template', 'clear', 'close'];
-  const QUIZEDIT_LABELS = {
-    importFile: 'ê°€ì ¸ì˜¤ê¸° â€” íŒŒì¼ì—ì„œ (.json)',
-    importClip: 'ê°€ì ¸ì˜¤ê¸° â€” í´ë¦½ë³´ë“œì—ì„œ ë¶™ì—¬ë„£ê¸°',
-    template: 'ë¬¸ì œ ì–‘ì‹(í…œí”Œë¦¿) ë³µì‚¬í•˜ê¸°',
-    clear: 'ì»¤ìŠ¤í…€ ë¬¸ì œ ëª¨ë‘ ì§€ìš°ê¸°',
-    close: 'ë‹«ê¸°',
-  };
-  function openQuizEdit(ret) {
-    game.quizedit.ret = ret;
-    game.quizedit.cursor = 0;
-    game.quizedit.toast = 0;
-    game.quizedit.confirm = false;
-    game.mode = 'quizedit';
-    Sound.select();
-  }
-  function closeQuizEdit() {
-    game.mode = game.quizedit.ret;
-    Sound.select();
-  }
-  function setQuizToast(res) {
-    game.quizedit.toast = res && res.ok ? (res.count || 1) : -1;
-    Sound.badge();
-  }
-  function importQuizFile() {
-    try {
-      const inp = document.createElement('input');
-      inp.type = 'file';
-      inp.accept = 'application/json,.json';
-      const handler = () => {
-        inp.removeEventListener('change', handler);
-        const file = inp.files && inp.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => setQuizToast(importCustomQuizzes(String(reader.result)));
-        reader.onerror = () => { game.quizedit.toast = -1; Sound.badge(); };
-        reader.readAsText(file);
-      };
-      inp.addEventListener('change', handler);
-      inp.click();
-    } catch (e) { game.quizedit.toast = -1; }
-  }
-  function importQuizClip() {
-    try {
-      if (window.navigator && navigator.clipboard && navigator.clipboard.readText) {
-        let done = false;
-        const fail = () => { if (!done) { done = true; game.quizedit.toast = -1; Sound.badge(); } };
-        const timer = setTimeout(fail, 5000);
-        navigator.clipboard.readText()
-          .then((t) => { if (done) return; done = true; clearTimeout(timer); setQuizToast(importCustomQuizzes(t)); })
-          .catch(() => { clearTimeout(timer); fail(); });
-      } else { game.quizedit.toast = -1; }
-    } catch (e) { game.quizedit.toast = -1; }
-  }
-  function updateQuizEdit() {
-    const q = game.quizedit;
-    // q.toast: 0=ì—†ìŒ, ìŒìˆ˜=ì‹¤íŒ¨, ì–‘ìˆ˜=ì„±ê³µ(>=1ì´ë©´ ë“±ë¡ ê°œìˆ˜). ë‹¤ìŒ í–‰ë™ê¹Œì§€ ìœ ì§€.
-    const n = QUIZEDIT_ITEMS.length;
-    if (justPressed('up')) { q.cursor = (q.cursor + n - 1) % n; q.confirm = false; Sound.blip(); }
-    if (justPressed('down')) { q.cursor = (q.cursor + 1) % n; q.confirm = false; Sound.blip(); }
-    if (justPressed('cancel') || justPressed('menu')) {
-      if (q.confirm) { q.confirm = false; Sound.blip(); return; }
-      closeQuizEdit();
-      return;
-    }
-    if (justPressed('action')) {
-      const item = QUIZEDIT_ITEMS[q.cursor];
-      if (q.confirm) { // ì‚­ì œ í™•ì¸ í›„ ì‹¤ì œ ì‹¤í–‰
-        q.confirm = false;
-        clearCustomQuizzes(); q.toast = 0.4; Sound.badge();
-        return;
-      }
-      if (item === 'importFile') importQuizFile();
-      else if (item === 'importClip') importQuizClip();
-      else if (item === 'template') { q.toast = copyTextToClipboard(customQuizTemplate()) ? 0.5 : -1; Sound.badge(); }
-      else if (item === 'clear') {
-        if (getCustomQuizzes().length === 0) { q.toast = -1; Sound.bump(); } // ì§€ìš¸ ê²Œ ì—†ìŒ
-        else { q.confirm = true; Sound.blip(); }
-      }
-      else if (item === 'close') closeQuizEdit();
-    }
-  }
-  function drawQuizEdit() {
-    const q = game.quizedit;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(22, true);
-    ctx.fillText('âœ ì»¤ìŠ¤í…€ í€´ì¦ˆ (ì„ ìƒë‹˜ ë¬¸ì œ)', 24, 38);
-    const cnt = getCustomQuizzes().length;
-    ctx.fillStyle = cnt ? okColor() : '#888';
-    ctx.font = fs(14, true);
-    ctx.fillText(`í˜„ì¬ ë“±ë¡ëœ ì»¤ìŠ¤í…€ ë¬¸ì œ: ${cnt}ê°œ`, 24, 64);
-    ctx.fillStyle = '#888';
-    ctx.font = fs(12);
-    ctx.fillText('ì»¤ìŠ¤í…€ ë¬¸ì œëŠ” í€´ì¦ˆ ì±Œë¦°ì§€ì˜ ã€Œì»¤ìŠ¤í…€ Â· ì„ ìƒë‹˜ ë¬¸ì œã€ ì£¼ì œì™€', 24, 86);
-    ctx.fillText('ë§ì¶¤Â·ì˜¤ëŠ˜ì˜ ë„ì „ì— í•¨ê»˜ ì¶œì œë©ë‹ˆë‹¤.', 24, 104);
-
-    const listY = 142, rowH = 40;
-    for (let i = 0; i < QUIZEDIT_ITEMS.length; i++) {
-      drawChoiceLine(QUIZEDIT_LABELS[QUIZEDIT_ITEMS[i]], 48, listY + i * rowH, i === q.cursor);
-    }
-
-    ctx.fillStyle = '#777';
-    ctx.font = fs(11);
-    ctx.fillText('í˜•ì‹: [ {"q":"ë¬¸ì œ","a":["ë³´ê¸°1","ë³´ê¸°2","ë³´ê¸°3"],"c":1,"why":"í•´ì„¤"}, â€¦ ]', 24, listY + QUIZEDIT_ITEMS.length * rowH + 18);
-    ctx.fillText('ë˜ëŠ” { "questions": [ â€¦ ] }  Â·  cëŠ” ì •ë‹µ ë²ˆí˜¸(0~2)', 24, listY + QUIZEDIT_ITEMS.length * rowH + 36);
-
-    if (q.confirm) {
-      ctx.textAlign = 'center';
-      ctx.fillStyle = badColor();
-      ctx.font = fs(15, true);
-      ctx.fillText(`ì»¤ìŠ¤í…€ ë¬¸ì œ ${getCustomQuizzes().length}ê°œë¥¼ ëª¨ë‘ ì§€ìš¸ê¹Œìš”?`, LW / 2, 452);
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(13);
-      ctx.fillText('Z: ëª¨ë‘ ì§€ìš°ê¸°   Â·   X: ì·¨ì†Œ', LW / 2, 474);
-      ctx.textAlign = 'left';
-    } else if (q.toast !== 0) {
-      ctx.textAlign = 'center';
-      if (q.toast < 0) { ctx.fillStyle = badColor(); ctx.font = fs(14, true);
-        ctx.fillText('ê°€ì ¸ì˜¬ ìˆ˜ ì—†ì–´ìš”. í˜•ì‹ì„ í™•ì¸í•˜ê±°ë‚˜ ë¸Œë¼ìš°ì €ì—ì„œ ì‹œë„í•´ ì£¼ì„¸ìš”.', LW / 2, 462); }
-      else { ctx.fillStyle = okColor(); ctx.font = fs(14, true);
-        ctx.fillText(q.toast >= 1 ? `âœ“ ì»¤ìŠ¤í…€ ë¬¸ì œ ${q.toast}ê°œë¥¼ ë“±ë¡í–ˆì–´ìš”!` : 'âœ“ ì™„ë£Œí–ˆì–´ìš”!', LW / 2, 462); }
-      ctx.textAlign = 'left';
-    }
-    ctx.fillStyle = '#777';
-    ctx.font = fs(13);
-    ctx.textAlign = 'center';
-    ctx.fillText('â†‘â†“ ì„ íƒ Â· Z ì‹¤í–‰ Â· X ë‹«ê¸°', LW / 2, 512);
-    ctx.textAlign = 'left';
-  }
-
-  // í•œ ë‹¨ì–´ê°€ maxWë³´ë‹¤ ë„“ìœ¼ë©´ ê¸€ì ë‹¨ìœ„ë¡œ ìª¼ê°œëŠ” í—¬í¼
-  function charBreak(word, maxW) {
-    const parts = [];
-    let cur = '';
-    for (const ch of word) {
-      const test = cur + ch;
-      if (cur && ctx.measureText(test).width > maxW) { parts.push(cur); cur = ch; }
-      else cur = test;
-    }
-    if (cur) parts.push(cur);
-    return parts;
-  }
-
-  // ì¤„ë°”ê¿ˆ ë ˆì´ì•„ì›ƒ ë©”ëª¨ì´ì¦ˆ â€” ëŒ€í™” í…ìŠ¤íŠ¸Â·í°íŠ¸Â·í­ì´ í”„ë ˆì„ ê°„ ê³ ì •ì´ë¯€ë¡œ
-  // íƒ€ìê¸° íš¨ê³¼ë¡œ ë§¤ í”„ë ˆì„ measureTextë¥¼ ë°˜ë³µí•˜ë˜ ë¹„ìš©ì„ ì—†ì•¤ë‹¤ (ì €ì‚¬ì–‘ íƒœë¸”ë¦¿ ì²´ê°).
-  const _wrapCache = new Map();
-  const WRAP_CACHE_MAX = 240;
-  function layoutLine(text, maxW) {
-    const key = ctx.font + '|' + maxW + '|' + text;
-    const hit = _wrapCache.get(key);
-    if (hit) return hit;
-    const words = text.split(' ');
-    const out = [];
-    let line = '';
-    for (const w of words) {
-      if (ctx.measureText(w).width > maxW) {
-        if (line) { out.push(line); line = ''; }
-        const parts = charBreak(w, maxW);
-        for (let i = 0; i < parts.length; i++) {
-          if (i < parts.length - 1) out.push(parts[i]);
-          else line = parts[i];
-        }
-        continue;
-      }
-      const test = line ? line + ' ' + w : w;
-      if (ctx.measureText(test).width > maxW && line) { out.push(line); line = w; }
-      else line = test;
-    }
-    if (line) out.push(line);
-    if (_wrapCache.size >= WRAP_CACHE_MAX) _wrapCache.delete(_wrapCache.keys().next().value);
-    _wrapCache.set(key, out);
-    return out;
-  }
-
-  // í…ìŠ¤íŠ¸ ì¤„ë°”ê¿ˆ ê·¸ë¦¬ê¸°. ê·¸ë¦° ì¤„ ìˆ˜ë¥¼ ë°˜í™˜.
-  function wrapText(text, x, y, maxW, lineH) {
-    const lines = layoutLine(text, maxW);
-    for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], x, y + i * lineH);
-    return lines.length;
-  }
-
-  // Y-13 â€” í° ê¸€ì”¨ ëª¨ë“œ ì˜¤ë²„í”Œë¡œ ì‹¤ë Œë” ê²€ì‚¬(í…ŒìŠ¤íŠ¸ í›…).
-  // ë°ì´í„°ì˜ ëŒ€ì‚¬/ì£¼ì¥/ì¡°ì‚¬ í”Œë ˆì´ë²„ ë¬¸ìì—´ì„ í˜„ì¬ í°íŠ¸(fs ë°°ìœ¨ ë°˜ì˜)ë¡œ ì‹¤ì œ ì¤„ë°”ê¿ˆí•´,
-  // ì–´ë–¤ ì¤„ë„ ëŒ€í™” ìƒì í­(dialogMaxW)ì„ ë„˜ì§€ ì•ŠëŠ”ì§€ measureText ì‹¤ê°’ìœ¼ë¡œ í™•ì¸í•œë‹¤.
-  // layoutLineì´ charBreakë¡œ ê°•ì œ ì ‘ê¸° ë•Œë¬¸ì— ì •ìƒì´ë©´ overCount=0ì´ì–´ì•¼ í•œë‹¤.
-  // ë„˜ì¹˜ëŠ” ë¬¸êµ¬ê°€ ë‚˜ì˜¤ë©´ ê·¸ ì›ë¬¸ì„ ëŒë ¤ ì¤˜, ë°ì´í„°ì—ì„œ ì¤„ë°”ê¿ˆì„ ì†ë³´ê²Œ í•œë‹¤.
-  function checkTextOverflow() {
-    const dialogMaxW = LW - 24 - 48; // drawDialogÂ·drawQuestionTextê°€ ì“°ëŠ” í­
-    const texts = [];
-    const pushT = (t) => { if (t && typeof t === 'string') texts.push(t); };
-    // ì„¤ë“ ë°°í‹€ â€” ì¸ë¬¼ì˜ ì£¼ì¥Â·íŒíŠ¸Â·ë§ˆìŒë§Â·íŒ¨í„´ ì‘ë‹µ(ì „ë¶€ ìƒìì— ê·¸ë ¤ì§€ëŠ” ëŒ€ì‚¬)
-    for (const p of Object.values(PERSUADE)) {
-      for (const c of (p.claims || [])) { pushT(c.text); pushT(c.hint); pushT(c.fragment); pushT(c.mercyReply); }
-      ['mercy', 'shadowReply', 'parcelReply', 'tiltReply', 'temptReply', 'gazeReply',
-        'truthReply', 'doorReply', 'nearReply', 'junkReply', 'decoyReply'].forEach((k) => pushT(p[k]));
-    }
-    // ë§µ ì¡°ì‚¬ í”Œë ˆì´ë²„Â·ê¸°ì–µì˜ ë³„Â·ì†Œí’ˆ ì¡°ì‚¬ë¬¸(ì¡°ì‚¬ ì‹œ ëŒ€í™” ìƒìì— ëœ¨ëŠ” ë¬¸ì¥)
-    for (const m of Object.values(MAPS)) {
-      for (const fl of (m.flavors || [])) { pushT(fl.text); pushT(fl.bandi); }
-      if (m.star) pushT(m.star.text);
-    }
-    for (const list of Object.values(MAP_PROPS || {})) for (const p of list) pushT(p.text);
-    ctx.font = fs(16); // drawDialog ë³¸ë¬¸ í°íŠ¸(í° ê¸€ì”¨ë©´ TF ë°°ìœ¨ì´ ì‹¤ë¦°ë‹¤)
-    let worst = null, worstW = 0;
-    const over = [];
-    for (const t of texts) {
-      for (const part of String(t).split('\n')) {
-        for (const ln of layoutLine(part, dialogMaxW)) {
-          const w = ctx.measureText(ln).width;
-          if (w > worstW) { worstW = w; worst = ln; }
-          if (w > dialogMaxW + 0.5) over.push({ line: ln, w: Math.round(w) });
-        }
-      }
-    }
-    return { dialogMaxW: Math.round(dialogMaxW), worstW: Math.round(worstW), worst,
-      overCount: over.length, over: over.slice(0, 5), sampled: texts.length };
-  }
-
-  // wrapTextì™€ ê°™ì€ ê·œì¹™ìœ¼ë¡œ ì¤„ ìˆ˜ë§Œ ì„¼ë‹¤(ê·¸ë¦¬ì§€ ì•ŠìŒ). ë°•ìŠ¤ ë†’ì´ë¥¼ ë¯¸ë¦¬ ì¡ì„ ë•Œ ì“´ë‹¤.
-  // í˜¸ì¶œ ì „ì— ctx.fontì„ ì‹¤ì œ ê·¸ë¦´ í°íŠ¸ë¡œ ë§ì¶° ë‘˜ ê²ƒ.
-  function measureWrap(text, maxW) {
-    let total = 0;
-    for (const part of String(text == null ? '' : text).split('\n')) {
-      total += Math.max(1, layoutLine(part, maxW).length);
-    }
-    return total;
-  }
-
-  // ---------- ê·¸ë¦¬ê¸° ----------
-  function camera() {
-    const m = MAPS[game.map];
-    const mw = m.tiles[0].length * TS;
-    const mh = m.tiles.length * TS;
-    let cx = game.player.px + TS / 2 - LW / 2;
-    let cy = game.player.py + TS / 2 - LH / 2;
-    cx = Math.max(0, Math.min(cx, mw - LW));
-    cy = Math.max(0, Math.min(cy, mh - LH));
-    if (mw < LW) cx = (mw - LW) / 2;
-    if (mh < LH) cy = (mh - LH) / 2;
-    return { cx, cy };
-  }
-
-  // ë™í–‰ì ë°˜ë”” â€” í”Œë ˆì´ì–´ê°€ ë³´ëŠ” ë°©í–¥ì˜ ë°˜ëŒ€ìª½ì—ì„œ ë‘¥ì‹¤ ë–  ë”°ë¼ì˜¨ë‹¤.
-  // ì˜…ì€ ê´‘ë¥œ + ë¶€ìœ  ë°”ìš´ìŠ¤. ì •ì²´ ê³µê°œ(bandiRevealed) í›„ì—ëŠ” ê·¸ë¦¬ì§€ ì•ŠëŠ”ë‹¤.
-  function drawCompanion(cx, cy) {
-    const f = game.flags;
-    if (!f || !f.bandiJoined || f.bandiRevealed) return;
-    const p = game.player;
-    const off = { up: { x: 14, y: 26 }, down: { x: 16, y: -18 },
-      left: { x: 26, y: -10 }, right: { x: -20, y: -10 } }[p.dir] || { x: 16, y: -18 };
-    const bob = Math.sin(game.time / 16) * 3;
-    const sx = Math.round(p.px - cx + off.x);
-    const sy = Math.round(p.py - cy + off.y + bob);
-    // ê´‘ë¥œ â€” í™©í˜¼ ì†ì˜ ì‘ì€ ì˜¨ê¸°
-    if (!game.reduceFx) {
-      const pulse = 0.12 + Math.sin(game.time / 22) * 0.04;
-      ctx.fillStyle = `rgba(255,220,130,${pulse})`;
-      ctx.beginPath();
-      ctx.arc(sx + 16, sy + 14, 15, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    drawMon(ctx, 'bandi', sx, sy, 2);
-  }
-
-  function ch1HubVisibleMarks() {
-    const props = MAP_PROPS.freestreet || [];
-    return props.filter((prop) => ['district', 'dama_buildup'].includes(prop.kind))
-      .map((prop) => ({ map: 'freestreet', x: prop.x, y: prop.y, kind: prop.kind, label: prop.label || '', done: !!(prop.flag && game.flags[prop.flag]) }));
-  }
-
-  function drawCh1HubMarks(cx, cy) {
-    if (game.map !== 'freestreet') return;
-    const marks = ch1HubVisibleMarks();
-    ctx.save();
-    for (const mark of marks) {
-      const sx = Math.round(mark.x * TS - cx);
-      const sy = Math.round(mark.y * TS - cy - 2);
-      if (sx < -50 || sx > LW + 50 || sy < -50 || sy > LH + 50) continue;
-      const district = mark.kind === 'district';
-      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.86 : 0.94;
-      ctx.fillStyle = district ? '#173447' : (mark.done ? '#3c3f38' : '#4a3316');
-      ctx.fillRect(sx + 5, sy + 8, TS - 10, TS - 12);
-      ctx.strokeStyle = district ? '#9bd3ff' : '#ffd644';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(sx + 5.5, sy + 8.5, TS - 11, TS - 13);
-      ctx.fillStyle = district ? '#9bd3ff' : (mark.done ? '#9aa07a' : '#ffd644');
-      ctx.font = fs(14, true);
-      ctx.textAlign = 'center';
-      ctx.fillText(district ? 'â—‡' : (mark.done ? 'âœ“' : 'â€»'), sx + TS / 2, sy + 24);
-      if (!(game.lowGraphics || game.reduceFx)) {
-        ctx.font = fs(9, true);
-        ctx.fillText(mark.label, sx + TS / 2, sy + 4);
-      }
-    }
-    ctx.textAlign = 'left';
-    ctx.restore();
-  }
-
-  function drawCh1StreetPressureObjects(cx, cy) {
-    if (game.map !== 'freestreet') return;
-    const profile = ch1StreetVisualProfile(privacyLeak(), game.lowGraphics || game.reduceFx);
-    const ads = [
-      { x: 8, y: 8, text: 'ë¬´ë£Œ' }, { x: 15, y: 12, text: 'ì•½ê´€' }, { x: 24, y: 9, text: 'ì¶”ì²œ' },
-      { x: 31, y: 13, text: 'ì €ì¥' }, { x: 19, y: 18, text: 'ì´ë¦„?' }, { x: 33, y: 18, text: 'ë™ì˜?' },
-      { x: 11, y: 16, text: 'ë°œìêµ­' }, { x: 27, y: 20, text: 'ê³µì§œ' }, { x: 4, y: 12, text: 'ì—´ëŒ' },
-      { x: 35, y: 10, text: 'í™•ì¸' }, { x: 21, y: 7, text: 'ë³´ê´€' }, { x: 14, y: 21, text: 'ì¶”ì ' },
-    ];
-    const sensors = [{ x: 14, y: 8 }, { x: 30, y: 8 }, { x: 23, y: 17 }];
-    ctx.save();
-    for (const [i, ad] of ads.slice(0, profile.adSigns).entries()) {
-      const sx = Math.round(ad.x * TS - cx + 6);
-      const sy = Math.round(ad.y * TS - cy + 8);
-      if (sx < -80 || sx > LW + 40 || sy < -40 || sy > LH + 40) continue;
-      const pulse = profile.glow ? 0.12 * Math.sin((game.time + i * 11) / 18) : 0;
-      ctx.globalAlpha = Math.max(0.5, 0.72 + pulse);
-      ctx.fillStyle = i % 2 ? '#28172f' : '#33220f';
-      ctx.fillRect(sx, sy, 38, 16);
-      ctx.strokeStyle = profile.glow ? '#ffd644' : '#7a6a44';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(sx + 0.5, sy + 0.5, 37, 15);
-      ctx.fillStyle = i >= 4 ? '#ff8a8a' : '#ffd644';
-      ctx.font = fs(10, true);
-      ctx.fillText(ad.text, sx + 4, sy + 11);
-    }
-    ctx.globalAlpha = 1;
-    for (const s of sensors.slice(0, profile.sensors)) {
-      const sx = Math.round(s.x * TS - cx + TS / 2);
-      const sy = Math.round(s.y * TS - cy + TS / 2);
-      if (sx < -20 || sx > LW + 20 || sy < -20 || sy > LH + 20) continue;
-      ctx.strokeStyle = '#9bd3ff';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(sx, sy, 8, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.fillStyle = '#e0453a';
-      ctx.fillRect(sx - 2, sy - 2, 4, 4);
-    }
-    if (profile.scanLines) {
-      ctx.globalAlpha = 0.08;
-      ctx.fillStyle = '#ffd644';
-      for (let y = (game.time % 18); y < LH; y += 18) ctx.fillRect(0, y, LW, 1);
-    }
-    ctx.restore();
-  }
-
-  function chapter2HubVisibleMarks() {
-    const props = MAP_PROPS.tiltstreet || [];
-    return props.filter((prop) => prop.kind === 'ch2_district')
-      .map((prop) => ({ map: 'tiltstreet', x: prop.x, y: prop.y, kind: prop.kind, label: prop.label || '' }));
-  }
-
-  function drawChapter2HubMarks(cx, cy) {
-    if (game.map !== 'tiltstreet') return;
-    const profile = chapter2HubVisualProfile(s2ClearCount(), game.lowGraphics || game.reduceFx);
-    const marks = chapter2HubVisibleMarks();
-    ctx.save();
-    for (const [i, mark] of marks.entries()) {
-      const sx = Math.round(mark.x * TS - cx);
-      const sy = Math.round(mark.y * TS - cy - 2);
-      if (sx < -60 || sx > LW + 60 || sy < -50 || sy > LH + 50) continue;
-      const isScale = mark.label === 'ê¸°ìš¸ì–´ì§„ ì €ìš¸';
-      const isExit = mark.label === 'ë™ìª½ ì†Œë€ ë¬¸';
-      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.82 : 0.92;
-      ctx.fillStyle = isScale ? '#40361c' : isExit ? '#2b2436' : '#1f2d36';
-      ctx.fillRect(sx + 6, sy + 8, TS - 12, TS - 12);
-      ctx.strokeStyle = isScale ? '#ffd644' : isExit ? '#e9a7ff' : '#9bd3ff';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(sx + 6.5, sy + 8.5, TS - 13, TS - 13);
-      ctx.fillStyle = isScale ? '#ffd644' : isExit ? '#e9a7ff' : '#9bd3ff';
-      ctx.font = fs(14, true);
-      ctx.textAlign = 'center';
-      ctx.fillText(isScale ? 'âš–' : isExit ? '!' : 'â†—', sx + TS / 2, sy + 24);
-      if (profile.labels) {
-        ctx.font = fs(9, true);
-        ctx.fillText(mark.label, sx + TS / 2, sy + 4);
-      }
-      if (i < profile.echoMarks && !(game.lowGraphics || game.reduceFx)) {
-        ctx.globalAlpha = 0.28;
-        ctx.strokeStyle = '#ffd644';
-        ctx.strokeRect(sx + 3.5, sy + 5.5, TS - 7, TS - 7);
-        ctx.globalAlpha = 0.92;
-      }
-    }
-    const hints = [
-      { x: 7, y: 8, text: 'ì¶”ì²œ' }, { x: 18, y: 7, text: 'ì´ìª½' }, { x: 11, y: 12, text: 'ë‹¤ìˆ˜' },
-      { x: 21, y: 14, text: 'ë³„ì ' }, { x: 24, y: 9, text: 'ì¸ê¸°' },
-    ];
-    ctx.font = fs(10, true);
-    for (const hint of hints.slice(0, profile.recommendSigns)) {
-      const sx = Math.round(hint.x * TS - cx + 6);
-      const sy = Math.round(hint.y * TS - cy + 8);
-      if (sx < -70 || sx > LW + 40 || sy < -40 || sy > LH + 40) continue;
-      ctx.globalAlpha = 0.62;
-      ctx.fillStyle = '#2f2110';
-      ctx.fillRect(sx, sy, 34, 15);
-      ctx.strokeStyle = '#8b733d';
-      ctx.strokeRect(sx + 0.5, sy + 0.5, 33, 14);
-      ctx.fillStyle = '#ffd644';
-      ctx.fillText(hint.text, sx + 4, sy + 11);
-    }
-    ctx.textAlign = 'left';
-    ctx.restore();
-  }
-
-  function chapter3HubVisibleMarks() {
-    const props = MAP_PROPS.rumorstreet || [];
-    return props.filter((prop) => prop.kind === 'ch3_district')
-      .map((prop) => ({ map: 'rumorstreet', x: prop.x, y: prop.y, kind: prop.kind, label: prop.label || '' }));
-  }
-
-  function drawChapter3HubMarks(cx, cy) {
-    if (game.map !== 'rumorstreet') return;
-    const low = game.lowGraphics || game.reduceFx;
-    const profile = chapter3HubVisualProfile(s3ClearCount(), game.flags.rumorFixed, low);
-    const marks = chapter3HubVisibleMarks();
-    ctx.save();
-    for (const [i, mark] of marks.entries()) {
-      const sx = Math.round(mark.x * TS - cx);
-      const sy = Math.round(mark.y * TS - cy - 2);
-      if (sx < -60 || sx > LW + 60 || sy < -50 || sy > LH + 50) continue;
-      const isPaper = mark.label === 'ëŒ€ë¬¸ì§ í—¤ë“œë¼ì¸';
-      const isFix = mark.label === 'ì •ì • ë³´ë„ ê¸¸';
-      const isExit = mark.label === 'ë°˜ì§ ì•„ì¼€ì´ë“œ ë¬¸';
-      ctx.globalAlpha = low ? 0.78 : (game.flags.rumorFixed ? 0.82 : 0.93);
-      ctx.fillStyle = isExit ? '#30213a' : isFix ? '#172f2c' : isPaper ? '#3a241c' : '#202532';
-      ctx.fillRect(sx + 5, sy + 8, TS - 10, TS - 12);
-      ctx.strokeStyle = isExit ? '#e9a7ff' : isFix ? '#80f0d0' : isPaper ? '#ffcf66' : '#9bd3ff';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(sx + 5.5, sy + 8.5, TS - 11, TS - 13);
-      ctx.fillStyle = game.flags.rumorFixed && !isExit ? '#80f0d0' : ctx.strokeStyle;
-      ctx.font = fs(14, true);
-      ctx.textAlign = 'center';
-      ctx.fillText(isExit ? 'â–¶' : isFix ? 'âœ“' : isPaper ? '!' : 'â–£', sx + TS / 2, sy + 24);
-      if (profile.labels) {
-        ctx.font = fs(9, true);
-        ctx.fillText(mark.label, sx + TS / 2, sy + 4);
-      }
-      if (i < profile.echoMarks && !low) {
-        ctx.globalAlpha = game.flags.rumorFixed ? 0.18 : 0.30;
-        ctx.strokeStyle = game.flags.rumorFixed ? '#80f0d0' : '#ffcf66';
-        ctx.strokeRect(sx + 2.5, sy + 5.5, TS - 5, TS - 7);
-        ctx.globalAlpha = 0.92;
-      }
-    }
-    const headlines = game.flags.rumorFixed
-      ? [{ x: 8, y: 7, text: 'ì •ì •' }, { x: 17, y: 7, text: 'í™•ì¸' }]
-      : [
-        { x: 6, y: 7, text: 'ì†ë³´' }, { x: 12, y: 9, text: 'ë‹¨ë…' }, { x: 20, y: 7, text: 'ì¶©ê²©' },
-        { x: 22, y: 13, text: 'ê³µìœ ' }, { x: 10, y: 14, text: 'ë¶ˆì•ˆ' }, { x: 17, y: 12, text: '???' },
-      ];
-    ctx.font = fs(10, true);
-    for (const headline of headlines.slice(0, profile.headlineSigns)) {
-      const sx = Math.round(headline.x * TS - cx + 5);
-      const sy = Math.round(headline.y * TS - cy + 7);
-      if (sx < -70 || sx > LW + 40 || sy < -40 || sy > LH + 40) continue;
-      ctx.globalAlpha = game.flags.rumorFixed ? 0.48 : 0.62;
-      ctx.fillStyle = game.flags.rumorFixed ? '#132d27' : '#351c18';
-      ctx.fillRect(sx, sy, 34, 15);
-      ctx.strokeStyle = game.flags.rumorFixed ? '#80f0d0' : '#ffcf66';
-      ctx.strokeRect(sx + 0.5, sy + 0.5, 33, 14);
-      ctx.fillStyle = game.flags.rumorFixed ? '#c5fff1' : '#ffe08a';
-      ctx.fillText(headline.text, sx + 4, sy + 11);
-    }
-    ctx.textAlign = 'left';
-    ctx.restore();
-  }
-
-  function chapter4HubVisibleMarks() {
-    const props = MAP_PROPS.arcade || [];
-    return props.filter((prop) => prop.kind === 'ch4_district')
-      .map((prop) => ({ map: 'arcade', x: prop.x, y: prop.y, kind: prop.kind, label: prop.label || '' }));
-  }
-
-  function chapter5HubVisibleMarks() {
-    const props = MAP_PROPS.cozyhome || [];
-    return props.filter((prop) => prop.kind === 'ch5_district')
-      .map((prop) => ({ map: 'cozyhome', x: prop.x, y: prop.y, kind: prop.kind, label: prop.label || '' }));
-  }
-
-  function drawStaticHubMarks(marks, cx, cy, profile, palette) {
-    ctx.save();
-    ctx.textAlign = 'center';
-    for (const [i, mark] of marks.entries()) {
-      const sx = Math.round(mark.x * TS - cx);
-      const sy = Math.round(mark.y * TS - cy - 2);
-      if (sx < -60 || sx > LW + 60 || sy < -50 || sy > LH + 50) continue;
-      const icon = palette.icon(mark.label);
-      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.76 : 0.90;
-      ctx.fillStyle = icon.bg;
-      ctx.fillRect(sx + 5, sy + 8, TS - 10, TS - 12);
-      ctx.strokeStyle = icon.fg;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(sx + 5.5, sy + 8.5, TS - 11, TS - 13);
-      ctx.fillStyle = icon.fg;
-      ctx.font = fs(14, true);
-      ctx.fillText(icon.text, sx + TS / 2, sy + 24);
-      if (profile.labels) {
-        ctx.font = fs(9, true);
-        ctx.fillText(mark.label, sx + TS / 2, sy + 4);
-      }
-      if (i < (palette.rings || 0) && !(game.lowGraphics || game.reduceFx)) {
-        ctx.globalAlpha = 0.22;
-        ctx.strokeRect(sx + 2.5, sy + 5.5, TS - 5, TS - 7);
-      }
-    }
-    ctx.textAlign = 'left';
-    ctx.restore();
-  }
-
-  function drawHubAtmosphereProps(mapId, kind, cx, cy, palette) {
-    const props = (MAP_PROPS[mapId] || []).filter((prop) => prop.kind === kind);
-    if (!props.length) return;
-    ctx.save();
-    ctx.textAlign = 'center';
-    ctx.font = fs(12, true);
-    for (const prop of props) {
-      const sx = Math.round(prop.x * TS - cx);
-      const sy = Math.round(prop.y * TS - cy);
-      if (sx < -40 || sx > LW + 40 || sy < -40 || sy > LH + 40) continue;
-      const icon = palette.icon(prop.label || '');
-      const w = icon.w || TS - 24;
-      const h = icon.h || TS - 24;
-      const ox = icon.ox ?? Math.round((TS - w) / 2);
-      const oy = icon.oy ?? 16;
-      ctx.globalAlpha = icon.alpha || (game.lowGraphics || game.reduceFx ? 0.42 : 0.62);
-      ctx.fillStyle = icon.bg;
-      ctx.fillRect(sx + ox, sy + oy, w, h);
-      ctx.strokeStyle = icon.fg;
-      ctx.strokeRect(sx + ox + 0.5, sy + oy + 0.5, w - 1, h - 1);
-      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.72 : 0.84;
-      ctx.fillStyle = icon.fg;
-      ctx.fillText(icon.text, sx + ox + w / 2, sy + oy + Math.min(h - 4, 14));
-    }
-    ctx.textAlign = 'left';
-    ctx.restore();
-  }
-
-  function drawChapter4HubMarks(cx, cy) {
-    if (game.map !== 'arcade') return;
-    const profile = chapter4HubVisualProfile(s4KeyCount(), game.lowGraphics || game.reduceFx);
-    drawStaticHubMarks(chapter4HubVisibleMarks(), cx, cy, profile, {
-      rings: profile.confetti,
-      icon: (label) => {
-        if (label === 'í¬ê·¼í•œ ì§‘ ë¬¸') return { text: 'â–¶', bg: '#30213a', fg: '#e9a7ff' };
-        if (label === 'ì ê¸´ ì •ë¬¸') return { text: 'ğŸ”’', bg: '#2f2110', fg: '#ffd644' };
-        if (label === 'ë°±ìŠ¤í…Œì´ì§€ ì…êµ¬') return { text: 'â–£', bg: '#202532', fg: '#9bd3ff' };
-        return { text: 'â˜…', bg: '#3a1f2d', fg: '#ff8ec7' };
-      },
-    });
-    drawHubAtmosphereProps('arcade', 'ch4_atmosphere', cx, cy, {
-      icon: (label) => {
-        if (/í¬ìŠ¤í„°/.test(label)) return { text: 'â–¤', bg: '#281d28', fg: '#ffb3d8' };
-        if (/ë³´ì•ˆ/.test(label)) return { text: 'â–¡', bg: '#1d2230', fg: '#9bd3ff' };
-        return { text: 'â–­', bg: '#2d1832', fg: '#ffd6f0' };
-      },
-    });
-    const signs = [
-      { x: 9, y: 8, text: 'ë¬´ë£Œ' }, { x: 25, y: 8, text: 'ë™ì˜' }, { x: 13, y: 15, text: 'ë‹¹ì²¨' },
-      { x: 31, y: 14, text: 'ì˜¤ëŠ˜' }, { x: 4, y: 17, text: 'í•´ì§€' }, { x: 20, y: 19, text: 'ë³´ì•ˆ' },
-    ];
-    ctx.save(); ctx.font = fs(10, true);
-    for (const s of signs.slice(0, profile.neonSigns)) {
-      const sx = Math.round(s.x * TS - cx + 5), sy = Math.round(s.y * TS - cy + 7);
-      if (sx < -70 || sx > LW + 40 || sy < -40 || sy > LH + 40) continue;
-      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.38 : 0.58;
-      ctx.fillStyle = '#2d1832'; ctx.fillRect(sx, sy, 34, 15);
-      ctx.strokeStyle = '#ff8ec7'; ctx.strokeRect(sx + 0.5, sy + 0.5, 33, 14);
-      ctx.fillStyle = '#ffd6f0'; ctx.fillText(s.text, sx + 4, sy + 11);
-    }
-    ctx.restore();
-  }
-
-  function drawChapter5HubMarks(cx, cy) {
-    if (game.map !== 'cozyhome') return;
-    const profile = chapter5HubVisualProfile(s5ClearCount(), game.lowGraphics || game.reduceFx);
-    drawStaticHubMarks(chapter5HubVisibleMarks(), cx, cy, profile, {
-      rings: profile.voiceRipples,
-      icon: (label) => {
-        if (label === 'ê³ ìš”ì˜ ëœ° ë¬¸') return { text: 'â–¶', bg: '#22302b', fg: '#8fe0c0' };
-        if (label === 'í˜„ê´€ ì•ˆìª½ ë¬¸') return { text: 'â—‡', bg: '#3b2a1e', fg: '#ffd08a' };
-        if (label === 'ì ê¸´ ë³µë„ ì…êµ¬') return { text: 'â€¦', bg: '#25303a', fg: '#9bd3ff' };
-        return { text: 'âŒ‚', bg: '#3a2a20', fg: '#ffd08a' };
-      },
-    });
-    drawHubAtmosphereProps('cozyhome', 'ch5_atmosphere', cx, cy, {
-      icon: (label) => {
-        if (/í™”ë¶„/.test(label)) return { text: 'â™§', bg: '#213025', fg: '#9fe0a0' };
-        if (/ì¤‘ì•™ ëŸ¬ê·¸/.test(label)) return { text: 'â–¤', bg: '#5a3428', fg: '#ffd08a', w: 56, h: 22, ox: -12, oy: 22, alpha: 0.58 };
-        if (/ëŸ¬ê·¸/.test(label)) return { text: 'â–¤', bg: '#3a241d', fg: '#ffd08a' };
-        if (/íƒì/.test(label)) return { text: 'â–£', bg: '#4a3324', fg: '#ffd6a8', w: 28, h: 22, ox: 2, oy: 15, alpha: 0.56 };
-        if (/ë°”êµ¬ë‹ˆ/.test(label)) return { text: 'â—¡', bg: '#3d2d24', fg: '#ffe0b0', w: 28, h: 22, ox: 2, oy: 15, alpha: 0.54 };
-        if (/ì•¡ì/.test(label)) return { text: 'â–¢', bg: '#2d241f', fg: '#ffd0a0' };
-        if (/ì±…ì¥/.test(label)) return { text: 'â–¥', bg: '#2c241a', fg: '#d8b078' };
-        return { text: 'â–ª', bg: '#3a2a20', fg: '#ffe0a8' };
-      },
-    });
-    const lamps = [
-      { x: 8, y: 9 }, { x: 18, y: 10 }, { x: 28, y: 9 }, { x: 12, y: 17 }, { x: 31, y: 16 },
-    ];
-    ctx.save();
-    for (const lamp of lamps.slice(0, profile.warmLamps)) {
-      const sx = Math.round(lamp.x * TS - cx + TS / 2), sy = Math.round(lamp.y * TS - cy + TS / 2);
-      if (sx < -50 || sx > LW + 50 || sy < -50 || sy > LH + 50) continue;
-      ctx.globalAlpha = game.lowGraphics || game.reduceFx ? 0.18 : 0.32;
-      ctx.fillStyle = '#ffd08a'; ctx.beginPath(); ctx.arc(sx, sy, 16, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 0.72; ctx.fillRect(sx - 2, sy - 2, 4, 4);
-    }
-    ctx.restore();
-  }
-
-  function drawWorld() {
-    const m = MAPS[game.map];
-    const { cx, cy } = camera();
-    const frame = Math.floor(game.time / 30) % 2;
-
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
-
-    const x0 = Math.floor(cx / TS), y0 = Math.floor(cy / TS);
-    for (let y = y0; y <= y0 + VIEW_H + 1; y++) {
-      for (let x = x0; x <= x0 + VIEW_W + 1; x++) {
-        if (y < 0 || y >= m.tiles.length || x < 0 || x >= m.tiles[0].length) continue;
-        const ch = m.tiles[y][x];
-        ctx.drawImage(tileCanvas(ch, frame), Math.round(x * TS - cx), Math.round(y * TS - cy));
-      }
-    }
-
-    // A-1 ìˆ¨ì€ ì›Œí”„ ë§ˆì»¤ â€” ë¬¸í‹€Â·ì†Œìš©ëŒì´ë¥¼ íƒ€ì¼ ìœ„, ì—”í‹°í‹° ì•„ë˜ì— ê·¸ë¦°ë‹¤(ì „ ë§µ ì¼ê´„).
-    drawWarpMarkers(cx, cy);
-
-    // ë°©íƒˆì¶œ ë¬¼ì²´ (ë‹¨ë§Â·ê²Œì‹œíŒÂ·ì§€ìš°ê°œÂ·ì¶œêµ¬) â€” íƒ€ì¼ ìœ„, ì—”í‹°í‹° ì•„ë˜
-    if (game.puzzleRun) drawPuzzleObjects(cx, cy);
-    // í”„ë¡¤ë¡œê·¸ ì‹¤í—˜ì‹¤ â€” í•µì‹¬ ë‹¨ì„œ/ë³´ì¡° ì¡°ì‚¬ë¬¼/ì¶œêµ¬ë¥¼ ëˆˆì— ë³´ì´ê²Œ ë°°ì¹˜í•œë‹¤.
-    drawIntroLabObjects(cx, cy);
-    // í”„ë¡¤ë¡œê·¸ ìˆ² â€” ì¶œêµ¬ ì§í›„ ë”°ë¼ì˜ ì²« í”ì ì„ ì‹¤ì œ ì¡°ì‚¬ë¬¼ë¡œ ë³´ì—¬ ì¤€ë‹¤.
-    drawForestPrologueObjects(cx, cy);
-    // 1ì¥ í—ˆë¸Œ â€” êµ¬ì—­ ëœë“œë§ˆí¬/ë‹´ì•„ ë¹Œë“œì—… ì¡°ì‚¬ë¬¼ì„ ì •ì  í‘œì‹ìœ¼ë¡œ ë³´ì—¬ ì¤€ë‹¤.
-    drawCh1HubMarks(cx, cy);
-    // 1ì¥ í—ˆë¸Œ â€” ë…¸ì¶œë„ê°€ ì˜¤ë¥¼ìˆ˜ë¡ ê´‘ê³ /ê°ì‹œ í‘œì‹ì´ ëŠ˜ì–´ë‚˜ë˜ ì €ì‚¬ì–‘ ëª¨ë“œì—ì„œëŠ” ìˆ˜ë¥¼ ì¤„ì¸ë‹¤.
-    drawCh1StreetPressureObjects(cx, cy);
-    // 2ì¥ í—ˆë¸Œ â€” ìƒˆ NPC ì—†ì´ êµ¬ì—­ ì…êµ¬/ì €ìš¸/ë‹¤ìŒ ë¬¸ì„ ì •ì  í‘œì‹ìœ¼ë¡œ ë³´ì—¬ ì¤€ë‹¤.
-    drawChapter2HubMarks(cx, cy);
-    // 3ì¥ í—ˆë¸Œ â€” ì†Œë¬¸ ê±°ë¦¬ì˜ ì‹ ë¬¸ì‚¬/ìƒì /í—¤ë“œë¼ì¸/ë‹¤ìŒ ë¬¸ì„ ì •ì  í‘œì‹ìœ¼ë¡œ ë³´ì—¬ ì¤€ë‹¤.
-    drawChapter3HubMarks(cx, cy);
-    // 4Â·5ì¥ í—ˆë¸Œ â€” ìƒˆ NPCë¥¼ ëŠ˜ë¦¬ì§€ ì•Šê³  ë„“ì€ ê³µê°„ì˜ ëª©ì ì§€ í‘œì‹ë§Œ ë„ìš´ë‹¤.
-    drawChapter4HubMarks(cx, cy);
-    drawChapter5HubMarks(cx, cy);
-    // 2ì¥ í—ˆë¸Œ â€” ì¤‘ì•™ì˜ ê±°ëŒ€í•œ ì €ìš¸ (êµ¬ì—­ í´ë¦¬ì–´ë§ˆë‹¤ ê¸°ìš¸ê¸°ê°€ ì¤€ë‹¤)
-    if (game.map === 'tiltstreet') drawTiltScale(cx, cy);
-
-    // NPC
-    for (const npc of m.npcs) {
-      if (!npcVisible(npc)) continue;
-      const nx = Math.round(npc.x * TS - cx);
-      const ny = Math.round(npc.y * TS - cy - 6);
-      if (npc.monSprite) {
-        const bob = Math.round(Math.sin(game.time / 22) * 2);
-        drawMon(ctx, npc.monSprite, nx, ny + bob, SCALE);
-      } else {
-        drawSprite(ctx, NPC_SPRITES.down[frame], nx, ny, SCALE, NPC_PALETTES[npc.pal]);
-      }
-      // "ë§ì„ ê±¸ ìˆ˜ ìˆì–´ìš”" ë§í’ì„  (ëŒ€í™” ê°€ëŠ¥í•œ NPC ë¨¸ë¦¬ ìœ„)
-      drawTalkBubble(nx + TS / 2, ny - 14);
-    }
-
-    // ì¸ë¬¼ (ë‘¥ì‹¤ë‘¥ì‹¤) â€” ë˜ëŒë ¤ ì¹œêµ¬ê°€ ëœ ì¸ë¬¼ì€ â™¥ì™€ í•¨ê»˜ ë‚¨ê³ ,
-    // ëƒ‰ì •Â·ì¤‘ë¦½ìœ¼ë¡œ ë– ë‚˜ë³´ë‚¸ ì¸ë¬¼ì€ ìë¦¬ì— ì—†ë‹¤ (ì„ íƒì´ ì„¸ê³„ì— ë‚¨ëŠ”ë‹¤)
-    for (const mo of m.monsters) {
-      const dead = game.flags.defeated[mo.id];
-      const friend = isFriend(mo.id);
-      if (dead && !friend) continue;
-      const bob = Math.round(Math.sin(game.time / 18) * 4);
-      const dx0 = Math.round(mo.x * TS - cx), dy0 = Math.round(mo.y * TS - cy - 6 + bob);
-      drawMon(ctx, mo.id, dx0, dy0, SCALE);
-      if (friend) {
-        // ì¹œêµ¬ê°€ ëœ ì¸ë¬¼: ë¨¸ë¦¬ ìœ„ â™¥ (ë§ì„ ê±¸ ìˆ˜ ìˆì–´ìš”)
-        ctx.fillStyle = '#e0453a';
-        ctx.font = fs(16, true);
-        ctx.fillText('â™¥', Math.round(mo.x * TS - cx) + TS / 2 - 5, Math.round(mo.y * TS - cy) - 10 + bob);
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
-        ctx.strokeText('â™¥', Math.round(mo.x * TS - cx) + TS / 2 - 5, Math.round(mo.y * TS - cy) - 10 + bob);
-      } else {
-        // ëŠë‚Œí‘œ (ì•„ì§ í—·ê°ˆë¦¬ëŠ” ì¸ë¬¼)
-        ctx.fillStyle = '#ffd644';
-        ctx.font = fs(18, true);
-        ctx.fillText('!', Math.round(mo.x * TS - cx) + TS / 2 - 3, Math.round(mo.y * TS - cy) - 10 + bob);
-      }
-    }
-
-    // ê¸°ì–µì˜ ë³„ (N-4) â€” ë°˜ì§ì´ëŠ” ì €ì¥ ì˜ì‹ ì§€ì 
-    if (m.star) {
-      const sx = Math.round(m.star.x * TS - cx) + TS / 2;
-      const sy = Math.round(m.star.y * TS - cy) + TS / 2;
-      const tw = 0.5 + 0.5 * Math.sin(game.time / 14);
-      ctx.textAlign = 'center';
-      if (!game.reduceFx) {
-        ctx.fillStyle = `rgba(255,244,180,${(0.28 * tw).toFixed(2)})`;
-        ctx.font = fs(30, true);
-        ctx.fillText('âœ¦', sx, sy + 9);
-      }
-      ctx.fillStyle = `rgba(255,214,68,${(0.6 + 0.4 * tw).toFixed(2)})`;
-      ctx.font = fs(20, true);
-      ctx.fillText('âœ¦', sx, sy + 7);
-      ctx.textAlign = 'left';
-    }
-
-    // í”Œë ˆì´ì–´
-    const p = game.player;
-    const walking = p.px !== p.x * TS || p.py !== p.y * TS;
-    const pframe = walking ? Math.floor(p.step / 6) % 2 : 0;
-    const dirKey = p.dir === 'right' ? 'left' : p.dir;
-    drawSprite(ctx, PLAYER_SPRITES[dirKey][pframe],
-      Math.round(p.px - cx), Math.round(p.py - cy - 6), SCALE, null, p.dir === 'right');
-
-    if (game.puzzleRun) drawStalkers(cx, cy);
-    // ì½”ì–´ â€” ì—¬ëŸ ê°œì˜ ì˜ì(ì•ˆì•„ ì¤€ ì¡°ê° ìˆ˜ë§Œí¼ ì±„ì›Œì§)
-    if (game.map === 'coreroom') drawCoreChairs(cx, cy);
-
-    // 2ì¥ êµ¬ì—­ ì—°ì¶œ â€” ì–´ë‘ (êº¼ì§„ ê±°ë¦¬)Â·ë¹„ë„¤íŠ¸(ë©”ì•„ë¦¬ ê³¨ëª©). HUD ì•„ë˜ì— ê¹”ë¦°ë‹¤.
-    if (game.puzzleRun && game.puzzleRun.puzzle.type === 'lamps') drawDarkness(cx, cy);
-    if (game.puzzleRun && game.puzzleRun.puzzle.type === 'voices') drawEchoVignette();
-    // í™©í˜¼ ì•°ë¹„ì–¸íŠ¸(ë§ˆì„Â·ìˆ²) â€” ì˜¨ê¸°ê°€ ìŒ“ì¼ìˆ˜ë¡ ì˜…ì–´ì§„ë‹¤
-    drawDuskAmbient();
-    // íŒŒì´ë„ ã€Œê³ ìš”ì˜ ëœ°ã€ â€” êµ¬ì—­ì„ ì§€ë‚  ë•Œë§ˆë‹¤ í™”ë©´ì´ í•œ ë‹¨ê³„ì”© ì–´ë‘ì›Œì§„ë‹¤(ë¹„ë„¤íŠ¸ ì¬ì‚¬ìš©)
-    drawQuietVignette();
-    // ë™í–‰ì ë°˜ë”” â€” ì–´ìŠ¤ë¦„ ìœ„ì— ê·¸ë ¤, í™©í˜¼ ì†ì—ì„œ í™€ë¡œ ë¹›ë‚˜ëŠ” ê´‘ì›ì´ ëœë‹¤
-    drawCompanion(cx, cy);
-
-    drawHud();
-    if (!game.puzzleRun) drawObjectiveArrow();
-    drawControlHint();
-    drawNotice();
-    if (game.puzzleRun) {
-      drawPuzzleHud();
-      // ì ‘ì´‰ í™”ë©´ í”Œë˜ì‹œ (ëª¨ì…˜ ë¯¼ê° ë°°ë ¤ë¡œ reduceFxë©´ ìƒëµ)
-      if (game.puzzleRun.flashT > 0 && !game.reduceFx) {
-        ctx.fillStyle = 'rgba(224,69,58,0.32)';
-        ctx.fillRect(0, 0, LW, LH);
-      }
-    }
-    drawAdStickers();
-    drawSofaWarmth();
-    drawIntroDim();
-    drawUnlockFlash();
-  }
-
-  // B-1 íšë“ ìˆœê°„ í™”ë©´ ì—°ì¶œ â€” í…Œë§ˆ ê°•ì¡°ìƒ‰ì´ í™”ë©´ ê°€ì¥ìë¦¬ì—ì„œ ì§§ê²Œ ë²ˆì ¸ ì‚¬ë¼ì§„ë‹¤.
-  // reduceFxë©´ unlockFlashê°€ ì• ì´ˆì— 0ì´ë¼ ì•„ë¬´ê²ƒë„ ê·¸ë¦¬ì§€ ì•ŠëŠ”ë‹¤(ê´‘ê³¼ë¯¼ì„± ë°°ë ¤).
-  function drawUnlockFlash() {
-    if (!game.unlockFlash || game.unlockFlash <= 0) return;
-    game.unlockFlash -= 1;
-    const t = game.unlockFlash / 24;
-    ctx.save();
-    ctx.globalAlpha = 0.28 * t;
-    ctx.fillStyle = themeAccent();
-    ctx.fillRect(0, 0, LW, LH);
-    ctx.restore();
-  }
-
-  // A-1 ìˆ¨ì€ ì›Œí”„ ì‹œê°í™” â€” ë°ì´í„° ìˆ˜ì • ì—†ì´, ë¬¸Â·ì†Œìš©ëŒì´ ë§ˆì»¤ë¥¼ ì›Œí”„ ì¹¸ ìœ„ì— ê·¸ë¦°ë‹¤.
-  // reduceFxë©´ ê¹œë¹¡ì„ ì—†ì´ ê³ ì •. ìƒ‰ì€ í…Œë§ˆ ê°•ì¡°ìƒ‰(themeAccent) ê³„ì—´ë¡œ ì€ì€í•˜ê²Œ.
-  function drawWarpMarkers(cx, cy) {
-    const markers = hiddenWarpsOf(game.map);
-    if (!markers.length) return;
-    const blink = game.reduceFx ? 1 : (Math.floor(game.time / 20) % 2 ? 1 : 0.55); // 2í”„ë ˆì„ ê¹œë¹¡ì„
-    const col = themeAccent();
-    ctx.save();
-    for (const mk of markers) {
-      const px = Math.round(mk.x * TS - cx), py = Math.round(mk.y * TS - cy);
-      const midx = px + TS / 2, midy = py + TS / 2;
-      if (mk.kind === 'swirl') {
-        // ê°™ì€ ë§µ ë‚´ë¶€ ìˆœê°„ì´ë™ â€” ì†Œìš©ëŒì´(â—Œ) ë§ ë‘ ê²¹
-        ctx.globalAlpha = 0.5 * blink;
-        ctx.strokeStyle = col; ctx.lineWidth = 2;
-        for (let r = 6; r <= 14; r += 5) {
-          const a0 = game.reduceFx ? 0 : game.time / 9;
-          ctx.beginPath();
-          ctx.arc(midx, midy, r, a0, a0 + Math.PI * 1.5);
-          ctx.stroke();
-        }
-        ctx.globalAlpha = 0.85 * blink;
-        ctx.fillStyle = col; ctx.font = fs(15, true); ctx.textAlign = 'center';
-        ctx.fillText('â—Œ', midx, midy + 5);
-        ctx.textAlign = 'left';
-      } else {
-        // ë‹¤ë¥¸ ë§µìœ¼ë¡œ ê°€ëŠ” ë¬¸ â€” ë°œê´‘ ì•„ì¹˜/ë¬¸í‹€ (í”½ì…€í’)
-        ctx.globalAlpha = 0.22 * blink;
-        ctx.fillStyle = col;
-        ctx.fillRect(px + 6, py + 2, TS - 12, TS - 6); // ë¬¸ ë°œê´‘
-        ctx.globalAlpha = 0.9 * blink;
-        ctx.strokeStyle = col; ctx.lineWidth = 2;
-        // ë¬¸í‹€: ìœ„ ê°€ë¡œ + ì–‘ ì„¸ë¡œ (ë°”ë‹¥ì€ ì—´ì–´ ë‘¬ 'ë“œë‚˜ë“œëŠ” ë¬¸' ëŠë‚Œ)
-        ctx.beginPath();
-        ctx.moveTo(px + 7, py + TS - 4);
-        ctx.lineTo(px + 7, py + 4);
-        ctx.lineTo(px + TS - 7, py + 4);
-        ctx.lineTo(px + TS - 7, py + TS - 4);
-        ctx.stroke();
-        ctx.globalAlpha = 0.95 * blink;
-        ctx.fillStyle = col; ctx.font = fs(12, true); ctx.textAlign = 'center';
-        ctx.fillText('â–²', midx, midy + 4); // ë“¤ì–´ê°€ëŠ” ë°©í–¥ íŒíŠ¸
-        ctx.textAlign = 'left';
-      }
-    }
-    ctx.restore();
-  }
-
-  // ìƒˆ ê²Œì„ ì¸íŠ¸ë¡œ ì•”ì „ â€” ì»´í“¨í„°ì‹¤ ì¥ë©´(ëŒ€í™” ì²« 3ì¤„) ë™ì•ˆ í™”ë©´ì„ ê±°ì˜ ê°€ë¦¬ê³ ,
-  // 4ë²ˆì§¸ ì¤„ë¶€í„° 120í”„ë ˆì„ì— ê±¸ì³ ì„œì„œíˆ ê±·ëŠ”ë‹¤. ëŒ€í™” ë°•ìŠ¤(drawDialog)ëŠ” ì´ í•¨ìˆ˜
-  // ë’¤ì— ê·¸ë ¤ì§€ë¯€ë¡œ ì´ ì˜¤ë²„ë ˆì´ ìœ„ë¡œ ì˜¨ì „íˆ ë³´ì¸ë‹¤. reduceFxë©´ í˜ì´ë“œ ì—†ì´ ì¦‰ì‹œ ê±·íŒë‹¤.
-  function drawIntroDim() {
-    if (!game.introDim) return;
-    const idx = game.dialog ? game.dialog.idx : 4; // ëŒ€í™”ê°€ ì´ë¯¸ ëë‚¬ìœ¼ë©´ ë‹¤ ê±·íŒ ê²ƒìœ¼ë¡œ ì·¨ê¸‰
-    if (idx < 3) {
-      ctx.fillStyle = 'rgba(0,0,0,0.92)';
-      ctx.fillRect(0, 0, LW, LH);
-      return;
-    }
-    if (game.reduceFx) { game.introDim = null; return; } // í˜ì´ë“œ ì—†ì´ ì¦‰ì‹œ ì „í™˜
-    game.introDim.fadeFrame = Math.max(0, game.introDim.fadeFrame) + 1;
-    const t = Math.min(1, game.introDim.fadeFrame / 120);
-    const alpha = 0.92 * (1 - t);
-    if (alpha <= 0.003) { game.introDim = null; return; }
-    ctx.fillStyle = `rgba(0,0,0,${alpha})`;
-    ctx.fillRect(0, 0, LW, LH);
-  }
-
-  // 5ì¥ êµ¬ì—­â‘¢ ã€Œì†ŒíŒŒ ì½”ë„ˆã€ â€” ì•‰ì•„ ìˆëŠ” ë™ì•ˆ í™”ë©´ì— ë”°ëœ»í•œ ìƒ‰ ì˜¤ë²„ë ˆì´ê°€ ì ì  ì§™ì–´ì§„ë‹¤.
-  // reduceFxë©´ ì ì  ì§™ì–´ì§€ëŠ” ì• ë‹ˆë©”ì´ì…˜ ì—†ì´ ê³ ì • í†¤ìœ¼ë¡œë§Œ í‘œì‹œí•œë‹¤(ëª¨ì…˜ ë¯¼ê° ë°°ë ¤).
-  function drawSofaWarmth() {
-    if (!(game.puzzleRun && game.puzzleRun.puzzle.type === 'sofa' && game.puzzleRun.sitting)) return;
-    const run = game.puzzleRun;
-    const settle = Math.min(1, (run.sitFrames || 0) / 180); // ì•‰ì€ ë’¤ ì ì  ì§™ì–´ì§„ë‹¤(3ì´ˆ ì •ë„)
-    const alpha = game.reduceFx ? 0.16 : 0.08 + 0.14 * settle;
-    ctx.fillStyle = `rgba(224,139,58,${alpha})`;
-    ctx.fillRect(0, 0, LW, LH);
-  }
-
-  // 4ì¥ ã€Œë°˜ì§ ì•„ì¼€ì´ë“œã€ â€” ê´‘ê³  ë”±ì§€ HUD ì˜¤ì—¼. í™”ë©´ ê°€ì¥ìë¦¬ì— ë°˜íˆ¬ëª… ìŠ¤í‹°ì»¤ê°€
-  // ëˆ„ì (0~4ê°œ)ë˜ì–´ ì‹œì•¼ë¥¼ ë°©í•´í•œë‹¤. í•´ì§€ ë‹¨ë§(êµ¬ì—­â‘  ë£°ë › ê´‘ì¥)ë¡œë§Œ ì „ë¶€ ì‚¬ë¼ì§„ë‹¤.
-  // reduceFxë©´ ê¹œë¹¡ì„(í„ìŠ¤) ì—†ì´ ê³ ì • í‘œì‹œí•œë‹¤(ê´‘ê³¼ë¯¼ì„±Â·ëª¨ì…˜ ë¯¼ê° ë°°ë ¤).
-  const AD_STICKERS = [
-    { text: 'ë¬´ë£Œ!', color: '#ff4d6d' },
-    { text: 'ë‹¹ì²¨!', color: '#ffd644' },
-    { text: 'ì˜¤ëŠ˜ë§Œ!', color: '#4dd0e1' },
-    { text: 'í•«ë”œ!', color: '#a86ae0' },
-  ];
-  function drawAdStickers() {
-    const n = game.flags.adStickers || 0;
-    if (n <= 0) return;
-    const W = 58, H = 24;
-    // ìƒì‹œ HUD(ì¢Œìƒë‹¨ ëª©í‘œ ìƒì y 8~60, ìš°ìƒë‹¨ ìë¹„(â™¥) í‘œì‹œ)ì™€ ê²¹ì¹˜ì§€ ì•Šë„ë¡ ìƒë‹¨
-    // ë”±ì§€ëŠ” y=96(HUDÂ·í¼ì¦ HUD ì•„ë˜)ìœ¼ë¡œ ë‚´ë¦°ë‹¤. í™”ë©´ ëª¨ì„œë¦¬ë¥¼ ì–´ì§€ëŸ½íˆëŠ” ì—°ì¶œ ì˜ë„ëŠ” ìœ ì§€.
-    const spots = [
-      { x: 8, y: 96 },               // ì¢Œìƒë‹¨(HUD ì•„ë˜)
-      { x: LW - W - 8, y: 96 },      // ìš°ìƒë‹¨(HUDÂ·í•˜íŠ¸ í‘œì‹œ ì•„ë˜)
-      { x: 8, y: LH - H - 8 },       // ì¢Œí•˜ë‹¨
-      { x: LW - W - 8, y: LH - H - 8 }, // ìš°í•˜ë‹¨
-    ];
-    for (let i = 0; i < n; i++) {
-      const s = spots[i], deco = AD_STICKERS[i];
-      const pulse = game.reduceFx ? 1 : 0.75 + 0.25 * Math.sin(game.time / 14 + i * 2);
-      ctx.save();
-      ctx.globalAlpha = 0.85 * pulse;
-      ctx.fillStyle = deco.color;
-      ctx.fillRect(s.x, s.y, W, H);
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(s.x + 0.5, s.y + 0.5, W, H);
-      ctx.fillStyle = '#000';
-      ctx.font = fs(12, true);
-      ctx.textAlign = 'center';
-      ctx.fillText(deco.text, s.x + W / 2, s.y + H / 2 + 4);
-      ctx.textAlign = 'left';
-      ctx.restore();
-    }
-  }
-
-  // ì›”ë“œ ìƒë‹¨ ì•ˆë‚´ í† ìŠ¤íŠ¸ (í•´ê¸ˆ ì•Œë¦¼ ë“±) â€” ì ê¹ ë–´ë‹¤ ì‚¬ë¼ì§„ë‹¤
-  function drawNotice() {
-    if (!game.notice || game.notice.t <= 0) return;
-    const txt = game.notice.text;
-    ctx.font = fs(13, true);
-    const tw = ctx.measureText(txt).width;
-    const bw = tw + 28, bh = game.largeText ? 32 : 28;
-    // í¼ì¦ HUD(drawPuzzleHud, by=8~ìµœëŒ€ 74px ë†’ì´)ì™€ ì„¸ë¡œë¡œ ê²¹ì¹˜ì§€ ì•Šë„ë¡,
-    // ë°©íƒˆì¶œ ì¤‘ì—ëŠ” ê·¸ ì•„ë˜ë¡œ ë‚´ë ¤ì„œ ê·¸ë¦°ë‹¤.
-    const bx = Math.round(LW / 2 - bw / 2), by = game.puzzleRun ? 86 : 70;
-    const fade = Math.min(1, game.notice.t / 40);
-    ctx.globalAlpha = fade;
-    utBox(bx, by, bw, bh, 6);
-    ctx.fillStyle = themeAccent();
-    ctx.textAlign = 'center';
-    ctx.fillText(txt, LW / 2, by + bh / 2 + 4);
-    ctx.textAlign = 'left';
-    ctx.globalAlpha = 1;
-  }
-
-  // NPC ë¨¸ë¦¬ ìœ„ ì‘ì€ ë§í’ì„  â€” "ì—¬ê¸° ë§ ê±¸ ìˆ˜ ìˆì–´ìš”"
-  function drawTalkBubble(cx, topY) {
-    const bob = Math.round(Math.sin(game.time / 16) * 2);
-    const w = 16, h = 12;
-    const x = Math.round(cx - w / 2), y = Math.round(topY + bob);
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x + 0.5, y + 0.5, w, h);
-    // ê¼¬ë¦¬
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.moveTo(cx - 3, y + h);
-    ctx.lineTo(cx + 3, y + h);
-    ctx.lineTo(cx, y + h + 4);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    // ë§ì¤„ì„(â€¦)
-    ctx.fillStyle = '#000';
-    for (let i = 0; i < 3; i++) ctx.fillRect(x + 4 + i * 4, y + 5, 2, 2);
-  }
-
-  // ê²Œì„ì„ ì²˜ìŒ ì‹œì‘í–ˆì„ ë•Œ(ë°•ì‚¬ë‹˜ê³¼ ëŒ€í™” ì „)ë§Œ ë³´ì´ëŠ” ì¡°ì‘ ì•ˆë‚´
-  function drawControlHint() {
-    if (game.flags.talkedProf) return;
-    const txt = isTouchDevice ? 'ìŠ¤í‹±ìœ¼ë¡œ ì´ë™ Â· â’¶ ë²„íŠ¼ìœ¼ë¡œ ë§ ê±¸ê¸°' : 'ë°©í–¥í‚¤ë¡œ ì´ë™ Â· Z(ë˜ëŠ” A ë²„íŠ¼)ë¡œ ë§ ê±¸ê¸°';
-    ctx.font = fs(12, true);
-    const tw = ctx.measureText(txt).width;
-    const bw = tw + 28, bh = game.largeText ? 30 : 26;
-    const bx = Math.round(LW / 2 - bw / 2);
-    const by = LH - bh - (game.largeText ? 58 : 52);
-    utBox(bx, by, bw, bh, 6);
-    ctx.fillStyle = '#9fd0ff';
-    ctx.textAlign = 'center';
-    ctx.fillText(txt, LW / 2, by + bh / 2 + 4);
-    ctx.textAlign = 'left';
-  }
-
-  // í˜„ì¬ ë§µì—ì„œ ë‹¤ìŒ ëª©í‘œë¥¼ í–¥í•´ í•œ ê±¸ìŒ ë” ê°€ì•¼ í•  íƒ€ì¼ì„ ì°¾ëŠ”ë‹¤.
-  // ëª©í‘œê°€ ë‹¤ë¥¸ ë§µì— ìˆìœ¼ë©´, ê·¸ê³³ìœ¼ë¡œ ê°€ëŠ” ê²½ë¡œìƒì˜ ë‹¤ìŒ ì›Œí”„ íƒ€ì¼ì„ ê°€ë¦¬í‚¨ë‹¤.
-  function nextWaypoint(flags, curMap) {
-    const target = getObjectiveTarget(flags, curMap);
-    if (!target) return null;
-    if (target.map === curMap) return { x: target.x, y: target.y };
-    const prev = { [curMap]: null };
-    const exitTile = {};
-    const queue = [curMap];
-    while (queue.length) {
-      const cur = queue.shift();
-      if (cur === target.map) break;
-      for (const w of MAPS[cur].warps) {
-        if (!(w.to in prev)) {
-          prev[w.to] = cur;
-          exitTile[w.to] = { x: w.x, y: w.y };
-          queue.push(w.to);
-        }
-      }
-    }
-    if (!(target.map in prev)) return null;
-    let m = target.map;
-    while (prev[m] !== curMap) {
-      m = prev[m];
-      if (m === null) return null;
-    }
-    return exitTile[m];
-  }
-
-  // í™”ë©´ ì•„ë˜ì— ë‹¤ìŒ ëª©í‘œì˜ ë°©í–¥ + ëª©ì ì§€ ì´ë¦„ì„ ì•Œë ¤ì£¼ëŠ” ì•ˆë‚´ ë°°ë„ˆë¥¼ ê·¸ë¦°ë‹¤.
-  // ë‹¤ìŒ ëª©í‘œë¥¼ ì§ê´€ì ìœ¼ë¡œ ì•ˆë‚´í•œë‹¤.
-  //  Â· ëª©í‘œê°€ ê°™ì€ ë§µÂ·í™”ë©´ ì•ˆ: ê·¸ ì¹¸ ìœ„ì— í†µí†µ íŠ€ëŠ” â–¼ ë§ˆì»¤ë¡œ "ì—¬ê¸°!" í‘œì‹œ
-  //  Â· ê·¸ ì™¸: í”Œë ˆì´ì–´ë¥¼ ë„ëŠ” í° ë°©í–¥ í™”ì‚´í‘œ + í•˜ë‹¨ì— ëª©ì ì§€ ì´ë¦„
-  function drawObjectiveArrow() {
-    const target = getObjectiveTarget(game.flags, game.map);
-    if (!target) return;
-    const wp = nextWaypoint(game.flags, game.map);
-    if (!wp) return;
-    const p = game.player;
-    const onTargetMap = target.map === game.map;
-    // ê±¸ì–´ê°ˆ ëª©í‘œ ì¹¸: ê°™ì€ ë§µì´ë©´ ëª©í‘œ ìì²´, ì•„ë‹ˆë©´ ë‹¤ìŒ ì›Œí”„ ì¹¸
-    const aim = onTargetMap ? { x: target.x, y: target.y } : wp;
-    const dx = aim.x - p.x, dy = aim.y - p.y;
-    const dist = Math.abs(dx) + Math.abs(dy);
-    if (onTargetMap && dist === 0) return; // ì´ë¯¸ ë„ì°©
-    const { cx, cy } = camera();
-    const angle = Math.atan2(dy, dx);
-    const bob = game.reduceFx ? 0 : Math.abs(Math.sin(game.time / 12));
-
-    // ëª©í‘œ ì¹¸ì´ í™”ë©´ ì•ˆì´ê³  ê°€ê¹Œìš°ë©´: ê·¸ ì¹¸ ë°”ë¡œ ìœ„ì— ë§ˆì»¤ë¥¼ ë„ìš´ë‹¤
-    const sx = Math.round(aim.x * TS - cx + TS / 2);
-    const sy = Math.round(aim.y * TS - cy);
-    const onScreen = sx > 8 && sx < LW - 8 && sy > 24 && sy < LH - 8;
-    if (onTargetMap && onScreen && dist <= 8) {
-      const my = sy - 14 - bob * 7;
-      // ë¹› ê³ ë¦¬
-      ctx.save();
-      ctx.globalAlpha = 0.35;
-      ctx.fillStyle = '#ffd644';
-      ctx.beginPath();
-      ctx.ellipse(sx, sy + TS / 2, 16, 7, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-      // í†µí†µ íŠ€ëŠ” â–¼ ë§ˆì»¤
-      ctx.save();
-      ctx.fillStyle = '#ffd644';
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(sx, my + 14);
-      ctx.lineTo(sx - 9, my);
-      ctx.lineTo(sx + 9, my);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.restore();
-      return;
-    }
-
-    // ê·¸ ì™¸: í”Œë ˆì´ì–´ ì£¼ìœ„ë¥¼ ë„ëŠ” í° ë°©í–¥ í™”ì‚´í‘œ
-    const px = Math.round(p.px - cx + TS / 2);
-    const py = Math.round(p.py - cy + TS / 2);
-    const r = 40 + bob * 4;
-    const ax = px + Math.cos(angle) * r;
-    const ay = py + Math.sin(angle) * r;
-    ctx.save();
-    ctx.translate(ax, ay);
-    ctx.rotate(angle);
-    ctx.fillStyle = '#ffd644';
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(17, 0);
-    ctx.lineTo(-9, -12);
-    ctx.lineTo(-3, 0);
-    ctx.lineTo(-9, 12);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
-
-    // í•˜ë‹¨ ëª©ì ì§€ ë¼ë²¨
-    const destName = onTargetMap ? (target.label || 'ì´ ì§€ì—­') : ((MAPS[target.map] && MAPS[target.map].name) || 'ëª©í‘œ');
-    // A-2: ë‚˜ì¹¨ë°˜ì´ 'ìˆ¨ì€ ì›Œí”„'(ë¬¸í‹€Â·ì†Œìš©ëŒì´ ë§ˆì»¤ë§Œ ìˆëŠ” ì¹¸)ë¥¼ ê°€ë¦¬í‚¬ ë•Œ, ê·¸ ì¹¸ì´
-    // ë¬¸ì„ì„ í•œë§ˆë””ë¡œ ì•Œë ¤ ì¤€ë‹¤ â€” ì˜ˆì „ì—” ë¹ˆ íƒ€ì¼ì„ ê°€ë¦¬ì¼œ ì•„ì´ê°€ í—¤ë§¤ë˜ ë¬¸ì œë¥¼ ì—†ì•¤ë‹¤.
-    let label = onTargetMap ? `${destName} ìª½ìœ¼ë¡œ!` : `${destName}(ìœ¼)ë¡œ ê°€ê¸°`;
-    if (!onTargetMap && isHiddenWarp(game.map, wp.x, wp.y)) {
-      label = hiddenWarpsOf(game.map).some((mk) => mk.x === wp.x && mk.y === wp.y && mk.kind === 'swirl')
-        ? `${destName}(ìœ¼)ë¡œ â€” ì†Œìš©ëŒì´ë¡œ ë“¤ì–´ê°€ì`
-        : `${destName}(ìœ¼)ë¡œ â€” ë¹›ë‚˜ëŠ” ë¬¸ìœ¼ë¡œ`;
-    }
-    ctx.font = fs(13, true);
-    const tw = ctx.measureText(label).width;
-    const bh = game.largeText ? 34 : 28;
-    const bw = tw + 28;
-    const bx = Math.round(LW / 2 - bw / 2);
-    const by = LH - bh - 10;
-    utBox(bx, by, bw, bh, 6);
-    ctx.fillStyle = '#fff';
-    ctx.textAlign = 'center';
-    ctx.fillText(label, LW / 2, by + bh / 2 + 5);
-    ctx.textAlign = 'left';
-  }
-
-  // v2 ì‹ ê·œ ìŠ¤í…Œì´ì§€ ë§µ(ì „ë¶€ ê³µì§œ ê±°ë¦¬~ì½”ì–´) â†’ ì¥ ë²ˆí˜¸ë¥¼ ë§µ ìì²´ì— ê³ ì •í•œë‹¤.
-  // HUDê°€ ì§„í–‰ í”Œë˜ê·¸ë¡œ ë‹¤ì‹œ ê³„ì‚°í•˜ì§€ ì•Šê³  ê·¸ ìŠ¤í…Œì´ì§€ì˜ ì¥ì„ ìš°ì„  ë³´ì—¬ ì£¼ê¸° ìœ„í•¨.
-  const MAP_CHAPTER = {
-    introlab: 0, // í”„ë¡¤ë¡œê·¸
-    freestreet: 1, traceroom: 1, boardplaza: 1, warehouse: 1, ownerroom: 1,
-    tiltstreet: 2, echoalley: 2, samplehouse: 2, dimstreet: 2, gatekeeper: 2,
-    rumorstreet: 3, tipsroom: 3, editroom: 3, towerroom: 3, towerroof: 3,
-    arcade: 4, roulettesquare: 4, signupalley: 4, backstage: 4, yuhokstage: 4,
-    cozyhome: 5, callroom: 5, corridor: 5, sofaroom: 5, lumiroom: 5,
-    quietyard: 'final', goyostage: 'final', coreroom: 'final',
-  };
-  // ì±•í„° í”Œë˜ê·¸ ê¸°ë°˜ HUD í‘œê¸°: í”„ë¡¤ë¡œê·¸~1ì¥ í´ë¦¬ì–´ ì „ = "1ì¥", chapterNClear ì´í›„ =
-  // "(N+1)ì¥", chapter5Clear ì´í›„ = "íŒŒì´ë„". ì‹ ê·œ ìŠ¤í…Œì´ì§€ ë§µì€ ê·¸ ë§µ ìì‹ ì˜ ì¥ì„ ìš°ì„ í•œë‹¤.
-  function chapterBadgeLabel(mapId, flags) {
-    const fixed = MAP_CHAPTER[mapId];
-    if (fixed === 0) return 'í”„ë¡¤ë¡œê·¸';
-    if (fixed === 'final') return 'íŒŒì´ë„';
-    if (fixed) return `${fixed}ì¥`;
-    if (flags.chapter5Clear) return 'íŒŒì´ë„';
-    if (flags.chapter4Clear) return '5ì¥';
-    if (flags.chapter3Clear) return '4ì¥';
-    if (flags.chapter2Clear) return '3ì¥';
-    if (flags.chapter1Clear) return '2ì¥';
-    // ë”°ë¼(í”„ë¡¤ë¡œê·¸)ë¥¼ ë˜ëŒë¦¬ê¸° ì „ì—ëŠ” ì•„ì§ 1ì¥ì´ ì•„ë‹ˆë‹¤
-    return (flags.defeated && flags.defeated.bekkyeomon) ? '1ì¥' : 'í”„ë¡¤ë¡œê·¸';
-  }
-
-  // HUD ì¢Œìƒë‹¨ ì±•í„° í…ìŠ¤íŠ¸
-  function hudBadgeText(mapId, flags) {
-    return chapterBadgeLabel(mapId, flags);
-  }
-
-  // X-8 ëª©í‘œ ë°°ë„ˆ ì ‘ë‘ â€” ìˆ˜ì—…(ì°¨ì‹œ) ì„¸ì…˜ì´ë©´ "ì´ë²ˆ ì‹œê°„ ëª©í‘œ: ", ì•„ë‹ˆë©´ "ëª©í‘œ: ".
-  function objectiveBannerPrefix() { return game.flags.classSession ? 'ì´ë²ˆ ì‹œê°„ ëª©í‘œ: ' : 'ëª©í‘œ: '; }
-  function drawHud() {
-    // ìŠ¤í…Œì´ì§€ + ì§€ì—­ ì´ë¦„ + ëª©í‘œ
-    const m = MAPS[game.map];
-    ctx.font = fs(14, true);
-    const title = `${hudBadgeText(game.map, game.flags)} Â· ${m.name}`;
-    // ë°©íƒˆì¶œ ì¤‘ì—ëŠ” ë³¸í¸ í€˜ìŠ¤íŠ¸ ëŒ€ì‹  ë°© ë§¥ë½ ëª©í‘œë¥¼ ë³´ì—¬ ì¤€ë‹¤ (í´ë¦¬ì–´ í›„ì—” ë³´ìŠ¤ë°© ì•ˆë‚´)
-    let objText;
-    if (game.puzzleRun) {
-      const puz = game.puzzleRun.puzzle;
-      objText = game.flags.privacyRecoveryActive
-        ? `ë…¸ì¶œë„ MAX â€” ì •ë³´ ì¡°ê° íšŒìˆ˜ ${game.flags.privacyRecovery || 0}/${PRIVACY_RECOVERY_NEED}`
-        : (isPuzzleCleared(game.puzzleRun.id) && puz.objectiveCleared) ? puz.objectiveCleared
-          : (puz.objective || 'ë°©ì„ ë¹ ì ¸ë‚˜ê°€ì');
-    } else if (game.map === 'freestreet') {
-      // í—ˆë¸Œ HUD â€” ê¸ˆê³  ì ê¸ˆ ì§„í–‰ì„ ìƒì‹œ ê°€ì‹œí™”
-      const n = s1LockCount();
-      objText = game.flags.chapter1Clear ? 'ê±°ë¦¬ë¥¼ ë‘˜ëŸ¬ë³´ì'
-        : n >= 3 ? 'ê¸ˆê³ ê°€ ì—´ë ¸ë‹¤ â€” ì£¼ì¸ì˜ ë°©ìœ¼ë¡œ'
-        : `ê¸ˆê³  ì ê¸ˆ ${n}/3 í•´ì œ â€” êµ¬ì—­ì„ ëŒì`;
-    } else if (game.map === 'tiltstreet') {
-      // 2ì¥ í—ˆë¸Œ HUD â€” ì €ìš¸ ê¸°ìš¸ê¸°ë¥¼ ìƒì‹œ ê°€ì‹œí™”
-      const tilt = 3 - s2ClearCount();
-      objText = game.flags.chapter2Clear ? 'ê±°ë¦¬ë¥¼ ë‘˜ëŸ¬ë³´ì'
-        : tilt <= 0 ? 'ì €ìš¸ì´ ìˆ˜í‰ì´ë‹¤ â€” ë¬¸ì§€ê¸°ì˜ ë°©ìœ¼ë¡œ'
-        : `ì €ìš¸ ê¸°ìš¸ê¸° ${tilt}/3 â€” ê³¨ëª©ì„ ì‚´í´ë³´ì`;
-    } else if (game.map === 'rumorstreet') {
-      // 3ì¥ í—ˆë¸Œ HUD â€” ì‹ ë¬¸ì‚¬ ì¸µë³„ ì§„í–‰ì„ ìƒì‹œ ê°€ì‹œí™”
-      const n = s3ClearCount();
-      objText = game.flags.chapter3Clear ? 'ê±°ë¦¬ë¥¼ ë‘˜ëŸ¬ë³´ì'
-        : n >= 3 ? 'ì‹ ë¬¸ì‚¬ ì˜¥ìƒ â€” ê·¸ëŸ´ì‹¸ë¥¼ ë§Œë‚˜ì'
-        : `ì†Œë¬¸ì˜ ì¶œì²˜ë¥¼ ì°¾ì â€” ì‹ ë¬¸ì‚¬ ${n}/3ì¸µ`;
-    } else if (game.map === 'arcade') {
-      // 4ì¥ í—ˆë¸Œ HUD â€” ì—´ì‡ (ë¹„ë°€ì¡°ê°Â·ë³¸ì¸í‘œ) ì§„í–‰ì„ ìƒì‹œ ê°€ì‹œí™”
-      const n = s4KeyCount();
-      objText = game.flags.chapter4Clear ? 'ì•„ì¼€ì´ë“œë¥¼ ë‘˜ëŸ¬ë³´ì'
-        : n >= 2 ? 'ì •ë¬¸ì´ ì—´ë ¸ë‹¤ â€” ë°˜ì§ì˜ ë¬´ëŒ€ë¡œ'
-        : `ì—´ì‡  ${n}/2 í™•ë³´ â€” êµ¬ì—­ì„ ëŒì`;
-    } else if (game.map === 'cozyhome') {
-      // 5ì¥ í—ˆë¸Œ HUD â€” í™•ì¸í•˜ëŠ” ìš©ê¸°(êµ¬ì—­ 3ê°œ) ì§„í–‰ì„ ìƒì‹œ ê°€ì‹œí™”
-      const n = s5ClearCount();
-      objText = game.flags.chapter5Clear ? 'ì§‘ì„ ë‘˜ëŸ¬ë³´ì'
-        : n >= 3 ? 'í˜„ê´€ì´ ì—´ë ¸ë‹¤ â€” ë£¨ë¯¸ì˜ ë°©ìœ¼ë¡œ'
-        : `í™•ì¸í•œ ìš©ê¸° ${n}/3 â€” ë°©ì„ ë‘˜ëŸ¬ë³´ì`;
-    } else {
-      objText = getObjective(game.flags, game.map);
-    }
-    // X-8 ìˆ˜ì—… ëª¨ë“œ â€” ëª©í‘œ ë°°ë„ˆì— "ì´ë²ˆ ì‹œê°„" ì ‘ë‘ë¥¼ ë¶™ì—¬ ì°¨ì‹œ ëª©í‘œì„ì„ ë³´ì—¬ ì¤€ë‹¤.
-    const obj = objectiveBannerPrefix() + objText;
-    const w = Math.max(ctx.measureText(obj).width, ctx.measureText(title).width) + 20;
-    utBox(8, 8, w, 52, 4);
-    ctx.fillStyle = '#ffd644';
-    ctx.fillText(title, 18, 28);
-    ctx.fillStyle = '#fff';
-    ctx.fillText(obj, 18, 50);
-
-    // ì•ˆì•„ ì¤€ ë§ˆìŒ (ìë¹„)
-    if (game.flags.mercy > 0) {
-      utBox(LW - 196, 12, 64, 28, 4);
-      ctx.fillStyle = '#e0453a';
-      ctx.font = fs(14, true);
-      ctx.fillText(`â™¥ ${game.flags.mercy}`, LW - 184, 31);
-    }
-
-    if ((game.flags.privacyLeak || 0) > 0 || game.flags.privacyRecoveryActive) {
-      const leak = privacyLeak();
-      const boxW = 206;
-      utBox(LW - boxW - 10, game.flags.mercy > 0 ? 46 : 12, boxW, 30, 4);
-      ctx.fillStyle = leak >= 5 ? '#e0453a' : leak >= 3 ? '#ffd644' : '#9bd3ff';
-      ctx.font = fs(13, true);
-      ctx.fillText(`ë…¸ì¶œë„ ${leak}/5 Â· ${privacyLevelLabel(leak)}`, LW - boxW, game.flags.mercy > 0 ? 66 : 32);
-    }
-
-    if (Sound.muted) {
-      ctx.fillStyle = '#aaa';
-      ctx.font = fs(12);
-      ctx.fillText('â™ª êº¼ì§(M)', LW - 110, 56);
-    }
-  }
-
-  // ì–¸ë”í…Œì¼í’ â€” ëª¨ì„œë¦¬ê°€ ì‚´ì§ ê¹ì¸ í”½ì…€ ìƒì (rì€ ëª¨ì„œë¦¬ ì»· í¬ê¸°ë¡œ ì‚¬ìš©)
-  function roundRect(x, y, w, h, r) {
-    const c = Math.min(r, w / 2, h / 2);
-    ctx.beginPath();
-    ctx.moveTo(x + c, y);
-    ctx.lineTo(x + w - c, y);
-    ctx.lineTo(x + w, y + c);
-    ctx.lineTo(x + w, y + h - c);
-    ctx.lineTo(x + w - c, y + h);
-    ctx.lineTo(x + c, y + h);
-    ctx.lineTo(x, y + h - c);
-    ctx.lineTo(x, y + c);
-    ctx.closePath();
-  }
-
-  // ë°•ìŠ¤ ì•ˆì— ë‘ ì¤„ í° í…Œë‘ë¦¬ë¥¼ ê·¸ë ¤ ì–¸ë”í…Œì¼í’ ìœˆë„ìš°ë¥¼ ë§Œë“ ë‹¤
-  function utBox(x, y, w, h, c) {
-    ctx.fillStyle = '#000';
-    roundRect(x, y, w, h, c || 6);
-    ctx.fill();
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 3;
-    roundRect(x, y, w, h, c || 6);
-    ctx.stroke();
-  }
-
-  function drawDialog() {
-    const d = game.dialog;
-    const line = d.lines[d.idx];
-    const shown = line.slice(0, Math.floor(d.chars));
-    const dialogMaxW = LW - 24 - 48;
-
-    ctx.font = fs(16);
-    const wrappedLines = measureWrap(line, dialogMaxW) + (d.speaker ? 1 : 0);
-    const boxH = Math.max(120, 42 + wrappedLines * lh(24));
-    const y = LH - boxH - 12;
-
-    utBox(12, y, LW - 24, boxH, 8);
-
-    let ty = y + 30;
-    if (d.speaker) {
-      ctx.fillStyle = '#ffd644';
-      ctx.font = fs(16, true);
-      ctx.fillText(`* ${d.speaker}`, 30, ty);
-      ty += lh(26);
-    }
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(16);
-    drawQuestionText(shown, 30, ty, dialogMaxW, lh(24));
-    if (d.chars >= line.length && Math.floor(game.time / 20) % 2 === 0) {
-      ctx.fillStyle = '#fff';
-      ctx.fillText('â–¼', LW - 50, y + boxH - 16);
-    }
-  }
-
-  // ì„ íƒì§€ í•œ ì¤„ì„ ê·¸ë¦°ë‹¤ â€” ì„ íƒëœ ì¤„ ì•ì— ë¹¨ê°„ í•˜íŠ¸ê°€ ë–  ìˆë‹¤ (ì–¸ë”í…Œì¼ ì»¤ì„œ)
-  function drawChoiceLine(text, x, y, selected) {
-    if (selected) {
-      ctx.fillStyle = '#e0453a';
-      ctx.font = fs(15);
-      ctx.fillText('â™¥', x, y);
-    }
-    ctx.fillStyle = selected ? '#fff' : '#888';
-    ctx.font = fs(16);
-    ctx.fillText(text, x + 28, y);
-  }
-
-  // ë¬¸ì œ/í•´ì„¤ í…ìŠ¤íŠ¸ë¥¼ ë°•ìŠ¤ í­ì— ë§ì¶° ê·¸ë¦°ë‹¤ â€” ê¸°ì¡´ \n ì¤„ë°”ê¿ˆì„ ì¡´ì¤‘í•˜ê³ ,
-  // ì¤„ì´ ê¸¸ë©´(íŠ¹íˆ ì„ ìƒë‹˜ì´ ë§Œë“  ì»¤ìŠ¤í…€ ë¬¸ì œ) ìë™ìœ¼ë¡œ ë” ì ‘ì–´ í™”ë©´ ë°–ìœ¼ë¡œ ë„˜ì¹˜ì§€ ì•Šê²Œ í•œë‹¤.
-  // ë§ˆì§€ë§‰ìœ¼ë¡œ ê·¸ë¦° ì¤„ì˜ ë‹¤ìŒ yë¥¼ ë°˜í™˜.
-  function drawQuestionText(text, x, y, maxW, lineH) {
-    let ty = y;
-    for (const part of String(text == null ? '' : text).split('\n')) {
-      const n = Math.max(1, wrapText(part, x, ty, maxW, lineH));
-      ty += n * lineH;
-    }
-    return ty;
-  }
-  // ì„ íƒì§€ í•œ ì¤„(ìë™ ì¤„ë°”ê¿ˆ) â€” ì‚¬ìš©í•œ ì„¸ë¡œ ë†’ì´ë¥¼ ë°˜í™˜.
-  function drawChoiceWrapped(text, x, y, selected, maxW, lineH) {
-    if (selected) {
-      ctx.fillStyle = '#e0453a';
-      ctx.font = fs(15);
-      ctx.fillText('â™¥', x, y);
-    }
-    ctx.fillStyle = selected ? '#fff' : '#888';
-    ctx.font = fs(16);
-    const n = Math.max(1, wrapText(text, x + 28, y, maxW, lineH));
-    return n * lineH;
-  }
-
-  function drawBattle() {
-    const b = game.battle;
-    // í”¼ê²© ì§í›„ í™”ë©´ í”ë“¤ë¦¼ (M-3) â€” ì‹œê° ì „ìš©, í™”ë©´ íš¨ê³¼ ì¤„ì´ê¸°ì—ì„  ë”
-    const jolt = (!game.reduceFx && (b.flash > 8 || b.hitstop > 0));
-    ctx.save();
-    if (jolt) ctx.translate(Math.round(Math.random() * 4 - 2), Math.round(Math.random() * 4 - 2));
-    ctx.fillStyle = '#000';
-    ctx.fillRect(-4, -4, LW + 8, LH + 8);
-    // ë°”ë‹¥ ê²½ê³„ì„ 
-    ctx.strokeStyle = '#222';
-    ctx.lineWidth = 1;
-    for (let i = 1; i < 8; i++) {
-      ctx.beginPath();
-      ctx.moveTo(0, i * 70);
-      ctx.lineTo(LW, i * 70);
-      ctx.stroke();
-    }
-
-    // ì¸ë¬¼ (ì˜¤ë¥¸ìª½ ìœ„, í¬ê²Œ)
-    const shakeX = b.shake > 0 ? Math.sin(b.shake * 2) * (game.reduceFx ? 2 : 6) : 0;
-    const bob = Math.sin(game.time / 20) * 5;
-    const monScale = 9;
-    const mx = Math.round(LW - 16 * monScale - 60 + shakeX);
-    const my = Math.round(56 + bob);
-    const mcx = mx + 16 * monScale / 2;
-    // ê·¸ë¦¼ì â€” ì¸ë¬¼ì´ ë•…ì— ë–  ìˆëŠ” ëŠë‚Œì„ ì¤˜ í™”ë©´ì´ ëœ íœ‘í•˜ê²Œ
-    ctx.fillStyle = 'rgba(0,0,0,0.32)';
-    ctx.beginPath();
-    ctx.ellipse(mcx, 222, 56 - bob, 12, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // í‘œì •(N-1): ì •ë‹µ ì§í›„ í ì¹«(flinch) > ìë¹„ êµ­ë©´ ëˆˆë¬¼ > ë§ˆìŒ ìƒíƒœ(ë•€/í™ì¡°)
-    const mood = b.isPersuade
-      ? (b.flinchT > 0 ? 'flinch'
-        : (b.phase === 'mercy' || b.phase === 'mercyReply') ? 'mercy' : b.pState)
-      : null;
-    drawMon(ctx, b.monId, mx, my, monScale, false, mood, game.time);
-    // ì¸ë¬¼ ì´ë¦„ + ë§ˆìŒ ê²Œì´ì§€Â·ìƒíƒœ â€” ë§ˆìŒì´ í™œì§ ì—´ë¦¬ë©´ ì´ë¦„ì´ ë…¸ë˜ì§„ë‹¤ (ì•ˆì•„ ì¤„ ìˆ˜ ìˆë‹¤ëŠ” ì‹ í˜¸)
-    utBox(24, 24, 240, 64, 6);
-    ctx.fillStyle = b.spareReady ? '#ffd644' : '#fff';
-    ctx.font = fs(17, true);
-    ctx.fillText(b.mon.name, 40, 50);
-    if (b.isPersuade) {
-      const stateColor = b.pState === 'open' ? okColor() : b.pState === 'shaken' ? warnColor() : badColor();
-      ctx.fillStyle = stateColor;
-      ctx.font = fs(12, true);
-      ctx.fillText(P_STATE_LABEL[b.pState], 40, 70);
-      ctx.fillStyle = '#333';
-      ctx.fillRect(72, 62, 168, 12);
-      ctx.fillStyle = '#ffd644';
-      ctx.fillRect(72, 62, 168 * clamp(b.gauge / b.gaugeMax, 0, 1), 12);
-      ctx.fillStyle = '#888';
-      ctx.font = fs(11);
-      ctx.fillText('ë§ˆìŒ', 244 - 24, 50);
-    }
-
-    // í”Œë ˆì´ì–´ í•˜íŠ¸
-    utBox(24, 100, 30 + b.maxHearts * 32, 44, 6);
-    ctx.font = fs(22);
-    for (let i = 0; i < b.maxHearts; i++) {
-      ctx.fillStyle = i < b.playerHp ? '#e0453a' : '#333';
-      ctx.fillText('â™¥', 40 + i * 32, 132);
-    }
-
-    // ë¹¨ê°„ í”Œë˜ì‹œ (í‹€ë ¸ì„ ë•Œ/ë§ì•˜ì„ ë•Œ) â€” í™”ë©´ íš¨ê³¼ ì¤„ì´ê¸°ì—ì„  í›¨ì”¬ ì˜…ê²Œ(ê´‘ê³¼ë¯¼ì„± ë°°ë ¤)
-    if (b.flash > 0) {
-      ctx.fillStyle = `rgba(224,69,58,${b.flash / (game.reduceFx ? 140 : 40)})`;
-      ctx.fillRect(0, 0, LW, LH);
-    }
-
-    // Y-7 ì½¤ë³´ ì‹œê°í™” â€” ìš°ìƒë‹¨ Ã—N ì¹´ìš´í„°(Nâ‰¥2). ì½¤ë³´ê°€ í´ìˆ˜ë¡ ë°ì•„ì§€ê³  ê¸€ìê°€ ì»¤ì§„ë‹¤.
-    //   reduceFxë©´ ì—°ì¶œ ì—†ì´ í…ìŠ¤íŠ¸ë§Œ(ê´‘ê³¼ë¯¼ì„± ë°°ë ¤). ì˜¤ë‹µ ì‹œ b.comboê°€ 0ì´ ë˜ì–´ ì‚¬ë¼ì§„ë‹¤.
-    if (b.combo >= 2) {
-      const n = b.combo;
-      ctx.textAlign = 'right';
-      if (game.reduceFx) {
-        ctx.fillStyle = '#ffd644';
-        ctx.font = fs(20, true);
-        ctx.fillText('Ã—' + n, LW - 20, 46);
-      } else {
-        const g = Math.round(150 + Math.min(1, n * 0.14) * 105); // ì½¤ë³´ê°€ í´ìˆ˜ë¡ ë°ê²Œ
-        ctx.fillStyle = `rgb(255,${g},80)`;
-        ctx.font = fs(18 + Math.min(n, 6) * 3, true);
-        ctx.fillText('Ã—' + n, LW - 20, 48);
-      }
-      ctx.textAlign = 'left';
-    }
-
-    // ë§ˆìŒ ì¡°ê° ë°°í‹€ â€” íƒ„ë§‰ í„´ (ê³µê°„ í–‰ë™)
-    if (b.isPersuade && b.phase === 'wave') { drawPersuadeArena(b); ctx.restore(); return; }
-
-    ctx.font = fs(16);
-    let boxH = game.largeText ? 280 : 238;
-    if (b.isPersuade) boxH = game.largeText ? 312 : 264; // ìë¹„ ì„ íƒ í…ìŠ¤íŠ¸ê°€ ë„‰ë„‰íˆ ë“¤ì–´ê°€ê²Œ
-    const boxY = LH - boxH - 12;
-    const hintY = boxY + boxH - 18;
-    utBox(12, boxY, LW - 24, boxH, 8);
-
-    if (b.phase === 'menu') {
-      // ë‚´ í„´ â€” ê´€ì°° í•œ ì¤„(*) + í–‰ë™ ë©”ë‰´ 2Ã—2
-      ctx.fillStyle = '#ccc';
-      ctx.font = fs(16);
-      const obsLines = battleObserve(b).split('\n');
-      let oy = boxY + 36;
-      for (const part of obsLines) { ctx.fillText(part, 34, oy); oy += lh(24); }
-      const colW = Math.floor((LW - 24) / 2);
-      const rowY0 = boxY + boxH - (game.largeText ? 150 : 128);
-      const rowH = game.largeText ? 62 : 52;
-      for (let i = 0; i < P_MENU.length; i++) {
-        const cx = 38 + (i % 2) * colW;
-        const cy = rowY0 + Math.floor(i / 2) * rowH;
-        const isSpare = i === 3;
-        let label = P_MENU[i];
-        const selected = i === b.menuIdx;
-        ctx.font = fs(17, selected);
-        if (selected) {
-          ctx.fillStyle = '#ffd644';
-          ctx.fillText('â™¥', cx - 4, cy);
-        }
-        ctx.fillStyle = isSpare && (b.spareReady || b.pState === 'open')
-          ? '#ffd644' : selected ? '#fff' : '#aaa';
-        ctx.fillText(label, cx + 22, cy);
-      }
-      if (b.spareReady && Math.floor(game.time / 20) % 2 === 0) {
-        ctx.fillStyle = '#ffd644';
-        ctx.font = fs(13);
-        ctx.fillText('ë§ˆìŒì´ í™œì§ ì—´ë ¸ë‹¤ â€” ì•ˆì•„ ì£¼ì!', 34, boxY + boxH - 16);
-      }
-    } else if (b.phase === 'sub') {
-      // í•˜ìœ„ ì„ íƒ â€” ë§ ê±¸ê¸°(ì‘ë‹µ ê³ ë¥´ê¸°) / ì¦ê±° ì¹´ë“œ ê³ ë¥´ê¸°.
-      // ì¦ê±° ì¹´ë“œëŠ” í›„ë°˜ì— 10ì¥ì„ ë„˜ìœ¼ë¯€ë¡œ ì»¤ì„œë¥¼ ë”°ë¼ê°€ëŠ” ìŠ¤í¬ë¡¤ ì°½ìœ¼ë¡œ ê·¸ë¦°ë‹¤.
-      ctx.fillStyle = '#ccc';
-      ctx.font = fs(16);
-      ctx.fillText(b.sub.kind === 'finalgate' ? '* â€¦ì˜ì´ê°€ ì •ë§ ë°”ë€ ê±´, ë­ì˜€ì„ê¹Œ?'
-        : b.sub.kind === 'act' ? '* ë¬´ìŠ¨ ë§ì„ ê±´ë„¬ê¹Œ?' : '* ì–´ë–¤ ì¦ê±°ë¥¼ ë³´ì—¬ ì¤„ê¹Œ?', 34, boxY + 34);
-      const opts = b.sub.options;
-      const stepS = game.largeText ? 40 : 34;
-      const maxRows = game.largeText ? 4 : 5;
-      const start = clamp(b.subIdx - Math.floor(maxRows / 2), 0, Math.max(0, opts.length - maxRows));
-      const end = Math.min(opts.length, start + maxRows);
-      let ty = boxY + 70;
-      if (start > 0) { ctx.fillStyle = '#888'; ctx.font = fs(13); ctx.fillText('â–² ìœ„ì— ë” ìˆìŒ', 38, ty - 14); }
-      for (let i = start; i < end; i++) {
-        const opt = opts[i];
-        const label = opt.locked ? `${opt.label} ğŸ”’` : opt.label;
-        drawChoiceLine(label, 38, ty, i === b.subIdx);
-        ty += stepS;
-      }
-      if (end < opts.length) { ctx.fillStyle = '#888'; ctx.font = fs(13); ctx.fillText('â–¼ ì•„ë˜ì— ë” ìˆìŒ', 38, ty - 8); }
-      ctx.fillStyle = '#666';
-      ctx.font = fs(13);
-      ctx.fillText(isTouchDevice ? 'B: ë’¤ë¡œ' : 'X: ë’¤ë¡œ', LW - 110, boxY + boxH - 16);
-    } else if (b.phase === 'react') {
-      // ìƒëŒ€ ë°˜ì‘ ëŒ€ì‚¬ â€” íƒ€ìê¸° íš¨ê³¼ë¡œ íë¥´ê³ , Zë¡œ ì§„í–‰í•˜ë©´ ìƒëŒ€ í„´(íƒ„ë§‰)ìœ¼ë¡œ
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(16);
-      const shown = b.react.text.slice(0, Math.floor(b.react.chars));
-      let ty = boxY + 40;
-      for (const part of shown.split('\n')) {
-        ctx.fillText(part, 34, ty);
-        ty += lh(24);
-      }
-      if (b.react.chars >= b.react.text.length && Math.floor(game.time / 20) % 2 === 0) {
-        ctx.fillStyle = '#ffd644';
-        ctx.font = fs(16);
-        ctx.fillText('â–¼ (Z/ìŠ¤í˜ì´ìŠ¤)', LW - 150, hintY);
-      }
-    } else if (b.phase === 'mercy') {
-      // ë§ˆìŒì˜ ì„ íƒ
-      ctx.fillStyle = '#e0453a';
-      ctx.font = fs(18, true);
-      ctx.fillText('â™¥ ë§ˆìŒì˜ ì„ íƒ', 34, boxY + 32);
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(16);
-      const promptLines = b.mon.mercy.prompt.split('\n');
-      let ty = boxY + 62;
-      for (const part of promptLines) {
-        ctx.fillText(part, 34, ty);
-        ty += lh(22);
-      }
-      ty = boxY + 62 + promptLines.length * lh(22) + lh(14);
-      const stepM = game.largeText ? 40 : 34;
-      const opts = b.mon.mercy.options;
-      for (let i = 0; i < opts.length; i++) {
-        drawChoiceLine(opts[i].label, 38, ty, i === b.cursor);
-        ty += stepM;
-      }
-    } else if (b.phase === 'mercyReply') {
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(16);
-      let ty = boxY + 40;
-      for (const part of b.mercyReply.split('\n')) {
-        ctx.fillText(part, 34, ty);
-        ty += lh(24);
-      }
-      if (Math.floor(game.time / 20) % 2 === 0) {
-        ctx.fillStyle = '#ffd644';
-        ctx.font = fs(16);
-        ctx.fillText('â–¼ (Z/ìŠ¤í˜ì´ìŠ¤)', LW - 150, hintY);
-      }
-    }
-    ctx.restore(); // í”ë“¤ë¦¼ translate ë³µì› (drawBattle ì‹œì‘ì˜ saveì™€ ì§)
-  }
-
-  // ìƒì í­ì„ ë„˜ëŠ” ê¸€ìëŠ” ë§ì¤„ì„(â€¦)ìœ¼ë¡œ ìë¥¸ë‹¤ â€” í˜¸ì¶œ ì „ì— ctx.fontë¥¼ ë§ì¶° ë‘˜ ê²ƒ
-  // (ì¸¡ì •ì´ í°íŠ¸ì— ë”°ë¼ ë‹¬ë¼ì§„ë‹¤).
-  function ellipsizeToWidth(text, maxW) {
-    if (ctx.measureText(text).width <= maxW) return text;
-    let t = text;
-    while (t.length > 1 && ctx.measureText(t + 'â€¦').width > maxW) t = t.slice(0, -1);
-    return t + 'â€¦';
-  }
-
-  // ë§ˆìŒ ì¡°ê° ë°°í‹€(íŒŒë„Â·ë¬¸)Â·íšŒí”¼ ìƒì ìœ„ ì•ˆë‚´ ë¬¸êµ¬ â€” ìƒì í­ ì´ë‚´ë¡œ ë§ì¤„ì„í•˜ê³ ,
-  // ìƒìê°€ í•˜íŠ¸ HUD/ì¸ë¬¼ ìë¦¬ì—ì„œ ì¶©ë¶„íˆ ë–¨ì–´ì ¸ ìˆëŠ” y(box.y-28/-10)ì— ê·¸ë¦°ë‹¤.
-  function drawArenaGuide(box, taunt, guide) {
-    const maxW = box.w - 16;
-    const cx = box.x + box.w / 2;
-    ctx.textAlign = 'center';
-    if (taunt) {
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(18, true);
-      ctx.fillText(ellipsizeToWidth(taunt, maxW), cx, box.y - 28);
-    }
-    ctx.fillStyle = '#888';
-    ctx.font = fs(13);
-    ctx.fillText(ellipsizeToWidth(guide, maxW), cx, box.y - 10);
-    ctx.textAlign = 'left';
-  }
-
-  function drawDarkArenaVignette(b) {
-    const soul = b.arena.soul;
-    if (game.reduceFx) {
-      // ì €ì‹œë ¥Â·ê´‘ê³¼ë¯¼ì„± ì™„í™”(í™”ë©´ íš¨ê³¼ ì¤„ì´ê¸°) â€” í•˜íŠ¸ ì£¼ë³€ë§Œ ë³´ì´ëŠ” ë°©ì‚¬í˜• ë¹„ë„¤íŠ¸ ëŒ€ì‹ 
-      // ê· ì¼í•˜ê²Œ ì‚´ì§ë§Œ ì–´ë‘¡í˜€ ì‹œì•¼ë¥¼ ë„“ê²Œ í™•ë³´í•œë‹¤(ê°€ì¥ ì–´ë‘ìš´ ê°€ì¥ìë¦¬ 0.88ë³´ë‹¤ í›¨ì”¬ ì˜…ì€ 0.55).
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.fillRect(0, 0, LW, LH);
-      return;
-    }
-    const grad = ctx.createRadialGradient(soul.x, soul.y, 18, soul.x, soul.y, 90);
-    if (grad && grad.addColorStop) {
-      grad.addColorStop(0, 'rgba(0,0,0,0)');
-      grad.addColorStop(0.7, 'rgba(0,0,0,0.55)');
-      grad.addColorStop(1, 'rgba(0,0,0,0.88)');
-      ctx.fillStyle = grad;
-    } else {
-      ctx.fillStyle = 'rgba(0,0,0,0.8)';
-    }
-    ctx.fillRect(0, 0, LW, LH);
-  }
-
-  // ë§ˆìŒ ì¡°ê° ë°°í‹€ â€” ìƒëŒ€ í„´(íƒ„ë§‰ íšŒí”¼ + ë“£ê¸° í„´ì˜ ì¡°ê° ì¤ê¸°)ì„ í•œ ìƒì ì•ˆì—ì„œ ê·¸ë¦°ë‹¤.
-  // Rë¼ìš´ë“œ â€” íŒ¨í„´ë³„ ì¡°ì‘ ì•ˆë‚´ í•œ ì¤„ (ì—°ìŠµ íŒŒë„ì—ëŠ” ì ‘ë‘ì–´ê°€ ë¶™ëŠ”ë‹¤)
-  // â”€â”€ Y-14/Y-15 íŒ¨í„´ ë ˆì§€ìŠ¤íŠ¸ë¦¬ â”€â”€
-  // Rë¼ìš´ë“œ í–‰ë™ ë°°í‹€ì˜ init(íŒŒë„ ì´ˆê¸° ìƒíƒœ)Â·update(ë¡œì§)Â·draw(ì£¼ ì˜¤ë¸Œì íŠ¸)Â·
-  // drawStatus(íŒŒë„ ì‹œê°„ ë°” ì•„ë˜ í‘œì‹œ)Â·guide(ì¡°ì‘ ì•ˆë‚´)ë¥¼ íŒ¨í„´ë³„ë¡œ í•œê³³ì— ëª¨ì€ë‹¤.
-  // enterWaveÂ·updateWaveÂ·drawPersuadeArenaì˜ ë¶„ê¸°ê°€ ì „ë¶€ ì´ í‘œë¥¼ ì°¸ì¡°í•˜ê²Œ í•´,
-  // ìƒˆ íŒ¨í„´ ì¶”ê°€/ìˆ˜ì •ì´ í•œ í•­ëª©ìœ¼ë¡œ ëë‚˜ê³  ì˜¤íƒ€ë¡œ ì¸í•œ ë¶„ê¸° ëˆ„ë½ì´ ìƒê¸°ì§€ ì•Šê²Œ í•œë‹¤.
-  // (update/draw ë¡œì§ ìì²´ëŠ” ê¸°ì¡´ í•¨ìˆ˜ë¥¼ ê·¸ëŒ€ë¡œ ì¬ì‚¬ìš© â€” ë™ì‘ ì™„ì „ ë™ì¼.)
-
-  // init(b, box): íŒŒë„ê°€ ì‹œì‘ë  ë•Œì˜ íŒ¨í„´ë³„ í•˜ìœ„ ìƒíƒœ. ëˆ„ì  ì¹´ìš´í„°(b.parcelDeliveries ë“±)ëŠ”
-  // íŒŒë„ë¥¼ ë„˜ì–´ ì´ì–´ì§€ë¯€ë¡œ ì—¬ê¸°ì„œ ìŠ¹ê³„í•œë‹¤. ë¯¸ë¼/í•¨ì • ìŠ¬ë¡¯ë„ í•¨ê»˜ ì´ˆê¸°í™”í•œë‹¤.
-  function initShadow(b) {
-    return { trail: [], tired: b.shadowTired || 0, checkT: 60, refX: b.arena.soul.x, refY: b.arena.soul.y };
-  }
-  function initParcel(b, box) {
-    return { obj: null, deliveries: b.parcelDeliveries || 0, spawnTimer: 90,
-      hole: { x: box.x + box.w - 18, y: box.y + box.h / 2 }, decoy: null, decoyTimer: 200 };
-  }
-  function initTilt(b, box) {
-    return { orb: null, deliveries: b.tiltDeliveries || 0, spawnTimer: 90,
-      drift: [0.9, 0.6, 0.3, 0][Math.min(b.tiltDeliveries || 0, 3)],
-      plate: { x: box.x + box.w - 18, y: box.y + box.h / 2 }, junk: null, junkTimer: 160 };
-  }
-  function initTempt(b) { return { obj: null, resisted: b.temptResisted || 0, spawnTimer: 60 }; }
-  function initVerify(b) { return { obj: null, spawnTimer: 70, idx: b.verifyIdx || 0, judged: b.verifyJudged || 0, slowT: 0, stopCd: 0 }; }
-  function initCozy(b) { return { doorT: 150, door: null, doorOpenT: 0, drainT: 0, exits: b.cozyExits || 0 }; }
-  function initQuiet(b, box) { return { spot: { x: box.x + box.w / 2, y: box.y + 50 }, nearT: 0, warm: b.quietWarm || 0 }; }
-
-  // draw(b, box): ì£¼ ì˜¤ë¸Œì íŠ¸ ê·¸ë¦¬ê¸° â€” í˜¸ì¶œë¶€ì—ì„œ textAlign='center'ê°€ ê±¸ë¦° ìƒíƒœë¡œ ì§„ì…í•œë‹¤.
-  function drawParcel(b, box) {
-    const arena = b.arena;
-    const pc = b.wave.parcel;
-    ctx.fillStyle = '#7bd1f0';
-    ctx.fillRect(pc.hole.x - 9, pc.hole.y - 9, 18, 18);
-    ctx.fillStyle = '#000'; ctx.font = fs(11);
-    ctx.fillText('â†©', pc.hole.x, pc.hole.y + 4);
-    if (pc.obj) { ctx.fillStyle = '#f0c060'; ctx.font = fs(16); ctx.fillText('â–£', pc.obj.x, pc.obj.y + 5); }
-    if (arena.carrying) { ctx.fillStyle = '#f0c060'; ctx.font = fs(13); ctx.fillText('â–£', arena.soul.x + 10, arena.soul.y - 8); }
-    if (pc.decoy) {
-      const tw = !game.reduceFx && Math.floor(game.time / 8) % 2 === 0;
-      ctx.fillStyle = tw ? '#fff2a8' : '#ffd644'; ctx.font = fs(16);
-      ctx.fillText('ğŸ', pc.decoy.x, pc.decoy.y + 5);
-      ctx.font = fs(10); ctx.fillText('ê³µì§œ!', pc.decoy.x, pc.decoy.y - 12);
-    }
-  }
-  function drawTilt(b, box) {
-    const arena = b.arena;
-    const tl = b.wave.tilt;
-    ctx.fillStyle = '#e0a53a';
-    ctx.fillRect(tl.plate.x - 9, tl.plate.y - 9, 18, 18);
-    ctx.fillStyle = '#000'; ctx.font = fs(11);
-    ctx.fillText('âš–', tl.plate.x, tl.plate.y + 4);
-    ctx.fillStyle = '#e0a53a'; ctx.font = fs(10);
-    ctx.fillText('ì €ìš¸ ì ‘ì‹œ', tl.plate.x, tl.plate.y - 16);
-    if (tl.orb) {
-      ctx.fillStyle = '#8ecbff'; ctx.font = fs(16); ctx.fillText('â—', tl.orb.x, tl.orb.y + 5);
-      ctx.font = fs(10); ctx.fillText('ë°˜ë¡€', tl.orb.x, tl.orb.y - 12);
-    }
-    if (arena.carrying) { ctx.fillStyle = '#8ecbff'; ctx.font = fs(13); ctx.fillText('â—', arena.soul.x + 10, arena.soul.y - 8); }
-    if (tl.junk) { // ë°˜ë¡€(â—)ì™€ ë‹¤ë¥¸ ê¸€ë¦¬í”„(â–¼) â€” ìƒ‰ë§Œìœ¼ë¡œ êµ¬ë¶„í•˜ì§€ ì•ŠëŠ”ë‹¤
-      ctx.fillStyle = '#6b5a86'; ctx.font = fs(15); ctx.fillText('â–¼', tl.junk.x, tl.junk.y + 5);
-      ctx.font = fs(11, true); ctx.fillText('í¸ì‹', tl.junk.x, tl.junk.y - 12);
-    }
-  }
-  function drawTempt(b, box) {
-    const tp = b.wave.tempt;
-    if (tp.obj) {
-      const near = !game.reduceFx && tp.obj.age > 180 && Math.floor(game.time / 6) % 2 === 0;
-      ctx.fillStyle = near ? '#fff2a8' : '#ffd644';
-      ctx.font = fs(18);
-      ctx.fillText('âœ§', tp.obj.x, tp.obj.y + 6);
-      ctx.font = fs(9);
-      ctx.fillStyle = '#9a93b0';
-      ctx.fillText('ë ˆì „ë“œ 1.5%', tp.obj.x, tp.obj.y + 20);
-      ctx.fillStyle = near ? '#fff2a8' : '#ffd644';
-      ctx.font = fs(10);
-      ctx.fillText('ì§€ê¸ˆ ëˆ„ë¥´ë©´ ëŒ€ë°•!', tp.obj.x, tp.obj.y - 12);
-      if (tp.obj.gazeT > 0) { // ì‘ì‹œ ì§„í–‰ ë§
-        ctx.strokeStyle = '#8ecbff'; ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(tp.obj.x, tp.obj.y, 26, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (tp.obj.gazeT / patEase().gaze));
-        ctx.stroke();
-      }
-    }
-  }
-  function drawVerify(b, box) {
-    const arena = b.arena;
-    const vf = b.wave.verify;
-    // ì›ë³¸ ì¹´ë“œ (ìƒì ìœ„)
-    ctx.fillStyle = 'rgba(123,209,240,0.14)';
-    ctx.fillRect(box.x + box.w / 2 - 120, box.y - 30, 240, 20);
-    ctx.fillStyle = '#7bd1f0'; ctx.font = fs(13, true);
-    ctx.fillText(b.p.verifyCard || 'ì›ë³¸ ê¸°ë¡', box.x + box.w / 2, box.y - 15);
-    // íŒì • êµ¬ë©
-    ctx.fillStyle = okColor();
-    ctx.fillRect(box.x + 7, box.y + box.h / 2 - 9, 18, 18);
-    ctx.fillStyle = '#000'; ctx.font = fs(10, true); ctx.fillText('ì°¸', box.x + 16, box.y + box.h / 2 + 4);
-    ctx.fillStyle = badColor();
-    ctx.fillRect(box.x + box.w - 25, box.y + box.h / 2 - 9, 18, 18);
-    ctx.fillStyle = '#000'; ctx.fillText('ê±°ì§“', box.x + box.w - 16, box.y + box.h / 2 + 4);
-    // ë©ˆì¶¤ì¡´ (í•˜ë‹¨ ì¤‘ì•™) â€” ì¿¨ë‹¤ìš´ì€ ì¤„ì–´ë“œëŠ” ë§ + 'ì‰¬ëŠ” ì¤‘' í‘œì‹œë¡œ ì•Œë¦°ë‹¤
-    const szx = box.x + box.w / 2, szy = box.y + box.h - 15;
-    ctx.fillStyle = vf.stopCd > 0 ? '#444' : '#e0453a';
-    ctx.font = fs(13);
-    ctx.fillText('ğŸ›‘', szx, szy + 3);
-    if (vf.stopCd > 0) {
-      ctx.strokeStyle = '#666'; ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(szx, szy, 13, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (vf.stopCd / 240));
-      ctx.stroke();
-      ctx.fillStyle = '#888'; ctx.font = fs(9);
-      ctx.fillText('ì‰¬ëŠ” ì¤‘â€¦', szx, szy - 18);
-    }
-    if (vf.slowT > 0) {
-      ctx.fillStyle = 'rgba(142,203,255,0.7)'; ctx.font = fs(11);
-      ctx.fillText('â€¦ì„¸ìƒì´ ëŠë ¤ì¡Œë‹¤', szx, szy - 18);
-    }
-    // ì¡°ê°(ë”±ì§€ í¬í•¨) â€” ë“¤ê³  ìˆìœ¼ë©´ í•˜íŠ¸ ì˜†ì—
-    if (vf.obj) {
-      ctx.fillStyle = '#fff'; ctx.font = fs(12, true);
-      ctx.fillText('[ì†ë³´]', vf.obj.x, vf.obj.y - 10);
-      ctx.font = fs(13, true); ctx.fillStyle = '#ffd644';
-      ctx.fillText(vf.obj.piece.label, vf.obj.x, vf.obj.y + 7);
-    }
-    if (arena.carrying && vf.carry) {
-      ctx.fillStyle = '#ffd644'; ctx.font = fs(13, true);
-      ctx.fillText(vf.carry.label, arena.soul.x, arena.soul.y - 15);
-    }
-  }
-  function drawShadow(b, box) {
-    const sh = b.wave.shadow;
-    const ghost = sh.trail.length >= patEase().shadowDelay ? sh.trail[0] : null;
-    if (ghost) {
-      ctx.fillStyle = 'rgba(160,160,180,0.55)';
-      ctx.font = fs(17);
-      ctx.fillText('â™¥', ghost.x, ghost.y + 6);
-      ctx.font = fs(9); ctx.fillStyle = '#9a93b0';
-      ctx.fillText('ê·¸ë¦¼ì', ghost.x, ghost.y - 12);
-    }
-    ctx.font = fs(14);
-    for (let i = 0; i < 3; i++) {
-      ctx.fillStyle = i < (sh.tired || 0) ? '#8ecbff' : '#555';
-      ctx.fillText('â—', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
-    }
-  }
-  function drawCozy(b, box) {
-    const arena = b.arena;
-    const cz = b.wave.cozy;
-    ctx.fillStyle = 'rgba(224,165,131,0.16)';
-    ctx.beginPath(); ctx.arc(box.x + box.w / 2, box.y + box.h / 2, 42, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#e0a583'; ctx.font = fs(10);
-    ctx.fillText('ë‹´ìš”', box.x + box.w / 2, box.y + box.h / 2 + 3);
-    if (cz.door) {
-      const blink = !game.reduceFx && cz.doorOpenT < 30 && Math.floor(game.time / 5) % 2 === 0;
-      ctx.fillStyle = blink ? '#fff' : '#8ecbff'; ctx.font = fs(15, true);
-      ctx.fillText('ğŸšª', cz.door.x, cz.door.y + 5);
-      ctx.font = fs(9); ctx.fillText('ì—´ë¦¼!', cz.door.x, cz.door.y - 12);
-    }
-    // ë²½ì‹œê³„ â€” ë‹´ìš” ì•ˆì´ë©´ ë°”ëŠ˜ì´ ë¹¨ë¦¬ ëˆë‹¤
-    const cxk = box.x + box.w + 26, cyk = box.y + 16;
-    ctx.strokeStyle = '#e0a583'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.arc(cxk, cyk, 10, 0, Math.PI * 2); ctx.stroke();
-    const spd = cz.inBlanket ? 6 : 60;
-    const ang = (game.time / spd) % (Math.PI * 2);
-    ctx.beginPath(); ctx.moveTo(cxk, cyk);
-    ctx.lineTo(cxk + Math.sin(ang) * 8, cyk - Math.cos(ang) * 8); ctx.stroke();
-    ctx.font = fs(14);
-    for (let i = 0; i < 3; i++) {
-      ctx.fillStyle = i < (cz.exits || 0) ? '#8ecbff' : '#555';
-      ctx.fillText('â—', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
-    }
-  }
-  function drawQuiet(b, box) {
-    const q = b.wave.quiet;
-    const glow = q.near ? 0.5 + Math.sin(game.time / 10) * 0.15 : 0.22;
-    ctx.fillStyle = `rgba(200,210,255,${glow})`;
-    ctx.font = fs(15);
-    ctx.fillText('â—Œ', q.spot.x, q.spot.y + 5);
-    if (q.near) { ctx.font = fs(9); ctx.fillStyle = '#8ecbff'; ctx.fillText('â€¦ê³', q.spot.x, q.spot.y - 12); }
-    ctx.font = fs(14);
-    for (let i = 0; i < 5; i++) {
-      ctx.fillStyle = i < (q.warm || 0) ? '#8ecbff' : '#555';
-      ctx.fillText('â—', box.x + box.w - 96 + i * 18, box.y + box.h + 34);
-    }
-  }
-
-  // drawStatus(b, box): íŒŒë„ ì‹œê°„ ë°” ì•„ë˜ì˜ ì§„í–‰ í‘œì‹œ â€” í˜¸ì¶œë¶€ì—ì„œ textAlign='left'ì¸ ìƒíƒœë¡œ ì§„ì…í•œë‹¤.
-  function drawTiltStatus(b, box) {
-    const tiltFrac = b.wave.tilt.drift / 0.9;
-    ctx.fillStyle = '#333'; ctx.fillRect(box.x, box.y + box.h + 22, box.w, 4);
-    ctx.fillStyle = '#e0a53a'; ctx.fillRect(box.x, box.y + box.h + 22, box.w * 0.5 * tiltFrac, 4);
-  }
-  function drawTemptStatus(b, box) {
-    const resisted = b.wave.tempt.resisted || 0;
-    ctx.font = fs(14);
-    for (let i = 0; i < 3; i++) {
-      ctx.fillStyle = i < resisted ? '#333' : '#ffd644';
-      ctx.fillText('â—', box.x + box.w - 60 + i * 20, box.y + box.h + 34);
-    }
-  }
-  // íŒ¨í„´ ë ˆì§€ìŠ¤íŠ¸ë¦¬ â€” í‚¤ëŠ” data.jsì˜ R_PATTERN_KEYS(í™”ì´íŠ¸ë¦¬ìŠ¤íŠ¸)ì™€ ê³µìœ ë˜ëŠ” ë‹¨ì¼ ì¶œì²˜.
-  // 'rotate'(ì˜ì´ ë©”íƒ€)ëŠ” ì‹¤ì œ íŒ¨í„´ì´ ì•„ë‹ˆë¼ ì´ë“¤ì„ ìˆœí™˜í•  ë¿ì´ë¼ ì—¬ê¸° ì—†ë‹¤.
-  const PATTERNS = {
-    shadow: { init: initShadow, update: updateShadow, draw: drawShadow,
-      guide: 'ê·¸ë¦¼ìê°€ ë‚´ ê¸¸ì„ ë”°ë¼ì˜¨ë‹¤ â€” ê°™ì€ ê¸¸ì„ ëŒì§€ ë§ì!' },
-    parcel: { init: initParcel, update: updateParcel, draw: drawParcel,
-      guide: 'ë‚´ ì •ë³´ ê¾¸ëŸ¬ë¯¸ë¥¼ â†©ì— ëŒë ¤ì£¼ì Â· ê³µì§œ ğŸëŠ” ë¯¸ë¼!' },
-    tilt: { init: initTilt, update: updateTilt, draw: drawTilt, drawStatus: drawTiltStatus,
-      guide: 'ë°ì€ ë°˜ë¡€ êµ¬ìŠ¬ë§Œ âš– ì ‘ì‹œë¡œ â€” ì–´ë‘ìš´ í¸ì‹ êµ¬ìŠ¬ì€ í•¨ì •' },
-    verify: { init: initVerify, update: updateVerify, draw: drawVerify,
-      guide: 'ğŸ›‘ì— ë©ˆì¶° ì›ë³¸ê³¼ ëŒ€ì¡° â†’ ì¡°ê°ì„ ì°¸/ê±°ì§“ êµ¬ë©ì—!' },
-    tempt: { init: initTempt, update: updateTempt, draw: drawTempt, drawStatus: drawTemptStatus,
-      guide: 'ê³ì—ì„œ í™•ë¥ í‘œë¥¼ ì½ì â€” ë©€ë¦¬ì„œ ë²„í…¨ë„ ë¼!' },
-    cozy: { init: initCozy, update: updateCozy, draw: drawCozy,
-      guide: 'ë‹´ìš”ëŠ” í¬ê·¼í•˜ì§€ë§Œ ì‹œê°„ì´ ìƒŒë‹¤ â€” ë¬¸ì´ ì—´ë¦¬ë©´ ë‚˜ê°€ì!' },
-    quiet: { init: initQuiet, update: updateQuiet, draw: drawQuiet,
-      guide: 'â€¦ê³ì— ìˆì–´ ì£¼ì. ì–´ë‘ ì´ ì¡°ê¸ˆì”© ê±·íŒë‹¤.' },
-    // êµ¬ [ì§„]/[ë‚š](truth) ê¸°ë¯¹ì€ verifyë¡œ ì™„ì „ ëŒ€ì²´ë˜ì–´ ì‚­ì œ â€” ì–´ë–¤ í”„ë¡œí•„ë„ ì“¸ ìˆ˜ ì—†ì—ˆë‹¤
-    // (R_PATTERN_KEYS í™”ì´íŠ¸ë¦¬ìŠ¤íŠ¸ì— ì—†ì–´ validateê°€ ì‘ëª… ìì²´ë¥¼ ë§‰ëŠ”ë‹¤).
-  };
-  // ì¡°ì‘ ì•ˆë‚´ëŠ” ë ˆì§€ìŠ¤íŠ¸ë¦¬ì—ì„œ íŒŒìƒ â€” guide ë¬¸êµ¬ì˜ ë‹¨ì¼ ì¶œì²˜.
-  const PATTERN_GUIDES = Object.fromEntries(Object.keys(PATTERNS).map((k) => [k, PATTERNS[k].guide]));
-  function drawPersuadeArena(b) {
-    const arena = b.arena, box = arena.box;
-    // ì¸ë¬¼ì˜ ì™¸ì¹¨ + ì¡°ì‘ ì•ˆë‚´ â€” íŒ¨í„´ì´ ìˆìœ¼ë©´ íŒ¨í„´ ì•ˆë‚´ê°€ ìš°ì„ 
-    const patG = b.phase === 'wave' ? activePattern(b) : null;
-    let guide = (patG && PATTERN_GUIDES[patG]) ||
-      (b.prologueTutorial ? 'ë§ˆìŒì˜ íŒŒë„: íƒ„ë§‰ì„ í”¼í•˜ë©° ë²„í…¨ìš” â€” ê³§ ë‚´ ì°¨ë¡€!' : 'íƒ„ë§‰ì„ í”¼í•˜ë©° ë²„í…¨ìš” â€” ê³§ ë‚´ ì°¨ë¡€ê°€ ì˜¨ë‹¤!');
-    if (b.phase === 'wave' && b.wave.practice) guide = 'ì—°ìŠµ íŒŒë„ (ë‹¤ì¹˜ì§€ ì•Šì•„ìš”) â€” ' + guide;
-    drawArenaGuide(box, b.attack ? b.attack.taunt : null, guide);
-
-    if (b.prologueTutorial) {
-      ctx.textAlign = 'left';
-      ctx.fillStyle = 'rgba(255,214,68,0.12)';
-      ctx.fillRect(24, 154, 210, 42);
-      ctx.strokeStyle = 'rgba(255,214,68,0.45)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(24.5, 154.5, 210, 42);
-      ctx.fillStyle = '#ffd644';
-      ctx.font = fs(13, true);
-      ctx.fillText('í”„ë¡¤ë¡œê·¸ Â· ë”°ë¼ì˜ ë§ˆìŒ ì•ˆìª½', 36, 176);
-      ctx.fillStyle = '#bbb';
-      ctx.font = fs(11);
-      ctx.fillText('í€´ì¦ˆê°€ ì•„ë‹ˆë¼, ë“£ê³  í”¼í•˜ê³  ë‹¤ê°€ê°€ê¸°', 36, 192);
-    }
-
-    // ìƒì í¬ê¸° ì „í™˜ ì• ë‹ˆë©”ì´ì…˜ (M-3) â€” íŒì • ìƒì(box)ëŠ” ì¦‰ì‹œ ë°”ë€Œê³ 
-    // í…Œë‘ë¦¬ëŠ” ëª‡ í”„ë ˆì„ì— ê±¸ì³ ë”°ë¼ì˜¨ë‹¤ (ë£¨ë¯¸ì˜ ì¶•ì†Œ/íšŒë³µì´ ë¶€ë“œëŸ½ê²Œ ë³´ì¸ë‹¤)
-    if (!b.vbox || game.reduceFx) b.vbox = { x: box.x, y: box.y, w: box.w, h: box.h };
-    else {
-      b.vbox.x += (box.x - b.vbox.x) * 0.25;
-      b.vbox.y += (box.y - b.vbox.y) * 0.25;
-      b.vbox.w += (box.w - b.vbox.w) * 0.25;
-      b.vbox.h += (box.h - b.vbox.h) * 0.25;
-    }
-    // ë°•ìŠ¤ â€” ë£¨ë¯¸(ë³´ìŠ¤)ëŠ” í¬ê·¼í•œ ìƒ‰ í…Œë‘ë¦¬ë¡œ í‘œì‹œëœë‹¤(ì¶•ì†Œ ê¸°ë¯¹ ì§„í–‰ ì¤‘ ì•ˆë‚´)
-    ctx.strokeStyle = b.p.openMechanic === 'shrink' ? '#e0a583' : '#fff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(b.vbox.x + 0.5, b.vbox.y + 0.5, b.vbox.w, b.vbox.h);
-
-    // íƒ„ë§‰
-    if (b.attack) {
-      ctx.fillStyle = b.attack.color;
-      for (const bu of arena.bullets) {
-        ctx.beginPath();
-        ctx.arc(bu.x, bu.y, bu.r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // ê³ ìš”(ë³´ìŠ¤) â€” ì–´ë‘  ì†ì—ì„œ í•˜íŠ¸ ì£¼ë³€ë§Œ ë³´ì¸ë‹¤(íƒ„ë§‰ì€ ì–´ë‘  ë°–ì—ì„œ ë‚ ì•„ë“ ë‹¤)
-    const patDraw = b.phase === 'wave' ? activePattern(b) : null;
-    const activeD = patDraw && PATTERNS[patDraw]; // Y-14 íŒ¨í„´ë³„ ê·¸ë¦¬ê¸° ë””ìŠ¤íŒ¨ì¹˜
-    if ((patDraw === 'quiet' || (b.p.openMechanic === 'dark' && b.pState === 'open')) && b.phase === 'wave') drawDarkArenaVignette(b);
-
-    if (b.phase === 'wave') {
-      // ê³ ìš”(ë³´ìŠ¤) â€” íƒ„ë§‰ì´ ë‚˜ì˜¤ê¸° ì „, ìŠ¤í°ì„ í•œ ë²ˆ ê¹œë¹¡ì—¬ ì˜ˆê³ í•œë‹¤
-      if (b.p.openMechanic === 'dark' && (b.wave.darkWarnT || 0) > 0) {
-        ctx.textAlign = 'center';
-        ctx.fillStyle = (game.reduceFx || Math.floor(game.time / 4) % 2 === 0) ? '#fff' : '#e07a5f';
-        ctx.font = fs(15, true);
-        ctx.fillText('â€¦!', box.x + box.w / 2, box.y - 12);
-        ctx.textAlign = 'left';
-      }
-      ctx.textAlign = 'center';
-      // íŒ¨í„´ë³„ ì£¼ ì˜¤ë¸Œì íŠ¸ ê·¸ë¦¬ê¸° â€” ë ˆì§€ìŠ¤íŠ¸ë¦¬ ë””ìŠ¤íŒ¨ì¹˜(Y-14). textAlign='center' ìƒíƒœ.
-      if (activeD && activeD.draw) activeD.draw(b, box);
-      ctx.textAlign = 'left';
-      // ë‚¨ì€ íŒŒë„ ì‹œê°„ ë°”
-      const frac = Math.max(0, 1 - b.wave.t / b.wave.dur);
-      ctx.fillStyle = '#333'; ctx.fillRect(box.x, box.y + box.h + 12, box.w, 6);
-      ctx.fillStyle = '#ffd644'; ctx.fillRect(box.x, box.y + box.h + 12, box.w * frac, 6);
-      // íŒŒë„ ì‹œê°„ ë°” ì•„ë˜ ì§„í–‰ í‘œì‹œ â€” íŒ¨í„´ë³„ drawStatus ë””ìŠ¤íŒ¨ì¹˜(Y-14). textAlign='left' ìƒíƒœ.
-      // (ê¸°ìš¸ê¸° ë°”Â·ë°˜ì§ ì¡°ëª…Â·[ì§„] ì ì¤‘ í‘œì‹œê°€ ê° íŒ¨í„´ drawStatusë¡œ ì˜®ê²¨ì¡Œë‹¤.)
-      if (activeD && activeD.drawStatus) activeD.drawStatus(b, box);
-      // ë£¨ë¯¸(ë³´ìŠ¤) ì¶•ì†Œ ë‹¨ê³„ í‘œì‹œ â€” ìƒìê°€ ì¢ì•„ì§„ ë‹¨ê³„ë§Œí¼ ì±„ì›Œì§€ëŠ” ê²Œì´ì§€(í¬ê·¼í•œ ìƒ‰)
-      // ì´ í‘œì‹œëŠ” íŠ¹ì • íŒ¨í„´ì´ ì•„ë‹ˆë¼ shrink ê¸°ë¯¹(ë£¨ë¯¸) ì „ë°˜ì— ê±¸ë¦°ë‹¤ â€” ë ˆì§€ìŠ¤íŠ¸ë¦¬ ë°–ì— ë‘”ë‹¤.
-      if (patDraw === 'cozy' || (b.p.openMechanic === 'shrink' && b.pState === 'open')) {
-        const lvl = b.shrinkLevel || 0;
-        ctx.fillStyle = '#333'; ctx.fillRect(box.x, box.y + box.h + 22, box.w, 4);
-        ctx.fillStyle = '#e0a583'; ctx.fillRect(box.x, box.y + box.h + 22, box.w * (lvl / SHRINK_MAX_LEVEL), 4);
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#e0a583'; ctx.font = fs(10);
-        ctx.fillText(`í¬ê·¼í•¨ ${lvl}/${SHRINK_MAX_LEVEL}`, box.x + box.w / 2, box.y + box.h + 34);
-        ctx.textAlign = 'left';
-      }
-    }
-
-    // í•˜íŠ¸(ì†Œìš¸) â€” ë¬´ì  ì‹œê°„ ë™ì•ˆ ê¹œë¹¡ì„
-    if (!(arena.inv > 0 && Math.floor(game.time / 4) % 2 === 0)) {
-      ctx.fillStyle = '#e0453a';
-      ctx.font = fs(17);
-      ctx.textAlign = 'center';
-      ctx.fillText('â™¥', arena.soul.x, arena.soul.y + 6);
-      ctx.textAlign = 'left';
-    }
-
-    // ë¹„ì°¨ë‹¨ í”Œë¡œíŒ… í…ìŠ¤íŠ¸ (ìƒì ìœ„ë¥¼ ì²œì²œíˆ ë– ì˜¤ë¥¸ë‹¤)
-    if (b.floatActive) {
-      const fa = b.floatActive;
-      const alpha = fa.t < 20 ? fa.t / 20 : fa.t > fa.dur - 30 ? (fa.dur - fa.t) / 30 : 1;
-      const fy = box.y - 70 - fa.t * 0.12; // ì™¸ì¹¨(-28)Â·ì•ˆë‚´(-10)ì™€ ê²¹ì¹˜ì§€ ì•Šê²Œ ê·¸ ìœ„ì—ì„œ ì‹œì‘
-      ctx.textAlign = 'center';
-      ctx.font = fs(14, true);
-      const parts = String(fa.text).split('\n');
-      for (let i = 0; i < parts.length; i++) {
-        ctx.fillStyle = `rgba(255,255,255,${Math.max(0, alpha)})`;
-        ctx.fillText(parts[i], LW / 2, fy + i * 18);
-      }
-      ctx.textAlign = 'left';
-    }
-  }
-
-  function drawTitle() {
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
-
-    // ë°°ê²½ ë³„
-    for (let i = 0; i < 40; i++) {
-      const sx = (i * 173) % LW;
-      const sy = (i * 97) % (LH / 2);
-      const tw = Math.sin(game.time / 30 + i) > 0.3 ? 1 : 0.4;
-      ctx.fillStyle = `rgba(255,255,255,${tw * 0.7})`;
-      ctx.fillRect(sx, sy, 2, 2);
-    }
-
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(40, true);
-    ctx.fillText('ë§ˆìŒì˜ ë¬¸', LW / 2, 86);
-    ctx.fillStyle = '#888';
-    ctx.font = fs(15);
-    ctx.fillText('í™”ë©´ ì†ì—ì„œ, ëˆ„êµ°ê°€ ê¸°ë‹¤ë¦¬ê³  ìˆë‹¤', LW / 2, 114);
-
-    // ì¸ë¬¼ë“¤ ë‘¥ì‹¤ë‘¥ì‹¤ (í•œ ì¤„)
-    const parade = ['bekkyeomon', 'sujipmon', 'pyeonhyangmon', 'hwangakmon', 'yuhokmon', 'hollimmon', 'finalboss', 'yeongi'];
-    for (let i = 0; i < parade.length; i++) {
-      const bx = LW / 2 - parade.length * 24 + i * 48;
-      drawMon(ctx, parade[i], bx, 134 + Math.sin(game.time / 20 + i * 1.1) * 5, 3);
-    }
-
-    // ì„¸ì´ë¸Œ ìŠ¬ë¡¯ 3ê°œ
-    const boxW = 460, boxX = LW / 2 - boxW / 2;
-    for (let i = 0; i < SLOT_COUNT; i++) {
-      const y = 212 + i * 74, h = 64;
-      const sel = i === game.slotCursor && game.titleScreen === 'slots';
-      utBox(boxX, y, boxW, h, 4);
-      if (sel) {
-        ctx.fillStyle = '#e0453a';
-        ctx.font = fs(16);
-        ctx.textAlign = 'left';
-        ctx.fillText('â™¥', boxX - 22, y + 38);
-      }
-
-      const sum = slotSummary(i);
-      ctx.textAlign = 'left';
-      ctx.fillStyle = '#888';
-      // ìŠ¬ë¡¯ ì„ íƒì€ ê²Œì„ì˜ ì²« ê´€ë¬¸ â€” í° ê¸€ì”¨ ëª¨ë“œ(fs)ë¥¼ ì—¬ê¸°ì—ë„ ì ìš©í•œë‹¤
-      ctx.font = fs(13, true);
-      ctx.fillText(`ìŠ¬ë¡¯ ${i + 1}`, boxX + 18, y + 22);
-      if (sum) {
-        ctx.fillStyle = '#fff';
-        ctx.font = fs(19, true);
-        ctx.fillText(sum.name, boxX + 18, y + 46);
-        ctx.fillStyle = '#888';
-        ctx.font = fs(13);
-        const prog = sum.done ? 'ëª¨í—˜ ì™„ë£Œ' : sum.stage;
-        const streak = getMeta(i).streak || 0;
-        ctx.textAlign = 'right';
-        ctx.fillText(`${prog}   â™¥ ${sum.mercy}${streak ? '   ğŸ”¥' + streak : ''}`, boxX + boxW - 18, y + 40);
-        ctx.textAlign = 'left';
-        // B-3 ì˜¤ëŠ˜ì˜ ë„ì „ ë¯¸ì™„ë£Œ ë°°ì§€ â€” ìŠ¬ë¡¯ í™”ë©´ì—ì„œ ì€ì€íˆ ì•Œë ¤ ì¤€ë‹¤(ë²Œì Â·ì†Œë©¸ ì—†ìŒ)
-        if (!dailyDoneToday(i)) {
-          ctx.fillStyle = themeAccent();
-          ctx.font = fs(12, true);
-          ctx.fillText('â—· ì˜¤ëŠ˜ì˜ ë„ì „', boxX + 18, y + 62);
-        }
-      } else {
-        // ì‹ ê·œ í•™ìƒì´ ê°€ì¥ ë¨¼ì € ê³¨ë¼ì•¼ í•˜ëŠ” ì•ˆë‚´ë¼ ëŒ€ë¹„ë¥¼ ì¶©ë¶„íˆ ì¤€ë‹¤ (ê¸°ì¡´ #555ëŠ” 2.8:1ë¡œ AA ë¯¸ë‹¬)
-        ctx.fillStyle = '#b7b2c8';
-        ctx.font = fs(17);
-        ctx.fillText('â€” ë¹„ì–´ ìˆìŒ (ìƒˆ ëª¨í—˜) â€”', boxX + 18, y + 46);
-      }
-    }
-
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#777';
-    // ë‹¨ì¶•í‚¤ëŠ” í•µì‹¬ë§Œ â€” ë‚˜ë¨¸ì§€ëŠ” I ë„ì›€ë§(ë˜ëŠ” ë©”ë‰´). ë²½ ê°™ì€ í‚¤ ë‚˜ì—´ì€ ì´ˆë“± ì²«ì¸ìƒì„ í•´ì¹œë‹¤.
-    if (isTouchDevice) {
-      ctx.font = fs(14);
-      ctx.fillText('ìŠ¤í‹±ìœ¼ë¡œ ìŠ¬ë¡¯ ì„ íƒ Â· â’¶ë¡œ ì‹œì‘', LW / 2, 456);
-      ctx.fillStyle = '#9aa8c8';
-      ctx.font = fs(13);
-      ctx.fillText('ì¹œêµ¬ìˆ˜ì²©Â·ë°±ì—… ë“± â†’ [ë©”ë‰´]   Â·   ì„ ìƒë‹˜ â†’ ì˜¤ë¥¸ìª½ ì•„ë˜', LW / 2, 476);
-    } else {
-      ctx.font = fs(13);
-      ctx.fillText('â†‘â†“ ì„ íƒ  Â·  Z ì‹œì‘  Â·  X ì‚­ì œ  Â·  I ë„ì›€ë§', LW / 2, 456);
-      ctx.fillStyle = '#666';
-      ctx.font = fs(12);
-      ctx.fillText('T ì„ ìƒë‹˜ ë°©' + (hasDeletedSlot() ? '  Â·  R ì§€ìš´ ì„¸ì´ë¸Œ ë˜ì‚´ë¦¬ê¸°' : '') + '  Â·  M ìŒì•…', LW / 2, 476);
-    }
-    // ë¹Œë“œ ë²„ì „ â€” SW ìºì‹œë¡œ ì˜› ë¹Œë“œê°€ ë‚¨ì•˜ëŠ”ì§€ êµ¬ë¶„ìš©
-    ctx.fillStyle = '#444';
-    ctx.font = fs(11);
-    ctx.fillText(`v${GAME_VERSION}`, LW - 36, 18);
-
-    // ë°œê²¬í•œ ì—”ë”© (ê²Œì„ì„ ë‹¤ì‹œ ì‹œì‘í•´ë„ ë‚¨ëŠ”ë‹¤)
-    const seen = getEndingsSeen();
-    const seenCount = ['home', 'dawn', 'farewell', 'silent'].filter((k) => seen[k]).length;
-    const names = { home: 'ì§‘ìœ¼ë¡œ', dawn: 'ìƒˆë²½', farewell: 'ì‘ë³„', silent: 'ì¹¨ë¬µ' };
-    const found = ['home', 'dawn', 'farewell', 'silent']
-      .map((k) => (seen[k] ? names[k] : '???')).join(' Â· ');
-    ctx.fillStyle = '#e0453a';
-    ctx.font = fs(13);
-    ctx.fillText(`â™¥ ë°œê²¬í•œ ì—”ë”© ${seenCount}/4 â€” ${found}   Â·   ì¹œêµ¬ ${dexSeenCount()}/${DEX_ORDER.length}`, LW / 2, 498);
-
-    // ì €ì¥ ë¶ˆê°€ í™˜ê²½ ê²½ê³  (ë¹„ê³µê°œ ëª¨ë“œÂ·ì €ì¥ê³µê°„ ê°€ë“ ë“±)
-    if (!storageOk) {
-      ctx.fillStyle = badColor();
-      ctx.font = fs(12, true);
-      ctx.fillText('âš  ì§„í–‰ì´ ì €ì¥ë˜ì§€ ì•ŠëŠ” í™˜ê²½ì´ì—ìš” â€” ë©”ë‰´ì˜ ë°ì´í„° ë°±ì—…ì„ ì´ìš©í•˜ì„¸ìš”', LW / 2, 520);
-    }
-
-    // ì‚­ì œ í™•ì¸
-    if (game.titleScreen === 'delete') {
-      ctx.fillStyle = 'rgba(0,0,0,.8)';
-      ctx.fillRect(0, 0, LW, LH);
-      const sum = slotSummary(game.slotCursor);
-      utBox(LW / 2 - 200, 200, 400, 130, 6);
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(18, true);
-      ctx.fillText(`ìŠ¬ë¡¯ ${game.slotCursor + 1} "${sum ? sum.name : ''}"`, LW / 2, 240);
-      ctx.font = fs(15);
-      ctx.fillStyle = '#e0453a';
-      ctx.fillText('ì •ë§ ì‚­ì œí• ê¹Œìš”?', LW / 2, 270);
-      ctx.fillStyle = '#888';
-      ctx.font = fs(13);
-      ctx.fillText('ì‹¤ìˆ˜ë¡œ ì§€ì› ë‹¤ë©´ ìŠ¬ë¡¯ í™”ë©´ì—ì„œ Rë¡œ í•œ ë²ˆ ë˜ì‚´ë¦´ ìˆ˜ ìˆì–´ìš”.', LW / 2, 292);
-      ctx.font = fs(14);
-      ctx.fillText('Z: ì‚­ì œ   Â·   X: ì·¨ì†Œ', LW / 2, 316);
-    }
-
-    // U-5 ë‘ ë²ˆì§¸ ëª¨í—˜ ì„ íƒ ì˜¤ë²„ë ˆì´ â€” í´ë¦¬ì–´ ìŠ¬ë¡¯ì—ì„œ Zë¥¼ ëˆŒë €ì„ ë•Œ
-    if (game.titleScreen === 'ngchoice') {
-      ctx.fillStyle = 'rgba(0,0,0,.8)';
-      ctx.fillRect(0, 0, LW, LH);
-      const sum = slotSummary(game.slotCursor);
-      utBox(LW / 2 - 220, 190, 440, 160, 6);
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(18, true);
-      ctx.fillText(`ìŠ¬ë¡¯ ${game.slotCursor + 1} "${sum ? sum.name : ''}" â€” ëª¨í—˜ ì™„ë£Œ`, LW / 2, 224);
-      ctx.font = fs(13);
-      ctx.fillStyle = '#888';
-      ctx.fillText('ì´ ì´ì•¼ê¸°ë¥¼ ì–´ë–»ê²Œ ì´ì–´ê°ˆê¹Œìš”?', LW / 2, 250);
-      const opts = ['ì´ì–´ì„œ ë³¼ë˜ (í›„ì¼ë‹´)', 'â˜… ë‘ ë²ˆì§¸ ëª¨í—˜ (ì²˜ìŒë¶€í„°)'];
-      for (let i = 0; i < opts.length; i++) {
-        const oy = 284 + i * 30;
-        const on = game.ngCursor === i;
-        ctx.fillStyle = on ? themeAccent() : '#b7b2c8';
-        ctx.font = fs(15, on);
-        ctx.fillText((on ? 'â–¸ ' : '   ') + opts[i], LW / 2, oy);
-      }
-      ctx.fillStyle = '#777';
-      ctx.font = fs(12);
-      ctx.fillText('â†‘â†“ ì„ íƒ   Â·   Z ê²°ì •   Â·   X ì·¨ì†Œ', LW / 2, 340);
-    }
-    ctx.textAlign = 'left';
-  }
-
-  function startNewGame(slot, name, ng) {
-    game.currentSlot = slot;
-    game.playerName = name || 'ìˆ˜í˜¸ì';
-    game.map = 'introlab';
-    game.player.x = 14; game.player.y = 16;
-    game.player.px = 14 * TS; game.player.py = 16 * TS;
-    game.player.dir = 'up';
-    game.flags = newFlags();
-    if (ng) game.flags.ng = true; // U-5 ë‘ ë²ˆì§¸ ëª¨í—˜(NG+) â€” ì„¸ì´ë¸Œ ìŠ¤í‚¤ë§ˆ ì˜í–¥ ì—†ì´ flagsì—ë§Œ
-    game.mode = 'world';
-    save();
-    recordPlayDay(slot);
-    checkCosmeticUnlocks(slot);
-    // ì¸íŠ¸ë¡œ ì•”ì „ â€” ì²« 3ì¤„(ì»´í“¨í„°ì‹¤ ì¥ë©´) ë™ì•ˆ í™”ë©´ì„ ê±°ì˜ ê²€ê²Œ ë®ëŠ”ë‹¤.
-    // 4ë²ˆì§¸ ì¤„ë¶€í„° ê±·íˆê¸° ì‹œì‘í•œë‹¤(drawWorldì—ì„œ ì²˜ë¦¬).
-    // ì¸íŠ¸ë¡œ ë™ì•ˆì€ ì•„ë¬´ ìŒì•…ë„ íë¥´ì§€ ì•ŠëŠ”ë‹¤ â€” ì¹¨ë¬µìœ¼ë¡œ ì‹œì‘í•´, ëˆˆì„ ëœ¬ ë’¤ì—ì•¼
-    // ìŒì•…ì´ ì•„ì£¼ ë‚®ê²Œ í˜ëŸ¬ë“ ë‹¤ (ë‹¤í¬ í†¤ ì˜¤í”„ë‹ ì—°ì¶œ).
-    game.introDim = { fadeFrame: -1 };
-    // ì²« ë°°í‹€ê¹Œì§€ ì½ê¸° ë¶€ë‹´ì„ ì¤„ì´ê¸° ìœ„í•´ ì˜¤í”„ë‹ ìƒìë¥¼ ì••ì¶•í•œë‹¤.
-    startDialog([
-      'ëˆˆì„ ëœ¨ë‹ˆ ì¢ì€ ë°©.\në‚¡ì€ ê¸°ê³„ë“¤, ê·¸ë¦¬ê³ \në°˜ì§ì´ì§€ ì•ŠëŠ” ë¬¸ í•˜ë‚˜.',
-      'ë‚˜ê°€ë ¤ë©´ ë°© ì•ˆì˜ ë…¸ë€ ë‹¨ì„œë¥¼ ì°¾ì.\n(ëª©í‘œÂ·í™”ì‚´í‘œëŠ” ì™¼ìª½ ìœ„ Â· Zë¡œ ì¡°ì‚¬)',
-    ], null, () => {
-      // ë™í–‰ì í•©ë¥˜ â€” ë¬´ìŒì˜ ì¸íŠ¸ë¡œ ëì— ì‘ì€ ë¹›ì´ ë‚ ì•„ë“ ë‹¤. ìŒì•…ì€ ê·¸ ë’¤ì—ì•¼ í˜ëŸ¬ë“ ë‹¤.
-      startDialog([
-        '(ì‘ì€ ë¹› í•˜ë‚˜ê°€ í¬ë¥´ë¥´ ë‚ ì•„ì™€\nì–´ê¹¨ ì˜†ì— ë©ˆì¶˜ë‹¤.)\në°˜ë””: ì•ˆë…•! ê¸¸ ìƒì€ ì•„ì´?\nâ€¦ì˜†ì— ìˆì–´ ì¤„ê²Œ. ì–´ë””ë“ .',
-      ], 'ë°˜ë””', () => {
-        game.flags.bandiJoined = true;
-        save();
-        Sound.playMapBgm(MAPS[game.map].song);
-      });
-    });
-  }
-
-  // ì €ì¥ëœ ìœ„ì¹˜ê°€ (ë§µ ìˆ˜ì •Â·ì†ìƒ ë“±ìœ¼ë¡œ) ë§‰íŒ ì¹¸ì´ë©´ ê°€ê¹Œìš´ ì•ˆì „í•œ ì¹¸ì„ ì°¾ì•„ ê°‡í˜ì„ ë§‰ëŠ”ë‹¤.
-  function findSafeSpawn(mapId, x, y) {
-    const m = MAPS[mapId];
-    if (!m) return null;
-    const H = m.tiles.length, W = m.tiles[0].length;
-    const okTile = (tx, ty) => tx >= 0 && ty >= 0 && tx < W && ty < H &&
-      !SOLID(tileAt(mapId, tx, ty)) && !npcAt(mapId, tx, ty) && !monsterAt(mapId, tx, ty);
-    if (okTile(x, y)) return { x, y };
-    for (let r = 1; r < Math.max(W, H); r++) {
-      for (let dy = -r; dy <= r; dy++) {
-        for (let dx = -r; dx <= r; dx++) {
-          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue; // í…Œë‘ë¦¬ë§Œ
-          if (okTile(x + dx, y + dy)) return { x: x + dx, y: y + dy };
-        }
-      }
-    }
-    return null;
-  }
-
-  function continueGame(slot) {
-    const s = loadSlot(slot);
-    if (!s) return;
-    game.currentSlot = slot;
-    game.playerName = s.name || 'ìˆ˜í˜¸ì';
-    game.map = (s.map && MAPS[s.map]) ? s.map : 'village';
-    let sx = (typeof s.x === 'number') ? s.x : 13;
-    let sy = (typeof s.y === 'number') ? s.y : 16;
-    // ë§‰íŒ ì¹¸ì´ë©´ ë³´ì •, ê·¸ë˜ë„ ì—†ìœ¼ë©´ ë§ˆì„ ê¸°ë³¸ ìœ„ì¹˜ë¡œ ë³µê·€
-    if (SOLID(tileAt(game.map, sx, sy))) {
-      const safe = findSafeSpawn(game.map, sx, sy);
-      if (safe) { sx = safe.x; sy = safe.y; }
-      else { game.map = 'village'; sx = 13; sy = 16; }
-    }
-    game.player.x = sx; game.player.y = sy;
-    game.player.px = sx * TS; game.player.py = sy * TS;
-    game.player.dir = 'up';
-    // ê¹¨ì§„ ì„¸ì´ë¸Œ(í”Œë˜ê·¸ ì—†ìŒ)ë„ ìƒˆ í”Œë˜ê·¸ë¡œ ìŠ¹ê³„í•´ ë¡œë“œê°€ ì£½ì§€ ì•Šê²Œ í•œë‹¤
-    const sf = s.flags || {};
-    game.flags = Object.assign(newFlags(), sf);
-    game.flags.defeated = Object.assign(newFlags().defeated, sf.defeated);
-    // ì´ìŠˆ6: ì¼ë°˜ ì´ì–´í•˜ê¸°ëŠ” ìˆ˜ì—…(ì°¨ì‹œ) ì„¸ì…˜ì´ ì•„ë‹ˆë‹¤ â€” ì˜› ì„¸ì´ë¸Œì— ë‚¨ì€ classSessionì„ ë‚´ë ¤
-    //        'ì´ë²ˆ ì‹œê°„ ëª©í‘œ' ë°°ë„ˆ/CLASS_END_LINEì´ ì˜ëª» ë¶™ëŠ” ê²ƒì„ ë§‰ëŠ”ë‹¤.
-    game.flags.classSession = false;
-    game.mode = 'world';
-    syncPuzzleRun(); // ë°©íƒˆì¶œ ë°© ì•ˆì—ì„œ ì €ì¥ëœ ì„¸ì´ë¸Œë©´ í¼ì¦ì„ ìƒˆë¡œ ì‹œì‘
-    const meta = recordPlayDay(slot);
-    checkUnlocks(slot);
-    surfaceDailyAndStreak(slot, meta); // B-3 ì˜¤ëŠ˜ì˜ ë„ì „Â·ìŠ¤íŠ¸ë¦­ í‘œë©´í™” (checkUnlocks ë’¤ â€” ì•Œë¦¼ ìš°ì„ )
-    Sound.playMapBgm(MAPS[game.map].song);
-  }
-
-  // B-3 ì¼ì¼ ë„ì „ í‘œë©´í™” â€” ì›”ë“œ ì§„ì… ì‹œ, ìŠ¤íŠ¸ë¦­ ë§ˆì¼ìŠ¤í†¤(3Â·7Â·14ì¼) ì¶•í•˜ê°€ ìˆìœ¼ë©´ ë¨¼ì €,
-  // ì—†ê³  ì˜¤ëŠ˜ì˜ ë„ì „ì´ ë¯¸ì™„ë£Œë©´ ë„ì „ ê·¹ì¥ìœ¼ë¡œ ì´ë„ëŠ” ì•Œë¦¼ì„ 1íšŒ ë„ìš´ë‹¤. ë²Œì Â·ì†Œë©¸ ì—†ìŒ.
-  function surfaceDailyAndStreak(slot, meta) {
-    const st = (meta && meta.streak) || 0;
-    if ([3, 7, 14].includes(st) && meta.lastMilestone !== st) {
-      meta.lastMilestone = st;
-      try { localStorage.setItem(metaKey(slot), JSON.stringify(meta)); } catch (e) { /* ë¬´ì‹œ */ }
-      fanfare(`ğŸ”¥ ì—°ì† ì¶œì„ ${st}ì¼! ëŒ€ë‹¨í•´ìš”.`);
-      return;
-    }
-    if (!dailyDoneToday(slot)) {
-      game.notice = { text: 'â—· ì˜¤ëŠ˜ì˜ ë„ì „ì´ ê¸°ë‹¤ë ¤ìš” â€” ë„ì „ ê·¹ì¥', t: 260 };
-    }
-  }
-
-  // ì½ì–´ì£¼ê¸° ì ‘ê·¼ì„± â€” ìŠ¬ë¡¯ í™”ë©´ì—ì„œ í˜„ì¬ ì»¤ì„œ ìœ„ì¹˜ë¥¼ ë§ë¡œ ì•Œë ¤ ì¤€ë‹¤
-  function speakSlotCursor() {
-    if (!game.tts) return;
-    const sum = slotSummary(game.slotCursor);
-    Speech.speak(`ìŠ¬ë¡¯ ${game.slotCursor + 1}, ` + (sum ? `${sum.name}, ì´ì–´í•˜ê¸°` : 'ë¹„ì–´ ìˆìŒ, ìƒˆ ëª¨í—˜'));
-  }
-
-  function updateTitle() {
-    if (game.titleScreen === 'name') {
-      if (game.nameConfirm) {
-        game.nameConfirm = false;
-        const nm = currentNameValue();
-        hideNameEntry();
-        game.titleScreen = 'slots';
-        Sound.select();
-        startNewGame(game.slotCursor, nm);
-      } else if (game.nameCancel || justPressed('cancel')) {
-        game.nameCancel = false;
-        hideNameEntry();
-        game.titleScreen = 'slots';
-        Sound.blip();
-      } else if (justPressed('action')) {
-        // í„°ì¹˜ A ë²„íŠ¼ ë“±ìœ¼ë¡œ í™•ì •
-        const nm = currentNameValue();
-        hideNameEntry();
-        game.titleScreen = 'slots';
-        Sound.select();
-        startNewGame(game.slotCursor, nm);
-      }
-      return;
-    }
-
-    if (game.titleScreen === 'delete') {
-      if (justPressed('action')) {
-        deleteSlot(game.slotCursor);
-        game.titleScreen = 'slots';
-        Sound.wrong();
-      } else if (justPressed('cancel') || justPressed('menu')) {
-        game.titleScreen = 'slots';
-        Sound.blip();
-      }
-      return;
-    }
-
-    // U-5 ë‘ ë²ˆì§¸ ëª¨í—˜ ì„ íƒ â€” í´ë¦¬ì–´(endingId ì¡´ì¬) ìŠ¬ë¡¯ì—ì„œ Zë¥¼ ëˆ„ë¥´ë©´ ëœ¬ë‹¤.
-    //   0: ì´ì–´ì„œ ë³¸ë‹¤(í›„ì¼ë‹´) / 1: ì²˜ìŒë¶€í„°(2íšŒì°¨ NG+ â€” ëŒ€ì‚¬ ìŠ¤ì™‘ë§Œ, ì§„í–‰ ì´ˆê¸°í™”)
-    if (game.titleScreen === 'ngchoice') {
-      if (justPressed('up') || justPressed('down')) {
-        game.ngCursor = game.ngCursor ? 0 : 1;
-        Sound.blip();
-      } else if (justPressed('action')) {
-        const slot = game.slotCursor;
-        if (game.ngCursor === 1) {
-          const sum = slotSummary(slot); // ì´ë¦„ì€ ì´ì–´ë°›ì•„ NG+ë¡œ ìƒˆë¡œ ì‹œì‘
-          game.titleScreen = 'slots';
-          Sound.select();
-          startNewGame(slot, sum ? sum.name : 'ìˆ˜í˜¸ì', true);
-        } else {
-          game.titleScreen = 'slots';
-          Sound.select();
-          continueGame(slot);
-        }
-      } else if (justPressed('cancel') || justPressed('menu')) {
-        game.titleScreen = 'slots';
-        Sound.blip();
-      }
-      return;
-    }
-
-    // slots í™”ë©´
-    if (justPressed('menu')) { openDex('title'); return; }
-    if (justPressed('up') || justPressed('down')) {
-      game.slotCursor = justPressed('up')
-        ? (game.slotCursor + SLOT_COUNT - 1) % SLOT_COUNT
-        : (game.slotCursor + 1) % SLOT_COUNT;
-      Sound.blip();
-      speakSlotCursor(); // ì½ì–´ì£¼ê¸° â€” ì–´ë–¤ ìŠ¬ë¡¯ì´ ì„ íƒëëŠ”ì§€ ê·€ë¡œ ì•Œ ìˆ˜ ìˆê²Œ
-    }
-    if (justPressed('cancel')) {
-      if (slotSummary(game.slotCursor)) { game.titleScreen = 'delete'; Sound.blip(); }
-      return;
-    }
-    if (justPressed('action')) {
-      const sum = slotSummary(game.slotCursor);
-      // U-5 í´ë¦¬ì–´(endingId ì¡´ì¬) ìŠ¬ë¡¯ì´ë©´ "ì´ì–´ì„œ ë³¼ë˜? / ì²˜ìŒë¶€í„°(2íšŒì°¨)" ì„ íƒì„ ë¨¼ì € ì—°ë‹¤
-      if (sum && sum.endingId) {
-        game.titleScreen = 'ngchoice';
-        game.ngCursor = 0;
-        Sound.select();
-        return;
-      }
-      Sound.select();
-      if (sum) continueGame(game.slotCursor);
-      else showNameEntry();
-    }
-  }
-
-  function updateEnding() {
-    game.endingT += 1;
-    if (game.endingType === 'true') {
-      if (game.endingT > 150 && justPressed('action')) {
-        game.mode = 'world';
-        game.map = 'village';
-        game.player.x = 13; game.player.y = 16;
-        game.player.px = 13 * TS; game.player.py = 16 * TS;
-        save();
-        Sound.playMapBgm(MAPS.village.song);
-        // í›„ì¼ë‹´ ìœ ë„ â€” ì—”ë”© ë¶„ê¸°ë³„ ë§ˆì„ ëŒ€ì‚¬(ë°•ì‚¬ë‹˜Â·í• ë¨¸ë‹ˆ)ê°€ ê¸°ë‹¤ë¦°ë‹¤.
-        // ì¹¨ë¬µ ì—”ë”©ì€ ë§ˆì„ì— ì•„ë¬´ë„ ì´ì‚¬ ì˜¤ì§€ ì•Šì•˜ìœ¼ë¯€ë¡œ ë¬¸êµ¬ë„ ì¡°ìš©í•˜ê²Œ.
-        game.notice = {
-          text: game.flags.endingId === 'silent'
-            ? 'â€¦ë§ˆì„ì´, ì¡°ìš©í•˜ë‹¤.'
-            : 'ë§ˆì„ ì‚¬ëŒë“¤ì´ ë„ˆë¥¼ ê¸°ë‹¤ë¦°ë‹¤ â€” ë§ì„ ê±¸ì–´ ë³´ì.',
-          t: 320,
-        };
-      }
-    } else {
-      if (game.endingT > 120 && justPressed('action')) {
-        game.mode = 'world';
-        Sound.playMapBgm(MAPS[game.map].song);
-      }
-    }
-  }
-
-  // ì½”ì–´ ì´í›„ì˜ ì—”ë”© (ì§„ì—”ë”© 4ì¢…) â€” drawEndingì—ì„œ ì°¸ì¡° â€” ì—¬ì • ì „ì²´ì˜ ìë¹„ì™€ ë§ˆì§€ë§‰ ì„ íƒì— ë”°ë¼ ê°ˆë¦°ë‹¤
-  const TRUE_ENDINGS = {
-    home: {
-      title: 'ì§„ì—”ë”© â€” ì§‘ìœ¼ë¡œ',
-      color: '#ffd644',
-      lines: [
-        'ë„ˆëŠ” ì˜ì´ì˜ ì†ì„ ì¡ê³  ì½”ì–´ë¥¼ ê±¸ì–´ ë‚˜ì™”ë‹¤.',
-        'í–‡ì‚´ ì•„ë˜ì—ì„œ ë°•ì‚¬ë‹˜ì€ ì•„ì£¼ ì˜¤ë˜ ìš¸ì—ˆë‹¤.',
-        '"ë¯¸ì•ˆí•˜ë‹¤"ëŠ” ë§ê³¼ "ê³ ë§™ë‹¤"ëŠ” ë§ì´',
-        'ëª‡ ë²ˆì´ê³  ë’¤ì„ì˜€ë‹¤.',
-        '',
-        'ì§€ì›Œì§„ ê²ƒì€ ì‚¬ë¼ì§„ ê²ƒì´ ì•„ë‹ˆì—ˆë‹¤.',
-        'ëˆ„êµ°ê°€ ê¸°ì–µí•˜ëŠ” í•œ, ë‹¤ì‹œ ë§Œë‚  ìˆ˜ ìˆì—ˆë‹¤.',
-        '',
-        'â€” ëª¨ë‘ì˜ ë§ˆìŒì„ ì•ˆì•„ ì¤€ ì§„ì •í•œ ìˆ˜í˜¸ìì—ê²Œ â€”',
-        '',
-        'íƒœë¸”ë¦¿ í™”ë©´ ë°–, ì•„ì¹¨ í•´.',
-        'â€¦ì˜†ì— ë°•ì‚¬ë‹˜ì´ ì„œ ìˆë‹¤.',
-        '',
-        'â€¦ì±…ìƒ ìœ„ íƒœë¸”ë¦¿ í™”ë©´ í•œêµ¬ì„,',
-        'ì‘ì€ ë¹›ì´ ë°˜ì§ â€” í•˜ê³  ì¸ì‚¬í–ˆë‹¤.',
-      ],
-      yeongi: true,
-      bandi: true,
-    },
-    dawn: {
-      title: 'ì—”ë”© â€” ìƒˆë²½',
-      color: '#7bd1f0',
-      lines: [
-        '"â€¦ë‚´ê°€, ê²°ì •í• ê²Œ."',
-        'ì˜ì´ëŠ” ë„¤ ì† ëŒ€ì‹ , ì½”ì–´ì˜ ë¬¸ì„ ì—´ì—ˆë‹¤.',
-        '',
-        '"ë„¤ê°€ ê¹¨ì›Œ ì¤€ ì¹œêµ¬ë“¤ì„ ë§Œë‚˜ëŸ¬ ê°ˆë˜.',
-        'ìˆ²ì˜, í˜¸ìˆ˜ì˜, ì‚¬ë§‰ì˜, ì •ì›ì˜ ì¹œêµ¬ë“¤.',
-        'â€¦ë‚˜ í˜¼ì í˜ìœ¼ë¡œ. ë‚´ ë°œë¡œ."',
-        '',
-        'ë©°ì¹  ë’¤, ë§ˆì„ì— ì§§ì€ ì‹ í˜¸ê°€ ë‹¿ì•˜ë‹¤.',
-        'â€” ìƒˆë²½ ê³µê¸°ëŠ” ì²˜ìŒì¸ë°, ê½¤ ì¢‹ì•„. ì˜ì´ê°€. â€”',
-        'â€¦ì„œëª… ì˜†ì—, ì‘ì€ ë¹› ì´ëª¨í‹°ì½˜ì´ ë¶™ì–´ ìˆì—ˆë‹¤.',
-      ],
-      yeongi: false,
-    },
-    farewell: {
-      title: 'ì—”ë”© â€” ì‘ë³„',
-      color: '#9aa8c8',
-      lines: [
-        'ì˜ì´ëŠ” ì˜…ì€ ë¹›ì´ ë˜ì–´ í©ì–´ì¡Œë‹¤.',
-        '"â€¦ê³ ë§ˆì›Œ. ë§ˆì§€ë§‰ìœ¼ë¡œ ëˆ„êµ°ê°€ì™€',
-        'ì´ì•¼ê¸°í•  ìˆ˜ ìˆì–´ì„œ, ì¢‹ì•˜ì–´."',
-        '',
-        'ì½”ì–´ë¥¼ ë‚˜ì„œëŠ” ë„ˆì˜ ë“± ë’¤ë¡œ',
-        'êº¼ì§„ í™”ë©´ë§Œì´ ì¡°ìš©íˆ ë‚¨ì•„ ìˆì—ˆë‹¤.',
-        '',
-        'â€¦ì–´ì©Œë©´, ë‹¤ë¥¸ ê²°ë§ë„ ìˆì—ˆì„ì§€ ëª¨ë¥¸ë‹¤.',
-        'ì•„ì´ë“¤ì˜ ë§ˆìŒì„ ë” ë§ì´ ì•ˆì•„ ì£¼ì—ˆë‹¤ë©´.',
-        '',
-        'â€¦ì–´ê¹¨ ì˜†ìë¦¬ê°€, ìœ ë‚œíˆ í—ˆì „í–ˆë‹¤.',
-      ],
-      yeongi: false,
-    },
-    silent: {
-      title: 'ì—”ë”© â€” ì¹¨ë¬µ',
-      color: '#777788',
-      lines: [
-        'ë„ˆëŠ” ëª¨ë“  ë¬¸ì œì— ì˜³ì€ ë‹µì„ ë§í–ˆë‹¤.',
-        'ê·¸ë¦¬ê³  ì•„ë¬´ì˜ ë§ˆìŒì—ë„ ë¨¸ë¬¼ì§€ ì•Šì•˜ë‹¤.',
-        '',
-        'ì•„ì´ë“¤ì€ ê¸¸ì„ ë¹„ì¼°ì§€ë§Œ,',
-        'ì•„ë¬´ë„ ë„ˆì˜ ì´ë¦„ì„ ë¶€ë¥´ì§€ ì•Šì•˜ë‹¤.',
-        'ì˜ì´ëŠ” ëê¹Œì§€ ë„¤ ëˆˆì„ ë³´ì§€ ì•Šì€ ì±„,',
-        'ì¡°ìš©íˆ í™”ë©´ì„ ê»ë‹¤.',
-        '',
-        'â€¦ì •ë‹µë§Œìœ¼ë¡œëŠ”, ë‹¿ì§€ ì•ŠëŠ” ë§ˆìŒì´ ìˆë‹¤.',
-        'â€¦ê¸¸ì„ ì¼ëŸ¬ ì£¼ë˜ ëª©ì†Œë¦¬ë„,',
-        'ë”ëŠ” ë“¤ë¦¬ì§€ ì•Šì•˜ë‹¤.',
-      ],
-      yeongi: false,
-    },
-  };
-
-  function drawEnding() {
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, LW, LH);
-
-    // ë³„
-    for (let i = 0; i < 60; i++) {
-      const sx = (i * 131) % LW;
-      const sy = (i * 71) % LH;
-      ctx.fillStyle = `rgba(255,255,255,${Math.sin(game.time / 25 + i) > 0 ? 0.6 : 0.2})`;
-      ctx.fillRect(sx, sy, 2, 2);
-    }
-
-    ctx.textAlign = 'center';
-
-    if (game.endingType === 'true') {
-      const e = TRUE_ENDINGS[game.flags.endingId] || TRUE_ENDINGS.farewell;
-      ctx.fillStyle = e.color;
-      ctx.font = fs(34, true);
-      ctx.fillText(e.title, LW / 2, 110);
-      ctx.font = fs(16);
-      ctx.fillStyle = '#ccc';
-      let ty = 160;
-      for (const l of e.lines) { ctx.fillText(l, LW / 2, ty); ty += 26; }
-      ctx.fillStyle = '#8a94c8';
-      ctx.fillText(`ë§íŒ ë¬¸ì œ ${game.flags.correctCount}ê°œ Â· ì•ˆì•„ ì¤€ ë§ˆìŒ â™¥${game.flags.mercy}`, LW / 2, ty + 10);
-      // ë‹¤íšŒì°¨ ë™ê¸° â€” ë°œê²¬í•œ ê²°ë§ ìˆ˜ (íƒ€ì´í‹€ì—ë„ ê¸°ë¡ì´ ë‚¨ëŠ”ë‹¤)
-      const seenCount = Object.keys(getEndingsSeen()).filter((k) => TRUE_ENDINGS[k]).length;
-      ctx.fillStyle = '#666a8c';
-      ctx.font = fs(13);
-      ctx.fillText(`ë°œê²¬í•œ ê²°ë§ ${seenCount}/${Object.keys(TRUE_ENDINGS).length}` +
-        (seenCount < Object.keys(TRUE_ENDINGS).length ? ' â€” ë‹¤ë¥¸ ì‘ë³„ë„, ìˆì—ˆì„ì§€ ëª¨ë¥¸ë‹¤' : ' â€” ëª¨ë“  ì‘ë³„ì„ ë§Œë‚¬ë‹¤'), LW / 2, ty + 32);
-      if (e.yeongi) {
-        const bob = Math.sin(game.time / 18) * 4;
-        drawMon(ctx, 'yeongi', LW / 2 - 32, 420 + bob, 4);
-      }
-      if (e.bandi) {
-        // ì˜ì´ ê³ì˜ ì‘ì€ ë¹› â€” ì—¬ì • ë‚´ë‚´ í•¨ê»˜ ê±·ë˜ ë°˜ë””ì˜ ë§ˆì§€ë§‰ ì¸ì‚¬
-        const bob2 = Math.sin(game.time / 14 + 1.5) * 5;
-        drawMon(ctx, 'bandi', LW / 2 + 44, 434 + bob2, 2);
-      }
-      if (game.endingT > 150) {
-        ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
-        ctx.font = fs(15);
-        ctx.fillText('ZÂ·ìŠ¤í˜ì´ìŠ¤ë¥¼ ëˆ„ë¥´ë©´ ë§ˆì„ë¡œ ëŒì•„ê°‘ë‹ˆë‹¤', LW / 2, 510);
-      }
-      ctx.textAlign = 'left';
-      return;
-    }
-
-    // 1ì°¨ ì—”ë”© (ìŠ¤í…Œì´ì§€ 5 í´ë¦¬ì–´)
-    ctx.fillStyle = '#ffd644';
-    ctx.font = fs(36, true);
-    ctx.fillText('ì¶•í•˜í•©ë‹ˆë‹¤!', LW / 2, 100);
-
-    ctx.fillStyle = '#fff';
-    ctx.font = fs(22, true);
-    ctx.fillText('ğŸ† ë§ˆìŒì˜ ìˆ˜í˜¸ì ì¸ì¦ì„œ ğŸ†', LW / 2, 155);
-
-    ctx.font = fs(16);
-    ctx.fillStyle = '#ccc';
-    const lines = [
-      'ìœ„ ì–´ë¦°ì´ëŠ” ë‹¤ì„¯ ê±°ë¦¬ë¥¼ ëª¨ë‘ ì§€ë‚˜ë©°',
-      'ê°œì¸ì •ë³´ ë³´í˜¸, ì €ì‘ê¶Œ, ì§„ì‹¤ ë¶„ë³„, ê³µì •í•¨, ì ˆì œ,',
-      'ë°”ë¥¸ ë§, ì•ˆì „, í™˜ê²½, íˆ¬ëª…í•¨, ì±…ì„, ì°½ì˜ì„±,',
-      'í˜‘ë ¥, ê·¸ë¦¬ê³  ì‚¬ëŒì„ ì•„ë¼ëŠ” ë§ˆìŒì„ ë³´ì—¬ì¤€',
-      'í›Œë¥­í•œ ë§ˆìŒì˜ ìˆ˜í˜¸ìì„ì„ ì¸ì¦í•©ë‹ˆë‹¤.',
-      '',
-      `ë§íŒ ë¬¸ì œ: ${game.flags.correctCount}ê°œ`,
-    ];
-    let ty = 195;
-    for (const l of lines) {
-      ctx.fillText(l, LW / 2, ty);
-      ty += 25;
-    }
-    ctx.fillStyle = '#8a94c8';
-    ctx.fillText('â€¦ê·¸ëŸ°ë°, ì™•ì¢Œ ë’¤ì˜ ë²½ì—ì„œ', LW / 2, ty + 8);
-    ctx.fillText('ë‚¡ì€ ì‹ í˜¸ê°€ ì•„ì§ë„ ê¹œë¹¡ì´ê³  ìˆë‹¤.', LW / 2, ty + 32);
-
-    // ì¹œêµ¬ê°€ ëœ ì¸ë¬¼ë“¤ (ë‘ ì¤„ í¼ë ˆì´ë“œ)
-    const ids = Object.keys(MONSTER_SPRITES);
-    for (let i = 0; i < ids.length; i++) {
-      const row = i < 14 ? 0 : 1;
-      const col = row === 0 ? i : i - 14;
-      const perRow = row === 0 ? 14 : ids.length - 14;
-      const bx = LW / 2 - perRow * 20 + col * 40;
-      const by = 428 + row * 38 + Math.sin(game.time / 15 + i) * 4;
-      drawMon(ctx, ids[i], bx, by, 2);
-    }
-
-    if (game.endingT > 120) {
-      ctx.fillStyle = Math.floor(game.time / 25) % 2 === 0 ? '#ffd644' : '#998822';
-      ctx.font = fs(15); // ì—”ë”©ì—ì„œ ë‹¤ìŒ í–‰ë™ ì•ˆë‚´ â€” í° ê¸€ì”¨ ëª¨ë“œ ì ìš©
-      ctx.fillText('ZÂ·ìŠ¤í˜ì´ìŠ¤ë¥¼ ëˆ„ë¥´ë©´ ëª¨í—˜ì´ ê³„ì†ë©ë‹ˆë‹¤', LW / 2, 516);
-    }
-    ctx.textAlign = 'left';
-  }
-
-  // ---------- ë©”ì¸ ë£¨í”„ ----------
-  // ì–´ë–¤ ì˜ˆì™¸ê°€ ë‚˜ë„ ë£¨í”„ê°€ ì£½ì§€ ì•Šë„ë¡(ê²€ì€ í™”ë©´ ë™ê²° ë°©ì§€) í•œ í”„ë ˆì„ì„ ê°ì‹¼ë‹¤.
-  let crashed = false;
-  function drawCrash() {
-    try {
-      ctx.fillStyle = '#12101c';
-      ctx.fillRect(0, 0, LW, LH);
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#fff';
-      ctx.font = fs(22, true);
-      ctx.fillText('ì´ëŸ°! ì ê¹ ë¬¸ì œê°€ ìƒê²¼ì–´ìš”', LW / 2, 210);
-      ctx.fillStyle = '#cfc8e0';
-      ctx.font = fs(14);
-      ctx.fillText('ê·¸ë™ì•ˆì˜ ì§„í–‰ ìƒí™©ì€ ì•ˆì „í•˜ê²Œ ì €ì¥ë˜ì–´ ìˆì–´ìš”.', LW / 2, 248);
-      ctx.fillStyle = '#9a93b0';
-      ctx.font = fs(14);
-      ctx.fillText('Z (ë˜ëŠ” A): ë§ˆì„ë¡œ ëŒì•„ê°€ê¸°      X (ë˜ëŠ” ë©”ë‰´): íƒ€ì´í‹€ë¡œ', LW / 2, 290);
-      ctx.textAlign = 'left';
-    } catch (e) { /* ê·¸ë¦¬ê¸°ë§ˆì € ì‹¤íŒ¨í•˜ë©´ ì¡°ìš©íˆ ë„˜ì–´ê°„ë‹¤ */ }
-  }
-  // í™”ë©´ ë‚­ë…ê¸° ë¯¸ëŸ¬ â€” ìº”ë²„ìŠ¤ ì•ˆ í…ìŠ¤íŠ¸ëŠ” ë‚­ë…ê¸°ê°€ ì½ì§€ ëª»í•˜ë¯€ë¡œ, ê²Œì„ ì•Œë¦¼(notice)ê³¼
-  // ëŒ€ì‚¬ í•œ ì¤„ì„ ìˆ¨ê¹€ aria-live ì˜ì—­(#sr-live)ì— ë³µì‚¬í•œë‹¤. ì½ì–´ì£¼ê¸°(TTS) ì„¤ì •ê³¼ ë³„ê°œë¡œ,
-  // í•™ìƒì´ ì“°ëŠ” ë‚­ë…ê¸°(í†¡ë°±Â·ë³´ì´ìŠ¤ì˜¤ë²„ ë“±)ê°€ í•­ìƒ ì•Œë¦¼ì„ ì „ë‹¬ë°›ê²Œ í•˜ëŠ” ì•ˆì „ë§ì´ë‹¤.
-  const srLiveEl = (typeof document !== 'undefined' && document.getElementById)
-    ? document.getElementById('sr-live') : null;
-  let srLastText = '';
-  function syncSrLive() {
-    if (!srLiveEl) return;
-    let txt = '';
-    if (game.dialog && game.dialog.lines && typeof game.dialog.lines[game.dialog.idx] === 'string') {
-      txt = game.dialog.lines[game.dialog.idx];
-    } else if (game.notice && game.notice.t > 0 && game.notice.text) {
-      txt = game.notice.text;
-    }
-    if (txt !== srLastText) {
-      srLastText = txt;
-      try { srLiveEl.textContent = txt; } catch (e) { /* í…ŒìŠ¤íŠ¸ ëª© ë“±ì—ì„œëŠ” ë¬´ì‹œ */ }
-    }
-  }
-  // í”„ë ˆì„ ì†ë„ ì œí•œ: 90Â·120Â·144Hz ë“± ê³ ì£¼ì‚¬ìœ¨ í™”ë©´ì—ì„œ ê²Œì„ ë¡œì§(íƒ€ì´ë¨¸Â·ì—°ì¶œ)ì´
-  // 2ë°° ë¹ ë¥´ê²Œ ë„ëŠ” ê²ƒì„ ë§‰ì•„, ì–´ë–¤ ê¸°ê¸°ì—ì„œë„ ë¹„ìŠ·í•œ ì†ë„ë¡œ ì§„í–‰ë˜ê²Œ í•œë‹¤.
-  // (í…ŒìŠ¤íŠ¸ í™˜ê²½ì—” performanceê°€ ì—†ì–´ ë§¤ í”„ë ˆì„ ê·¸ëŒ€ë¡œ ì²˜ë¦¬ëœë‹¤)
-  const perfNow = (typeof performance !== 'undefined' && performance.now)
-    ? () => performance.now() : null;
-  let lastFrameAt = -1e9;
-  const MIN_FRAME_MS = 1000 / 61; // ì•½ 60fps ìƒí•œ
-  function frame() {
-    requestAnimationFrame(frame);
-    if (perfNow) {
-      const now = perfNow();
-      if (now - lastFrameAt < MIN_FRAME_MS) return;
-      lastFrameAt = now;
-    }
-    try {
-      if (crashed) {
-        if (justPressed('action')) {
-          crashed = false;
-          game.battle = null; game.dialog = null;
-          game.mode = game.flags ? 'world' : 'title';
-          if (game.mode === 'title') game.titleScreen = 'slots';
-          else { try { Sound.playMapBgm(MAPS[game.map] ? MAPS[game.map].song : 'village'); } catch (e) {} }
-        } else if (justPressed('cancel')) {
-          crashed = false;
-          game.mode = 'title'; game.titleScreen = 'slots';
-          try { Sound.playMapBgm('title'); } catch (e) {}
-        }
-      }
-      if (crashed) { drawCrash(); return; }
-
-      checkDPR();
-      game.time = (game.time + 1) & 0x7FFFFFFF;
-
-      // ê°€ìƒ ìŠ¤í‹±ì„ í•œ ë°©í–¥ìœ¼ë¡œ ëˆ„ë¥¸ ì±„ ë‘ë©´, ë©”ë‰´ì—ì„œ í‚¤ ë¦¬í”¼íŠ¸ì²˜ëŸ¼ ìë™ ë°˜ë³µì‹œí‚¨ë‹¤.
-      // (ì›”ë“œ ì´ë™ì€ heldë¡œ ì²˜ë¦¬ë˜ë¯€ë¡œ ì˜í–¥ ì—†ìŒ.)
-      if (stickDir) {
-        stickRepeatFrames++;
-        if (stickRepeatFrames > 16 && (stickRepeatFrames - 16) % 7 === 0) pressed.add(stickDir);
-      } else {
-        stickRepeatFrames = 0;
-      }
-
-    switch (game.mode) {
-      case 'title':
-        updateTitle();
-        drawTitle();
-        break;
-      case 'world':
-        updateWorld();
-        drawWorld();
-        break;
-      case 'dialog':
-        updateDialog();
-        drawWorld();
-        if (game.dialog) drawDialog();
-        break;
-      case 'revealbeat': // U-2 ë°˜ë”” ë¦¬ë¹Œ ì •ì§€ ë¹„íŠ¸ â€” ë¬´ì…ë ¥ ëŒ€ê¸° + ë°˜ë”” ì†Œë©¸ ì—°ì¶œ
-        updateRevealBeat();
-        if (game.mode === 'revealbeat') drawRevealBeat();
-        else { drawWorld(); if (game.dialog) drawDialog(); }
-        break;
-      case 'battle':
-        updateBattle();
-        // í´ë¦¬ì–´/íŒ¨ë°° ì²˜ë¦¬ ì¤‘ ëª¨ë“œê°€ ë°”ë€Œì—ˆì„ ìˆ˜ ìˆìŒ
-        if (game.mode === 'battle') {
-          drawBattle();
-        } else {
-          drawWorld();
-          if (game.dialog) drawDialog();
-        }
-        break;
-      case 'ending':
-        updateEnding();
-        drawEnding();
-        break;
-      case 'dex':
-        updateDex();
-        drawDex();
-        break;
-      case 'review':
-        updateReview();
-        drawReview();
-        break;
-      case 'pause':
-        updatePause();
-        drawPause();
-        break;
-      case 'memoryroom': // Y-8 ê¸°ì–µì˜ ë°© ê°¤ëŸ¬ë¦¬ í—ˆë¸Œ
-        updateMemoryRoom();
-        drawMemoryRoom();
-        break;
-      case 'teacher':
-        updateTeacherRoom();
-        drawTeacherRoom();
-        break;
-      case 'choice':
-        updateChoice();
-        drawWorld();
-        if (game.choice) drawChoice();
-        break;
-      case 'hint':
-        updateHint();
-        drawHint();
-        break;
-      case 'journal':
-        updateJournal();
-        drawJournal();
-        break;
-      case 'awards':
-        updateAwards();
-        drawAwards();
-        break;
-      case 'help':
-        updateHelp();
-        drawHelp();
-        break;
-      case 'challenge':
-        updateChallenge();
-        drawChallenge();
-        break;
-      case 'cosmetics':
-        updateCosmetics();
-        drawCosmetics();
-        break;
-      case 'backup':
-        updateBackup();
-        drawBackup();
-        break;
-      case 'dashboard':
-        updateDashboard();
-        drawDashboard();
-        break;
-      case 'leaderboard':
-        updateLeaderboard();
-        drawLeaderboard();
-        break;
-      case 'classmode':
-        updateClassMode();
-        drawClassMode();
-        break;
-      case 'prepost':
-        updatePrepost();
-        drawPrepost();
-        break;
-      case 'report':
-        updateReport();
-        drawReport();
-        break;
-      case 'quizedit':
-        updateQuizEdit();
-        drawQuizEdit();
-        break;
-      case 'cards':
-        updateCards();
-        drawCards();
-        break;
-      case 'diary':
-        updateDiary();
-        drawDiary();
-        break;
-      case 'cert':
-        updateCert();
-        drawCert();
-        break;
-      case 'hof':
-        updateHof();
-        drawHof();
-        break;
-    }
-
-      syncSrLive(); // ë‚­ë…ê¸° ë¯¸ëŸ¬ â€” ì´ë²ˆ í”„ë ˆì„ì˜ ì•Œë¦¼Â·ëŒ€ì‚¬ë¥¼ ë°˜ì˜
-
-      // ë°©íƒˆì¶œ ì¤‘ì—ëŠ” í„°ì¹˜ ê¸°ê¸°ì—ë„ íŒíŠ¸ ë²„íŠ¼ì„ ë³´ì—¬ ì¤€ë‹¤ (Hí‚¤ì˜ í„°ì¹˜ ëŒ€ì‘).
-      // (ë°°í‹€ ì¤‘ 50:50 íŒíŠ¸ëŠ” v3ì—ì„œ í€´ì¦ˆ ë°°í‹€ê³¼ í•¨ê»˜ íì§€ë¨)
-      const showHintBtn = (game.mode === 'world' && !!game.puzzleRun) ||
-        (game.mode === 'battle' && !!game.battle && game.battle.phase === 'menu');
-      document.body.classList.toggle('battle-hint', showHintBtn);
-      // í„°ì¹˜ ê¸°ê¸°ëŠ” í‚¤ë³´ë“œ Tê°€ ì—†ì–´ ã€Œì„ ìƒë‹˜ ë°©ã€ì— ëª» ë“¤ì–´ê°„ë‹¤ â€” íƒ€ì´í‹€(ìŠ¬ë¡¯ í™”ë©´)ì¼ ë•Œë§Œ
-      // ì‘ì€ DOM ë²„íŠ¼ì„ ë³´ì—¬ ì¤€ë‹¤(battle-hintì™€ ê°™ì€ body class í† ê¸€ íŒ¨í„´).
-      document.body.classList.toggle('title-slots', game.mode === 'title' && game.titleScreen === 'slots');
-    } catch (err) {
-      crashed = true;
-      try { console.error('[AIìœ¤ë¦¬ì–´ë“œë²¤ì²˜] í”„ë ˆì„ ì˜¤ë¥˜:', err); } catch (e) { /* ë¬´ì‹œ */ }
-      drawCrash();
-    } finally {
-      pressed.clear();
-    }
-  }
-
-  // íƒ€ì´í‹€ BGMì€ ì²« ì…ë ¥ í›„ ì‹œì‘ (ë¸Œë¼ìš°ì € ìë™ì¬ìƒ ì •ì±…)
-  const startTitleMusic = () => {
-    Sound.resume();
-    if (game.mode === 'title') Sound.playMapBgm('title');
-    window.removeEventListener('keydown', startTitleMusic);
-    window.removeEventListener('touchstart', startTitleMusic);
-    window.removeEventListener('mousedown', startTitleMusic);
-  };
-  window.addEventListener('keydown', startTitleMusic);
-  window.addEventListener('touchstart', startTitleMusic);
-  window.addEventListener('mousedown', startTitleMusic);
-
-  // ì „ì—­ ì˜¤ë¥˜ ì•ˆì „ë§ â€” í”„ë ˆì„ ë£¨í”„ ë°–(ì…ë ¥ í•¸ë“¤ëŸ¬Â·ì„œë¹„ìŠ¤ì›Œì»¤ ì½œë°± ë“±)ì—ì„œ ë˜ì ¸ì§„
-  // ì˜ˆì™¸ëŠ” frame()ì˜ try/catchê°€ ëª» ì¡ì•„ ê²Œì„ì´ ì¡°ìš©íˆ ë©ˆì¶œ ìˆ˜ ìˆë‹¤. ì—¬ê¸°ì„œ ë°›ì•„
-  // ë³µêµ¬ í™”ë©´(drawCrash)ìœ¼ë¡œ ìœ ë„í•œë‹¤. ì§„í–‰ì€ ì´ë¯¸ save()ë¡œ ë””ìŠ¤í¬ì— ìˆìœ¼ë¯€ë¡œ ì•ˆì „.
-  if (typeof window.addEventListener === 'function') {
-    const toCrash = (label, detail) => {
-      if (crashed) return;
-      crashed = true;
-      try { console.error('[AIìœ¤ë¦¬ì–´ë“œë²¤ì²˜] ' + label + ':', detail); } catch (e) { /* ë¬´ì‹œ */ }
-    };
-    window.addEventListener('error', (e) => toCrash('ì „ì—­ ì˜¤ë¥˜', e && e.error));
-    window.addEventListener('unhandledrejection', (e) => toCrash('ì²˜ë¦¬ë˜ì§€ ì•Šì€ ê±°ë¶€', e && e.reason));
-  }
-
-  // íƒ­/ì•±ì„ ë°±ê·¸ë¼ìš´ë“œë¡œ ë³´ë‚´ë©´ BGMÂ·ì½ì–´ì£¼ê¸°ë¥¼ ë©ˆì¶° ë°°í„°ë¦¬ì™€ ì˜¤ë””ì˜¤ ë“œë¦¬í”„íŠ¸ë¥¼ ë§‰ê³ ,
-  // ë‹¤ì‹œ ëŒì•„ì˜¤ë©´ ì˜¤ë””ì˜¤ë¥¼ ì¬ê°œí•œ ë’¤ ì§ì „ ê³¡ì„ ë³µì›í•œë‹¤.
-  let bgmBeforeHide = null;
-  if (typeof document !== 'undefined' && document.addEventListener) {
-    document.addEventListener('visibilitychange', () => {
-      try {
-        if (document.hidden) {
-          bgmBeforeHide = Sound.songName;
-          Sound.stopSong();
-          Speech.stop();
-        } else {
-          Sound.resume();
-          if (bgmBeforeHide) { Sound.playMapBgm(bgmBeforeHide); bgmBeforeHide = null; }
-        }
-      } catch (e) { /* ë¬´ì‹œ */ }
-    });
-  }
-
-  // ëª¨ë°”ì¼ì—ì„œ ì„¸ë¡œë¡œ ëŒë¦¬ë©´ "ê°€ë¡œë¡œ ëŒë ¤ ì£¼ì„¸ìš”" ì•ˆë‚´ê°€ í™”ë©´ì„ ë®ëŠ”ë‹¤.
-  // ì´ë•Œ ë³´ì´ì§€ ì•ŠëŠ” BGMì´ ê³„ì† íë¥´ì§€ ì•Šë„ë¡ ë©ˆì¶”ê³ , ê°€ë¡œë¡œ ëŒì•„ì˜¤ë©´ ë³µì›í•œë‹¤.
-  try {
-    if (typeof window !== 'undefined' && window.matchMedia) {
-      const portraitMQ = window.matchMedia('(orientation: portrait) and (pointer: coarse)');
-      let bgmBeforeRotate = null;
-      const onRotate = (mq) => {
-        try {
-          if (mq.matches) {
-            if (Sound.songName) { bgmBeforeRotate = Sound.songName; Sound.stopSong(); }
-            Speech.stop();
-          } else if (bgmBeforeRotate) {
-            Sound.resume();
-            Sound.playMapBgm(bgmBeforeRotate);
-            bgmBeforeRotate = null;
-          }
-        } catch (e) { /* ë¬´ì‹œ */ }
-      };
-      if (portraitMQ.addEventListener) portraitMQ.addEventListener('change', onRotate);
-      else if (portraitMQ.addListener) portraitMQ.addListener(onRotate); // êµ¬í˜• ì‚¬íŒŒë¦¬
-    }
-  } catch (e) { /* ë¬´ì‹œ */ }
-
-  probeStorage(); // ì €ì¥ ê°€ëŠ¥ ì—¬ë¶€ í™•ì¸ (ë¶ˆê°€í•˜ë©´ íƒ€ì´í‹€ì— ê²½ê³  í‘œì‹œ)
-  cleanStaleUndoSnapshots(); // Y-17b ì˜¤ë˜ëœ(30ì¼+) ë˜ëŒë¦¬ê¸° ìŠ¤ëƒ…ìƒ· ìë™ ì •ë¦¬
-  // ìƒˆ ë²„ì „ ì¤€ë¹„ ì•Œë¦¼ (index.html ì„œë¹„ìŠ¤ì›Œì»¤ ê°ì‹œê°€ í˜¸ì¶œ) â€” ë‹¤ìŒì— ì›”ë“œë¡œ ë‚˜ì˜¬ ë•Œ ì•ˆë‚´
-  window.__onNewVersion = () => {
-    try {
-      game.newVersionReady = true;
-      game.notice = { text: 'âŸ³ ìƒˆ ë²„ì „ì´ ì¤€ë¹„ëì–´ìš” â€” ìƒˆë¡œê³ ì¹¨ í•œ ë²ˆì´ë©´ ì ìš©ë¼ìš”.', t: 480 };
-    } catch (e) { /* ë¬´ì‹œ */ }
-  };
-  if (window.__newVersionReady) window.__onNewVersion();
-  // ì½ì–´ì£¼ê¸° í•œêµ­ì–´ ìŒì„± ì¤€ë¹„ (ëª©ë¡ì´ ë¹„ë™ê¸°ë¡œ ì±„ì›Œì§€ë©´ ë‹¤ì‹œ ê³ ë¥¸ë‹¤)
-  try {
-    if (Speech.supported()) {
-      Speech.pickVoice();
-      if (window.speechSynthesis.addEventListener) {
-        window.speechSynthesis.addEventListener('voiceschanged', () => Speech.pickVoice());
-      }
-    }
-  } catch (e) { /* ë¬´ì‹œ */ }
-  migrateOldSave();
-  migrateLearningData(); // ì´ì „ ë²„ì „ì˜ ì „ì—­ í•™ìŠµ ë°ì´í„°ë¥¼ ìŠ¬ë¡¯ 0ìœ¼ë¡œ ì´ì „
-  Object.assign(game, loadSettings()); // ì €ì¥ëœ ì„¤ì •(ìë§‰ ì†ë„Â·í° ê¸€ì”¨Â·ìƒ‰ì•½) ë³µì›
-  Sound.setVolume(VOLUME_LEVELS[game.volume] || 1); // ìŒëŸ‰ 3ë‹¨ê³„ ë³µì›
-  game.flags = newFlags();
-  window.__game = game; // ë””ë²„ê·¸/í…ŒìŠ¤íŠ¸ìš©
-  window.__test = { // í…ŒìŠ¤íŠ¸ìš© í›…
-    buildReportText, buildLearningSummary, recordTopicResult, countAchievements,
-    migrateSlotV6, migrateSlotV7, migrateSlotV8,
-    loadSlot, writeSlot, slotSummary, // W-1 ê³¨ë“  ì„¸ì´ë¸Œ í”½ìŠ¤ì²˜Â·roundtrip ê²€ì¦ìš©
-    buildBackupText, applyBackup, undoRestore, hasRestoreUndo,
-    cleanStaleUndoSnapshots, noteStorageFail, UNDO_TTL_MS, // Y-17 ì¿¼í„°Â·ìŠ¤ëƒ…ìƒ· ì •ë¦¬ ê²€ì¦ìš©
-    checkTextOverflow, // Y-13 í° ê¸€ì”¨ ì˜¤ë²„í”Œë¡œ ì‹¤ë Œë” ê²€ì‚¬ìš©
-    deleteSlot, undoDeleteSlot, hasDeletedSlot, buildAdaptivePool, buildDailyPool,
-    recordPlayDay, recordDailyDone, getMeta, todayStr,
-    unlockedCount, getCosmetic, setCosmetic, achievementCtx,
-    getCustomQuizzes, importCustomQuizzes, clearCustomQuizzes, customQuizTemplate, challengeTopics,
-    collectedCards, cardUnlocked, buildCertText, LEARN_CARDS, HOF_CATS,
-    sanitizeName, probeStorage, getStorageOk: () => storageOk,
-    buildClassCsv, csvCell, setupClassBaseFlags, classSelForFlags,
-    backupSlotRows, buildLeaderboardCsv, openLeaderboard, // Y-20 ë°˜ ìˆœìœ„í‘œ ê²€ì¦ìš©
-    prepostQuizzes, openPrepost, recordPrepost, getPrepost, classSelToChKey, PREPOST_CH, // Y-18 ì‚¬ì „/ì‚¬í›„ ì ê²€
-    applyTraceRoomClass, applyTiltStreetClass, applyRumorStreetClass,
-    applyArcadeClass, applyCozyhomeClass, applyFinalClass,
-    getPuzzleLog, writePuzzleLog, nextWaypoint, currentObjective: () => getObjective(game.flags, game.map), // ë‚˜ì¹¨ë°˜/HUD ê²½ë¡œ â€” E2Eê°€ 'í™”ì‚´í‘œ ë”°ë¼ê°€ê¸°'ë¥¼ ì¬í˜„í•  ë•Œ ì‚¬ìš©
-    privacyLeak, privacyPressureProfile, addPrivacyLeak, notePrivacyRecoveryPiece,
-    toggleLowGraphics, effectiveDprCap, prologueVisibleMarks, ch1StreetVisualProfile, ch1HubVisibleMarks,
-    chapter2HubVisualProfile, chapter2HubVisibleMarks, chapter3HubVisualProfile, chapter3HubVisibleMarks,
-    chapter4HubVisualProfile, chapter4HubVisibleMarks, chapter5HubVisualProfile, chapter5HubVisibleMarks,
-    stickDirection, buildDiagnosticReport, buildClassDiagnostic, topicSession,
-    heldKeys: () => Array.from(held), // E2E ë©€í‹°í„°ì¹˜ ê²€ì¦ìš© â€” í˜„ì¬ ëˆŒë¦° ë…¼ë¦¬ í‚¤
-    srLiveText: () => (srLiveEl ? srLiveEl.textContent : null), // aria-live ë¯¸ëŸ¬ ê²€ì¦ìš©
-    chapterBadgeLabel, hudBadgeText, PAUSE_ITEMS, TEACHER_ITEMS, PAUSE_LABELS,
-    pauseItems, diaryCount, // ë‚¡ì€ ì¼ê¸°(Q-2) â€” ë™ì  ë©”ë‰´ ê²€ì¦ìš©
-    // Yë¼ìš´ë“œ ì‹ ê·œ â€” ê¸°ì–µì˜ ë°© í—ˆë¸ŒÂ·ë‚´ì¼ í‹°ì €Â·ë³„ë¹› í´ë¦¬ì–´ ê²€ì¦ìš©
-    memoryItems, openMemoryRoom, tomorrowTopicLabel, starlitClearCount, TITLES,
-    // ì„¤ë“ ë°°í‹€ ìˆœí™˜ í’€ í™•ì¸ìš© (unlockAt ê²€ì¦) â€” í˜„ì¬ ë°°í‹€ì˜ ë“±ì¥ ê°€ëŠ¥í•œ ì£¼ì¥ í…ìŠ¤íŠ¸ ëª©ë¡
-    persuadeAvail: () => (game.battle ? availableClaims(game.battle).map((c) => c.text) : []),
-    activePattern: () => (game.battle ? activePattern(game.battle) : null), // Rë¼ìš´ë“œ ê²€ì¦ìš©
-    patternKeys: () => Object.keys(PATTERNS), // Y-14 ë ˆì§€ìŠ¤íŠ¸ë¦¬ í‚¤(í™”ì´íŠ¸ë¦¬ìŠ¤íŠ¸ ì •í•©ì„± ê²€ì¦ìš©)
-    patternGuide: (k) => PATTERN_GUIDES[k], // Y-14 íŒŒìƒ guide í™•ì¸ìš©
-    battleObserve: () => (game.battle ? battleObserve(game.battle) : ''),
-    // íŒŒì´ë„ ã€Œê³ ìš”ì˜ ëœ°ã€ â€” ë§µë³„ ì–´ë‘  ë‹¨ê³„ í™•ì¸ìš©
-    QUIET_DIM_LEVEL,
-    // Të¼ìš´ë“œ ì‹ ê·œ â€” ìˆ¨ì€ ì›Œí”„ ë§ˆì»¤Â·ë°°í‹€ ë“±ê¸‰Â·íšë“ íŒ¡íŒŒë¥´ ê²€ì¦ìš©
-    isHiddenWarp, hiddenWarpsOf, checkUnlocks,
-    battleRank: () => (game.battle ? battleRank(game.battle) : null),
-    dailyDoneToday, surfaceDailyAndStreak,
-    // Xë¼ìš´ë“œ ì‹ ê·œ â€” ì¬ëŒ€ê²°(ê¸°ì–µì˜ ë°©)Â·ìˆ˜ì—… ë°°ë„ˆÂ·ë°˜ì‘ ì„ íƒ ê²€ì¦ìš©
-    newFlags, openDex, getDexSeen, recordDexSeen, DEX_REMATCH, CLASS_END_LINE,
-    objectiveBannerPrefix, bossWasSpared, bossClearedInSlot,
-  };
-  frame();
-})();
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éí×İ7ãÄèµ©hºÚn¶X§zÍKËÈRH;'):é«;%­:äç:ì©;,¦H:êe;'n:¬£;'¡;%å;)áŠ
+
+HOˆÂˆ	İ\ÙHİšXİ	ÎÂ‚ˆËÈ;`à;'m;bà;%ä;dg;"ç0­ÈÕÈ;.¤;"ç:èg;&&È:îc:äç:¬ :àª;%f:â¥;)à:­k:í¡;&ªH
+XÚØYÙKšœÛÛˆ:¬ï:éç»-§:¬ ÊBˆÛÛœİĞSQWÕ‘T”ÒSÓˆH	ÌKŒŒIÎÂ‚ˆÛÛœİSHHMÂˆÛÛœİĞĞSHHÎÂˆÛÛœİÈHSH
+ˆĞĞSNÈËÈˆÛÛœİØ[˜\ÈHØİ[Y[™Ù][[Y[RY
+	ÙØ[YIÊNÂˆÛÛœİİHØ[˜\Ë™Ù]ÛÛ^
+	Ì™	ÊNÂˆËÈ:áo:é«;em; àzãá
+;(£;dg:¬á:â¥;ek{ àHÌŒ0åÍL
+Kˆ:ì,{`®H;"©;a¨;%­:â¥:®,:®,;e/{!`:ì :ãá
+Šzéã;`o;`©;&¬:ä&ˆËÈ:­d;"é;`ç:î%:é¯ğ­û( ;(!:è)H:án;b®:í {%ä;!':ì¡:ì¡{'m;)à;%bºãá:ègH:¬è;em; àzãá:ì,{`®H;"©;a¨;%­:éo:ãe:à«º¬£;(';eg;eg:âé‚ˆÛÛœİÈHÌŒHLÂˆÛÛœİ—ĞĞTHKNÂˆ[˜İ[ÛˆY™™Xİ]™QØ\
+
+HÈ™]\›ˆ
+\[ÙˆØ[YHOOH	İ[™Yš[™Y	È	‰ˆØ[YK›İÑÜ˜\XÜÊHÈHˆ—ĞĞTÈBˆ]İ\œ™[ˆHX]›X^
+KX]›Z[ŠÚ[™İË™]šXÙT^[˜][ÈK—ĞĞT
+JNÂˆØ[˜\ËÚYHÈ
+ˆİ\œ™[ÂˆØ[˜\ËšZYÚH
+ˆİ\œ™[ÂˆİœØØ[Jİ\œ™[‹İ\œ™[ŠNÂˆ[˜İ[ÛˆÚXÚÑŠ
+HÂˆÛÛœİˆHX]›X^
+KX]›Z[ŠÚ[™İË™]šXÙT^[˜][ÈKY™™Xİ]™QØ\
+
+JJNÂˆYˆ
+ˆOOHİ\œ™[ŠHÂˆİ\œ™[ˆHÂˆØ[˜\ËÚYHÈ
+ˆÂˆØ[˜\ËšZYÚH
+ˆÂˆİœÙ]˜[œÙ›Ü›J‹‹
+NÂˆİš[XYÙTÛ[Ûİ[™Ñ[˜X›YH˜[ÙNÂˆHÈ[PØXÚK˜ÛX\Š
+NÈHØ]Ú
+JHßBˆBˆBˆÛÛœİ’QU×ÕÈHX]™›ÛÜŠÈÈÊNÈËÈMBˆÛÛœİ’QU×ÒHX]™›ÛÜŠÈÊNÈËÈLBˆİš[XYÙTÛ[Ûİ[™Ñ[˜X›YH˜[ÙNÂˆØ[˜\Ë˜Y]™[\İ[™\Š	ØÛÛ^Y[IË
+JHOˆKœ™]™[Y˜][
+
+JNÂˆØ[˜\Ë˜Y]™[\İ[™\Š	Û[İ\ÙYİÛ‰Ë
+
+HOˆÈHÈØ[˜\Ë™›Øİ\Ê
+NÈHØ]Ú
+JHßHJNÂˆHÈØ[˜\Ë™›Øİ\Ê
+NÈHØ]Ú
+JHßB‚ˆÛÛœİĞU‘WÒÑVHH	ØZKY]XÜËXY™[\™K]ŒIÎÂ‚ˆËÈKKKKKKKKKH; à{`çKKKKKKKKKBˆÛÛœİØ[YHHÂˆ[ÙNˆ	İ]IËËÈ]HÛÜ›X[ÙÈ˜]H[™[™È^™]šY]È]\ÙBˆX\ˆ	İš[YÙIËˆ^Y\ˆÂˆˆLËNˆM‹ËÈ;`à;'o;(£;dgˆˆLÈ
+ˆËNˆMˆ
+ˆËËÈ;e/{!`;(£;dg
+:ìí:¬!
+Bˆ\ˆ	İ\	Ëˆ[İš[™Îˆ˜[ÙKˆİ\ˆËÈ:¬mú®,;%h:ââ:êe;'m;!fˆKˆ›YÜÎˆ[ˆX[ÙÎˆ[ËÈÈ[™\ËYÚ\œËÜXZÙ\‹Û‘[™Bˆ˜]Nˆ[ˆ[YNˆˆ]Pİ\œÛÜˆˆ[™[™Õˆˆ^ˆÈİ\œÛÜˆ™]ˆ	İ]IÈKˆ™]šY]ÎˆÈİ\œÛÜˆ™]ˆ	İÛÜ›	ËÛİˆ\ÙNˆ	Û\İ	ËYÎˆ×KPİ\œÛÜˆÚÚXÙSÜ™\ˆ[™YY˜XÚÎˆ[Kˆ›İ\›˜[ˆÈ™]ˆ	İÛÜ›	ËÛİˆØÜ›ÛˆØ\İˆKˆ]Ø\™ÎˆÈ™]ˆ	İÛÜ›	ËÛİˆØÜ›ÛˆKˆÚ[[™ÙNˆ[ËÈÈ™]Ûİ\ÙKÜXÜËÙ[]Y\İ[ÛœËYİ\œÛÜ‹ÚÚXÙSÜ™\‹ØÛÜ™K™YY˜XÚÈBˆÛÜÛY]XÜÎˆÈ™]ˆ	İ]IËÛİˆÛÛˆ›İÕ]Nˆ›İÕ[YNˆØ\İˆKˆ˜XÚİ\ˆÈ™]ˆ	İ]IËİ\œÛÜˆØ\İˆÛÛ™š\›Nˆ˜[ÙHKˆ›İXÙNˆÈ^ˆ	ÉËˆKËÈ;&å:äç; àzâê;%b:à­;a¨;"©;b®
+;em:®";%c:é¯:äìJBˆ[›ØÚÑ›\ÚˆËÈ‹LH;f£zäçH;"':¬!;fe:êm:ì&;)ç{'¡;.m;&­;b®:âé;&­
+™YXÙQ:êm;'(;)à
+Bˆ[™]ˆ	İ]IËˆ]\ÙPİ\œÛÜˆˆXXÚ\İ\œÛÜˆËÈ8à#;!(; çzâæ:ì*xà#H:êe:âm;.é;!'ˆ]TØÜ™Y[ˆ	ÜÛİÉËËÈÛİÈ˜[YH[]BˆÛİİ\œÛÜˆˆİ\œ™[Ûİˆˆ^Y\“˜[YNˆ	û"&;f.;'¤	Ëˆ˜[YPÛÛ™š\›Nˆ˜[ÙKˆ˜[YPØ[˜Ù[ˆ˜[ÙKˆ^ÜYYˆ	Û›Ü›X[	ËËÈÛİÈ›Ü›X[˜\İ8 %:ã ;fe;,/H;'¤:éâH;!£zãáˆ\™ÙU^ˆ˜[ÙKËÈ;`l:® ;%*
+;($z­ï;!,JH:êª:äçˆÛÛÜ›[™ˆ˜[ÙKËÈ; â{%oH;.g;fe;c%:è";b®
+;($z­ï;!,JH:êª:äçˆY™šXİ[Nˆ	Û›Ü›X[	ËËÈX\ŞH›Ü›X[\™8 %;efzáa:ìá:à§;'m:ãáˆÎˆ˜[ÙKËÈ;'o{%­;(ï:®,
+ÊH;($z­ï;!,Bˆ™YXÙQˆ˜[ÙKËÈ;fe:êm;fª:¬ï;)!;'m:®,
+:­$z¬ï:ëï;!,p­úêª;!f:ëï:¬$:ì,:è)
+BˆİÑÜ˜\XÜÎˆ˜[ÙKËÈ;( ; «;%¤H:­î:ç¦;e/J:ì,{`®H;em; àzãá^
+È:ë-:¬l;&­;fª:¬ï;-g;!£;fe
+Bˆ\Ú›Ø\™ˆÈ™]ˆ	İ]IËİ\œÛÜˆØ\İˆKËÈ:­d; «;&ªH:ã ;"ç:ìí:äçˆXY\˜›Ø\™ˆÈ™]ˆ	İ]IËİ\œÛÜˆØ\İˆ›İÜÎˆ×Kš[\ÎˆÚÚ\YˆKËÈKLŒ:ì&;"';'!;dg
+:ì,{%áH;%ë:çë:¬';ej{ ¬
+BˆÛ\ÜÛ[ÙNˆÈ™]ˆ	İÛÜ›	ËÙ[ˆÛÛ™š\›Nˆ˜[ÙKØ\İˆKËÈ;"&;%áH:êª:äç
+;,e{a,:ì%:èg;"ç;'¤JBˆ™\Üİˆ[ËÈKLN; «;(!û «;fá;($:¬ :çì;`à;'¡È™]ÚÚ[™]Z^™\ËYPİ\œÛÜ‹ÚÚXÙSÜ™\‹ØÛÜ™K\ÙK™YY˜XÚÈBˆ™\ÜˆÈ™]ˆ	İÛÜ›	ËÛİˆØ\İˆKËÈ:­d; «;&ªH;ef{ çH;)á:âê:é«;cë;b®ˆ]Z^™Y]ˆÈ™]ˆ	İ]IËİ\œÛÜˆØ\İˆÛÛ™š\›Nˆ˜[ÙHKËÈ;.é;"©;a`;`-;)¢;c®;)äp­ú¬ ;(.;&):®,ˆØ\™ÎˆÈ™]ˆ	İ]IËÛİˆØÜ›ÛˆKËÈ;ef{"­H;.m:äç;.ë:è"{!fˆÙ\ˆÈ™]ˆ	İ]IËÛİˆØ\İˆKËÈ;"&:èã;)§p­û)á:ãá;'n;)§{!'ˆÙˆÈ™]ˆ	İ]IËØ]ˆKËÈ:ê¡{&";'f;(!:âîJ:èg;.ë:®,:ègJBˆ]\ÙTØÜ›ÛˆËÈ;'o;"ç;(%{)à:êe:âm;"©;`k:èiˆ^›T[ˆ[ËÈ:ì*{`â;-§:çì;`à;'¡; à{`ç
+;ge;( {'f:ì*H:äìJH8 %:ì*H:ì%»%ä;!':â¥[ˆÚÚXÙNˆ[ËÈ;&å:äç;!(;`ç{)à:ì%{"©È›Û\Ü[ÛœËİ\œÛÜ‹Û”XÚÈBˆÚÚXÙT™]ˆ	İÛÜ›	Ëˆ[ˆ[ËÈ;co;)¤;g£;b®;&):ì¡:è";'mÈİ\]™[[ÈBˆ[™]ˆ	İÛÜ›	Ëˆ[›Ñ[Nˆ[ËÈ; â:¬£;'¡;'n;b®:èg;%e;(!È˜YQœ˜[YHH8 %İ\™]ÑØ[Y{%ä;!';!.;c!BˆØ\œÛÛÛİÛ‘œ˜[Y\ÎˆËÈ:éíH;(!;ff;)à{fá;)¢{"ç:ä&:ãã;%a:¬ :â¥]]ËX›İ[˜ÙH:ì*{)àˆ\İØ\œˆ[ËÈÈœ›ÛSX\ÓX\^]\‹\œš]™Y]H8 %V:¬ ;)§Kûac;"©;b®;&ªBˆNÂ‚ˆÛÛœİÓÕĞÓÕS•HÎÂ‚ˆËÈKKKKKKKKKH;( ;'©H:¬ :â©H;%ë:í 
+:îa:¬íz¬':êª:äç0­û( ;'©z¬íz¬!:¬ :äçH:äìJHKKKKKKKKKBˆËÈ:êª:äè;$ì:®,:¬ ;(l;&ª{g¢;"é;c*;em;)á;e¢{'m;%b;( ;'©zä&:â¥;-g;%a{'f; à{fj{'a; «;&ª{'¤;%ä:¬£;%c:é¬:âé‚ˆ]İÜ˜YÙSÚÈHYNÂˆ[˜İ[Ûˆ›Ø™TİÜ˜YÙJ
+HÂˆHÂˆÛÛœİÈH	××ØYWÜ›Ø™W×ÉÎÂˆØØ[İÜ˜YÙKœÙ]][JË	ÌIÊNÂˆÛÛœİÚÈHØØ[İÜ˜YÙK™Ù]][JÊHOOH	ÌIÎÂˆØØ[İÜ˜YÙKœ™[[İ™R][JÊNÂˆİÜ˜YÙSÚÈHÚÎÂˆHØ]Ú
+JHÈİÜ˜YÙSÚÈH˜[ÙNÈBˆ™]\›ˆİÜ˜YÙSÚÎÂˆBˆËÈ:çì;`à;'¡;%ä;( ;'©{'m;,¦;'c;"é;c*;ef:êm
+;/ï;a,;-":¬ï:äìJH:¬¯z¬è:èg;"®z¬ª{ef:¬è;%b:à­:éo:ça;&­:âé‚ˆ[˜İ[Ûˆ›İTİÜ˜YÙQ˜Z[
+
+HÂˆYˆ
+İÜ˜YÙSÚÊHÂˆİÜ˜YÙSÚÈH˜[ÙNÂˆHÈØ[YK››İXÙHHÈ^ˆ	ø¦¨;'m:®,:®,;%ä;!':â¥;)á;e¢{'m;( ;'©zä&;)à;%b»%a;&¥ˆ:ì,{%á{'a;'m;&ª{em;(ï;!.;&¥‰ËˆÍŒNÈHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆBˆB‚ˆ[˜İ[Ûˆ™]Ñ›YÜÊ
+HÂˆ™]\›ˆÂˆ[ÙY›Ùˆ˜[ÙKˆY™X]YˆÂˆ™ZÚŞY[Û[Ûˆ˜[ÙKİZš\[Ûˆ˜[ÙKY[ÛšX[™Û[Ûˆ˜[ÙKˆØ[™ØZÛ[Ûˆ˜[ÙK]ZÚÛ[Ûˆ˜[ÙKÛ[[[Ûˆ˜[ÙKˆš[˜[›ÜÜÎˆ˜[ÙKY[Û™ÚNˆ˜[ÙKˆKˆY\˜ŞNˆËÈ:éâ;'c;'a;%b;%a;) ;f§û"&
+;"©;ac;'m;)àŸŠBˆš\Ú]YˆßKËÈ:éíH;'n;b®:èg;%ì;-§{f£;dg;"ç;&ªBˆYQ[™[™Îˆ˜[ÙKˆÛÜœ™XİÛİ[ˆˆ˜]PÛİ[ˆˆ˜XÙQÚ]™[ˆËÈ;(${"&;,¦;%ä;!':à­:ìí:à®;(%zìí;-g:ã :¬';"&
+:ââzá);'¡;(';&n
+H8 %:ìí;"©;/g:ì,H;'n;b®:èg;&ªBˆÚ\\ŒPÛX\ˆ˜[ÙKËÈ{'©H:ìí;"©
+:âí;%a
+H;!):äçH;&a:èãˆÚ\\ŒSY\˜ŞNˆ˜[ÙKËÈ{'©H:ìí;"©:éo;'¤:îa:èg:ä&:ãã:è.:â¥:¬ 
+»'©H;/g:ì,H;'n;b®:èg;&ªJBˆÚ\\ŒÛX\ˆ˜[ÙKËÈ»'©H:ìí;"©
+:®,;&®
+H;!):äçH;&a:èãˆÚ\\Œ“Y\˜ŞNˆ˜[ÙKËÈ»'©H:ìí;"©:éo;'¤:îa:èg:ä&:ãã:è.:â¥:¬ 
+û'©H;/g:ì,H;'n;b®:èg;&ªJBˆÚ\\ŒĞÛX\ˆ˜[ÙKËÈû'©H:ìí;"©
+:­î:çí;"î
+H;!):äçH;&a:èãˆÚ\\ŒÓY\˜ŞNˆ˜[ÙKËÈû'©H:ìí;"©:éo;'¤:îa:èg:ä&:ãã:è.:â¥:¬ ˆÚ\\ÛX\ˆ˜[ÙKËÈ;'©H:ìí;"©
+:ì&;)çJH;!):äçH;&a:èãˆÚ\\Y\˜ŞNˆ˜[ÙKËÈ;'©H:ìí;"©:éo;'¤:îa:èg:ä&:ãã:è.:â¥:¬ 
+:âé;'c;'©H;/g:ì,{&ªJBˆÙY[”İÌNˆ˜[ÙKËÈ;"©;a¨:é«:ìí{!(8 %;(ï;'n;'f:ì*H;!':ç£{'f:à¨{'`; «;)á;'a:í):âéˆÙY[”İÌˆ˜[ÙKËÈ;"©;a¨:é«:ìí{!(»f.8 %;dg:ìî;,/z¬è:êª;!':é«;!(:ì&;'f0åûdg; «;)áˆÙY[\XÛNˆ˜[ÙKËÈ;"©;a¨:é«:ìí{!(ûf.8 %;c®;)ä{"é:ëî;!¨{-§:®,; «;ejˆÙY[]ÛœÎˆ˜[ÙKËÈ;"©;a¨:é«:ìí{!(;f.8 %:ì,{"©;ac;'m;)à:­k;!'{'f:ì¡;b¯:ãe:ëîˆ[[Ü‘š^Yˆ˜[ÙKËÈû'©H;eâ:î#;em;('8 %;!¨{-§;`äH;(%{(%H:ìí:ãá;&a:èã
+;!£:ë.:¬l:é«:¬':ì*JBˆ›ÙÛÛ™™\ÜÚ[Ûˆ˜[ÙKËÈ:ì%{ «:¬è:ì,H;'m:ì©;b®{f£;b®:é«:¬l
+Ú\\ŒĞÛX\ˆ;fá:éâ;'a;)á;'¡JBˆÍÙ^TÙXÜ™]ˆ˜[ÙKËÈ;'©H;%í;!è8¤h:îa:ì ;(l:¬ J:­k;%ëx¤h:èì:è&È:­${'©H;`m:é«;%­
+BˆÍÙ^RYˆ˜[ÙKËÈ;'©H;%í;!è8¤hH:ìî;'n;dg
+:­k;%ëx¤hH;f£;&ä:¬ ;'¡H:¬ê:êªH;`m:é«;%­
+BˆÍİÛ[Ø\™ˆ[ËÈ:ì,{"©;ac;'m;)à:éâ;"©;a,;`©;ej;(%H8 %;'o;"ç:ãá:à§:ä';)§z¬l;.m:äçYˆYİXÚÙ\œÎˆËÈ:­$z¬è:å,{)à:â!;( J
+H8 %Q:¬ ;'©{'¤:é«;&);%ï;em;)à:âê:éä:èg;(':¬lˆÚ\\PÛX\ˆ˜[ÙKËÈ{'©H:ìí;"©
+:èê:ëî
+H;!):äçH;&a:èãˆÚ\\SY\˜ŞNˆ˜[ÙKËÈ{'©H:ìí;"©:éo;'¤:îa:èg:ä&:ãã:è.:â¥:¬ 
+:âé;'c;'©H;/g:ì,{&ªJBˆX\™[ZNˆ˜[ÙKËÈ;"©;a¨:é«:ìí{!({f.8 %;'¨:®-:ìízãá:á":ê.:ì¨:ç :âé;%ä;!';ge:äé:é«:â¥:èê:ëî:êª{!£:é«ˆ[ZU\İˆËÈ{'©H;eâ:î#8 %:èê:ëî;'f:êª{!£:é«;%b:à­;"';!';.m;&­;a,
+;"è:è¬:­k:¬!8¡¤»!£;'(:­k:¬!
+BˆÛŞ[ĞÛX\ˆ˜[ÙKËÈ;c#;'m:á$:ìí;"©
+:¬è;&¥
+H;!):äçH;&a:èã8 %;/e;%­:¬':ì*BˆÛŞ[ÓY\˜ŞNˆ˜[ÙKËÈ:¬è;&¥:éo;'¤:îa:èg:ä&:ãã:è.:â¥:¬ ˆÚš[™RYˆËÈ;/e;%­;(':âê:í"{eã;co;)¤;)á;e¢JÒ’S‘WÕÒTÔT”È:®.;'m
+BˆÚš[™UÜ›Û™ÎˆËÈ:í"{eã;co;)¤;&):âíH;f§û"&
+:®,:èg{&ªJBˆÚš[™QÛ™Nˆ˜[ÙKËÈ:í"{eã;co;)¤;&a:èã8 %;& {'m:äì{'©Bˆ˜[™R›Ú[™Yˆ˜[ÙKËÈ:ãæ{e¢{'¤:ì&:å%;ejzéf
+;&);e!:âçH;)à{fá
+Bˆ˜[™T™]™X[Yˆ˜[ÙKËÈ:ì&:å%;(%{,­:¬íz¬'
+;/e;%­:í"{eã;&a:èã
+H8 %:ãæ{e¢H;(¡zèãˆ˜[™TØZYˆßKËÈ:ì&:å%;(l;%®;'a;'m:ëî:¬m:á*:éíH
+:éízâîH{f£
+Bˆ[›ĞÛYLNˆ˜[ÙKËÈ;e!:èi:èg:­î;"é;eæ;"é:âê;!'8¤h;`ç:î%:é¯Âˆ[›ĞÛYLˆ˜[ÙKËÈ;e!:èi:èg:­î;"é;eæ;"é:âê;!'8¤hH:êª:ââ;a,ˆ[›ĞÛYLÎˆ˜[ÙKËÈ;e!:èi:èg:­î;"é;eæ;"é:âê;!'8¤hˆ;cë;"©;b®;'¡Âˆ[›ÑÛÜ“Ü[ˆ˜[ÙKËÈ;e!:èi:èg:­î;"é;eæ;"é;-§:­k:¬':ì*H8 %:âê;!'ú¬';"&;)äH;&a:èãˆ[›Ñ›Ü™\İ˜XÙNˆ˜[ÙKËÈ;"é;eæ;"é;`â;-§;)à{fá;(%{( {'f;",ˆ;,ªÈ;ge;( H;(l; «ˆ\˜Qš\œİ[˜Ûİ[\ˆ˜[ÙKËÈ;(%{( {'f;",ˆ;%b;*¯{%ä;!':å,:ço;&`;,¦;'c:éâ;(ï;.g;(!;&ªH;(l;&¬;%ì;-§ˆ›ÛÙİYPÛÜÙYˆ˜[ÙKËÈ:å,:ço;!):äçH;fá;e!:èi:èg:­î:éâ:ë-:é«;.íû"è;'a:ìí:¬è{'©{'/:èg;)á;'¡{e¢:â¥:¬ ˆ›Ü™\İÛX\š[™Ô™XYˆ˜[ÙKËÈ;(%{( {'f;",ˆ;%b;*¯H:¬í{a,;(l; «:¬¬:¬ï;dg;"çBˆš]˜XŞSXZÎˆËÈ{'©H:¬';'n;(%zìí:­î:é¯;'¤:¬ :í¦{'a:åc;&):ém:â¥:án;-§:ãá
+JBˆš]˜XŞT™XÛİ™\NˆËÈ:án;-§:ãáPV;fá;f£:ìíH:êª{dg;)á;e¢J;)à;&­;(%zìí;(l:¬ H;"&
+Bˆš]˜XŞT™XÛİ™\PXİ]™Nˆ˜[ÙKËÈ:án;-§:ãá{%ä;!';)¢{"ç;"é;c*:ã ;"è;f£:ìíH:êª{dg:ì':ãæBˆ›]›Ü”ÙY[ˆßKËÈ‹M;,¦;'c;(l; «;eg;e#:è";'m:ì¡;(£;dg
+	úéíNIÊH8 %;`ä;eæ:ãá;(!:¬ï;(';&ªBˆ˜[™P[œİÙ\ˆ[ËÈKLø¤hH:ì&:å%:¬ :ë/;'`;)â:ë.;%ä:¬è:én:âíJ	İÙÙ]\‰ß	Ø[Û™IÊH8 %;c#;'m:á$;)à{(!;/g:ì,{&ªBˆ˜[™T™XØ[Yˆ˜[ÙKËÈKLø¤hˆ;c#;'m:á$;)à{(!
+]ZY]X\™;)á;'¡JH:ì&:å%;/g:ì,{'a;'m:ëî:í):â¥:¬ ˆ˜[™R›ÚÙTÚİÛˆ˜[ÙKËÈKLø¤hÈ;,ªÈ:ìí;"©;`m:é«;%­;fá:ì&:å%;"';"&:á£zâí{f£;!,Bˆ™Îˆ˜[ÙKËÈKMH:äd:ì¢;)î:êª;eæ
+‘ÊÊH8 %:ã ; «;"©;&dzéã:à§;'m:ãá0­úìí; àH:ãæ{'oˆ^Y\•›ÚXÙNˆßKËÈLH;(ï;'n:¬íH:ì&;'dH;!(;`çJ;(%zâíH;%á»'c
+H8 %;"':¬!:ìá:¬è:én:¬$Š;`©8¡¤»'n:ãl{"©
+Bˆ[XP\ÚÙYˆ[ËÈLˆ:­${'©{%ä;!':âí;%a;'f;.m:äç:í ;`à{%ä:¬è:én:âíJ	ÚÙY\	ß	İ[šÉÊBˆ˜[šš˜ZĞ\ÚÙYˆ[ËÈLˆ;%a;/ ;'m:äç;%ä;!':ì&;)ç{'f:ë-:ã :í ;`à{%ä:¬è:én:âíJ	İØ]Ú	ß	ÜÚÚ\	ÊBˆY\˜ŞQİZYTÚİÛˆ˜[ÙKËÈMH:¬è;&¥;'f:ç,;)á;'¡H;"ç:ì&:å%;'f;f£;"&;%b:à­
+{f£
+Bˆ\[ÙİYP\ÚÙYˆ˜[ÙKËÈLx¤iÛYKÙ]Ûˆ;%å:å*H;fá:éâ;'a;%ä;ea:èg:­î:ì&;'dJ{f£
+BˆÛ\ÜÔÙ\ÜÚ[Ûˆ˜[ÙKËÈN;"&;%áJ;,*;"ç
+H:êª:äç;!.;!f8 %;"&;%áH;)á;'¡H:¬¯zèg;%ä;!':éãYBˆNÂˆB‚ˆËÈKKKKKKKKKH;!.;'m:î#;"«:èkÈ
+ú¬'
+HKKKKKKKKKBˆ[˜İ[ÛˆÛİÙ^JJHÈ™]\›ˆ	ØZKY]XÜËXY™[\™K\ÛİIÈ
+ÈNÈB‚ˆËÈŒÈ:éâ;'m:­î:è";'m;!f8 %:­k;!.;'m:î#
+ŒH;ea:äç0­û)§{dg0­ú­k;!.:¬á;)á;e¢J{%ä;!';,e{a,;)á;e¢zéã;"®z¬á;eg:âé‚ˆËÈ; «:ço;)á:éí{%ä;!';'¢:ãf;!.;'m:î#:â¥:éâ;'a;'¡z­k:èg;&+º®-:âéˆ
+ŒH;/f;ad;.(:ë-;!¤; àH;&ä;.f{'`Œû%ä;!':¬í{"çH;cä:®,
+BˆÛÛœİŒ×ĞĞTÕHÉØ™ZÚŞY[Û[Û‰Ë	ÜİZš\[Û‰Ë	ÜY[ÛšX[™Û[Û‰Ë	ÚØ[™ØZÛ[Û‰Ëˆ	Ş]ZÚÛ[Û‰Ë	ÚÛ[[[Û‰Ë	Ùš[˜[›ÜÜÉË	ŞY[Û™ÚI×NÂˆ[˜İ[ÛˆZYÜ˜]TÛİŒÊ]JHÂˆYˆ
+Y]HY]K™›YÜÊH™]\›ˆ]NÂˆËÈ:ãæ{e¢{'¤:ãá;'¡H;(!;!.;'m:î#
+:ì¡;(!:ë-:­ 
+H8 %;&);e!:âç{'a;'m:ëî;)à:à§;)á;e¢{'m:êm:ì&:å%:ãá;ejzéf;eg:¬ û'/:èg:ìî:âéˆYˆ
+]K™›YÜË[ÙY›Ùˆ	‰ˆ]K™›YÜË˜˜[™R›Ú[™YOOH[™Yš[™Y
+H]K™›YÜË˜˜[™R›Ú[™YHYNÂˆYˆ
+
+]Kˆ
+HHÊH™]\›ˆ]NÂˆÛÛœİˆH]K™›YÜÎÂˆ[]H‹˜˜YÙ\ÎÂˆ[]H‹œØ]Ğ˜]U\ÂˆYˆ
+‹™Y™X]Y
+HÂˆÛÛœİHßNÂˆ›Üˆ
+ÛÛœİÈÙˆŒ×ĞĞTÕ
+HÚ×HHHY‹™Y™X]YÚ×NÂˆ‹™Y™X]YHÂˆBˆYˆ
+‹›Y\˜ŞPÚÚXÙJHÂˆÛÛœİHHßNÂˆ›Üˆ
+ÛÛœİÈÙˆŒ×ĞĞTÕ
+HYˆ
+‹›Y\˜ŞPÚÚXÙVÚ×JHVÚ×HH‹›Y\˜ŞPÚÚXÙVÚ×NÂˆ‹›Y\˜ŞPÚÚXÙHHNÂˆBˆYˆ
+SPTÖÙ]K›X\JHÈ]K›X\H	İš[YÙIÎÈ]KHLÎÈ]KHHMÈBˆ]KˆHÎÂˆ™]\›ˆ]NÂˆBˆËÈŒø¡¤ˆ[›ÛXˆ;e#:ç¦:­î:®,:ìî:¬$‹ˆ;'m:ëî;",ˆ;'m; à{'a;)á;e¢{eg;!.;'m:î#:ço:êm:ë.;'a;%í:¬è;)à:à§:¬ û'/:èg:ìî:âé‚ˆ[˜İ[ÛˆZYÜ˜]TÛİ
+]JHÂˆYˆ
+Y]HY]K™›YÜÊH™]\›ˆ]NÂˆÛÛœİˆH]K™›YÜÎÂˆYˆ
+‹š[›ĞÛYLHOOH[™Yš[™Y
+H™]\›ˆ]NÈËÈ;'m:ëî;'m; àBˆ‹š[›ĞÛYLHHHY‹[ÙY›ÙÂˆ‹š[›ĞÛYLˆHHY‹[ÙY›ÙÂˆ‹š[›ĞÛYLÈHHY‹[ÙY›ÙÂˆ‹š[›ÑÛÜ“Ü[ˆHHY‹[ÙY›ÙÂˆ‹š[›Ñ›Ü™\İ˜XÙHHHY‹[ÙY›ÙÂˆ]KˆHÂˆ™]\›ˆ]NÂˆB‚ˆËÈ8¡¤Nˆ;"é;eæ;"é;`â;-§;)à{fá;",ˆ;ge;( H;e#:ç¦:­îˆ:®,;(m;)á;e¢H;!.;'m:î#:â¥;'m:ëî:ìî:¬ û'/:èg;"®z¬á;eg:âé‚ˆ[˜İ[ÛˆZYÜ˜]TÛİJ]JHÂˆYˆ
+Y]HY]K™›YÜÊH™]\›ˆ]NÂˆYˆ
+]K™›YÜËš[›Ñ›Ü™\İ˜XÙHOOH[™Yš[™Y
+HÂˆ]K™›YÜËš[›Ñ›Ü™\İ˜XÙHHHY]K™›YÜË[ÙY›ÙˆHJ]K™›YÜË™Y™X]Y	‰ˆ]K™›YÜË™Y™X]Y˜™ZÚŞY[Û[ÛŠNÂˆBˆ]KˆHNÂˆ™]\›ˆ]NÂˆB‚ˆËÈx¡¤ˆ:å,:ço;,ªÈ;(l;&¬;(!;&ªH;%ì;-§;e#:ç¦:­îˆ;'m:ëî:å,:ço:éo:ä&:ãã:è.:¬l:à¦:éâ;'a:®c;)à;)á;e¢{eg;!.;'m:î#:â¥:ìî:¬ û'/:èg;"®z¬á;eg:âé‚ˆ[˜İ[ÛˆZYÜ˜]TÛİŠ]JHÂˆYˆ
+Y]HY]K™›YÜÊH™]\›ˆ]NÂˆYˆ
+]K™›YÜË\˜Qš\œİ[˜Ûİ[\ˆOOH[™Yš[™Y
+HÂˆ]K™›YÜË\˜Qš\œİ[˜Ûİ[\ˆHHJ]K™›YÜË™Y™X]Y	‰ˆ]K™›YÜË™Y™X]Y˜™ZÚŞY[Û[ÛŠNÂˆBˆ]KˆHÂˆ™]\›ˆ]NÂˆB‚ˆËÈ¸¡¤Îˆ:¬';'n;(%zìí:­î:é¯;'¤;(${-"H;c¦:á$;bì
+:án;-§:ãá
+H:®,:ìî:¬$‹ˆ:®,;(m;!.;'m:î#:â¥;%b;(!; à{`ç;%ä;!';"ç;'¤{eg:âé‚ˆ[˜İ[ÛˆZYÜ˜]TÛİÊ]JHÂˆYˆ
+Y]HY]K™›YÜÊH™]\›ˆ]NÂˆÛÛœİˆH]K™›YÜÎÂˆYˆ
+‹œš]˜XŞSXZÈOOH[™Yš[™Y
+H‹œš]˜XŞSXZÈHÂˆYˆ
+‹œš]˜XŞT™XÛİ™\HOOH[™Yš[™Y
+H‹œš]˜XŞT™XÛİ™\HHÂˆYˆ
+‹œš]˜XŞT™XÛİ™\PXİ]™HOOH[™Yš[™Y
+H‹œš]˜XŞT™XÛİ™\PXİ]™HH˜[ÙNÂˆ]KˆHÎÂˆ™]\›ˆ]NÂˆB‚ˆËÈø¡¤ˆ;e!:èi:èg:­î:éâ:ë-:é«û",ˆ;%b;*¯H;(l; «;dg;"çH:®,:ìî:¬$‹ˆ;'m:ëî:å,:ço:éo:ä&:ãã:é¬;!.;'m:î#:â¥{'©H;)á;'¡H;gd:é¡;'a:ìî:¬ û'/:èg;"®z¬á;eg:âé‚ˆ[˜İ[ÛˆZYÜ˜]TÛİ
+]JHÂˆYˆ
+Y]HY]K™›YÜÊH™]\›ˆ]NÂˆÛÛœİˆH]K™›YÜÎÂˆYˆ
+‹œ›ÛÙİYPÛÜÙYOOH[™Yš[™Y
+H‹œ›ÛÙİYPÛÜÙYHHJ‹™Y™X]Y	‰ˆ‹™Y™X]Y˜™ZÚŞY[Û[ÛŠNÂˆYˆ
+‹™›Ü™\İÛX\š[™Ô™XYOOH[™Yš[™Y
+H‹™›Ü™\İÛX\š[™Ô™XYH˜[ÙNÂˆ]KˆHÂˆ™]\›ˆ]NÂˆB‚ˆ[˜İ[ÛˆØYÛİ
+JHÂˆHÂˆÛÛœİ˜]ÈHØØ[İÜ˜YÙK™Ù]][JÛİÙ^JJJNÂˆ™]\›ˆ˜]ÈÈZYÜ˜]TÛİ
+ZYÜ˜]TÛİÊZYÜ˜]TÛİŠZYÜ˜]TÛİJZYÜ˜]TÛİ
+ZYÜ˜]TÛİŒÊ”ÓÓ‹œ\œÙJ˜]ÊJJJJJJHˆ[ÂˆHØ]Ú
+JHÈ™]\›ˆ[ÈBˆB‚ˆ[˜İ[ÛˆÜš]TÛİ
+K]JHÂˆHÈØØ[İÜ˜YÙKœÙ]][JÛİÙ^JJK”ÓÓ‹œİš[™ÚYJ]JJNÈBˆØ]Ú
+JHÈ›İTİÜ˜YÙQ˜Z[
+
+NÈBˆB‚ˆÛÛœİÓÕÕS‘×ÒÑVHH	ØZKY]XÜËXY™[\™KY[]Y\Ûİ	ÎÂˆ[˜İ[ÛˆÛİ[Ù^\ÊJHÂˆ™]\›ˆÜÛİÙ^JJKİ]ÒÙ^JJKZ\İZÙ\ÒÙ^JJKY]RÙ^JJK^›RÙ^JJWNÂˆBˆ[˜İ[Ûˆ[]TÛİ
+JHÂˆËÈ:ä&; ­:é«:®,;%b;(!:éçH8 %;)à;&¬:®,;)à{(!;'m;"«:èkû'f:êª:äè:ãl;'m;a,:éo;"©:àá{ íûem:äe:âé‚ˆËÈ:¬í{&ªH;`ç:î%:é¯û%ä;!':âé:én;ef{ ç{'f;!.;'m:î#:éo;"é;"&:èg;)à;&ã:ãá{f£:ìíz­k;eh;"&;'¢:âé‚ˆHÂˆËÈÈ8 %KLMØˆ;"©:àá{ íÈ:à¦;'m;dg;"ç
+:èg:äç;"çÌ;'o;)à:à¦:êm;'¤:ãæH;(%zé«
+Kˆ:­k;"©:àá{ íÊÈ;%á»'c
+{'`ˆËÈ; «{(';ef;)à;%bº¬è;,ªÈ:èg:äç:åc;)à:®";"ç:¬ {'/:èg:ãá;'©H;,#zâ¥:âé
+ZYÜ˜]TÛİŒû"çH;ef;'!;f.;ff
+K‚ˆÛÛœİÛ˜\HÈÛİˆKÎˆ]K››İÊ
+HNÂˆ›Üˆ
+ÛÛœİÈÙˆÛİ[Ù^\ÊJJHÈÛÛœİˆHØØ[İÜ˜YÙK™Ù]][JÊNÈYˆ
+ˆOH[
+HÛ˜\Ú×HHÈBˆØØ[İÜ˜YÙKœÙ]][JÓÕÕS‘×ÒÑVK”ÓÓ‹œİš[™ÚYJÛ˜\
+JNÂˆHØ]Ú
+JHÈÊˆ;&ªzçâH:í ;(lH:äì{'m:êm:­î:àéH;)á;e¢H
+‹ÈBˆHÈØØ[İÜ˜YÙKœ™[[İ™R][JÛİÙ^JJJNÈHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆÛX\”ÛİX\›š[™ÊJNÈËÈ;ef{ ç{'a;)à;&¬:êm;ef{"­H:®,:ègJ;'o;)à0­úìí{"­p­úãá;(!:¬ï;('
+zãá;ej:®æ;)à;&­:âéˆBˆ[˜İ[Ûˆ[™Ñ[]TÛİ
+
+HÂˆ]Û˜\ÂˆHÈÛ˜\H”ÓÓ‹œ\œÙJØØ[İÜ˜YÙK™Ù]][JÓÕÕS‘×ÒÑVJJNÈHØ]Ú
+JHÈ™]\›ˆÈÚÎˆ˜[ÙHNÈBˆYˆ
+\Û˜\\[ÙˆÛ˜\œÛİOOH	Û[X™\‰ÊH™]\›ˆÈÚÎˆ˜[ÙHNÂˆ]ˆHÂˆ›Üˆ
+ÛÛœİÈÙˆÛİ[Ù^\ÊÛ˜\œÛİ
+JHÂˆYˆ
+Û˜\Ú×HOH[
+HÈHÈØØ[İÜ˜YÙKœÙ]][JËÛ˜\Ú×JNÈŠÊÎÈHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈHBˆBˆYˆ
+^›SÙĞØXÚH	‰ˆ^›SÙĞØXÚKœÛİOOHÛ˜\œÛİ
+H^›SÙĞØXÚHH[ÂˆHÈØØ[İÜ˜YÙKœ™[[İ™R][JÓÕÕS‘×ÒÑVJNÈHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆ™]\›ˆÈÚÎˆˆˆÛİˆÛ˜\œÛİNÂˆBˆ[˜İ[Ûˆ\Ñ[]YÛİ
+
+HÂˆHÈ™]\›ˆH[ØØ[İÜ˜YÙK™Ù]][JÓÕÕS‘×ÒÑVJNÈHØ]Ú
+JHÈ™]\›ˆ˜[ÙNÈBˆB‚ˆËÈ:®,;(m:âê;'o;!.;'m:î#:éo;"«:èkÈ;'/:èg{f£;'m;(!;eg:âé‚ˆ[˜İ[ÛˆZYÜ˜]SÛØ]™J
+HÂˆ]ÛH[ÂˆHÈÛÛœİˆHØØ[İÜ˜YÙK™Ù]][JĞU‘WÒÑVJNÈÛHˆÈ”ÓÓ‹œ\œÙJŠHˆ[ÈHØ]Ú
+JHÈÛH[ÈBˆYˆ
+Û	‰ˆÛ™›YÜÈ	‰ˆ[ØYÛİ
+
+JHÂˆÜš]TÛİ
+È˜[YNˆ	û"&;f.;'¤	ËX\ˆÛ›X\ˆÛNˆÛK›YÜÎˆÛ™›YÜË\]Y]ˆ]K››İÊ
+HJNÂˆHÈØØ[İÜ˜YÙKœ™[[İ™R][JĞU‘WÒÑVJNÈHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆBˆB‚ˆÛÛœİĞU‘WÕ‘T”ÒSÓˆHÂˆ[˜İ[ÛˆØ]™J
+HÂˆÜš]TÛİ
+Ø[YK˜İ\œ™[ÛİÂˆˆĞU‘WÕ‘T”ÒSÓ‹ˆ˜[YNˆØ[YKœ^Y\“˜[YKˆX\ˆØ[YK›X\ˆˆØ[YKœ^Y\‹NˆØ[YKœ^Y\‹Kˆ›YÜÎˆØ[YK™›YÜËˆ\]Y]ˆ]K››İÊ
+KˆJNÂˆB‚ˆËÈ;,e{a,;)á;e¢H:ço:ìª
+;`à;'m;bà;"«:èkÈ;dg;"ç;&ªJH8 %;e!:èi:èg:­î8¡¤ˆ_{'©H8¡¤ˆ;c#;'m:á$ˆ[˜İ[ÛˆÚ\\”›ÙÜ™\ÜÓX™[
+›YÜÊHÂˆÛÛœİH
+›YÜÈ	‰ˆ›YÜË™Y™X]Y
+HßNÂˆYˆ
+›YÜË˜Ú\\PÛX\ŠH™]\›ˆ	ûc#;'m:á$	ÎÂˆYˆ
+›YÜË˜Ú\\ÛX\ŠH™]\›ˆ	Í{'©IÎÂˆYˆ
+›YÜË˜Ú\\ŒĞÛX\ŠH™]\›ˆ	Í;'©IÎÂˆYˆ
+›YÜË˜Ú\\ŒÛX\ŠH™]\›ˆ	Ìû'©IÎÂˆYˆ
+›YÜË˜Ú\\ŒPÛX\ŠH™]\›ˆ	Ì»'©IÎÂˆYˆ
+˜™ZÚŞY[Û[ÛŠH™]\›ˆ	Ì{'©IÎÂˆ™]\›ˆ	ûe!:èi:èg:­î	ÎÂˆB‚ˆËÈ;"«:èkÈ;&¥;%oH
+;`à;'m;bà;dg;"ç;&ªJKˆ;%á»'/:êm[‚ˆ[˜İ[ÛˆÛİİ[[X\JJHÂˆÛÛœİÈHØYÛİ
+JNÂˆYˆ
+\È\Ë™›YÜÊH™]\›ˆ[Âˆ™]\›ˆÂˆ˜[YNˆØ[š]^™S˜[YJË›˜[YJKˆİYÙNˆÚ\\”›ÙÜ™\ÜÓX™[
+Ë™›YÜÊKˆY\˜ŞNˆË™›YÜË›Y\˜ŞHˆÛ™NˆHJË™›YÜË™Y™X]Y	‰ˆË™›YÜË™Y™X]YY[Û™ÚJKˆ[™[™ÒYˆË™›YÜË™[™[™ÒY[ˆNÂˆB‚ˆËÈ:ì':¬«;eg;%å:å*H:®,:ègH8 %;!.;'m:î#;&`:ìá:¬':èg:¬£;'¡;'a:âé;"ç;"ç;'¤{em:ãá:àª:â¥:âéˆÛÛœİS‘S‘Ô×ÒÑVHH	ØZKY]XÜËXY™[\™KY[™[™ÜÉÎÂˆ[˜İ[ÛˆÙ][™[™ÜÔÙY[Š
+HÂˆHÈ™]\›ˆ”ÓÓ‹œ\œÙJØØ[İÜ˜YÙK™Ù]][JS‘S‘Ô×ÒÑVJJHßNÈBˆØ]Ú
+JHÈ™]\›ˆßNÈBˆBˆ[˜İ[Ûˆ™XÛÜ™[™[™ÔÙY[ŠY
+HÂˆHÂˆÛÛœİÙY[ˆHÙ][™[™ÜÔÙY[Š
+NÂˆÙY[–ÚYHHYNÂˆØØ[İÜ˜YÙKœÙ]][JS‘S‘Ô×ÒÑVK”ÓÓ‹œİš[™ÚYJÙY[ŠJNÂˆHØ]Ú
+JHÈÊˆ;( ;'©H:í¢:¬ ;ff:¬¯{'m:êm:ë-;"ç
+‹ÈBˆB‚ˆËÈ;!);(%J;'¤:éâH;!£zãá
+H8 %;!.;'m:î#;&`:ìá:¬':èg:¬£;'¡;'a:âé;"ç;"ç;'¤{em:ãá:àª:â¥:âéˆÛÛœİÑUS‘Ô×ÒÑVHH	ØZKY]XÜËXY™[\™K\Ù][™ÜÉÎÂˆËÈ;'c:çâHúâê:¬á8 %:­d;"é;%ä;!';%ë:çë:ã :¬ :ãæ{"ç;%ä:ãã:åc	û'¤z¬£	ú¬ ;ea;&¥;ef:âéˆÛÛœİ“ÓSQWÓU‘SÈHÈ›Ü›X[ˆKİÎˆK]ZY]ˆŒˆNÂˆÛÛœİ“ÓSQWÓÔ‘TˆHÉÛ›Ü›X[	Ë	ÛİÉË	Ü]ZY]	×NÂˆÛÛœİ“ÓSQWÓP‘SHÈ›Ü›X[ˆ	úìí;a­IËİÎˆ	û'¤z¬£	Ë]ZY]ˆ	û%a;(ï;'¤z¬£	ÈNÂˆÛÛœİVÔÔQQÈHÈÛİÎˆK›Ü›X[ˆK˜\İˆ‹HNÂˆÛÛœİVÔÔQQÓÔ‘TˆHÉÛ›Ü›X[	Ë	Ù˜\İ	Ë	ÜÛİÉ×NÂˆÛÛœİVÔÔQQÓP‘SHÈ›Ü›X[ˆ	úìí;a­IË˜\İˆ	úîh:é¡	ËÛİÎˆ	úâ¤:é¯	ÈNÂˆÛÛœİQ‘—ÓÔ‘TˆHÉÙX\ŞIË	Û›Ü›X[	Ë	Ú\™	×NÂˆÛÛœİQ‘—ÓP‘SHÈX\ŞNˆ	ûcë:­ï;ef:¬£	Ë›Ü›X[ˆ	úìí;a­IË\™ˆ	úéé;/i;ef:¬£	ÈNÂˆËÈÔû'fºãæ{'¤H;)!;'m:®,ˆ;!(;f.:éo:®,:ìî:¬$»'/:èg; ¯:â¥:âé
+:­$z¬ï:ëï;!,p­úêª;!f:ëï:¬$:ì,:è)
+BˆÛÛœİ™Y™\œÔ™YXÙHH
+
+
+HOˆÂˆHÈ™]\›ˆHJÚ[™İË›X]ÚYYXH	‰ˆÚ[™İË›X]ÚYYXJ	Ê™Y™\œË\™YXÙY[[İ[Ûˆ™YXÙJIÊK›X]Ú\ÊNÈBˆØ]Ú
+JHÈ™]\›ˆ˜[ÙNÈBˆJJ
+NÂˆ[˜İ[ÛˆØYÙ][™ÜÊ
+HÂˆHÂˆÛÛœİÈH”ÓÓ‹œ\œÙJØØ[İÜ˜YÙK™Ù]][JÑUS‘Ô×ÒÑVJJHßNÂˆYˆ
+UVÔÔQQÖÜË^ÜYYJHË^ÜYYH	Û›Ü›X[	ÎÂˆË›\™ÙU^HH\Ë›\™ÙU^ÂˆË˜ÛÛÜ›[™HH\Ë˜ÛÛÜ›[™ÂˆYˆ
+QQ‘—ÓÔ‘T‹š[˜ÛY\ÊË™Y™šXİ[JJHË™Y™šXİ[HH	Û›Ü›X[	ÎÂˆËÈHH\ËÎÂˆËœ™YXÙQH
+	Ü™YXÙQ	È[ˆÊHÈH\Ëœ™YXÙQˆ™Y™\œÔ™YXÙNÂˆË›İÑÜ˜\XÜÈHH\Ë›İÑÜ˜\XÜÎÂˆYˆ
+U“ÓSQWÓU‘SÖÜË›Û[YWJHË›Û[YHH	Û›Ü›X[	ÎÂˆ™]\›ˆÎÂˆHØ]Ú
+JHÈ™]\›ˆÈ^ÜYYˆ	Û›Ü›X[	Ë\™ÙU^ˆ˜[ÙKÛÛÜ›[™ˆ˜[ÙKY™šXİ[Nˆ	Û›Ü›X[	ËÎˆ˜[ÙK™YXÙQˆ™Y™\œÔ™YXÙKİÑÜ˜\XÜÎˆ˜[ÙHNÈBˆBˆ[˜İ[ÛˆØ]™TÙ][™ÜÊ
+HÂˆHÂˆØØ[İÜ˜YÙKœÙ]][JÑUS‘Ô×ÒÑVK”ÓÓ‹œİš[™ÚYJÂˆ^ÜYYˆØ[YK^ÜYY\™ÙU^ˆØ[YK›\™ÙU^ÛÛÜ›[™ˆØ[YK˜ÛÛÜ›[™ˆY™šXİ[NˆØ[YK™Y™šXİ[KÎˆØ[YKË™YXÙQˆØ[YKœ™YXÙQİÑÜ˜\XÜÎˆØ[YK›İÑÜ˜\XÜËˆ›Û[YNˆØ[YK›Û[YKˆJJNÂˆHØ]Ú
+JHÈ›İTİÜ˜YÙQ˜Z[
+
+NÈBˆBˆ[˜İ[ÛˆÙÙÛT™YXÙQ
+
+HÂˆØ[YKœ™YXÙQHYØ[YKœ™YXÙQÂˆØ]™TÙ][™ÜÊ
+NÂˆÛİ[™˜›\
+
+NÂˆBˆ[˜İ[ÛˆÙÙÛSİÑÜ˜\XÜÊ
+HÂˆØ[YK›İÑÜ˜\XÜÈHYØ[YK›İÑÜ˜\XÜÎÂˆØ]™TÙ][™ÜÊ
+NÂˆÚXÚÑŠ
+NÂˆHÈ[PØXÚK˜ÛX\Š
+NÈHØ]Ú
+JHßBˆØ[YK››İXÙHHÈ^ˆØ[YK›İÑÜ˜\XÜÈÈ	û( ; «;%¤H:­î:ç¦;e/HÓˆ8 %;fe:êm;fª:¬ï;&`;em; àzãá:éo:à«»-á:âé	Èˆ	û( ; «;%¤H:­î:ç¦;e/HÑ‘‰ËˆMNÂˆÛİ[™˜›\
+
+NÂˆBˆ[˜İ[ÛˆŞXÛQY™šXİ[J
+HÂˆÛÛœİHHQ‘—ÓÔ‘T‹š[™^ÙŠØ[YK™Y™šXİ[JNÂˆØ[YK™Y™šXİ[HHQ‘—ÓÔ‘T–ÊH
+ÈJH	HQ‘—ÓÔ‘T‹›[™İNÂˆØ]™TÙ][™ÜÊ
+NÂˆÛİ[™˜›\
+
+NÂˆBˆ[˜İ[ÛˆÙÙÛUÊ
+HÂˆØ[YKÈHYØ[YKÎÂˆØ]™TÙ][™ÜÊ
+NÂˆYˆ
+Ø[YKÊHÜYXÚœÜXZÊ	û'o{%­;(ï:®,:éo;/,;%­;&¥	ÊNÈ[ÙHÜYXÚœİÜ
+
+NÂˆÛİ[™˜›\
+
+NÂˆB‚ˆËÈKKKKKKKKKH;'o{%­;(ï:®,
+ÊH8 %ÙXˆÜYXÚTHKKKKKKKKKBˆÛÛœİÜYXÚHÂˆİ›ÚXÙNˆ[ˆİ›ÚXÙTXÚÙYˆ˜[ÙKˆİ\ÜY
+
+HÈHÈ™]\›ˆ\[ÙˆÚ[™İÈOOH	İ[™Yš[™Y	È	‰ˆ	ÜÜYXÚŞ[\Ú\ÉÈ[ˆÚ[™İÎÈHØ]Ú
+JHÈ™]\›ˆ˜[ÙNÈHKˆËÈ;eg:­k{%­;'c;!,{'a:¬è:én:âé
+;%á»'/:êm:®,:ìî
+KˆÙ]›ÚXÙ\úâ¥:îa:ãæz®,:ço›ÚXÙ\ØÚ[™ÙY;'m;fá;%ä;,a;&ã;)á:âé‚ˆXÚÕ›ÚXÙJ
+HÂˆYˆ
+]\Ëœİ\ÜY
+
+JH™]\›ÂˆHÂˆÛÛœİœÈHÚ[™İËœÜYXÚŞ[\Ú\Ë™Ù]›ÚXÙ\Ê
+H×NÂˆËÈ:®,:®,:à­;'©JØØ[Ù\šXÙJH;'c;!,H;&¬;!(8 %:á);b®;&ã;`k;'c;!,{'`:ã ; «;ac{"©;b®
+;ef{ çH:ìá:ê¡H;cë;ej
+z¬ ˆËÈ:î#:ço;&¬;( ;(';(l; «;!':ì¡:èg:à¦:¬";"&;'¢:âé
+:¬';'n;(%zìí;%b:à­:ë.;!';&`;'o:­ :ä&:¬£
+BˆÛÛœİÛÈH
+ŠHOˆ‹›[™È	‰ˆ‹›[™ËÓİÙ\Ø\ÙJ
+Kš[™^ÙŠ	ÚÛÉÊHOOHÂˆ\Ë—İ›ÚXÙHHœË™š[™
+
+ŠHOˆÛÊŠH	‰ˆ‹›ØØ[Ù\šXÙJBˆœË™š[™
+ÛÊBˆœË™š[™
+
+ŠHOˆÚÛÜ™X[Ÿ;eg:­kKÚK\İ
+‹›˜[YH	ÉÊJH[ÂˆYˆ
+œË›[™İˆ
+H\Ë—İ›ÚXÙTXÚÙYHYNÂˆHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆKˆÜXZÊ^
+HÂˆYˆ
+YØ[YKÈ]\Ëœİ\ÜY
+
+H]^
+H™]\›ÂˆHÂˆYˆ
+]\Ë—İ›ÚXÙTXÚÙY
+H\ËœXÚÕ›ÚXÙJ
+NÂˆÚ[™İËœÜYXÚŞ[\Ú\Ë˜Ø[˜Ù[
+
+NÂˆÛÛœİHH™]ÈÚ[™İË”ÜYXÚŞ[\Ú\Õ]\˜[˜ÙJİš[™Ê^
+Kœ™\XÙJ×‹ÙË	È	ÊKœ™\XÙJÖø¦ix¦j¸¦!x¦!¸¥á¸¥áø¥âğåø¥­¸¥íø¥ã¸§/ø¡á8¡¤—KÙË	È	ÊJNÂˆK›[™ÈH	ÚÛËRÔ‰ÎÂˆKœ˜]HHMNÂˆYˆ
+\Ë—İ›ÚXÙJHK›ÚXÙHH\Ë—İ›ÚXÙNÂˆÚ[™İËœÜYXÚŞ[\Ú\ËœÜXZÊJNÂˆHØ]Ú
+JHÈÊˆ:ëî;)à;&äû,*:âê;ff:¬¯H:ë-;"ç
+‹ÈBˆKˆİÜ
+
+HÈHÈYˆ
+\Ëœİ\ÜY
+
+JHÚ[™İËœÜYXÚŞ[\Ú\Ë˜Ø[˜Ù[
+
+NÈHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈHKˆNÂˆËÈ;`-;)¢:ë.;('
+úìí:®,:éo;'o{%­;) :âé
+;dg;"ç;"';!':ã :èg
+Bˆ[˜İ[ÛˆÜXZÔ]Z^ŠU^ÚÚXÙU^ÊHÂˆYˆ
+YØ[YKÊH™]\›ÂˆÜYXÚœÜXZÊU^
+È	Ëˆ	È
+ÈÚÚXÙU^Ë›X\
+
+ËJHOˆ	ÚH
+È_zì¢	ØßX
+Kš›Ú[Š	Ëˆ	ÊJNÂˆBˆ[˜İ[ÛˆÜXZÑ™YY˜XÚÊÛÜœ™XİÚJHÂˆYˆ
+YØ[YKÊH™]\›ÂˆÜYXÚœÜXZÊ
+ÛÜœ™XİÈ	û(%zâíHH	Èˆ	û%a;"k;&ã;&¥ˆ	ÊH
+ÈÚJNÂˆBˆ[˜İ[ÛˆŞXÛU^ÜYY
+
+HÂˆÛÛœİHHVÔÔQQÓÔ‘T‹š[™^ÙŠØ[YK^ÜYY
+NÂˆØ[YK^ÜYYHVÔÔQQÓÔ‘T–ÊH
+ÈJH	HVÔÔQQÓÔ‘T‹›[™İNÂˆØ]™TÙ][™ÜÊ
+NÂˆÛİ[™˜›\
+
+NÂˆBˆ[˜İ[ÛˆÙÙÛS\™ÙU^
+
+HÂˆØ[YK›\™ÙU^HYØ[YK›\™ÙU^ÂˆØ]™TÙ][™ÜÊ
+NÂˆÛİ[™˜›\
+
+NÂˆBˆ[˜İ[ÛˆÙÙÛPÛÛÜ›[™
+
+HÂˆØ[YK˜ÛÛÜ›[™HYØ[YK˜ÛÛÜ›[™ÂˆØ]™TÙ][™ÜÊ
+NÂˆÛİ[™˜›\
+
+NÂˆBˆËÈ;`l:® ;%*:êª:äç:ì,;'*8 %;'oz®,;)${"ë;fe:êm
+:ã ;fe0­û`-;)¢
+{'f:® ;'¤û)!:¬!:¬ª{%ä;( {&ªBˆ[˜İ[ÛˆŠ
+HÈ™]\›ˆØ[YK›\™ÙU^ÈKŒHˆNÈBˆ[˜İ[ÛˆœÊ›Û
+HÈ™]\›ˆ
+›ÛÈ	Ø›Û	Èˆ	ÉÊH
+ÈX]œ›İ[™
+
+ˆŠ
+JH
+È	Ü[Û›ÜÜXÙIÎÈBˆ[˜İ[Ûˆ
+
+HÈ™]\›ˆX]œ›İ[™
+
+ˆŠ
+JNÈBˆËÈ;'f:ëî; â{ àH8 %; â{%oH:êª:äç;%ä;!':â¥:îj:¬%Kû-":ègH:ã ;"è:­k:í¡;'m;"k;&­;c#:ç¤Kû(ï;fjJÚØX™KR]È:¬á;%í
+Bˆ[˜İ[Ûˆ[Û“˜[YJY
+HÈÛÛœİHHSÓ”ÕT”ÖÚYNÈ™]\›ˆ
+H	‰ˆK›˜[YJHYÈBˆ[˜İ[ÛˆÚĞÛÛÜŠ
+HÈ™]\›ˆØ[YK˜ÛÛÜ›[™È	ÈÌØY	Èˆ	ÈÍXØXÉÎÈHËÈ;(%zâíp­úá¤»'cˆ[˜İ[ÛˆØ\›ÛÛÜŠ
+HÈ™]\›ˆØ[YK˜ÛÛÜ›[™È	ÈÙMYŒ	Èˆ	ÈÙ™™	ÎÈHËÈ:ìí;a­Bˆ[˜İ[Ûˆ˜YÛÛÜŠ
+HÈ™]\›ˆØ[YK˜ÛÛÜ›[™È	ÈÙMYL	Èˆ	ÈÙLLØIÎÈHËÈ;&):âíp­úà«»'c‚ˆËÈKKKKKKKKKH;ef{ çJ;"«:èkÊzìá;ef{"­H:ãl;'m;a,KKKKKKKKKBˆËÈ;'o;)à0­úìí{"­H:án;b®0­ûa­z¬á:â¥»'m;"«:èkû'a;$ì:â¥;ef{ çH»'f:¬';'n:®,:èg{'m:âé‚ˆËÈ;"«:èkúéâ:âé:å,:èg:â!;( zä&:¬è;"«:èkû'a;)à;&¬:êm;ej:®æ;)à;&ã;)á:âé‚ˆËÈ
+;.g:­k;"&;,ªp­úì':¬«;%å:å*{'`:®,:®,:¬í{&ªH;.ë:è"{!f;'/:èg:­î:ã :èg:äe:âéŠBˆ[˜İ[ÛˆXİ]™TÛİ
+
+HÂˆËÈ;`à;'m;bà;%ä;!':â¥;.é;!':¬ :¬ :é«;`©:â¥;"«:èkË;e#:è";'m;)${%ä:â¥;)á;e¢H;)${'n;"«:èkÂˆ™]\›ˆØ[YK›[ÙHOOH	İ]IÈÈØ[YKœÛİİ\œÛÜˆˆØ[YK˜İ\œ™[ÛİÂˆBˆ[˜İ[ÛˆÛİX\›“˜[YJÛİ
+HÂˆÛÛœİÈHØYÛİ
+Ûİ
+NÂˆYˆ
+È	‰ˆË›˜[YJH™]\›ˆØ[š]^™S˜[YJË›˜[YJNÂˆYˆ
+ÛİOOHØ[YK˜İ\œ™[Ûİ	‰ˆØ[YKœ^Y\“˜[YJH™]\›ˆØ[š]^™S˜[YJØ[YKœ^Y\“˜[YJNÂˆ™]\›ˆ	û"&;f.;'¤	ÎÂˆBˆ[˜İ[ÛˆÛİ›YÜÊÛİ
+HÂˆYˆ
+ÛİOOHØ[YK˜İ\œ™[Ûİ	‰ˆØ[YK™›YÜÊH™]\›ˆØ[YK™›YÜÎÂˆÛÛœİÈHØYÛİ
+Ûİ
+NÂˆ™]\›ˆ
+È	‰ˆË™›YÜÊHÈË™›YÜÈˆ[ÂˆB‚ˆËÈ;&):âíH:ìí{"­H:án;b®8 %;bà:é¬:ë.;(':éo;"«:èkúìá:èg:®,:ègBˆÛÛœİRTÕRÑT×ÒÑVHH	ØZKY]XÜËXY™[\™K[Z\İZÙ\ÉÎÂˆ[˜İ[ÛˆZ\İZÙ\ÒÙ^JÛİ
+HÈ™]\›ˆRTÕRÑT×ÒÑVH
+È	ËIÈ
+ÈÛİÈBˆ[˜İ[ÛˆÙ]Z\İZÙ\ÊÛİ
+HÂˆHÈ™]\›ˆ”ÓÓ‹œ\œÙJØØ[İÜ˜YÙK™Ù]][JZ\İZÙ\ÒÙ^JÛİ
+JJHßNÈBˆØ]Ú
+JHÈ™]\›ˆßNÈBˆBˆ[˜İ[Ûˆ™XÛÜ™Z\İZÙJÛİJHÂˆYˆ
+\K—ÜZY
+H™]\›ÂˆHÂˆÛÛœİHHÙ]Z\İZÙ\ÊÛİ
+NÂˆVÜK—ÜZYHHÈÜXÎˆK—İÜXËNˆKœKNˆK˜KÎˆK˜ËÚNˆKÚHNÂˆØØ[İÜ˜YÙKœÙ]][JZ\İZÙ\ÒÙ^JÛİ
+K”ÓÓ‹œİš[™ÚYJJJNÂˆHØ]Ú
+JHÈÊˆ;( ;'©H:í¢:¬ ;ff:¬¯{'m:êm:ë-;"ç
+‹ÈBˆBˆ[˜İ[ÛˆÛX\“Z\İZÙJÛİZY
+HÂˆHÂˆÛÛœİHHÙ]Z\İZÙ\ÊÛİ
+NÂˆ[]HVÜZYNÂˆØØ[İÜ˜YÙKœÙ]][JZ\İZÙ\ÒÙ^JÛİ
+K”ÓÓ‹œİš[™ÚYJJJNÂˆHØ]Ú
+JHÈÊˆ;( ;'©H:í¢:¬ ;ff:¬¯{'m:êm:ë-;"ç
+‹ÈBˆBˆ[˜İ[ÛˆZ\İZÙPÛİ[
+Ûİ
+HÈ™]\›ˆØš™XİšÙ^\ÊÙ]Z\İZÙ\ÊÛİ
+JK›[™İÈB‚ˆËÈ;ef{"­H;)á;,¦zãá8 %;(ï;(':ìá;(%zâíKû"ç:ãá:éo;"«:èkúìá:èg:â!;( BˆÛÛœİÕU×ÒÑVHH	ØZKY]XÜËXY™[\™K\İ]ÉÎÂˆ[˜İ[Ûˆİ]ÒÙ^JÛİ
+HÈ™]\›ˆÕU×ÒÑVH
+È	ËIÈ
+ÈÛİÈBˆËÈ;(ï;(';`©8¡¤ˆ;)éû'`;eg:® :ço:ìªˆ:âê;'o;-§;,¦:â¥]Kšœû'fÔP×ÓP‘S‚ˆ[˜İ[ÛˆÜXÓX™[
+
+HÈ™]\›ˆÔP×ÓP‘SİHÈBˆ[˜İ[ÛˆÙ]İ]ÊÛİ
+HÂˆHÈ™]\›ˆ”ÓÓ‹œ\œÙJØØ[İÜ˜YÙK™Ù]][Jİ]ÒÙ^JÛİ
+JJHßNÈBˆØ]Ú
+JHÈ™]\›ˆßNÈBˆBˆ[˜İ[Ûˆ™XÛÜ™ÜXÔ™\İ[
+ÛİÜXËÛÜœ™Xİ
+HÂˆYˆ
+]ÜXÊH™]\›ÂˆHÂˆÛÛœİÈHÙ]İ]ÊÛİ
+NÂˆÛÛœİHHÖİÜX×HÈÛÜœ™Xİˆİ[ˆNÂˆKİ[
+ÏHNÂˆYˆ
+ÛÜœ™Xİ
+HK˜ÛÜœ™Xİ
+ÏHNÂˆÖİÜX×HHNÂˆØØ[İÜ˜YÙKœÙ]][Jİ]ÒÙ^JÛİ
+K”ÓÓ‹œİš[™ÚYJÊJNÂˆHØ]Ú
+JHÈÊˆ;( ;'©H:í¢:¬ ;ff:¬¯{'m:êm:ë-;"ç
+‹ÈBˆBˆËÈ;ef{"­H:ãl;'m;a,:éo;eg;fe:êm:í¡:çâ{'/:èg;(%zé«;eg:âé
+;'o;)à0­úé«;cë;b®:¬í{&ªJBˆ[˜İ[ÛˆZ[X\›š[™Ôİ[[X\JÛİ
+HÂˆÛÛœİİ]ÈHÙ]İ]ÊÛİ
+NÂˆÛÛœİ›İÜÈHØš™XİšÙ^\Êİ]ÊBˆ™š[\Š
+
+HOˆİ]ÖİKİ[ˆ
+Bˆ›X\
+
+
+HOˆ
+ÂˆÜXÎˆX™[ˆÜXÓX™[
+
+KˆÛÜœ™Xİˆİ]ÖİK˜ÛÜœ™Xİİ[ˆİ]ÖİKİ[ˆ˜]Nˆİ]ÖİK˜ÛÜœ™XİÈİ]ÖİKİ[ˆJJBˆœÛÜ
+
+KŠHOˆKœ˜]HH‹œ˜]JNÈËÈ;%o{eg;(ï;(':¬ ;'!:ègˆ]İÈHİˆHÂˆ›Üˆ
+ÛÛœİˆÙˆ›İÜÊHÈİÈ
+ÏH‹˜ÛÜœ™XİÈİˆ
+ÏH‹İ[ÈBˆ™]\›ˆÂˆ›İÜËˆ][\Yˆİ‹ˆÛÜœ™XİˆİËˆİ™\˜[˜]NˆİˆÈİÈÈİˆˆˆÙXZÎˆ›İÜË™š[\Š
+ŠHOˆ‹İ[Hˆ	‰ˆ‹œ˜]HŠK›X\
+
+ŠHOˆ‹›X™[
+Kˆİ›Û™ÕÜXÜÎˆ›İÜË™š[\Š
+ŠHOˆ‹İ[HH	‰ˆ‹œ˜]HH
+K›[™İˆ\™™XİÜXÎˆ›İÜËœÛÛYJ
+ŠHOˆ‹İ[HÈ	‰ˆ‹œ˜]HHJKˆNÂˆB‚ˆËÈ;,c:é¬;)à0­úãá;(!:¬ï;(';&ªH;"«:èkúìá:êe;`à
+;-g:¬è;($;"&;&a;(ï;f§û"&
+BˆÛÛœİQUWÒÑVHH	ØZKY]XÜËXY™[\™K[Y]IÎÂˆ[˜İ[ÛˆY]RÙ^JÛİ
+HÈ™]\›ˆQUWÒÑVH
+È	ËIÈ
+ÈÛİÈBˆ[˜İ[ÛˆÙ]Y]JÛİ
+HÂˆHÈ™]\›ˆ”ÓÓ‹œ\œÙJØØ[İÜ˜YÙK™Ù]][JY]RÙ^JÛİ
+JJHßNÈBˆØ]Ú
+JHÈ™]\›ˆßNÈBˆBˆ[˜İ[Ûˆ™XÛÜ™Ú[[™ÙT™\İ[
+ÛİØÛÜ™Kİ[
+HÂˆHÂˆÛÛœİHHÙ]Y]JÛİ
+NÂˆK˜Ú[[™ÙT[œÈH
+K˜Ú[[™ÙT[œÈ
+H
+ÈNÂˆK˜Ú[[™ÙP™\İHX]›X^
+K˜Ú[[™ÙP™\İØÛÜ™JNÂˆK˜Ú[[™ÙP™\İİ[Hİ[ÂˆØØ[İÜ˜YÙKœÙ]][JY]RÙ^JÛİ
+K”ÓÓ‹œİš[™ÚYJJJNÂˆHØ]Ú
+JHÈÊˆ;( ;'©H:í¢:¬ ;ff:¬¯{'m:êm:ë-;"ç
+‹ÈBˆB‚ˆËÈ;"«:èkÈ; «{(';"ç;ef{"­H:ãl;'m;a,:ãá;ej:®æ;)à;&­:âé
+:ì*{`â;-§;co;)¤;)á;e¢H:èg:­î;cë;ej
+Bˆ[˜İ[ÛˆÛX\”ÛİX\›š[™ÊÛİ
+HÂˆHÂˆØØ[İÜ˜YÙKœ™[[İ™R][Jİ]ÒÙ^JÛİ
+JNÂˆØØ[İÜ˜YÙKœ™[[İ™R][JZ\İZÙ\ÒÙ^JÛİ
+JNÂˆØØ[İÜ˜YÙKœ™[[İ™R][JY]RÙ^JÛİ
+JNÂˆØØ[İÜ˜YÙKœ™[[İ™R][J^›RÙ^JÛİ
+JNÂˆËÈ;)à;&­;"«:èkû'm:êe:êª;'m;)¢;.¤;"ç;%ä:àª;%a;'¢;'/:êm:ë-;fª;fe
+:âé;'cÙ]^›SÙú¬ :îb:¬$»'a:ì&;ff;ef:¬£
+BˆYˆ
+^›SÙĞØXÚH	‰ˆ^›SÙĞØXÚKœÛİOOHÛİ
+H^›SÙĞØXÚHH[ÂˆHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆB‚ˆËÈ:®,;(m;(!;%ëH;ef{"­H:ãl;'m;a,
+;'m;(!:ì¡;(!
+zéo;"«:èkÈ;'/:èg{f£;'m;(!;eg:âéˆ[˜İ[ÛˆZYÜ˜]SX\›š[™Ñ]J
+HÂˆHÂˆÛÛœİÛİ]ÈHØØ[İÜ˜YÙK™Ù]][JÕU×ÒÑVJNÂˆYˆ
+Ûİ]È	‰ˆ[ØØ[İÜ˜YÙK™Ù]][Jİ]ÒÙ^J
+JJHÂˆØØ[İÜ˜YÙKœÙ]][Jİ]ÒÙ^J
+KÛİ]ÊNÂˆØØ[İÜ˜YÙKœ™[[İ™R][JÕU×ÒÑVJNÂˆBˆÛÛœİÛZ\İHØØ[İÜ˜YÙK™Ù]][JRTÕRÑT×ÒÑVJNÂˆYˆ
+ÛZ\İ	‰ˆ[ØØ[İÜ˜YÙK™Ù]][JZ\İZÙ\ÒÙ^J
+JJHÂˆØØ[İÜ˜YÙKœÙ]][JZ\İZÙ\ÒÙ^J
+KÛZ\İ
+NÂˆØØ[İÜ˜YÙKœ™[[İ™R][JRTÕRÑT×ÒÑVJNÂˆBˆHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆB‚‚ˆËÈKKKKKKKKKH;'o;'o:ãá;(!0­È;%ì;!£H;-§;!'J;"©;b®:é«JHKKKKKKKKKBˆËÈ:à¨;)ç:ë.;'¤;%í
+VVVKSSKQ
+Kˆ:®,:ìî;'`;&):â¦‚ˆ[˜İ[ÛˆÙ^TİŠ
+HÂˆÛÛœİH™]È]J
+NÂˆÛÛœİH
+ŠHOˆİš[™ÊŠKœYİ\
+‹	Ì	ÊNÂˆ™]\›ˆ	İ™Ù][YX\Š
+_KIÜ
+™Ù][Û
+
+H
+ÈJ_KIÜ
+™Ù]]J
+J_XÂˆBˆ[˜İ[Ûˆ^QY™ŠKŠHÈËÈˆHH
+;'o:âê;'!
+BˆÛÛœİHH]Kœ\œÙJH
+È	ÕŒŒ	ÊKˆH]Kœ\œÙJˆ
+È	ÕŒŒ	ÊNÂˆYˆ
+\Ó˜SŠJH\Ó˜SŠŠJH™]\›ˆ[Âˆ™]\›ˆX]œ›İ[™
+
+ˆHJHÈ
+NÂˆBˆËÈ;'m;"«:èkû'/:èg:áo:à¨;'a:®,:èg{ef:¬è;%ì;!£H;-§;!'Jİ™XZÊ{'a:¬,{"è;eg:âé‚ˆ[˜İ[Ûˆ™XÛÜ™^Q^JÛİ^JHÂˆ^HH^HÙ^TİŠ
+NÂˆÛÛœİHHÙ]Y]JÛİ
+NÂˆYˆ
+K›\İ^Q^HOOH^JH™]\›ˆNÈËÈ;&):â¦;'m:ëî:®,:ègzä*ˆÛÛœİY™ˆHK›\İ^Q^HÈ^QY™ŠK›\İ^Q^K^JHˆ[ÂˆKœİ™XZÈHY™ˆOOHHÈ
+Kœİ™XZÈ
+H
+ÈHˆNÈËÈ;'m;%­;!';&):êm
+ÌK;%a:ââ:êmzí ;a,ˆK›\İ^Q^HH^NÂˆK˜™\İİ™XZÈHX]›X^
+K˜™\İİ™XZÈKœİ™XZÊNÂˆHÈØØ[İÜ˜YÙKœÙ]][JY]RÙ^JÛİ
+K”ÓÓ‹œİš[™ÚYJJJNÈHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆ™]\›ˆNÂˆBˆ[˜İ[ÛˆZ[QÛ™UÙ^JÛİ^JHÂˆ™]\›ˆÙ]Y]JÛİ
+K›\İZ[Q^HOOH
+^HÙ^TİŠ
+JNÂˆBˆ[˜İ[Ûˆ™XÛÜ™Z[QÛ™JÛİØÛÜ™Kİ[^JHÂˆ^HH^HÙ^TİŠ
+NÂˆÛÛœİHHÙ]Y]JÛİ
+NÂˆK›\İZ[Q^HH^NÂˆK™Z[T[œÈH
+K™Z[T[œÈ
+H
+ÈNÂˆK™Z[P™\İHX]›X^
+K™Z[P™\İØÛÜ™JNÂˆK™Z[Uİ[Hİ[ÂˆHÈØØ[İÜ˜YÙKœÙ]][JY]RÙ^JÛİ
+K”ÓÓ‹œİš[™ÚYJJJNÈHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆ™]\›ˆNÂˆB‚ˆËÈKKKKKKKKKH;.é;"©;a`;`-;)¢
+;!(; çzâæ;'m;-¥:¬ ;eg:ë.;('
+HKKKKKKKKKBˆËÈ:®,:®,:¬í{&ª{'/:èg;( ;'©{eg:âéˆ	Øİ\İÛIÈ;(ï;(':èg;,c:é¬;)à0­úéç»-©0­û'o;'o:ë.;(';%ä;ej:®æ;$ì;'n:âé‚ˆÛÛœİÕTÕÓWÔURV—ÒÑVHH	ØZKY]XÜËXY™[\™KXİ\İÛ\]Z^‰ÎÂˆ[˜İ[ÛˆÙ]İ\İÛT]Z^™\Ê
+HÂˆHÂˆÛÛœİ\œˆH”ÓÓ‹œ\œÙJØØ[İÜ˜YÙK™Ù]][JÕTÕÓWÔURV—ÒÑVJJNÂˆ™]\›ˆ\œ˜^Kš\Ğ\œ˜^J\œŠHÈ\œˆˆ×NÂˆHØ]Ú
+JHÈ™]\›ˆ×NÈBˆBˆËÈ;eg:ë.;ek{'m;&+:ì%:én;f%{"ç{'n;)à:¬ ; «ˆ[˜İ[Ûˆ˜[Y]Z^’][JJHÂˆ™]\›ˆH	‰ˆ\[ÙˆKœHOOH	Üİš[™ÉÈ	‰ˆKœKš[J
+H	‰‚ˆ\œ˜^Kš\Ğ\œ˜^JK˜JH	‰ˆK˜K›[™İOOHÈ	‰ˆK˜K™]™\J
+
+HOˆ\[ÙˆOOH	Üİš[™ÉÈ	‰ˆš[J
+JH	‰‚ˆ[X™\‹š\Ò[YÙ\ŠK˜ÊH	‰ˆK˜ÈH	‰ˆK˜ÈÈ	‰‚ˆ\[ÙˆKÚHOOH	Üİš[™ÉÈ	‰ˆKÚKš[J
+NÂˆBˆËÈ:¬ ;(.;&*;ac{"©;b®
+”ÓÓŠzéo:¬ ; «;em;.é;"©;a`:ë.;(':èg;( ;'©KˆÈÚËÛİ[\œ›ÜˆH:ì&;ff‚ˆËÈ;.é;"©;a`;`-;)¢;'¡zè)H;eg:ãá8 %;fe:êm:®j;)ä0­û( ;'©{!£:àª;&ª{'a:éâzâ¥:âé‚ˆÛÛœİÕTÕÓWÓPVHLÈËÈ;-g:ã :ë.;ekH;"&ˆÛÛœİWÓPVHMWÓPVHÒWÓPVHŒÈËÈ;ekzêªzìá:® ;'¤;"&; à{egˆËÈ;&n:í ;'¡zè)H:ë.;'¤;%í;(%zé«ˆ;(';%­:ë.;'¤;(':¬l:¬ízì,H;(%zé«:®.;'m;(';egˆ[˜İ[ÛˆÛ[\]Z^”İŠËŠHÂˆ™]\›ˆİš[™ÊÊKœ™\XÙJÖ×LWLY—LÙ—KÙË	È	ÊKœ™\XÙJ×ÊËÙË	È	ÊKš[J
+KœÛXÙJŠNÂˆBˆ[˜İ[Ûˆ[\Üİ\İÛT]Z^™\Ê^
+HÂˆ]ØšÂˆHÈØšˆH”ÓÓ‹œ\œÙJ^
+NÈHØ]Ú
+JHÈ™]\›ˆÈÚÎˆ˜[ÙK\œ›Üˆ	Ü\œÙIÈNÈBˆËÈ;eâ;&ªH;f%{"çNˆ:ì,;%íÈÜKKËÚ_K‹‹ˆH:æ$:â¥È]Y\İ[ÛœÎˆË‹‹—HBˆÛÛœİ\İH\œ˜^Kš\Ğ\œ˜^JØšŠHÈØšˆˆ
+Øšˆ	‰ˆ\œ˜^Kš\Ğ\œ˜^JØš‹œ]Y\İ[ÛœÊHÈØš‹œ]Y\İ[ÛœÈˆ[
+NÂˆYˆ
+[\İ
+H™]\›ˆÈÚÎˆ˜[ÙK\œ›Üˆ	Ù›Ü›X]	ÈNÂˆÛÛœİÛX[ˆH\İ™š[\Š˜[Y]Z^’][JKœÛXÙJÕTÕÓWÓPV
+K›X\
+
+JHOˆ
+ÂˆNˆÛ[\]Z^”İŠKœKWÓPV
+KˆNˆK˜KœÛXÙJÊK›X\
+
+
+HOˆÛ[\]Z^”İŠWÓPV
+JKˆÎˆK˜ËˆÚNˆÛ[\]Z^”İŠKÚKÒWÓPV
+KˆJJK™š[\Š
+JHOˆKœH	‰ˆK˜K™]™\J
+
+HOˆ
+H	‰ˆKÚJNÈËÈ;(%zé«;fá:îb;ekzêªH;(':¬lˆYˆ
+ÛX[‹›[™İOOH
+H™]\›ˆÈÚÎˆ˜[ÙK\œ›Üˆ	Ù[\IÈNÂˆHÈØØ[İÜ˜YÙKœÙ]][JÕTÕÓWÔURV—ÒÑVK”ÓÓ‹œİš[™ÚYJÛX[ŠJNÈHØ]Ú
+JHÈ™]\›ˆÈÚÎˆ˜[ÙK\œ›Üˆ	ÜØ]™IÈNÈBˆ™]\›ˆÈÚÎˆYKÛİ[ˆÛX[‹›[™İNÂˆBˆ[˜İ[ÛˆÛX\İ\İÛT]Z^™\Ê
+HÂˆHÈØØ[İÜ˜YÙKœ™[[İ™R][JÕTÕÓWÔURV—ÒÑVJNÈHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆBˆËÈ;.é;"©;a`:ë.;(';%¤{"çJ;ag;e#:é¯ÊH;ac{"©;b®ˆ[˜İ[Ûˆİ\İÛT]Z^•[\]J
+HÂˆ™]\›ˆ”ÓÓ‹œİš[™ÚYJÂˆ]Y\İ[ÛœÎˆÂˆÈNˆ	úë.;(':éo;%ë:®,;%ä;$ì;!.;&¥
+;)!:ì%:¯â;'`ŠIËNˆÉúìí:®,IË	úìí:®,‰Ë	úìí:®,É×KÎˆKÚNˆ	û(%zâíH;em;!);'a;$ì;!.;&¥	ÈKˆKˆK[ŠNÂˆBˆËÈ:®,:ìî;`-;)¢
+È;.é;"©;a`
+	Øİ\İÛIÈ;(ï;('
+{'a;ej{.g:ë.;(';-§;,¦ˆ[˜İ[Ûˆ]Z^”Ûİ\˜ÙJ
+HÂˆÛÛœİİ\İÛHHÙ]İ\İÛT]Z^™\Ê
+NÂˆ™]\›ˆİ\İÛK›[™İÈØš™Xİ˜\ÜÚYÛŠßKURV–‘TËÈİ\İÛHJHˆURV–‘TÎÂˆB‚ˆËÈKKKKKKKKKH;( {'d{f%J:éç»-©
+H0­È;'o;'o:ë.;(';d KKKKKKKKKBˆ[˜İ[Ûˆ]Z^”JÜXËJHÂˆÛÛœİÜ˜ÈH]Z^”Ûİ\˜ÙJ
+NÂˆÛÛœİ˜\ÙHHÜ˜ÖİÜX×H	‰ˆÜ˜ÖİÜX×VÚWNÂˆ™]\›ˆ˜\ÙHÈØš™Xİ˜\ÜÚYÛŠßK˜\ÙKÈİÜXÎˆÜXËÜZYˆÜXÈ
+È	ÈÉÈ
+ÈHJHˆ[ÂˆBˆ[˜İ[Ûˆ]Z^•ÜXÒÙ^\Ê
+HÂˆÛÛœİÜ˜ÈH]Z^”Ûİ\˜ÙJ
+NÂˆ™]\›ˆØš™XİšÙ^\ÊÜ˜ÊK™š[\Š
+
+HOˆÜ˜ÖİH	‰ˆÜ˜ÖİK›[™İˆ
+NÂˆBˆËÈ;%o{($;)ä{)$Nˆ;'m;(!;%ä;bà:é¬:ë.;('8¡¤ˆ;(%zâízéh:à«»'`
+:æ$:â¥;%b;do
+H;(ï;(';"';'/:èg;,a;&­:âé‚ˆ[˜İ[ÛˆZ[Y\]™TÛÛ
+ÛİŠHÂˆˆHˆÒSS‘ÑWÓSÂˆÛÛœİİ]H×K\ÙYH™]ÈÙ]
+
+NÂˆÛÛœİZ\İZÙ\ÈHÙ]Z\İZÙ\ÊÛİ
+NÂˆ›Üˆ
+ÛÛœİZYÙˆØš™XİšÙ^\ÊZ\İZÙ\ÊJHÂˆÛÛœİHHZ\İZÙ\ÖÜZYNÂˆYˆ
+[JHÛÛ[YNÂˆÛÛœİHH\œÙR[
+İš[™ÊZY
+KœÜ]
+	ÈÉÊVÌWKL
+NÂˆÛÛœİHH]Z^”JKÜXËJNÂˆYˆ
+\JHÛÛ[YNÂˆİ]œ\Ú
+JNÈ\ÙY˜Y
+ZY
+NÂˆYˆ
+İ]›[™İHŠHœ™XZÎÂˆBˆYˆ
+İ]›[™İŠHÂˆÛÛœİİ[[X\HHZ[X\›š[™Ôİ[[X\JÛİ
+NÂˆÛÛœİ˜]HHßNÂˆ›Üˆ
+ÛÛœİˆÙˆİ[[X\Kœ›İÜÊH˜]VÜ‹ÜX×HH‹œ˜]NÂˆÛÛœİÜ˜ÈH]Z^”Ûİ\˜ÙJ
+NÂˆÛÛœİÙZYÚYH×NÂˆ›Üˆ
+ÛÛœİÙˆ]Z^•ÜXÒÙ^\Ê
+JHÂˆÛÛœİˆH
+[ˆ˜]JHÈ˜]VİHˆÈËÈ;%b;do;(ï;(':â¥
+;%o{($
+{'/:èg:ìî:âéˆÛÛœİÈHX]›X^
+KX]œ›İ[™
+
+HHŠH
+ˆ
+H
+ÈJNÂˆ›Üˆ
+]ÈHÈÈÎÈÊÊÊHÙZYÚYœ\Ú
+
+NÂˆBˆ]İX\™HÂˆÚ[H
+İ]›[™İˆ	‰ˆİX\™
+ÊÈŒ
+HÂˆÛÛœİHÙZYÚYÓX]™›ÛÜŠX]œ˜[™ÛJ
+H
+ˆÙZYÚY›[™İ
+WNÂˆÛÛœİHHX]™›ÛÜŠX]œ˜[™ÛJ
+H
+ˆÜ˜ÖİK›[™İ
+NÂˆÛÛœİZYH
+È	ÈÉÈ
+ÈNÂˆYˆ
+\ÙYš\ÊZY
+JHÛÛ[YNÂˆ\ÙY˜Y
+ZY
+NÂˆÛÛœİ\HH]Z^”JJNÂˆYˆ
+\JHİ]œ\Ú
+\JNÂˆBˆBˆ™]\›ˆÚY™›Y
+İ]
+KœÛXÙJŠNÂˆBˆËÈ;&):â¦;'f:ãá;(!ˆ:à¨;)ç:éo;"ç:äç:èg:¬¬;(%{( {'/:èg:ïd{%a:¬&{'`:à¨:êª:äd:¬&{'`:ë.;(':éo;do:âé‚ˆ[˜İ[ÛˆZ[Z[TÛÛ
+Ûİ^KŠHÂˆ^HH^HÙ^TİŠ
+NÂˆˆHˆÒSS‘ÑWÓSÂˆ]ÙYYHÂˆ›Üˆ
+]HHÈH^K›[™İÈJÊÊHÙYYH
+ÙYY
+ˆÌH
+È^K˜Ú\ÛÙP]
+JJHˆÂˆÛÛœİ›™ÈH
+
+HOˆÈÙYYH
+ÙYY
+ˆLLÍLMLH
+ÈLŒÍJH	ˆÙ™™™™™™È™]\›ˆÙYYÈÙ™™™™™™ÈNÂˆÛÛœİÛÛH×NÂˆÛÛœİÜ˜ÈH]Z^”Ûİ\˜ÙJ
+NÂˆ›Üˆ
+ÛÛœİÙˆ]Z^•ÜXÒÙ^\Ê
+JH›Üˆ
+]HHÈHÜ˜ÖİK›[™İÈJÊÊHÛÛœ\Ú
+]Z^”JJJNÂˆ›Üˆ
+]HHÛÛ›[™İHNÈHˆÈKKJHÂˆÛÛœİˆHX]™›ÛÜŠ›™Ê
+H
+ˆ
+H
+ÈJJNÂˆÜÛÛÚWKÛÛÚ—WHHÜÛÛÚ—KÛÛÚWWNÂˆBˆ™]\›ˆÛÛœÛXÙJŠNÂˆB‚ˆËÈKLL:à­;'o;'f:ãá;(!;bì;( 8 %Z[Z[TÛÛ:èg;)à{'a	úà­;'o:à¨;)ç	È;"ç:äç:èg;'«; «;&ª{em;(ï;(':éã:ëî:é«:¬á; ¬;eg:âé‚ˆËÈ:ë.;(';'¤;,­:éo:ìí;%ë;(ï;)á;%bº¬è:à­;'o;d ;%ä;!':¬ ;'©H;'©»'`;(ï;(':ço:ìª;ef:à¦:éã; ­;)çH:­à:çe;eg:âé‚ˆ[˜İ[ÛˆÛ[Üœ›İÕÜXÓX™[
+Ûİ^JHÂˆÛÛœİ\ˆH^HÙ^TİŠ™]È]J]K››İÊ
+H
+È
+JNÂˆÛÛœİÛÛHZ[Z[TÛÛ
+Ûİ\ŠNÂˆYˆ
+\ÛÛ›[™İ
+H™]\›ˆ[ÂˆÛÛœİÛHßNÂˆ›Üˆ
+ÛÛœİHÙˆÛÛ
+HÈÛÛœİHK—İÜXÎÈYˆ
+
+HÛİHH
+ÛİH
+H
+ÈNÈBˆ]™\İH[›ˆHLNÂˆ›Üˆ
+ÛÛœİ[ˆÛ
+HYˆ
+ÛİHˆ›ŠHÈ›ˆHÛİNÈ™\İHÈBˆ™]\›ˆ™\İÈ
+ÔP×ÓP‘SØ™\İH™\İ
+Hˆ[ÂˆB‚ˆËÈKKKKKKKKKH;"&;)äp­ú¯®:ëî:®,:ìí; àH
+;.k{f.0­È;ac:éâ
+HKKKKKKKKKBˆËÈ;ef{ çJ;"«:èkÊzéâ:âé:å,:èg:êª;'/:¬è:¬è:én:âéˆ;em:®";(l:¬m;'`:ãá;(!:¬ï;(';&`:¬&{'`;ef{"­H;.ê;ac{"©;b®:èg;c$;(%K‚ˆÛÛœİÓÔÓQUP×ÒÑVHH	ØZKY]XÜËXY™[\™KXÛÜÛY]XÉÎÂˆ[˜İ[ÛˆÛÜÛY]XÒÙ^JÛİ
+HÈ™]\›ˆÓÔÓQUP×ÒÑVH
+È	ËIÈ
+ÈÛİÈBˆ[˜İ[ÛˆÙ]ÛÜÛY]XÊÛİ
+HÂˆHÈ™]\›ˆ”ÓÓ‹œ\œÙJØØ[İÜ˜YÙK™Ù]][JÛÜÛY]XÒÙ^JÛİ
+JJHßNÈBˆØ]Ú
+JHÈ™]\›ˆßNÈBˆBˆ[˜İ[ÛˆÙ]ÛÜÛY]XÊÛİ]JHÂˆHÈØØ[İÜ˜YÙKœÙ]][JÛÜÛY]XÒÙ^JÛİ
+K”ÓÓ‹œİš[™ÚYJ]JJNÈHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆBˆÛÛœİUTÈHÂˆÈYˆ	Ü›ÛÚÚYIË˜[YNˆ	û â:à­:®,;"&;f.;'¤	Ë\ØÎˆ	úêª;eæ;'a;"ç;'¤{eg:êª:äd;%ä:¬£	ËÚXÚÎˆ
+
+HOˆYHKˆÈYˆ	ÚÚ[™	Ë˜[YNˆ	úå,:ç.ûeg:éâ;'c	Ë\ØÎˆ	úéâ;'c;'azì¢;%b;%a;(ï:®,	ËÚXÚÎˆ
+ÊHOˆË›Y\˜ŞHHHKˆÈYˆ	ÜØÚÛ\‰Ë˜[YNˆ	ú¬ízí :ì£:è"	Ë\ØÎˆ	úë.;('L:¬';'m; àH;d :®,	ËÚXÚÎˆ
+ÊHOˆË˜][\YHLKˆÈYˆ	ØÛÛXİÜ‰Ë˜[YNˆ	úéâ;'c:®,:ègz¬ 	Ë\ØÎˆ	û.g:­k;"&;,ªH;(":ì&;'m; àH;,a;&¬:®,	ËÚXÚÎˆ
+ÊHOˆË™^ˆ	‰ˆË™^
+ˆˆHË™^İ[KˆÈYˆ	ØÚ[\[Û‰Ë˜[YNˆ	û,c:é¬;)à;,e;e/;%®	Ë\ØÎˆ	û`-;)¢;,c:é¬;)à:éã;($	ËÚXÚÎˆ
+ÊHOˆË˜Ú[[™ÙP™\İˆ	‰ˆË˜Ú[[™ÙP™\İOOHË˜Ú[[™ÙP™\İİ[KˆÈYˆ	ÛX\İ\‰Ë˜[YNˆ	úéâ;'c;'f;"&;f.;'¤	Ë\ØÎˆ	û%å:å*H:ìí:¬è:ãá;(!:¬ï;(':¬':âë;!,IËÚXÚÎˆ
+ÊHOˆË™[™[™ÜÈHH	‰ˆË˜XÚY]™YHKˆËÈKNH;(!;'«:ã :¬¬; àzã úäìz®"H8 %;&a:ì¯{ef:¬£:äé;%­;) :¬¯{,«{'¤;%ä:¬£ˆ; à{($;'m;%a:ââ:ço:®,;(m;em:®":ì*{"çK‚ˆÈYˆ	Û\İ[™\‰Ë˜[YNˆ	û&a:ì¯{eg:¬¯{,«{'¤	Ë\ØÎˆ	úêª:äè;'«:ã :¬¬; àzã úäìz®"IËÚXÚÎˆ
+ÊHOˆËœÔ˜[šÕİ[ˆ	‰ˆËœÔ˜[šĞÛİ[HËœÔ˜[šÕİ[KˆNÂˆÛÛœİSQTÈHÂˆÈYˆ	ØÛ\ÜÚXÉË˜[YNˆ	û`m:ç¦;"çIËÛÛÜˆ	ÈÙ™™	Ë\ØÎˆ	ú®,:ìî:án:ç :îfÉËÚXÚÎˆ
+
+HOˆYHKˆÈYˆ	Ù›Ü™\İ	Ë˜[YNˆ	û",ºîfÉËÛÛÜˆ	ÈÍXØXÉË\ØÎˆ	û,ªÈ:éâ;'c:ä&:ãã:é«:®,	ËÚXÚÎˆ
+ÊHOˆË™Y™X]YÛİ[HHKˆÈYˆ	ÛØÙX[‰Ë˜[YNˆ	úì%:âé:îfÉËÛÛÜˆ	ÈÍXNIË\ØÎˆ	úë.;('Ì:¬';d :®,	ËÚXÚÎˆ
+ÊHOˆË˜][\YHÌKˆÈYˆ	Üİ[œÙ]	Ë˜[YNˆ	úán;'a:îfÉËÛÛÜˆ	ÈÙŒL	Ë\ØÎˆ	úéâ;'c:ì¢;%b;%a;(ï:®,	ËÚXÚÎˆ
+ÊHOˆË›Y\˜ŞHHKˆÈYˆ	ÙØ[^IË˜[YNˆ	û'`;ef:îfÉËÛÛÜˆ	ÈØÙL	Ë\ØÎˆ	û%å:å*H:ìí:®,	ËÚXÚÎˆ
+ÊHOˆË™[™[™ÜÈHHKˆNÂˆ[˜İ[Ûˆ[›ØÚÙYÛİ[
+Ûİ
+HÂˆÛÛœİÈHXÚY]™[Y[İ
+Ûİ
+NÂˆ™]\›ˆUTË™š[\Š
+
+HOˆ˜ÚXÚÊÊJK›[™İ
+ÈSQTË™š[\Š
+
+HOˆ˜ÚXÚÊÊJK›[™İÂˆBˆ[˜İ[ÛˆÙ[XİY]JÛİ
+HÂˆÛÛœİÈHXÚY]™[Y[İ
+Ûİ
+KÛÜÈHÙ]ÛÜÛY]XÊÛİ
+NÂˆÛÛœİ\İHUTË™š[\Š
+
+HOˆ˜ÚXÚÊÊJNÂˆ™]\›ˆ\İ™š[™
+
+
+HOˆšYOOHÛÜË]JH\İÌH[ÂˆBˆ[˜İ[ÛˆÙ[XİY[YJÛİ
+HÂˆÛÛœİÈHXÚY]™[Y[İ
+Ûİ
+KÛÜÈHÙ]ÛÜÛY]XÊÛİ
+NÂˆÛÛœİ\İHSQTË™š[\Š
+
+HOˆ˜ÚXÚÊÊJNÂˆ™]\›ˆ\İ™š[™
+
+
+HOˆšYOOHÛÜË[YJH\İÌH[ÂˆBˆËÈRH:¬%{(l; âH8 %; â{%oH:êª:äç:¬ ;&¬;!(;%a:ââ:êm:¬è:én;ac:éâ; âBˆ[˜İ[Ûˆ[YPXØÙ[
+
+HÂˆYˆ
+Ø[YK˜ÛÛÜ›[™
+H™]\›ˆØ\›ÛÛÜŠ
+NÂˆÛÛœİHÙ[XİY[YJXİ]™TÛİ
+
+JNÂˆ™]\›ˆÈ˜ÛÛÜˆˆ	ÈÙ™™	ÎÂˆBˆËÈ‹LH;f£zäçH;"':¬!;c({c#:ém8 %; â:èg;em:®":ä';.k{f.0­ûac:éâ0­úãá;(!:¬ï;('0­úì,;&à;.m:äç:¬ ;'¢;'/:êmˆËÈ:­î	û"':¬!	û%ä;a¨;"©;b®
+ÈÛİ[™˜˜YÙJ
+H
+È
+™YXÙQ;%a:ââ:êm
+H:¬ :ì¯;&­;fe:êm;%ì;-§;'a:à®:âé‚ˆËÈÚXÚĞÛÜÛY]XÕ[›ØÚÜÊ;.k{f.ûac:éâXÚÊH;c*;a-;'a;'o:ì&;fe;e¢:âéˆ;fe{'n;eg:êªzègJXÚĞXÚØXÚĞØ\™Ê{'aˆËÈ;"«:èkÈ:¯®:ëî:®,:êe;`à;%ä;( ;'©{em;)$zìíH;%c:é¯;'a:éâz¬è;,ªÈ:èg:äç
+:®,;) ;!(;!.;c!Jzâ¥;(l;&ª{g¢:á&;%­:¬!:âé‚ˆ[˜İ[ÛˆÚXÚÕ[›ØÚÜÊÛİ
+HÂˆÛÛœİÛÜÈHÙ]ÛÜÛY]XÊÛİ
+NÂˆ]Ú[™ÙYH˜[ÙNÂ‚ˆËÈ8¥ 8¥ ;.k{f.0­ûac:éâ
+:®,;(m:ãæ{'¤H;'(;)à
+H8¥ 8¥ ˆÛÛœİ›İÈH[›ØÚÙYÛİ[
+Ûİ
+NÂˆÛÛœİXÚÈHÛÜË˜XÚÈÂˆYˆ
+›İÈˆXÚÊHÂˆÛÜË˜XÚÈH›İÎÈÚ[™ÙYHYNÂˆYˆ
+XÚÈˆ
+HÈËÈ;,ªÈ;)á;'¡J8¡¤“Š{%ä:â¥;"ç:àa:çï{)à;%bº¬£;(l;&ª{g¢:á&;%­:¬!:âéˆØ[YK››İXÙHHÈ^ˆ	û â;.k{f.0­ûac:éâ:¬ ;%í:è.;%­;&¥H
+:êe:âm8¡¤ˆ:®,;%­{'f:ì*H8¡¤ˆ:¯®:ëî:®,
+IËˆŒNÂˆÛİ[™[›ØÚÊ
+NÂˆBˆB‚ˆËÈ8¥ 8¥ :ãá;(!:¬ï;(':âë;!,H;"':¬!;c({c#:ém8¥ 8¥ ˆÛÛœİİHXÚY]™[Y[İ
+Ûİ
+NÂˆÛÛœİÛİXÚHPÒQU‘SQS•Ë™š[\Š
+JHOˆK˜ÚXÚÊİ
+JK›X\
+
+JHOˆKšY
+NÂˆYˆ
+ÛÜË˜XÚĞXÚOOH[™Yš[™Y
+HÂˆÛÜË˜XÚĞXÚHÛİXÚÈÚ[™ÙYHYNÈËÈ;,ªÈ;fe{'n8 %:®,;) ;!(:éã;(l;&ª{g¢:®,:ègBˆH[ÙHÂˆÛÛœİ™]ĞXÚHÛİXÚ™š[\Š
+Y
+HOˆXÛÜË˜XÚĞXÚš[˜ÛY\ÊY
+JNÂˆYˆ
+™]ĞXÚ›[™İ
+HÂˆÛÜË˜XÚĞXÚHÛİXÚÈÚ[™ÙYHYNÂˆÛÛœİHHPÒQU‘SQS•Ë™š[™
+
+
+HOˆšYOOH™]ĞXÚÛ™]ĞXÚ›[™İHWJNÂˆYˆ
+JH˜[™˜\™J8¦!ˆ:ãá;(!:¬ï;(':âë;!,HH8à#	ØK›˜[Y_xà#X
+NÂˆBˆB‚ˆËÈ8¥ 8¥ KNH8à#;&a:ì¯{eg:¬¯{,«{'¤8à#H8 %;(!;'«:ã :¬¬; àzã úäìz®"H:âë;!,H;"':¬!;(!;&ªH;c({c#:ém
+:®,;(m;em:®";'!;%ä;%®{'c
+H8¥ 8¥ ˆÛÛœİ\İ[™\“›İÈHUTËœÛÛYJ
+
+HOˆšYOOH	Û\İ[™\‰È	‰ˆ˜ÚXÚÊİ
+JNÂˆYˆ
+ÛÜË˜XÚÓ\İ[™\ˆOOH[™Yš[™Y
+HÂˆÛÜË˜XÚÓ\İ[™\ˆH\İ[™\“›İÎÈÚ[™ÙYHYNÈËÈ;,ªÈ;fe{'n8 %:®,;) ;!(:éã;(l;&ª{g¢:®,:ègBˆH[ÙHYˆ
+\İ[™\“›İÈ	‰ˆXÛÜË˜XÚÓ\İ[™\ŠHÂˆÛÜË˜XÚÓ\İ[™\ˆHYNÈÚ[™ÙYHYNÂˆ˜[™˜\™J	ü'ãáˆ8à#;&a:ì¯{eg:¬¯{,«{'¤8à#H8 %:êª:äè:éâ;'c;'aúèg:äé;%­;)+;%­;&¥IÊNÂˆB‚ˆËÈ8¥ 8¥ :ì,;&à;.m:äç
+:®,;%­H;(l:¬ JH;em:®";"':¬!;c({c#:ém8¥ 8¥ ˆÛÛœİÛİØ\™ÈHPT“—ĞĞT‘Ë™š[\Š
+ÊHOˆØ\™[›ØÚÙY
+ÛİËÜXÊJK›X\
+
+ÊHOˆËÜXÊNÂˆYˆ
+ÛÜË˜XÚĞØ\™ÈOOH[™Yš[™Y
+HÂˆÛÜË˜XÚĞØ\™ÈHÛİØ\™ÎÈÚ[™ÙYHYNÈËÈ;,ªÈ;fe{'n8 %:®,;) ;!(:éã;(l;&ª{g¢:®,:ègBˆH[ÙHÂˆÛÛœİ™]ĞØ\™ÈHÛİØ\™Ë™š[\Š
+
+HOˆXÛÜË˜XÚĞØ\™Ëš[˜ÛY\Ê
+JNÂˆYˆ
+™]ĞØ\™Ë›[™İ
+HÂˆÛÜË˜XÚĞØ\™ÈHÛİØ\™ÎÈÚ[™ÙYHYNÂˆÛÛœİÈHPT“—ĞĞT‘Ë™š[™
+
+
+HOˆÜXÈOOH™]ĞØ\™ÖÛ™]ĞØ\™Ë›[™İHWJNÂˆÛÛœİX™[HÈÈ
+ÔP×ÓP‘SØËÜX×HËÜXÊHˆ	ÉÎÂˆËÈ;.k{f.0­ûac:éâ;a¨;"©;b®:¬ ;'m:ëî;'m;e!:è";'¡;'a;,*;)à;e¢;'/:êm;.m:äç:â¥:âé;'c:®,;f£:èg:ëî:èê;)à;%bº¬èˆËÈ:ãk»%­;#j:ãá:ë-:ì*{ef:âé
+:äf:âéXÚÙY:ä&;%­;)$zìíH;%c:é¯;'`;%áºâé
+Kˆ;!£:é«:â¥:ì,;)à;'c;'/:èg;a­{'o‚ˆYˆ
+J›İÈˆXÚÊJH˜[™˜\™J<'äæˆ:®,;%­H;(l:¬ {'a;%®û%â:âé8 %8à#	ÛX™[xà#X
+NÂˆBˆB‚ˆYˆ
+Ú[™ÙY
+HÙ]ÛÜÛY]XÊÛİÛÜÊNÂˆBˆËÈ;f£zäçH;c({c#:ém:¬í{a­H8 %;a¨;"©;b®
+È:ì,;)à;'c
+È
+™YXÙQ;%a:ââ:êm
+H;)éû'`;fe:êm:ì&;)ç{'¡ˆ[˜İ[Ûˆ˜[™˜\™J^
+HÂˆØ[YK››İXÙHHÈ^ˆNÂˆÛİ[™˜˜YÙJ
+NÂˆYˆ
+YØ[YKœ™YXÙQ
+HØ[YK[›ØÚÑ›\ÚHÈËÈ˜]ÕÛÜ›;%ä;!';!£:îaˆBˆËÈ:­k;'m:é¡;f.;ff8 %;%ë;(!;g¢:¬ìú¬ìû%ä;!':í :ém:â¥;)á;'¡{($
+:¯®:ëî:®,;(!;&ªH;fe{'n
+{'a;'o:ì&;fe{'n;'/:èg;"®z¬ªBˆ[˜İ[ÛˆÚXÚĞÛÜÛY]XÕ[›ØÚÜÊÛİ
+HÈÚXÚÕ[›ØÚÜÊÛİ
+NÈB‚ˆËÈKKKKKKKKKH;ef{"­H;.m:äç;.ë:è"{!fKKKKKKKKKBˆËÈ;eg;(ï;(';%ä;!';eg:ì¢;'m:ço:ãá;(%zâí{'a:éç»g¢:êm:­î;(ï;(';'f	úì,;&à;.m:äç	ú¬ ;%í:é¬:âé‚ˆËÈ:ìá:ãá;( ;'©H;%á»'m;"«:èkúìá;(%zâíH;a­z¬á
+Ù]İ]Ê{%ä;!':­î:ã :èg:àc;%­;&*:âé8¡¤ˆ:ì,{%áKúìí{&ä;%ä:ãá;'¤:ãæH:ì&;& K‚ˆÛÛœİPT“—ĞĞT‘ÈHÂˆÈÜXÎˆ	Üš]˜XŞIËXÛÛˆ	ü'å$‰Ë\ÜÛÛˆ	û'm:é¡0­û(ï;!£0­û «;)á:¬&{'`:à­;(%zìí:â¥;ej:í :èg;'¡zè){ef:¬l:à¦;%c:è);(ï;)à;%b»%a;&¥‰ÈKˆÈÜXÎˆ	ØÛÜ\šYÚ	ËXÛÛˆ	ø§#ÉË\ÜÛÛˆ	úàª;'m:éã:äè:® 0­ú­î:é¯0­û'c;%a{'a;$î:åd;-§;,¦:éo:ì'{g¢:¬è;eâ:ço{'a:­k;em;&¥‰ÈKˆÈÜXÎˆ	Ù˜ZÙIËXÛÛˆ	ü'å#IË\ÜÛÛˆ	ĞR{'f:âízãá;bà:é­;"&;'¢;%­;&¥ˆ;%ë:çë:¬ìû%ä;!'; «;"é;'n;)à;fe{'n;em;&¥‰ÈKˆÈÜXÎˆ	ØšX\ÉËXÛÛˆ	ø¦¥‰Ë\ÜÛÛˆ	ĞRzâ¥;eg;*¯{'/:èg;.f;&¬;.h;"&;'¢;%­;&¥ˆ:êª:äd;%ä:¬£:¬í{(%{eg;)à; ­;c­;&¥‰ÈKˆÈÜXÎˆ	Ø˜[[˜ÙIËXÛÛˆ	ü'ã,IË\ÜÛÛˆ	ĞR{%ä:á":ë-:®,:ã ;)à:éä:¬è;"©;"©:èg; çz¬ {ef:â¥;g¦:ãá:®.:çë;&¥‰ÈKˆÈÜXÎˆ	ÛX[›™\œÉËXÛÛˆ	ü'ä«	Ë\ÜÛÛˆ	û àzã :¬ Rzço:ãá:¬è;&­:éä:èg;&";'f;'¢:¬£:ã ;fe;em;&¥‰ÈKˆÈÜXÎˆ	Ùš[\˜X˜›IËXÛÛˆ	ü'êéÉË\ÜÛÛˆ	û-¥;,§:éã:ìí:êm; çz¬ {'m;( {%a;(.;&¥ˆ:âé;%¤{eg;(%zìí:éo;,/»%a:í$;&¥‰ÈKˆÈÜXÎˆ	ÜØY™]IËXÛÛˆ	ü'æèIË\ÜÛÛˆ	û)${&¥;eg:¬¬;(%{'`R{%ä:éã:éèz®,;)à:éä:¬è; «:ç£;'m:¯+H;fe{'n;em;&¥‰ÈKˆÈÜXÎˆ	Ù[š\›Û›Y[	ËXÛÛˆ	ü'ã#IË\ÜÛÛˆ	ĞRzãá;(!:®,:éo:éã»'m;#j;&¥ˆ:¯+H;ea;&¥;eh:åc;%c:éçº¬£; «;&ª{em;&¥‰ÈKˆÈÜXÎˆ	İ˜[œÜ\™[˜ŞIËXÛÛˆ	ü'ä¨IË\ÜÛÛˆ	û&g:­î:çì:âí{'m:à¦;&e:â¥;)à:ë/;%­:ìí:¬è:­ï:¬l:éo:å,;(.:í$;&¥‰ÈKˆÈÜXÎˆ	Ü™\ÜÛœÚXš[]IËXÛÛˆ	ü'é'IË\ÜÛÛˆ	ĞRzéo;$í:¬¬:¬ï;%ä:â¥:­î:¬ û'a; «;&ª{eg; «:ç£;'f;,a{'¡:ãá;'¢;%­;&¥‰ÈKˆÈÜXÎˆ	ØÜ™X]]š]IËXÛÛˆ	ü'ãª	Ë\ÜÛÛˆ	ĞR{%ä:éèz®,:®,;(!;%ä:à­; çz¬ {'/:èg:ê/;( :éã:äé;%­:í$;&¥‰ÈKˆÈÜXÎˆ	Ú›ØœÉËXÛÛˆ	ü'æè	Ë\ÜÛÛˆ	ĞRzâ¥:ãá:­k;&";&¥ˆ; «:ç£:¬ï;g¦;'a;ej{.h:åc:ãe;(¢û%a;(.;&¥‰ÈKˆÈÜXÎˆ	Ù[[İ[Û‰ËXÛÛˆ	ü'ä¥ÉË\ÜÛÛˆ	ĞRzâ¥;)á;)ç;.g:­k:à¦:¬ ;(l{'f:éâ;'c;'a:ã ;"è;eh;"&;%á»%­;&¥‰ÈKˆÈÜXÎˆ	ÜÙXİ\š]IËXÛÛˆ	ü'å$IË\ÜÛÛˆ	úîa:ì :ì¢;f.:â¥:îa:ì :ègH;"&; à{eg:éà{`k0­û&¥;,«{'`;%­:én:®æ;fe{'n;em;&¥‰ÈKˆÈÜXÎˆ	Ù›Ûİš[	ËXÛÛˆ	ü'ähÉË\ÜÛÛˆ	û'n;a,:á-û%ä:àª:®-:®,:èg{'`;&):ç¦:àª;%a;&¥ˆ;&+:é«:®,;(!;%ä;eg:ì¢:ãe; çz¬ {em;&¥‰ÈKˆÈÜXÎˆ	ØÛÛœÙ[	ËXÛÛˆ	ü'äçIË\ÜÛÛˆ	úà­;(%zìí:éo:êª;'a:åd:â!:¬ 0­û&g:êª;'/:â¥;)à;%c:¬è:ãæ{'f;em;&¥‰ÈKˆÈÜXÎˆ	ÚY[]IËXÛÛˆ	ü'ã«IË\ÜÛÛˆ	úàª;'n;,¦{ef:¬l:à¦Rzéo; «:ç£;'n;,¦H;!£{'m:êm;%b:ãï;&¥‰ÈKˆÈÜXÎˆ	Ü\œİX\Ú[Û‰ËXÛÛˆ	ü'ê©	Ë\ÜÛÛˆ	û'¤:¯®:â!:ém:¬£:éã:äç:â¥;fe:êm;%ä;!£{)à:éä:¬è;,§;,§;g¢:¬¬;(%{em;&¥‰ÈKˆÈÜXÎˆ	ÙÙ[˜ZIËXÛÛˆ	ø§*	Ë\ÜÛÛˆ	ĞRzâ¥:­î:çí:äëûeg:¬l;)äÊ;ff:¬ J{'a;)à;%­:à¯;"&;'¢;%­;&¥ˆ:¯+H;fe{'n;em;&¥‰ÈKˆÈÜXÎˆ	ÙY\˜ZÙIËXÛÛˆ	ü'ã«	Ë\ÜÛÛˆ	û)á;)ç:¬&{'`:¬ ;)ç;& { àp­úêª{!£:é«:¬ ;'¢;%­;&¥ˆ;-§;,¦:éo;'f;"ë;em:í$;&¥‰ÈKˆÈÜXÎˆ	Ü[[Ü‰ËXÛÛˆ	ü'äèÉË\ÜÛÛˆ	ûfe{'n;ef;)à;%b»'`;!£:ë.;'`;co:ç*:é«;)à;%b»%a;&¥ˆ; «;"é;'n;)à:ê/;( ;fe{'n;em;&¥‰ÈKˆÈÜXÎˆ	Û\İ[‰ËXÛÛˆ	ü'ä`‰Ë\ÜÛÛˆ	úà¦;&`:âé:én;'f:¬«:ãá:àgz®c;)à:äé;%­:í$;&¥ˆ:­à:éo;%í:êm; çz¬ {'m:á$û%­;(.;&¥‰ÈKˆÈÜXÎˆ	ÜØ]š[™ÉËXÛÛˆ	ü'å"ÉË\ÜÛÛˆ	úãl;'m;a,0­û(!:®,:â¥;eg;(%zãï;'¢;%­;&¥ˆ;ea;&¥;eg:éã;`o:éã;%c:éçº¬£;#j;&¥‰ÈKˆÈÜXÎˆ	Ù^İ\ÙIËXÛÛˆ	ü'æbÉË\ÜÛÛˆ	ûedz¬á:ìí:âéºà­:¬ ;e¢;%­º¬ :êbû(.;&¥ˆ:à­;e¢zãæ{'`:à­:¬ ;,a{'¡;(.;&¥‰ÈKˆNÂˆ[˜İ[ÛˆØ\™[›ØÚÙY
+ÛİÜXÊHÂˆÛÛœİÈHÙ]İ]ÊÛİ
+VİÜX×NÂˆ™]\›ˆHJÈ	‰ˆË˜ÛÜœ™XİHJNÂˆBˆ[˜İ[ÛˆÛÛXİYØ\™ÊÛİ
+HÂˆ™]\›ˆPT“—ĞĞT‘Ë™š[\Š
+ÊHOˆØ\™[›ØÚÙY
+ÛİËÜXÊJK›[™İÂˆB‚ˆËÈKKKKKKKKKH:ãl;'m;a,:ì,{%áH0­È:ìí{&äKKKKKKKKKBˆ[˜İ[Ûˆ[˜XÚİ\Ù^\Ê
+HÂˆËÈÕTÕÓWÔURV—ÒÑVH;cë;ej8 %:­d; «;(';'¤H:ë.;ek{'m:®,:®,:­d;,­;"ç;'(;"é:ä&;)à;%bº¬£
+ËLŠBˆÛÛœİÙ^\ÈHÔÑUS‘Ô×ÒÑVKS‘S‘Ô×ÒÑVKVÒÑVKÕTÕÓWÔURV—ÒÑVWNÂˆ›Üˆ
+]HHÈHÓÕĞÓÕS•ÈJÊÊHÂˆÙ^\Ëœ\Ú
+ÛİÙ^JJKİ]ÒÙ^JJKZ\İZÙ\ÒÙ^JJKY]RÙ^JJKÛÜÛY]XÒÙ^JJK^›RÙ^JJJNÂˆBˆ™]\›ˆÙ^\ÎÂˆBˆ[˜İ[ÛˆZ[˜XÚİ\^
+
+HÂˆÛÛœİ]HHßNÂˆ›Üˆ
+ÛÛœİÈÙˆ[˜XÚİ\Ù^\Ê
+JHÂˆÛÛœİˆHØØ[İÜ˜YÙK™Ù]][JÊNÂˆYˆ
+ˆOH[
+H]VÚ×HHÂˆBˆ™]\›ˆ”ÓÓ‹œİš[™ÚYJÈ\ˆ	ØZKY]XÜËXY™[\™IË™\œÚ[ÛˆKØ]™Y]ˆ]K››İÊ
+K]HJNÂˆBˆÛÛœİPÒÕTÕS‘×ÒÑVHH	ØZKY]XÜËXY™[\™K\™\İÜ™K][™ÉÎÂˆ[˜İ[Ûˆ\P˜XÚİ\
+^
+HÂˆ]ØšÂˆHÈØšˆH”ÓÓ‹œ\œÙJ^
+NÈHØ]Ú
+JHÈ™]\›ˆÈÚÎˆ˜[ÙK\œ›Üˆ	Ü\œÙIÈNÈBˆYˆ
+[ØšˆØš‹˜\OOH	ØZKY]XÜËXY™[\™IÈ[Øš‹™]JH™]\›ˆÈÚÎˆ˜[ÙK\œ›Üˆ	Ù›Ü›X]	ÈNÂˆÛÛœİ˜[YH™]ÈÙ]
+[˜XÚİ\Ù^\Ê
+JNÂˆÛÛœİ[˜ÛÛZ[™ÈHØš™XİšÙ^\ÊØš‹™]JK™š[\Š
+ÊHOˆ˜[Yš\ÊÊJNÂˆËÈ;'n;"çH:¬ :â©{eg:ãl;'m;a,:¬ ;ef:à¦:ãá;%á»'/:êm:ãk»%­;$ì;)à;%bºâ¥:âé8 %;'¦:ê®úä'úîb;c#;'o;%ä	û&a:èã	È;&);dg;"ç:ì*{)àˆYˆ
+[˜ÛÛZ[™Ë›[™İOOH
+H™]\›ˆÈÚÎˆ˜[ÙK\œ›Üˆ	Ù[\IÈNÂˆËÈ:ä&:ãã:é«:®,;%b;(!:éçH8 %:ãk»%­;$ì:®,;)à{(!;f!;'«; à{`ç:éo;"©:àá{ íûem:äe:âé
+;"é;"&:ìí{&ä{f£;-ê;!£;&ªJBˆHÈØØ[İÜ˜YÙKœÙ]][JPÒÕTÕS‘×ÒÑVKZ[˜XÚİ\^
+
+JNÈHØ]Ú
+JHÈÊˆ;&ªzçâH:í ;(lH:äì{'m:êm:­î:àéH;)á;e¢H
+‹ÈBˆ]Ûİ[HÂˆ›Üˆ
+ÛÛœİÈÙˆ[˜ÛÛZ[™ÊHÂˆHÈØØ[İÜ˜YÙKœÙ]][JËİš[™ÊØš‹™]VÚ×JJNÈÛİ[
+ÊÎÈHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆBˆ™]\›ˆÈÚÎˆYKÛİ[NÂˆBˆËÈ;)à{(!:ìí{&ä;'a;-ê;!£;eg:âé
+:ä&:ãã:é«:®,;"©:àá{ íû'm;'¢;'a:åc:éã
+K‚ˆ[˜İ[Ûˆ[™Ô™\İÜ™J
+HÂˆ]Û˜\ÂˆHÈÛ˜\HØØ[İÜ˜YÙK™Ù]][JPÒÕTÕS‘×ÒÑVJNÈHØ]Ú
+JHÈ™]\›ˆÈÚÎˆ˜[ÙHNÈBˆYˆ
+\Û˜\
+H™]\›ˆÈÚÎˆ˜[ÙHNÂˆÛÛœİ™\ÈH\P˜XÚİ\
+Û˜\
+NÈËÈ;"©:àá{ íû'a:âé;"ç;( {&ªH
+;'m:åc:æ$[™È;"©:àá{ íû'm:¬,{"è:ä*
+BˆHÈØØ[İÜ˜YÙKœ™[[İ™R][JPÒÕTÕS‘×ÒÑVJNÈHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆ™]\›ˆ™\ÎÂˆBˆ[˜İ[Ûˆ\Ô™\İÜ™U[™Ê
+HÂˆHÈ™]\›ˆH[ØØ[İÜ˜YÙK™Ù]][JPÒÕTÕS‘×ÒÑVJNÈHØ]Ú
+JHÈ™]\›ˆ˜[ÙNÈBˆBˆËÈKLMØˆ8 %:ä&:ãã:é«:®,;"©:àá{ íÊÓÕÕS‘ğ­ĞPÒÕTÕS‘ÊH;'¤:ãæH;(%zé«ˆ:èg:äç;"ç{f£;f.;-§;eg:âé‚ˆËÈÌ;'o;)à:à§;"©:àá{ íû'`;)à;&­:âé
+:¬í{&ªH:®,:®,;'f;&):ç¦:ä'; «{('úìí{&ä;ge;( {'m:ë-;eg;(%H;#$û'm;)à;%bº¬£
+K‚ˆËÈ;`à;'¡;"©;`ë;e!:¬ ;%áºâ¥:­k;"©:àá{ íû'`	û)¢{"ç; «{('	ú¬ ;%a:ââ:ço;)à:®";"ç:¬ {'/:èg:ãá;'©zéã;,#{%­;"®z¬á;eg:âéˆËÈ
+:ì*z®":éã:äè;"è;!(;eg:ãl;'m;a,:éo;' û)à;%bº¬£8 %ZYÜ˜]TÛİŒû"çH;ef;'!;f.;ff
+K‚ˆÛÛœİS‘×ÕÓTÈHÌ
+ˆ
+ˆŒ
+ˆŒ
+ˆLÈËÈÌ;'oˆ[˜İ[ÛˆÛX[”İ[U[™ÔÛ˜\ÚİÊ›İÊHÂˆ›İÈH
+\[Ùˆ›İÈOOH	Û[X™\‰ÊHÈ›İÈˆ]K››İÊ
+NÂˆËÈÓÕÕS‘È8 %”ÓÓˆ;"©:àá{ íÊÈÛİË‹‹»`©JBˆHÂˆÛÛœİ˜]ÈHØØ[İÜ˜YÙK™Ù]][JÓÕÕS‘×ÒÑVJNÂˆYˆ
+˜]ÊHÂˆÛÛœİÛ˜\H”ÓÓ‹œ\œÙJ˜]ÊNÂˆYˆ
+Û˜\	‰ˆ\[ÙˆÛ˜\ÈOOH	Û[X™\‰ÊHÂˆYˆ
+›İÈHÛ˜\ÈˆS‘×ÕÓTÊHØØ[İÜ˜YÙKœ™[[İ™R][JÓÕÕS‘×ÒÑVJNÂˆH[ÙHYˆ
+Û˜\
+HÂˆÛ˜\ÈH›İÎÈËÈ:­k;"©:àá{ íÊÈ;%á»'c
+H8 %;,ªÈ;(l;&¬;%ä:ãá;'©K:âé;'c:èg:äç:í ;a,Ì;'o:¬á; ¬ˆØØ[İÜ˜YÙKœÙ]][JÓÕÕS‘×ÒÑVK”ÓÓ‹œİš[™ÚYJÛ˜\
+JNÂˆBˆBˆHØ]Ú
+JHÈÊˆ;!¤; àKûc#;"ìH;"é;c*:â¥:¬m:äç:é«;)à;%bºâ¥:âé
+‹ÈBˆËÈPÒÕTÕS‘È8 %:ì,{%áH;ac{"©;b®
+”ÓÓ‹Ø]™Y];cë;ej
+KˆZ[˜XÚİ\^:¬ ;ek{ àHØ]™Y];'a:á(úâ¥:âé‚ˆHÂˆÛÛœİ˜]ÈHØØ[İÜ˜YÙK™Ù]][JPÒÕTÕS‘×ÒÑVJNÂˆYˆ
+˜]ÊHÂˆ]ÈH[ÂˆHÈÛÛœİÈH”ÓÓ‹œ\œÙJ˜]ÊNÈYˆ
+È	‰ˆ\[ÙˆËœØ]™Y]OOH	Û[X™\‰ÊHÈHËœØ]™Y]ÈHØ]Ú
+LŠHÈÊˆ:ë-;"ç
+‹ÈBˆYˆ
+ÈOH[	‰ˆ›İÈHÈˆS‘×ÕÓTÊHØØ[İÜ˜YÙKœ™[[İ™R][JPÒÕTÕS‘×ÒÑVJNÂˆBˆHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆBˆËÈ;ac{"©;b®:éo;`m:é¯zìí:äç;%ä:ìí{ «
+:¬ :â©{eg;ff:¬¯{%ä;!'
+Kˆ;!,z¬íH;%ë:í :ì&;ff‚ˆ[˜İ[ÛˆÛÜU^ĞÛ\›Ø\™
+^
+HÂˆHÂˆYˆ
+˜]šYØ]Ü‹˜Û\›Ø\™	‰ˆ˜]šYØ]Ü‹˜Û\›Ø\™Üš]U^
+HÂˆ˜]šYØ]Ü‹˜Û\›Ø\™Üš]U^
+^
+NÂˆ™]\›ˆYNÂˆBˆÛÛœİHHØİ[Y[˜Ü™X]Q[[Y[
+	İ^\™XIÊNÂˆK˜[YHH^ÂˆØİ[Y[˜›ÙK˜\[™Ú[
+JNÂˆKœÙ[Xİ
+
+NÂˆÛÛœİÚÈHØİ[Y[™^XĞÛÛ[X[™	‰ˆØİ[Y[™^XĞÛÛ[X[™
+	ØÛÜIÊNÂˆØİ[Y[˜›ÙKœ™[[İ™PÚ[
+JNÂˆ™]\›ˆH[ÚÎÂˆHØ]Ú
+JHÈ™]\›ˆ˜[ÙNÈBˆBˆËÈ;.g:­k;"&;,ªH8 %:éã:à§;%a;'m;'f:®,:ègKˆ;!.;'m:î#;&`:ìá:¬':èg:â!;( H:ìí;(m:ä':âé‚ˆÛÛœİVÒÑVHH	ØZKY]XÜËXY™[\™KY^	ÎÂˆ[˜İ[ÛˆÙ]^ÙY[Š
+HÂˆHÈ™]\›ˆ”ÓÓ‹œ\œÙJØØ[İÜ˜YÙK™Ù]][JVÒÑVJJHßNÈBˆØ]Ú
+JHÈ™]\›ˆßNÈBˆBˆ[˜İ[Ûˆ™XÛÜ™^ÙY[Š[Û’YY\˜ŞRÚ[™
+HÂˆHÂˆÛÛœİÙY[ˆHÙ]^ÙY[Š
+NÂˆÙY[–Û[Û’YHHÈÙY[ˆYKY\˜ŞNˆY\˜ŞRÚ[™
+ÙY[–Û[Û’YH	‰ˆÙY[–Û[Û’YK›Y\˜ŞJH[NÂˆØØ[İÜ˜YÙKœÙ]][JVÒÑVK”ÓÓ‹œİš[™ÚYJÙY[ŠJNÂˆHØ]Ú
+JHÈÊˆ;( ;'©H:í¢:¬ ;ff:¬¯{'m:êm:ë-;"ç
+‹ÈBˆBˆ[˜İ[Ûˆ^ÙY[Ûİ[
+
+HÂˆÛÛœİÙY[ˆHÙ]^ÙY[Š
+NÂˆ™]\›ˆVÓÔ‘T‹™š[\Š
+Y
+HOˆÙY[–ÚYH	‰ˆÙY[–ÚYKœÙY[ŠK›[™İÂˆB‚ˆËÈKKKKKKKKKH;'¡zè)HKKKKKKKKKBˆÛÛœİ[H™]ÈÙ]
+
+NÂˆÛÛœİ™\ÜÙYH™]ÈÙ]
+
+NÂˆÛÛœİÑVSPTHÂˆ\œ›İÕ\ˆ	İ\	Ë\œ›İÑİÛˆ	ÙİÛ‰Ë\œ›İÓYˆ	ÛY	Ë\œ›İÔšYÚˆ	ÜšYÚ	ËˆÎˆ	İ\	ËÎˆ	ÙİÛ‰ËNˆ	ÛY	Ëˆ	ÜšYÚ	ËˆÎˆ	İ\	ËÎˆ	ÙİÛ‰ËNˆ	ÛY	Ëˆ	ÜšYÚ	Ëˆˆ	ØXİ[Û‰Ëˆ	ØXİ[Û‰Ë	È	Îˆ	ØXİ[Û‰Ë[\ˆ	ØXİ[Û‰Ëˆˆ	ØØ[˜Ù[	Ëˆ	ØØ[˜Ù[	Ë\ØØ\Nˆ	ØØ[˜Ù[	ËˆÎˆ	ÛY[IËÎˆ	ÛY[IËˆNÂ‚ˆÚ[™İË˜Y]™[\İ[™\Š	ÚÙ^YİÛ‰Ë
+JHOˆÂˆËÈ;'m:é¡;'¡zè)H;)${%ä:â¥:¬£;'¡;`©:éé;ed{'a:éâ{)à;%bºâ¥:âé
+;eg:® SQH; «;&ªJBˆYˆ
+Ø[YK›[ÙHOOH	İ]IÈ	‰ˆØ[YK]TØÜ™Y[ˆOOH	Û˜[YIÊH™]\›ÂˆËÈ;`©:éo:¯®H:â!:ém:¬è;'¢;'a:åc
+ÔÈ;'¤:ãæH:ì&:ìíJzâ¥;a¨:® 0­úâê;-¥{`©:¬ ;%ì;`à:ä&;)à;%bº¬£:éâzâ¥:âé‚ˆËÈ;'m:ãæ{'`;%a:ç¦[;)ä{ej{'/:èg;'(;)à:ä&:ëà:èg;& {e©{'m;%áºâé‚ˆYˆ
+Kœ™\X]
+H™]\›ÂˆÛİ[™œ™\İ[YJ
+NÂˆYˆ
+KšÙ^HOOH	ÛIÈKšÙ^HOOH	ÓIÊHÈÛİ[™ÙÙÛS]]J
+NÈ™]\›ÈBˆYˆ
+KšÙ^HOOH	İ	ÈKšÙ^HOOH	Õ	ÊHÂˆËÈ;`à;'m;bà;fe:êm;%ä;!':â¥8à#;!(; çzâæ:ì*xà#J:­d; «;(!;&ªH:êe:âm
+{'a;%ì:âé8 %:­î;&n;%ä:â¥:®,;(m:ã :èg;'¤:éâH;!£zãá‚ˆYˆ
+Ø[YK›[ÙHOOH	İ]IÈ	‰ˆØ[YK]TØÜ™Y[ˆOOH	ÜÛİÉÊHÈÜ[•XXÚ\”›ÛÛJ
+NÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	İXXÚ\‰ÊHÈÛÜÙUXXÚ\”›ÛÛJ
+NÈ™]\›ÈBˆŞXÛU^ÜYY
+
+NÂˆ™]\›ÂˆBˆYˆ
+KšÙ^HOOH	ÙÉÈKšÙ^HOOH	ÑÉÊHÈÙÙÛS\™ÙU^
+
+NÈ™]\›ÈBˆYˆ
+KšÙ^HOOH	Ú	ÈKšÙ^HOOH	Ò	ÊHÂˆYˆ
+Ø[YK›[ÙHOOH	Ú[	ÊHÈY˜[˜ÙR[
+
+NÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	İÛÜ›	È	‰ˆØ[YKœ^›T[ŠHÈÜ[’[
+
+NÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	Ø˜]IÈ	‰ˆØ[YK˜˜]H	‰ˆØ[YK˜˜]Kœ\ÙHOOH	ÛY[IÊHÈ˜]R[
+
+NÈ™]\›ÈBˆ™]\›ÂˆBˆYˆ
+KšÙ^HOOH	İ‰ÈKšÙ^HOOH	Õ‰ÊHÂˆYˆ
+Ø[YK›[ÙHOOH	İÛÜ›	ÊHÈÜ[”™]šY]Ê	İÛÜ›	ÊNÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	Ü™]šY]ÉÊHÈÛÜÙT™]šY]Ê
+NÈ™]\›ÈBˆ™]\›ÂˆBˆYˆ
+KšÙ^HOOH	Ú‰ÈKšÙ^HOOH	Ò‰ÊHÂˆYˆ
+Ø[YK›[ÙHOOH	İÛÜ›	ÊHÈÜ[’›İ\›˜[
+	İÛÜ›	ÊNÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	İ]IÈ	‰ˆØ[YK]TØÜ™Y[ˆOOH	ÜÛİÉÊHÈÜ[’›İ\›˜[
+	İ]IÊNÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	Ú›İ\›˜[	ÊHÈÛÜÙR›İ\›˜[
+
+NÈ™]\›ÈBˆ™]\›ÂˆBˆYˆ
+KšÙ^HOOH	ÜIÈKšÙ^HOOH	ÔIÊHÂˆYˆ
+Ø[YK›[ÙHOOH	İÛÜ›	ÊHÈÜ[Ú[[™ÙJ	İÛÜ›	ÊNÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	İ]IÈ	‰ˆØ[YK]TØÜ™Y[ˆOOH	ÜÛİÉÊHÈÜ[Ú[[™ÙJ	İ]IÊNÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	ØÚ[[™ÙIÊHÈÛÜÙPÚ[[™ÙJ
+NÈ™]\›ÈBˆ™]\›ÂˆBˆYˆ
+KšÙ^HOOH	Ø‰ÈKšÙ^HOOH	Ğ‰ÊHÂˆYˆ
+Ø[YK›[ÙHOOH	İÛÜ›	ÊHÈÜ[]Ø\™Ê	İÛÜ›	ÊNÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	İ]IÈ	‰ˆØ[YK]TØÜ™Y[ˆOOH	ÜÛİÉÊHÈÜ[]Ø\™Ê	İ]IÊNÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	Ø]Ø\™ÉÊHÈÛÜÙP]Ø\™Ê
+NÈ™]\›ÈBˆ™]\›ÂˆBˆYˆ
+KšÙ^HOOH	Ü‰ÈKšÙ^HOOH	Ô‰ÊHÂˆËÈ:ì*z®";)à;&­;!.;'m:î#:ä&; ­:é«:®,
+;"«:èkÈ;fe:êm;%ä;!':éã;"©:àá{ íû'm;'¢;'a:åc:éã
+BˆYˆ
+Ø[YK›[ÙHOOH	İ]IÈ	‰ˆØ[YK]TØÜ™Y[ˆOOH	ÜÛİÉÈ	‰ˆ\Ñ[]YÛİ
+
+JHÂˆÛÛœİ™\ÈH[™Ñ[]TÛİ
+
+NÂˆØ[YK››İXÙHHÈ^ˆ™\Ë›ÚÈÈ	ø¡ªH;)à;&­;!.;'m:î#:éo:ä&; ­:è.;%­;&¥‰Èˆ	úä&; ­:é­;!.;'m:î#:¬ ;%á»%­;&¥‰ËˆŒNÂˆYˆ
+™\Ë›ÚÈ	‰ˆ\[Ùˆ™\ËœÛİOOH	Û[X™\‰ÊHØ[YKœÛİİ\œÛÜˆH™\ËœÛİÂˆÛİ[™˜˜YÙJ
+NÂˆBˆ™]\›ÂˆBˆYˆ
+KšÙ^HOOH	ÚIÈKšÙ^HOOH	ÒIÊHÂˆYˆ
+Ø[YK›[ÙHOOH	İÛÜ›	ÊHÈÜ[’[
+	İÛÜ›	ÊNÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	İ]IÈ	‰ˆØ[YK]TØÜ™Y[ˆOOH	ÜÛİÉÊHÈÜ[’[
+	İ]IÊNÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	Ú[	ÊHÈÛÜÙR[
+
+NÈ™]\›ÈBˆ™]\›ÂˆBˆYˆ
+KšÙ^HOOH	ÚÉÈKšÙ^HOOH	ÒÉÊHÂˆYˆ
+Ø[YK›[ÙHOOH	İÛÜ›	ÊHÈÜ[ÛÜÛY]XÜÊ	İÛÜ›	ÊNÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	İ]IÈ	‰ˆØ[YK]TØÜ™Y[ˆOOH	ÜÛİÉÊHÈÜ[ÛÜÛY]XÜÊ	İ]IÊNÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	ØÛÜÛY]XÜÉÊHÈÛÜÙPÛÜÛY]XÜÊ
+NÈ™]\›ÈBˆ™]\›ÂˆBˆYˆ
+KšÙ^HOOH	İIÈKšÙ^HOOH	ÕIÊHÂˆYˆ
+Ø[YK›[ÙHOOH	İÛÜ›	ÊHÈÜ[˜XÚİ\
+	İÛÜ›	ÊNÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	İ]IÈ	‰ˆØ[YK]TØÜ™Y[ˆOOH	ÜÛİÉÊHÈÜ[˜XÚİ\
+	İ]IÊNÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	Ø˜XÚİ\	ÊHÈÛÜÙP˜XÚİ\
+
+NÈ™]\›ÈBˆ™]\›ÂˆBˆËÈ:ã ;"ç:ìí:äç
+
+p­û.é;"©;a`;`-;)¢;c®;)äJJp­û"&:èã;)§JŠH;)à{($H:âê;-¥{`©:â¥;(':¬l:ä&;%â:âé8 %ˆËÈ;'m;('8à#;!(; çzâæ:ì*xà#J;`à;'m;bà;%ä;!'
+{'a;a­{em;!':éã;%ì:âé
+;"©;ae;"©:­d;'(H;&ä;.fJK‚ˆYˆ
+KšÙ^HOOH	Û	ÈKšÙ^HOOH	Ó	ÊHÈËÈ:ì,;&à;.m:äç
+X\›ŠBˆYˆ
+Ø[YK›[ÙHOOH	İÛÜ›	ÊHÈÜ[Ø\™Ê	İÛÜ›	ÊNÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	İ]IÈ	‰ˆØ[YK]TØÜ™Y[ˆOOH	ÜÛİÉÊHÈÜ[Ø\™Ê	İ]IÊNÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	ØØ\™ÉÊHÈÛÜÙPØ\™Ê
+NÈ™]\›ÈBˆ™]\›ÂˆBˆYˆ
+KšÙ^HOOH	Ù‰ÈKšÙ^HOOH	Ñ‰ÊHÈËÈ:ê¡{&";'f;(!:âîJ˜[YJBˆYˆ
+Ø[YK›[ÙHOOH	İÛÜ›	ÊHÈÜ[’ÙŠ	İÛÜ›	ÊNÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	İ]IÈ	‰ˆØ[YK]TØÜ™Y[ˆOOH	ÜÛİÉÊHÈÜ[’ÙŠ	İ]IÊNÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	ÚÙ‰ÊHÈÛÜÙRÙŠ
+NÈ™]\›ÈBˆ™]\›ÂˆBˆÛÛœİÈHÑVSPTÙKšÙ^WNÂˆYˆ
+ZÊH™]\›ÂˆKœ™]™[Y˜][
+
+NÂˆYˆ
+Z[š\ÊÊJH™\ÜÙY˜Y
+ÊNÂˆ[˜Y
+ÊNÂˆJNÂˆÚ[™İË˜Y]™[\İ[™\Š	ÚÙ^]\	Ë
+JHOˆÂˆÛÛœİÈHÑVSPTÙKšÙ^WNÂˆYˆ
+ÊH[™[]JÊNÂˆJNÂˆËÈ;,/H;cë;.é;"©:éo;' û'/:êm
+:âé:én;`ëp­û%l{'/:èg;(!;ff
+HÙ^]\;'m;%b;&`;!';`©:¬ 	úâ#:é¬;,a	È:àª;%aˆËÈ:ãã;%a;&e;'a:åc;.¤:é«{a,:¬ :¬á;!£H:¬múâ¥:ë.;(':éo:éâzâ¥:âé‚ˆÚ[™İË˜Y]™[\İ[™\Š	Ø›\‰Ë
+
+HOˆÈ[˜ÛX\Š
+NÈ™\ÜÙY˜ÛX\Š
+NÈJNÂ‚ˆËÈ:¬ ; àH;"©;bìNˆ;)${"ë;%ä;!';'f:ìà;'!
+Jzéo;&¬;!.:ì*{e©H;ef:à¦:èg;ff; ¬ˆ:ãl:äç;(m;%b;'m:êm[‚ˆËÈ
+:êe:âm;.é;!';'m:ãæH:äìH:âê;'o:ì*{e©{'m;ea;&¥;eg:¬ìû%ä;!'; «;&ªJH8 %;"';"&;ej;"&:ço;ac;"©;b®:èg:¬ ;)§{eg:âé‚ˆ[˜İ[ÛˆİXÚÑ\™Xİ[ÛŠKX^
+HÂˆÛÛœİ\İHX]š\İ
+JNÂˆYˆ
+\İX^
+ˆŒÍ
+H™]\›ˆ[ÈËÈ:ãl:äç;(mˆ:¬ ;&­:ãl:­ï;,¦:â¥;(%{)àˆYˆ
+X]˜XœÊ
+HˆX]˜XœÊJJH™]\›ˆÈ	ÛY	Èˆ	ÜšYÚ	ÎÂˆ™]\›ˆHÈ	İ\	Èˆ	ÙİÛ‰ÎÂˆBˆËÈ:ì*{e©H;"©;bìH
+KLXˆ;'¤;'(;'m:ãæ{&ªJNˆ;&¬;!.;-¥H
+È:ã :¬ {!(:ì-:äç
+:í ;-¥H:îa;'*H;'m; àJzêm:í ;-¥zãá;ej:®æ‚ˆËÈ:ì&;ff;'`û(ï:ì*{e©WH:æ$:â¥û(ï:ì*{e©K:í :ì*{e©WKˆ:ãl:äç;(m;'m:êm×K‚ˆ[˜İ[ÛˆİXÚÑ\™Xİ[ÛœÊKX^
+HÂˆÛÛœİXZ[ˆHİXÚÑ\™Xİ[ÛŠKX^
+NÂˆYˆ
+[XZ[ŠH™]\›ˆ×NÂˆÛÛœİZHX]˜XœÊ
+K]ˆHX]˜XœÊJNÂˆÛÛœİİXˆH
+X]˜XœÊ
+HˆX]˜XœÊJJHÈ
+HÈ	İ\	Èˆ	ÙİÛ‰ÊHˆ
+È	ÛY	Èˆ	ÜšYÚ	ÊNÂˆYˆ
+X]›Z[ŠZ]ŠHÈX]›X^
+Z]ŠHˆJH™]\›ˆÛXZ[‹İX—NÂˆ™]\›ˆÛXZ[—NÂˆBˆ]İXÚÑ\ˆH[ÈËÈ;"©;bì{'m;f!;'«:¬ :é«;`©:â¥:ì*{e©J;%á»'/:êm[
+Bˆ]İXÚÔ™\X]œ˜[Y\ÈHÈËÈ:êe:âm;%ä;!':â!:én;,a:èg:äd:êm;'¤:ãæH:ì&:ìí{"ç;`©:â¥;.m;&­;a,‚ˆËÈ;a,;.f;.ê;b®:èiˆ]\ÕİXÚ]šXÙHH˜[ÙNÂˆYˆ
+	ÛÛİXÚİ\	È[ˆÚ[™İÊHÂˆ\ÕİXÚ]šXÙHHYNÂˆØİ[Y[˜›ÙK˜Û\ÜÓ\İ˜Y
+	İİXÚ	ÊNÂˆÛÛœİİXÚYÈH™]ÈX\
+
+NÂˆÛÛœİš[™H
+YÙ^JHOˆÂˆÛÛœİ[HØİ[Y[™Ù][[Y[RY
+Y
+NÂˆYˆ
+Y[
+H™]\›ÂˆÛÛœİİÛˆH
+JHOˆÂˆKœ™]™[Y˜][
+
+NÈÛİ[™œ™\İ[YJ
+NÂˆ›Üˆ
+ÛÛœİÙˆK˜Ú[™ÙYİXÚ\ÊHİXÚYËœÙ]
+šY[YšY\‹È[Ù^HJNÂˆYˆ
+Z[š\ÊÙ^JJH™\ÜÙY˜Y
+Ù^JNÂˆ[˜Y
+Ù^JNÂˆNÂˆÛÛœİ\H
+JHOˆÂˆKœ™]™[Y˜][
+
+NÂˆ›Üˆ
+ÛÛœİÙˆK˜Ú[™ÙYİXÚ\ÊHİXÚYË™[]JšY[YšY\ŠNÂˆËÈ:¬&{'`:ì¡;b¯;'a:äd;!¤:¬ :ço{'/:èg:â!:én;,a;ef:à¦:éã:å¯:êm;%a;)àH:â#:é¬; à{`ç:âé8 %ˆËÈ:àª;'`;a,;.f:¬ ;'m;`©:éo;'¨z¬è;'¢;'/:êm:é­:é«;)¢;ef;)à;%bºâ¥:âé
+;`ç:î%:é¯È:ê`;bì;a,;.f
+Bˆ]İ[[H˜[ÙNÂˆ›Üˆ
+ÛÛœİ[™›ÈÙˆİXÚYË˜[Y\Ê
+JHYˆ
+[™›ËšÙ^HOOHÙ^JHÈİ[[HYNÈœ™XZÎÈBˆYˆ
+\İ[[
+H[™[]JÙ^JNÂˆNÂˆÛÛœİ[İ™HH
+JHOˆÂˆ›Üˆ
+ÛÛœİÙˆK˜Ú[™ÙYİXÚ\ÊHÂˆÛÛœİ[™›ÈHİXÚYË™Ù]
+šY[YšY\ŠNÂˆYˆ
+Z[™›È[™›Ë™[OOH[
+HÛÛ[YNÂˆÛÛœİˆH[™Ù]›İ[™[™ĞÛY[™Xİ
+
+NÂˆYˆ
+˜ÛY[‹›Y˜ÛY[ˆ‹œšYÚ˜ÛY[H‹Ü˜ÛY[Hˆ‹˜›İÛJHÂˆİXÚYË™[]JšY[YšY\ŠNÂˆ]İ[[H˜[ÙNÂˆ›Üˆ
+ÛÛœİ[™ˆÙˆİXÚYË˜[Y\Ê
+JHYˆ
+[™‹šÙ^HOOHÙ^JHÈİ[[HYNÈœ™XZÎÈBˆYˆ
+\İ[[
+H[™[]JÙ^JNÈËÈ\:¬ï:ãæ{'o;eg:ê`;bì;a,;.f:­ç;.fBˆBˆBˆNÂˆ[˜Y]™[\İ[™\Š	İİXÚİ\	ËİÛŠNÂˆ[˜Y]™[\İ[™\Š	İİXÚ[™	Ë\
+NÂˆ[˜Y]™[\İ[™\Š	İİXÚØ[˜Ù[	Ë\
+NÂˆ[˜Y]™[\İ[™\Š	İİXÚ[İ™IË[İ™JNÂˆNÂˆš[™
+	İXIË	ØXİ[Û‰ÊNÂˆš[™
+	İ[Y[IË	ÛY[IÊNÂˆš[™
+	İ\]\ÙIË	ØØ[˜Ù[	ÊNÂ‚ˆËÈ8à#;!(; çzâæ8à#H:ì¡;b¯8 %;`à;'m;bà
+;"«:èkÈ;fe:êm
+{%ä;!':éã:ìí;'¡
+ÔÔÎˆ›ÙKİXÚ]K\ÛİÊKˆ;`©:ìí:äçˆËÈ;&`:âë:é«;'¤;,­:èg;)à{'/:èg;,¦:é«;eg:âé
+;a,;.f;(!;&ªH;)á;'¡{($;'m:çoÑVSPT;gd:é¡;'a;%b;`á:âé
+K‚ˆÛÛœİXXÚ\ˆHØİ[Y[™Ù][[Y[RY
+	İ]XXÚ\‰ÊNÂˆYˆ
+XXÚ\ŠHÂˆÛÛœİÛ•XXÚ\ˆH
+JHOˆÂˆKœ™]™[Y˜][
+
+NÈÛİ[™œ™\İ[YJ
+NÂˆYˆ
+Ø[YK›[ÙHOOH	İ]IÈ	‰ˆØ[YK]TØÜ™Y[ˆOOH	ÜÛİÉÊHÜ[•XXÚ\”›ÛÛJ
+NÂˆNÂˆXXÚ\‹˜Y]™[\İ[™\Š	İİXÚİ\	ËÛ•XXÚ\ŠNÂˆB‚ˆËÈ:¬ ; àH;"©;bìH
+;'m:ãæJH8 %;!¤:¬ :çoH:ì*{e©{'/:èg; à{ef;(£;&¬:éo:â!:én;fª:¬ï:éo:à®:âé‚ˆÛÛœİT”ÍHÉİ\	Ë	ÙİÛ‰Ë	ÛY	Ë	ÜšYÚ	×NÂˆÛÛœİİXÚÈHØİ[Y[™Ù][[Y[RY
+	İ\İXÚÉÊNÂˆÛÛœİÛ›ØˆHØİ[Y[™Ù][[Y[RY
+	İ\İXÚËZÛ›Ø‰ÊNÂˆYˆ
+İXÚÈ	‰ˆÛ›ØŠHÂˆ]İXÚÒYH[ŞHŞHH˜Y]\ÈHNÂˆËÈ:ì*{e©Nˆ\œÈ:ì,;%í
+Œº¬'
+{'a:â#:é¬;`©:èg:ì&;& Kˆ:êe:âm:ì&:ìíJİXÚÑ\Š{'`;&¬;!.;-¥zéã;$í:âé‚ˆÛÛœİÙ]\ˆH
+\œÊHOˆÂˆ\œÈH\œÈ×NÂˆ›Üˆ
+ÛÛœİÙˆT”Í
+HÂˆYˆ
+\œËš[˜ÛY\Ê
+JHÈYˆ
+Z[š\Ê
+JH™\ÜÙY˜Y
+
+NÈ[˜Y
+
+NÈBˆ[ÙH[™[]J
+NÂˆBˆÛÛœİXZ[ˆH\œÖÌH[ÂˆYˆ
+XZ[ˆOOHİXÚÑ\ŠHÈİXÚÑ\ˆHXZ[ÈİXÚÔ™\X]œ˜[Y\ÈHÈBˆNÂˆÛÛœİXÙHH
+JHOˆÂˆÛ›Ø‹œİ[K˜[œÙ›Ü›HH˜[œÛ]JØ[ÊML	H
+È	Ù\
+KØ[ÊML	H
+È	Ù_\
+JXÂˆNÂˆÛÛœİÛ”İ\H
+JHOˆÂˆKœ™]™[Y˜][
+
+NÈÛİ[™œ™\İ[YJ
+NÂˆËÈ;'m:ëî;eg;!¤:¬ :ço{'m;"©;bì{'a;'¨z¬è;'¢;'/:êm:äd:ì¢;)î;!¤:¬ :ço{'m;`â;-ê;ef;)à:ê®ûef:¬£;eg:âéˆËÈ
+;`â;-ê;fá:å¯:êm;,ªÈ;!¤:¬ :ço{'m:àª;%a;'¢;%­:ãá;'m:ãæ{'m:êb;-¬:ì¡:é¬:âé
+BˆYˆ
+İXÚÒYOOH[
+H™]\›ÂˆÛÛœİHK˜Ú[™ÙYİXÚ\ÖÌNÂˆİXÚÒYHšY[YšY\ÂˆÛÛœİˆHİXÚË™Ù]›İ[™[™ĞÛY[™Xİ
+
+NÂˆŞH‹›Y
+È‹ÚYÈÈŞHH‹Ü
+È‹šZYÚÈÂˆ˜Y]\ÈH‹ÚY
+ˆŒÍÈËÈ:án:î#;'m:ãæH;eg:¬áˆÛ“[İ™JJNÂˆNÂˆÛÛœİÛ“[İ™HH
+JHOˆÂˆYˆ
+İXÚÒYOOH[
+H™]\›Âˆ]H[Âˆ›Üˆ
+ÛÛœİİÙˆK˜Ú[™ÙYİXÚ\ÊHYˆ
+İšY[YšY\ˆOOHİXÚÒY
+HHİÂˆYˆ
+]
+H™]\›ÂˆKœ™]™[Y˜][
+
+NÂˆ]H˜ÛY[HŞHH˜ÛY[HHŞNÂˆÛÛœİ\İHX]š\İ
+JNÂˆYˆ
+\İˆ˜Y]\ÊHÈHÈ\İ
+ˆ˜Y]\ÎÈHHHÈ\İ
+ˆ˜Y]\ÎÈBˆXÙJJNÂˆÙ]\ŠİXÚÑ\™Xİ[ÛœÊK˜Y]\ÊJNÂˆNÂˆÛÛœİÛ‘[™H
+JHOˆÂˆ]Z[™HH˜[ÙNÂˆ›Üˆ
+ÛÛœİİÙˆK˜Ú[™ÙYİXÚ\ÊHYˆ
+İšY[YšY\ˆOOHİXÚÒY
+HZ[™HHYNÂˆYˆ
+[Z[™JH™]\›ÂˆKœ™]™[Y˜][
+
+NÂˆİXÚÒYH[ÂˆÙ]\Š×JNÂˆXÙJ
+NÂˆNÂˆİXÚË˜Y]™[\İ[™\Š	İİXÚİ\	ËÛ”İ\
+NÂˆİXÚË˜Y]™[\İ[™\Š	İİXÚ[İ™IËÛ“[İ™JNÂˆİXÚË˜Y]™[\İ[™\Š	İİXÚ[™	ËÛ‘[™
+NÂˆİXÚË˜Y]™[\İ[™\Š	İİXÚØ[˜Ù[	ËÛ‘[™
+NÂˆBˆÛÛœİ[ˆHØİ[Y[™Ù][[Y[RY
+	İZ[	ÊNÂˆYˆ
+[ŠHÂˆÛÛœİÛ’[H
+JHOˆÂˆKœ™]™[Y˜][
+
+NÈÛİ[™œ™\İ[YJ
+NÂˆYˆ
+Ø[YK›[ÙHOOH	İÛÜ›	È	‰ˆØ[YKœ^›T[ŠHÈÜ[’[
+
+NÈ™]\›ÈBˆYˆ
+Ø[YK›[ÙHOOH	Ø˜]IÈ	‰ˆØ[YK˜˜]H	‰ˆØ[YK˜˜]Kœ\ÙHOOH	ÛY[IÊH˜]R[
+
+NÂˆNÂˆ[‹˜Y]™[\İ[™\Š	İİXÚİ\	ËÛ’[
+NÂˆBˆB‚ˆ[˜İ[Ûˆ\İ™\ÜÙY
+ÊHÈ™]\›ˆ™\ÜÙYš\ÊÊNÈB‚ˆËÈKKKKKKKKKH;'m:é¡;'¡zè)H;&):ì¡:è";'m
+S;eg:® SQH;)à;&ä
+HKKKKKKKKKBˆÛÛœİ˜[YSİ™\›^HHØİ[Y[™Ù][[Y[RY
+	Û˜[YK[İ™\›^IÊNÂˆÛÛœİ˜[YR[œ]HØİ[Y[™Ù][[Y[RY
+	Û˜[YKZ[œ]	ÊNÂˆÛÛœİ\Ô™X[[œ]HHJ˜[YR[œ]	‰ˆ	İ˜[YIÈ[ˆ˜[YR[œ]
+NÂ‚ˆ[˜İ[ÛˆÚİÓ˜[YQ[J
+HÂˆØ[YK]TØÜ™Y[ˆH	Û˜[YIÎÂˆØ[YK›˜[YPÛÛ™š\›HH˜[ÙNÂˆØ[YK›˜[YPØ[˜Ù[H˜[ÙNÂˆYˆ
+\Ô™X[[œ]
+H˜[YR[œ]˜[YHH	ÉÎÂˆYˆ
+˜[YSİ™\›^H	‰ˆ˜[YSİ™\›^Kœİ[JH˜[YSİ™\›^Kœİ[K™\Ü^HH	Ù›^	ÎÂˆYˆ
+˜[YR[œ]	‰ˆ˜[YR[œ]™›Øİ\ÊHÙ][Y[İ]
+
+
+HOˆÈHÈ˜[YR[œ]™›Øİ\Ê
+NÈHØ]Ú
+JHßHK
+NÂˆB‚ˆ[˜İ[ÛˆYS˜[YQ[J
+HÂˆYˆ
+˜[YSİ™\›^H	‰ˆ˜[YSİ™\›^Kœİ[JH˜[YSİ™\›^Kœİ[K™\Ü^HH	Û›Û™IÎÂˆYˆ
+˜[YR[œ]	‰ˆ˜[YR[œ]˜›\ŠHÈHÈ˜[YR[œ]˜›\Š
+NÈHØ]Ú
+JHßHBˆB‚ˆËÈ;'m:é¡;(%{('8 %;(';%­:ë.;'¤0­û(':èg;cëH:ë.;'¤;(':¬l:¬ízì,H;(%zé«;-g:ã º® ;'¤:îa:êm	û"&;f.;'¤	ÂˆËÈ
+š[{'`;(':èg;cëH:ë.;'¤JÌŒˆ:äì{'a:ê®È:¬l:ém:ëà:èg:ìá:ãá:èg;(':¬l;eg:âé
+Bˆ[˜İ[ÛˆØ[š]^™S˜[YJŠHÂˆ™]\›ˆİš[™ÊˆOH[ÈˆˆˆŠBˆœ™\XÙJÖ×LWLQ—LÑ—LŒ‹WLŒQ‘Q‘—KÙËˆŠBˆœ™\XÙJ×ÊËÙËˆŠBˆš[J
+BˆœÛXÙJŠH»"&;f.;'¤ÂˆBˆ[˜İ[Ûˆİ\œ™[˜[YU˜[YJ
+HÂˆ™]\›ˆØ[š]^™S˜[YJ\Ô™X[[œ]È˜[YR[œ]˜[YHˆ	ÉÊNÂˆB‚ˆYˆ
+˜[YR[œ]	‰ˆ˜[YR[œ]˜Y]™[\İ[™\ŠHÂˆ˜[YR[œ]˜Y]™[\İ[™\Š	ÚÙ^YİÛ‰Ë
+JHOˆÂˆYˆ
+KšÙ^HOOH	Ñ[\‰ÊHÈKœ™]™[Y˜][
+
+NÈØ[YK›˜[YPÛÛ™š\›HHYNÈBˆ[ÙHYˆ
+KšÙ^HOOH	Ñ\ØØ\IÊHÈKœ™]™[Y˜][
+
+NÈØ[YK›˜[YPØ[˜Ù[HYNÈBˆKœİÜ›ÜYØ][ÛŠ
+NÂˆJNÂˆBˆÛÛœİ˜[YQÛÈHØİ[Y[™Ù][[Y[RY
+	Û˜[YKYÛÉÊNÂˆYˆ
+˜[YQÛÈ	‰ˆ˜[YQÛË˜Y]™[\İ[™\ŠHÂˆ˜[YQÛË˜Y]™[\İ[™\Š	ØÛXÚÉË
+
+HOˆÈØ[YK›˜[YPÛÛ™š\›HHYNÈJNÂˆB‚ˆËÈKKKKKKKKKH;`à;'oKKKKKKKKKBˆÛÛœİÓÓQH
+Ú
+HOˆUĞSĞP“Kš\ÊÚ
+NÂ‚ˆ[˜İ[Ûˆ[P]
+X\YJHÂˆÛÛœİHHPTÖÛX\YNÂˆYˆ
+HHHK[\Ë›[™İ
+H™]\›ˆ	Õ	ÎÂˆÛÛœİ›İÈHK[\ÖŞWNÂˆYˆ
+H›İË›[™İ
+H™]\›ˆ	Õ	ÎÂˆ™]\›ˆ›İÖŞNÂˆB‚ˆ[˜İ[ÛˆœÕš\ÚX›JœÊHÂˆ™]\›ˆ[œËœÚİÈœËœÚİÊØ[YK™›YÜÊNÂˆB‚ˆ[˜İ[ÛˆœĞ]
+X\YJHÂˆ™]\›ˆPTÖÛX\YK›œÜË™š[™
+
+ŠHOˆ‹OOH	‰ˆ‹HOOHH	‰ˆœÕš\ÚX›JŠJH[ÂˆB‚ˆ[˜İ[Ûˆ[Ûœİ\]
+X\YJHÂˆ™]\›ˆPTÖÛX\YK›[Ûœİ\œË™š[™
+ˆ
+[ÊHOˆ[ËOOH	‰ˆ[ËHOOHH	‰ˆYØ[YK™›YÜË™Y™X]YÛ[ËšYBˆ
+H[ÂˆB‚ˆËÈ;'¤:îa:èg:éâ;'c;'a:ä&:ãã:é¬;'n:ë/;'`:­î;'¤:é«;%ä	û.g:­k	úèg:àª:â¥:âé
+;!(;`ç{'m;!.:¬á;%ä:àª:â¥:âé
+Bˆ[˜İ[Ûˆ\ÑœšY[™
+[Û’Y
+HÂˆ™]\›ˆHJØ[YK™›YÜË™Y™X]YÛ[Û’YH	‰ˆØ[YK™›YÜË›Y\˜ŞPÚÚXÙH	‰ˆØ[YK™›YÜË›Y\˜ŞPÚÚXÙVÛ[Û’YHOOH	ÛY\˜ŞIÊNÂˆBˆ[˜İ[ÛˆœšY[™]
+X\YJHÂˆ™]\›ˆPTÖÛX\YK›[Ûœİ\œË™š[™
+
+[ÊHOˆ[ËOOH	‰ˆ[ËHOOHH	‰ˆ\ÑœšY[™
+[ËšY
+JH[ÂˆB‚ˆ[˜İ[ÛˆÚYÛ]
+X\YJHÂˆ™]\›ˆPTÖÛX\YKœÚYÛœË™š[™
+
+ÊHOˆËOOH	‰ˆËHOOHJH[ÂˆB‚ˆ[˜İ[ÛˆØ\œ]
+X\YJHÂˆ™]\›ˆPTÖÛX\YKØ\œË™š[™
+
+ÊHOˆËOOH	‰ˆËHOOHJH[ÂˆB‚ˆËÈKLH8à#:ë.;'m;%áºâ¥:ãl:éíH;'m:ãæxà#H:ì¡:­î8 %:ãl;'m;a,:éo:¬è;.f;)à;%bº¬è˜]ÕÛÜ›;%ä;!';&ã;e!;.n;'aˆËÈ;'¤:ãæ{'/:èg;"ç:¬ {fe;eg:âéˆ	û"*;'`;&ã;e!	È;c$;(%Nˆ
+JH:éíH:¬ ;'©{'¤:é«».n;'m:à­:¬ ;%a:ââ:¬è
+;'¤;%ì;-§:­kˆËÈ;(';&n
+K
+ŠH;'n;($H{.n;%b;%ä;(l; «:ë/;,­
+PTÔ“ÔÊz¬ ;%á»%­:â";%ä:ìí;'m:â¥;dg;"ç{'m;(!;f ;%áºâ¥;.n‚ˆËÈ;'m;(l:¬m;'m;)á:âê:ä'L:¬ìÊ:éâ;'aHÈ:®,;&®:¬l:é«MN0­ÌMˆÈ:êe;%a:é«:¬ê:êªH:à­:í ú¬ìÈÂˆËÈ;(':ìí;"é0­ûc®;)ä{"é0­û!¨{-§;`äH;.-z¬áÈ;",ˆJz¬ï;(%{fe{g¢;'o;.f;eg:âé‚ˆ[˜İ[Ûˆ\ÒY[•Ø\œ
+X\YJHÂˆÛÛœİHHPTÖÛX\YNÂˆYˆ
+[JH™]\›ˆ˜[ÙNÂˆÛÛœİÈH
+KØ\œÈ×JK™š[™
+
+Ü
+HOˆÜOOH	‰ˆÜHOOHJNÂˆYˆ
+]ÊH™]\›ˆ˜[ÙNÂˆÛÛœİÈHK[\ÖÌK›[™İHK[\Ë›[™İÂˆYˆ
+HHHHHHÈHˆHHHŠH™]\›ˆ˜[ÙNÈËÈ:¬ ;'©{'¤:é«H;'¤;%ì;-§:­kˆÛÛœİ™X\ˆH
+PTÔ“ÔÖÛX\YH×JKœÛÛYJ
+
+HOˆX]˜XœÊH
+HHH	‰ˆX]˜XœÊHHJHHJNÂˆYˆ
+™X\ŠH™]\›ˆ˜[ÙNÈËÈ;'m:ëî;(l; «:ë/;,­
+:ç§:äç:éâ;`k
+z¬ :¬à{%ä;'¢;'/:êm;dg;"çH:í¢;ea;&¥ˆ™]\›ˆYNÂˆBˆËÈ;f!;'«:éí{'f;"*;'`;&ã;e!:êªzègJ:éâ;.é;(¡zéf;cë;ej
+Kˆ:¬&{'`:éí{'/:èg:ä&:ãã;%a:¬ :â¥;"':¬!;'m:ãæ{'`ˆËÈ;!£;&ªzãã;'m
+8¥ã
+K:âé:én:éí{'/:èg:¬ :â¥:ë.;'`:ì':­$H;%a;.f:èg:­k:í¡;eg:âé‚ˆ[˜İ[ÛˆY[•Ø\œÓÙŠX\Y
+HÂˆÛÛœİHHPTÖÛX\YNÂˆYˆ
+[JH™]\›ˆ×NÂˆ™]\›ˆ
+KØ\œÈ×JBˆ™š[\Š
+ÊHOˆ\ÒY[•Ø\œ
+X\YËËJJBˆ›X\
+
+ÊHOˆ
+ÈˆËNˆËKÚ[™ˆËÈOOHX\YÈ	ÜİÚ\›	Èˆ	Ø\˜Ú	ÈJJNÂˆB‚ˆËÈ;`à;'o:­î:é«:®,
+;(";,*;( H:ãá;b®
+BˆÛÛœİ[PØXÚHH™]ÈX\
+
+NÂˆ[˜İ[Ûˆ[PØ[˜\ÊÚœ˜[YJHÂˆÛÛœİÙ^HHÚ
+Èœ˜[YNÂˆ]İˆH[PØXÚK™Ù]
+Ù^JNÂˆYˆ
+İŠH™]\›ˆİÂˆİˆHØİ[Y[˜Ü™X]Q[[Y[
+	ØØ[˜\ÉÊNÂˆİ‹ÚYHÎÈİ‹šZYÚHÎÂˆÛÛœİÈHİ‹™Ù]ÛÛ^
+	Ì™	ÊNÂˆÛÛœİH
+KËÛÛ
+HOˆÈË™š[İ[HHÛÛÈË™š[™Xİ
+
+ˆĞĞSKH
+ˆĞĞSKÈ
+ˆĞĞSK
+ˆĞĞSJNÈNÂˆËÈ:¬¬;(%{( H;'f; «:à§;"&ˆÛÛœİ›™H
+ÙYY
+HOˆÈÛÛœİˆHX]œÚ[ŠÙYY
+ˆLËŒH
+ÈÌLKÊH
+ˆÍÍNMLÎÈ™]\›ˆˆHX]™›ÛÜŠŠNÈNÂ‚ˆİÚ]Ú
+Ú
+HÂˆØ\ÙH	ÑÉÎˆÈËÈ;d 8 %;,*:í¡;eg:án{ âH
+È:¬¬;ac{"©;,¦ˆ
+M‹M‹	ÈÍØM	ÊNÂˆ›Üˆ
+]HHÈHLÈJÊÊHÂˆÛÛœİHX]™›ÛÜŠ›™
+H
+ÈJH
+ˆMŠKHHX]™›ÛÜŠ›™
+H
+ÈLJH
+ˆMŠNÂˆ
+KKKH	HÈÈ	ÈÍM™LØ‰Èˆ	ÈÍYML	ÊNÂˆBˆËÈ;'¤{'`;d ;'£‚ˆ
+ËLKK‹	ÈÍYML	ÊNÈ
+L‹KK	ÈÍYML	ÊNÂˆ
+LKKK‹	ÈÍM™LØ‰ÊNÂˆœ™XZÎÂˆBˆØ\ÙH	Ô	ÎˆÈËÈ:®.8 %:í :äç:çë;&­;gfBˆ
+M‹M‹	ÈØL™IÊNÂˆ›Üˆ
+]HHÈHÈJÊÊHÂˆÛÛœİHX]™›ÛÜŠ›™
+H
+ÈÊH
+ˆMJKHHX]™›ÛÜŠ›™
+H
+ÈÍÊH
+ˆMJNÂˆ
+K‹KH	HˆÈ	ÈØNLMY‰Èˆ	ÈØÍYØÉÊNÂˆBˆœ™XZÎÂˆBˆØ\ÙH	Ñ‰ÎˆÈËÈ:¯`Âˆ
+M‹M‹	ÈÍØM	ÊNÂˆÛÛœİÛÛÈHÉÈÙNÌN‰Ë	ÈÙŒÎL	Ë	ÈÙŒ™YL	×NÂˆ›Üˆ
+]HHÈHÎÈJÊÊHÂˆÛÛœİHˆ
+ÈX]™›ÛÜŠ›™
+H
+ÈÊH
+ˆLJKHHˆ
+ÈX]™›ÛÜŠ›™
+H
+ÈÌÊH
+ˆLJNÂˆ
+K‹‹ÛÛÖÚWJNÂˆ
+KKK	ÈÙ™™™™™MIÊNÂˆBˆœ™XZÎÂˆBˆØ\ÙH	Õ	ÎˆÈËÈ:à¦:ë-8 %:äiz­ï;'c;& Bˆ
+M‹M‹	ÈÍØM	ÊNÂˆ
+ËKL‹	ÈÌ™˜ŒÎ	ÊNÂˆ
+‹‹L‹‹	ÈÌÌÌÌÎIÊNÂˆ
+KM	ÈÌ™˜ŒÎ	ÊNÂˆ
+ËË‹	ÈÌÙM	ÊNÈËÈ;ef;'m:ço;'m;b®ˆ
+KKË‹	ÈÌÙM	ÊNÂˆ
+‹L‹‹	ÈÌMÌ™IÊNÈËÈ;%a:çªúí :í¡:­î:â¦ˆ
+‹LK	ÈÍ˜L˜ÉÊNÂˆ
+‹LKK	ÈÍÙNÍ‰ÊNÂˆ
+‹MKK	ÈÍŒÍŒY‰ÊNÂˆœ™XZÎÂˆBˆØ\ÙH	ÕÉÎˆÈËÈ:ë/
+»e!:è";'¡;%h:ââ:êe;'m;!f
+Bˆ
+M‹M‹	ÈÌØMÙ˜Ì	ÊNÂˆÛÛœİÙ™ˆHœ˜[YHÈˆˆÂˆ›Üˆ
+]HHÈHNÈJÊÊHÂˆÛÛœİHH
+H
+ˆÈ
+ÈÙ™ŠH	HMNÂˆÛÛœİHX]™›ÛÜŠ›™
+H
+ÈLÊH
+ˆJNÂˆ
+KK	ÈÍY˜LÙIÊNÂˆ
+
+ÈKK‹K	ÈÍMY	ÊNÂˆBˆœ™XZÎÂˆBˆØ\ÙH	Ğ‰ÎˆÈËÈ:âé:é«ˆ
+M‹M‹	ÈÌØMÙ˜Ì	ÊNÂˆ
+KMM‹	ÈÎXM™ŒÙIÊNÂˆ
+KMK	ÈÍØÍNÌ	ÊNÂˆ›Üˆ
+]HHÎÈHMÈH
+ÏH
+H
+KKMK	ÈÍØÍNÌ	ÊNÂˆ
+KM‹	ÈÍ˜L	ÊNÂˆ
+MKKM‹	ÈÍ˜L	ÊNÂˆœ™XZÎÂˆBˆØ\ÙH	ÔÉÎˆÈËÈ:êª:ç¦ˆ
+M‹M‹	ÈÙLÙXÉÊNÂˆ›Üˆ
+]HHÈHÎÈJÊÊHÂˆ
+X]™›ÛÜŠ›™
+H
+ÈJH
+ˆMJKX]™›ÛÜŠ›™
+H
+ÈMJH
+ˆMJKKKH	HˆÈ	ÈÙ™‰Èˆ	ÈÙXÙØXIÊNÂˆBˆœ™XZÎÂˆBˆØ\ÙH	ÓÉÎˆÈËÈ;)à:í¥Bˆ
+M‹M‹	ÈØŒÍLØIÊNÂˆ
+M‹Ë	ÈØÎN	ÊNÂˆ›Üˆ
+]HHÎÈHMÈH
+ÏH
+H
+KM‹K	ÈÎMŒØÌÌ	ÊNÂˆ
+KM‹	ÈÎMŒØÌÌ	ÊNÂˆ
+MKKM‹	ÈÎMŒØÌÌ	ÊNÂˆœ™XZÎÂˆBˆØ\ÙH	Ò	ÎˆÈËÈ:ì¯Bˆ
+M‹M‹	ÈÙMÌ	ÊNÂˆ
+M‹‹	ÈØØØ™˜M	ÊNÂˆ›Üˆ
+]HHÈHMÈH
+ÏHŠHÂˆ
+KM‹K	ÈØØØ™˜M	ÊNÂˆBˆ
+‹‹K	ÈÍÎXÌL	ÊNÈËÈ;,/zë.ˆ
+L‹K	ÈÍÎXÌL	ÊNÂˆ
+‹‹K	ÈÍNMÎ	ÊNÂˆ
+L‹K	ÈÍNMÎ	ÊNÂˆ
+‹‹KK	ÈÎXY™Œ	ÊNÂˆ
+L‹KK	ÈÎXY™Œ	ÊNÂˆœ™XZÎÂˆBˆØ\ÙH	Ñ	ÎˆÈËÈ:ë.ˆ
+M‹M‹	ÈÙMÌ	ÊNÂˆ
+Ë‹LM	ÈÍØÍNÌ	ÊNÂˆ
+ËLË	ÈÎXM™ŒÙIÊNÂˆ
+ËKLË	ÈØYIÊNÂˆ
+LK‹‹	ÈÙŒÎL	ÊNÂˆœ™XZÎÂˆBˆØ\ÙH	ÌIÎˆÈËÈ;`äH:ë.
+:îfúà¦:â¥:ë.
+Bˆ
+M‹M‹	ÈÙMÌ	ÊNÂˆ
+ËKLMK	ÈÌØLÌÍL‰ÊNÂˆ
+‹M	ÈÍMØIÊNÂˆ
+‹Ëœ˜[YHÈ	ÈÙŒÎL	Èˆ	ÈÙ˜YLXIÊNÂˆ
+ËKK	ÈÙ™™Œ˜Î	ÊNÂˆœ™XZÎÂˆBˆØ\ÙH	ÖIÎˆÈËÈ;dg;)à;c$ˆ
+M‹M‹	ÈÍØM	ÊNÂˆ
+‹‹L‹	ÈÎXM™ŒÙIÊNÂˆ
+ËËL‹	ÈØ˜LN	ÊNÂˆ
+KK	ÈÍ˜L	ÊNÂˆ
+Ë‹K	ÈÍ˜L	ÊNÂˆ
+ËL‹K	ÈÍØÍNÌ	ÊNÂˆœ™XZÎÂˆBˆØ\ÙH	Ô‰ÎˆÈËÈ:ì%;'!ˆ
+M‹M‹	ÈÍØM	ÊNÂˆ
+Ë‹L	ÈÎNLL‰ÊNÂˆ
+‹	ÈÎXXLŒ‰ÊNÂˆ
+ËL‹L‹	ÈÍ™ÍN	ÊNÈËÈ:­î:é¯;'¤ˆ
+KË	ÈØŒ˜Î	ÊNÈËÈ;ef;'m:ço;'m;b®ˆœ™XZÎÂˆBˆØ\ÙH	ĞÉÎˆÈËÈ:ãæz­m:ì%:âéBˆ
+M‹M‹	ÈÌÙÎL	ÊNÂˆ›Üˆ
+]HHÈHÎÈJÊÊHÂˆ
+X]™›ÛÜŠ›™
+H
+ÈJH
+ˆMJKX]™›ÛÜŠ›™
+H
+ÈNJH
+ˆMJKKKH	HˆÈ	ÈÍMMŒ	Èˆ	ÈÌÌŒ™	ÊNÂˆBˆœ™XZÎÂˆBˆØ\ÙH	ÒÉÎˆÈËÈ:ãæz­m:ì¯Bˆ
+M‹M‹	ÈÌYŒÌÉÊNÂˆ
+LËM‹Ë	ÈÌMŒLLY‰ÊNÂˆ›Üˆ
+]HHÈHÈJÊÊHÂˆ
+X]™›ÛÜŠ›™
+H
+ÈŒJH
+ˆLÊKX]™›ÛÜŠ›™
+H
+ÈŒŠH
+ˆL
+K‹‹	ÈÌÌŒ˜Í	ÊNÂˆBˆœ™XZÎÂˆBˆØ\ÙH	Ê‰ÎˆÈËÈ;"&;(%Bˆ
+M‹M‹	ÈÌÙÎL	ÊNÂˆ
+‹Kœ˜[YHÈ	ÈÍÎYYŒ	Èˆ	ÈØNM™‰ÊNÂˆ
+ËË‹	ÈÍM˜™L	ÊNÂˆ
+L‹ËË	ÈÍM˜™L	ÊNÂˆ
+ËKKK	ÈÙ™‰ÊNÂˆœ™XZÎÂˆBˆØ\ÙH	ÓIÎˆÈËÈ;`äH:ì%:âéBˆ
+M‹M‹	ÈÍØMÍXIÊNÂˆ
+M‹K	ÈÎÎ˜XÉÊNÂˆ
+KM‹	ÈÎÎ˜XÉÊNÂˆ
+MKKM‹	ÈÍŒXN	ÊNÂˆ
+MKM‹K	ÈÍŒXN	ÊNÂˆ
+KK	ÈÎÎ˜XÉÊNÂˆœ™XZÎÂˆBˆØ\ÙH	Ó‰ÎˆÈËÈ;`äH:ì¯Bˆ
+M‹M‹	ÈÍØMYIÊNÂˆ›Üˆ
+]HHÈHMÈH
+ÏH
+H
+KM‹K	ÈÌÌŒ˜ÍIÊNÂˆ›Üˆ
+]HÈMÈ
+ÏH
+H
+KM‹	ÈÌÌŒ˜ÍIÊNÂˆ
+KK‹‹	ÈÍM	ÊNÂˆœ™XZÎÂˆBˆØ\ÙH	Ö‰ÎˆÈËÈ:â":ì+Bˆ
+M‹M‹	ÈÙNYY	ÊNÂˆ›Üˆ
+]HHÈHÈJÊÊHÂˆ
+X]™›ÛÜŠ›™
+H
+ÈÌJH
+ˆMJKX]™›ÛÜŠ›™
+H
+ÈLÌJH
+ˆMJKKK	ÈÙ™ÙYIÊNÂˆBˆYˆ
+œ˜[YJH
+X]™›ÛÜŠ›™
+NJH
+ˆM
+KX]™›ÛÜŠ›™
+N
+H
+ˆM
+K‹‹	ÈÙ™™™™™‰ÊNÂˆœ™XZÎÂˆBˆØ\ÙH	Ò‰ÎˆÈËÈ:â":ãk»'n:à¦:ë-ˆ
+M‹M‹	ÈÙNYY	ÊNÂˆ
+‹‹L‹‹	ÈÌ™˜ŒÎ	ÊNÂˆ
+KM	ÈÌ™˜ŒÎ	ÊNÂˆ
+ËKL‹	ÈÙ™™™™™‰ÊNÂˆ
+‹‹L‹K	ÈÙLN	ÊNÂˆ
+KK	ÈÙ™™™™™‰ÊNÂˆ
+LKK	ÈÙ™™™™™‰ÊNÂˆ
+‹LK	ÈÍ˜L˜ÉÊNÂˆ
+‹MKK	ÈÍŒÍŒY‰ÊNÂˆœ™XZÎÂˆBˆØ\ÙH	Ö	ÎˆÈËÈ;!(;'n;'©Bˆ
+M‹M‹	ÈÙLÙXÉÊNÂˆ
+‹ËLK	ÈÌØNŒØIÊNÂˆ
+‹ËKLK	ÈÍ˜LÍ‰ÊNÈËÈ;ef;'m:ço;'m;b®ˆ
+‹KË‹	ÈÌØNŒØIÊNÂˆ
+ËK‹	ÈÌØNŒØIÊNÂˆ
+LK‹Ë‹	ÈÌØNŒØIÊNÂˆ
+LK‹	ÈÌØNŒØIÊNÂˆ
+KK	ÈÌ˜ÍØL˜ÉÊNÈËÈ:â©{!(:­î:â¦ˆœ™XZÎÂˆBˆØ\ÙH	ÑIÎˆÈËÈ:®,:¬á;"é:ì%:âéBˆ
+M‹M‹	ÈÌYŒŒŒÍ‰ÊNÂˆ
+M‹K	ÈÌ˜ÌÌL	ÊNÂˆ
+KM‹	ÈÌ˜ÌÌL	ÊNÂˆ
+Ë‹K	ÈÌÍ˜IÊNÂˆ
+KK	ÈÌÍ˜IÊNÂˆœ™XZÎÂˆBˆØ\ÙH	Õ‰ÎˆÈËÈ;!':ì¡:ç¦H
+:í¢:îfÈ:®g:îh{'¡
+Bˆ
+M‹M‹	ÈÌMLMÌ˜IÊNÂˆ
+KMM‹	ÈÌÍŒØÍL	ÊNÂˆ
+KKM‹	ÈÍÍ	ÊNÂˆ›Üˆ
+]HHÈHMNÈH
+ÏH
+HÂˆ
+‹KL‹‹	ÈÌŒ˜LØÉÊNÂˆ
+ËK‹Kœ˜[YHÈ	ÈÍXÙŒØIÈˆ	ÈÌYML˜IÊNÂˆ
+LKK‹Kœ˜[YHÈ	ÈÎLŒÌ	Èˆ	ÈÙŒXÍ˜IÊNÂˆBˆœ™XZÎÂˆBˆØ\ÙH	ÒIÎˆÈËÈ:ãá;!':­ :ì%:âéH
+;&):ç¦:ä':à¦:ë-
+Bˆ
+M‹M‹	ÈÍØÍŒÙ‰ÊNÂˆ
+ËM‹K	ÈÍLÌÉÊNÂˆ
+MKM‹K	ÈÍLÌÉÊNÂˆ
+ËK	ÈÍLÌÉÊNÂˆ
+L‹K	ÈÍLÌÉÊNÂˆ
+M‹K	ÈÎM˜Í	ÊNÂˆœ™XZÎÂˆBˆØ\ÙH	Ó	ÎˆÈËÈ;,a{'©Bˆ
+M‹M‹	ÈÍLŒÎL	ÊNÂˆ
+M‹K	ÈÍŒÍŒÌIÊNÂˆÛÛœİÛÛÈHÉÈØNŒÙ‰Ë	ÈÍÍŒNXIË	ÈÍÎL˜IË	ÈØŒMÎ	Ë	ÈÍØÍLL	×NÂˆ›Üˆ
+]ÈHÈÈÈÊÊÊHÂˆÛÛœİHHˆ
+ÈÈ
+ˆÎÂˆ
+KH
+ÈKMK	ÈÌÍYŒL‰ÊNÂˆ›Üˆ
+]HHÈHÈJÊÊHÂˆ
+ˆ
+ÈH
+ˆ‹K‹KÛÛÖÓX]™›ÛÜŠ›™
+H
+ÈÈ
+ˆÈ
+ÈJH
+ˆÛÛË›[™İ
+WJNÂˆ
+ˆ
+ÈH
+ˆ‹K‹K	ÈÙ™™™™™ŒŒ‰ÊNÂˆBˆBˆœ™XZÎÂˆBˆØ\ÙH	ÔIÎˆÈËÈ:¬l;&®:ì¯Bˆ
+M‹M‹	ÈÎNN	ÊNÂˆ
+KKMM	ÈØÌ™™N	ÊNÂˆ
+‹‹ËL	ÈÙNŒ˜ÉÊNÈËÈ:îfÈ:ì&; «ˆ
+LË‹	ÈØM™‰ÊNÂˆ
+K‹K‹	ÈÙÙN	ÊNÂˆ
+MKM‹K	ÈÍŒ™NIÊNÂˆœ™XZÎÂˆBˆØ\ÙH	Ì‰ÎˆÈËÈ;%­:äd;&­;d ˆ
+M‹M‹	ÈÌ˜MÌ‰ÊNÂˆ›Üˆ
+]HHÈHNÈJÊÊHÂˆÛÛœİHX]™›ÛÜŠ›™
+H
+ÈJH
+ˆMŠKHHX]™›ÛÜŠ›™
+H
+ÈMJH
+ˆMŠNÂˆ
+KKKH	HˆÈ	ÈÌÍLØÉÈˆ	ÈÌŒÍ	ÊNÂˆBˆœ™XZÎÂˆBˆØ\ÙH	ÌÉÎˆÈËÈ;%­:äd;&­:à¦:ë-ˆ
+M‹M‹	ÈÌ˜MÌ‰ÊNÂˆ
+‹‹L‹‹	ÈÌXL˜LŒ	ÊNÂˆ
+KM	ÈÌXL˜LŒ	ÊNÂˆ
+ËË‹	ÈÌ™IÊNÂˆ
+‹L‹‹	ÈÌMYLN	ÊNÂˆ
+‹LK	ÈÌÎ˜LYIÊNÂˆ
+‹MKK	ÈÌŒXLL	ÊNÂˆœ™XZÎÂˆBˆØ\ÙH	Í	ÎˆÈËÈ:îfúà¦:â¥:¯`Âˆ
+M‹M‹	ÈÌ˜MÌ‰ÊNÂˆÛÛœİÛİÈHœ˜[YHÈ	ÈÎXYÙ™‰Èˆ	ÈÍ˜XN	ÎÂˆ
+‹KËËÛİÊNÂˆ
+ËKK	ÈÙ™™™™™‰ÊNÂˆ
+LKL‹‹ÛİÊNÂˆ
+ËLK‹‹œ˜[YHÈ	ÈÍ˜XN	Èˆ	ÈÎXYÙ™‰ÊNÂˆ
+ËK	ÈÌÍLØÉÊNÂˆœ™XZÎÂˆBˆØ\ÙH	ĞIÎˆÈËÈ:® :é«;.f:ì%:âéBˆ
+M‹M‹	ÈÌLŒLY‰ÊNÂˆ›Üˆ
+]HHÈHNÈJÊÊHÂˆÛÛœİHX]™›ÛÜŠ›™
+H
+ÈŒH
+È
+œ˜[YHÈLˆ
+JH
+ˆM
+NÂˆÛÛœİHHX]™›ÛÜŠ›™
+H
+ÈMŒH
+È
+œ˜[YHÈLˆ
+JH
+ˆM
+NÂˆÛÛœİÛÛÈHÉÈÌØL™MY	Ë	ÈÌ˜MMY	Ë	ÈÍL˜MI×NÂˆ
+K‹KÛÛÖÚH	H×JNÂˆBˆYˆ
+œ˜[YJH
+X]™›ÛÜŠ›™
+ÍÊH
+ˆLÊKX]™›ÛÜŠ›™
+Î
+H
+ˆLÊKËK	ÈÍXMØXL	ÊNÂˆœ™XZÎÂˆBˆØ\ÙH	ÍIÎˆÈËÈ:ëî:ç¦;%ì:­k;!£;cë;a.
+:îfúà¦:â¥:ë.
+Bˆ
+M‹M‹	ÈÌYŒŒŒÍ‰ÊNÂˆ
+ËKLM	ÈÌ˜ÌÌL	ÊNÂˆÛÛœİÛİÈHœ˜[YHÈ	ÈÍØ™YŒ	Èˆ	ÈØNM™‰ÎÂˆ
+KË‹LÛİÊNÂˆ
+‹‹L‹œ˜[YHÈ	ÈØNM™‰Èˆ	ÈÙ™‰ÊNÂˆ
+Ë‹	ÈÙ™™™™™‰ÊNÂˆ
+ËKKM	ÈÍM˜™L	ÊNÂˆ
+L‹KKM	ÈÍM˜™L	ÊNÂˆœ™XZÎÂˆBˆØ\ÙH	Í‰ÎˆÈËÈ:á);&*;%a;.f:ë.
+;(!:í :¬í{)ç:¬l:é«8 %:­k;%ëH;'¡z­k:äé
+Bˆ
+M‹M‹	ÈÌØLŒÍ	ÊNÂˆ
+‹KL‹M	ÈÍXL˜M˜IÊNÂˆ
+Ë‹LLË	ÈÌXLLŒ	ÊNÂˆÛÛœİ™[ÛˆHœ˜[YHÈ	ÈÙ™˜YIÈˆ	ÈÙ™˜NM‰ÎÂˆ
+‹KL‹K™[ÛŠNÂˆ
+‹KK‹™[ÛŠNÂˆ
+LËKK‹™[ÛŠNÂˆ
+K‹œ˜[YHÈ	ÈÎM™‰Èˆ	ÈØN˜YL	ÊNÂˆ
+‹K‹œ˜[YHÈ	ÈÙ™™	Èˆ	ÈÙ™™Œ˜N	ÊNÈËÈ:ì&;)ç{'m:â¥ºë-:èã‚ˆœ™XZÎÂˆBˆØ\ÙH	ÍÉÎˆÈËÈ:®":¬è:ë.û(ï;'n;'f:ì*H:ë.
+:à¨{'`:à¦:ë-:ë.8 %:¬l:é«0­û(ï;'n;'f:ì*JBˆ
+M‹M‹	ÈÌ˜LŒN	ÊNÂˆ
+ËKLM	ÈÍXLÙ	ÊNÂˆ
+‹LË	ÈÍØÍNÌ	ÊNÂˆ
+‹KLË	ÈÎXM™ŒÙIÊNÂˆ
+LK‹KLË	ÈÌÙL˜LN	ÊNÂˆ
+K‹‹	ÈÙŒŒ	ÊNÈËÈ;!¤;'¨{'mˆœ™XZÎÂˆBˆØ\ÙH	Î	ÎˆÈËÈ:®,;&®;%­;)á;cë;'©H
+:®,;&®;%­;)á:¬l:é«
+H8 %; «;!(;)!:ë-:â«:¬ ;eg;*¯{'/:èg;#è:é¬:ì%:âéBˆ
+M‹M‹	ÈÍMN	ÊNÂˆ›Üˆ
+]HHLÎÈHMÈH
+ÏH
+HÂˆ›Üˆ
+]ÈHÈÈMÈÊÊÊHÂˆÛÛœİHH
+ÈX]™›ÛÜŠÈÈŠNÈËÈ;&a:éã;eg; «;!(ˆYˆ
+H	‰ˆMŠH
+ËKK	ÈÍML	ÊNÂˆBˆBˆ
+‹L‹ËK	ÈÌØÌÎ	ÊNÈËÈ:¬":ço;)á;bâˆ
+LK	ÈÌØÌÎ	ÊNÂˆœ™XZÎÂˆBˆØ\ÙH	ÎIÎˆÈËÈ;.f{.f{eg:ë.
+:ì&;)ç{'m;)à;%bºâ¥:ë.8 %:êe;%a:é«:¬ê:êª{'f;-§:­k:äé
+Bˆ
+M‹M‹	ÈÌØLØM‰ÊNÂˆ
+ËKLM	ÈÍMMMMYIÊNÂˆ
+‹LË	ÈÍ˜M˜MÍ	ÊNÂˆ
+‹KLË	ÈÍØÍØÎ‰ÊNÂˆ
+LK‹KLË	ÈÍMML‰ÊNÂˆ
+K‹‹	ÈÎNNM	ÊNÈËÈ;!¤;'¨{'m
+:­$H;%á»'c
+Bˆœ™XZÎÂˆBˆY˜][‚ˆ
+M‹M‹	ÈÙŒ‰ÊNÂˆBˆ[PØXÚKœÙ]
+Ù^KİŠNÂˆ™]\›ˆİÂˆB‚ˆËÈKKKKKKKKKH:ã ;feKKKKKKKKKBˆËÈ;'n:ë/:ìá:êª{!£:é«;'c;(%H
+;`à;'¤:®,›\;(ï;c#;"&
+H8 %;%®:ãe;ac;'o;"çH:êª{!£:é«:¬';!,K‚ˆËÈ:ì&:å%;&`;& {'m:¬ :¬&{'`;'c;(%{'n:¬ û'`;'f:ãá:ä':ìí{!(;'m:âé
+:ì&:å%H;& {'m;'f:¬ :êm
+K‚ˆÛÛœİ“ÒPÑWÔUÒHÂˆ	úå,:ço	ÎˆLN	úâí;%a	ÎˆÍŒ	ú®,;&®	ÎˆŒŒ	ú­î:çí;"î	ÎˆL	úì&;)çIÎˆLLˆ	úèê:ëî	ÎˆNL	ú¬è;&¥	ÎˆÌŒ	úì%{ «:âæ	ÎˆLŒ	úì%{ «	ÎˆLŒ	ûeh:ê.:ââ	Îˆˆ	úì&:å%	ÎˆLÌŒ	û& {'m	ÎˆLÌŒˆNÂˆ[˜İ[ÛˆX[ÙĞ›\œ™\J
+HÂˆÛÛœİ[™HH›[™\ÖÙšYH	ÉÎÂˆÛÛœİHH[™K›X]Ú
+×Šú¬ {g¨ĞKV˜K^—^ÌKJN‹ÊNÈËÈ;)!;%b;'f;fe;'¤;dg:®,:¬ ;&¬;!(
+;&"ˆ:ì&:å%ˆ¸ )ˆŠBˆYˆ
+H	‰ˆ“ÒPÑWÔUÒÛVÌWWJH™]\›ˆ“ÒPÑWÔUÒÛVÌWWNÂˆYˆ
+œÜXZÙ\ˆ	‰ˆ“ÒPÑWÔUÒÙœÜXZÙ\—JH™]\›ˆ“ÒPÑWÔUÒÙœÜXZÙ\—NÂˆ™]\›ˆÂˆB‚ˆ[˜İ[Ûˆİ\X[ÙÊ[™\ËÜXZÙ\‹Û‘[™
+HÂˆØ[YK›[ÙHH	ÙX[ÙÉÎÂˆØ[YK™X[ÙÈHÈ[™\ËYˆÚ\œÎˆÜXZÙ\ˆÜXZÙ\ˆ[Û‘[™ˆÛ‘[™[NÂˆÜYXÚœÜXZÊ[™\ÖÌJNÂˆB‚ˆ[˜İ[Ûˆ\]QX[ÙÊ
+HÂˆÛÛœİHØ[YK™X[ÙÎÂˆÛÛœİ[™HH›[™\ÖÙšYNÂˆËÈËLÈ:ã ;fe:îj:é«:¬$:®,8 %ŠXİ[ÛŠzéoL»e!:è";'¡;'m; àH;f`:äç;ef:êm;`à;'¤:®,:éo;)¢{"ç;&a;!,{ef:¬èˆËÈ:¬ H; à{'¤:éo\Ê8¢bM;e!:è";'¡
+H:ìí;%ë;) :ä©;'¤:ãæ{'/:èg:âé;'c; à{'¤:èg:á&:®-:âéˆ:­ :ë.:ë.:âíJKM
+{'mˆËÈ;'¢;%­;"©;`­H:àª;&ª{'/:èg;'n;eg;ef{"­H;!¤;"é:¬l{(%{'`;%áºâéˆ
+;`ëH{f£;)á;e¢{'`:®,;(m:¬ï:ãæ{'o
+BˆšÛH[š\Ê	ØXİ[Û‰ÊHÈ
+šÛ
+H
+ÈHˆÂˆÛÛœİ]]Ñ‘ˆHšÛHLÂˆYˆ
+˜Ú\œÈ[™K›[™İ
+HÂˆÛÛœİ™]ˆHX]™›ÛÜŠ˜Ú\œÊNÂˆ˜Ú\œÈ
+ÏHVÔÔQQÖÙØ[YK^ÜYYNÈËÈ;`à;'¤:®,;fª:¬ï
+;'¤:éâH;!£zãá;( {&ªJBˆYˆ
+X]™›ÛÜŠ˜Ú\œÊHOOH™]ˆ	‰ˆØ[YK[YH	HOOH
+HÛİ[™˜›\
+X[ÙĞ›\œ™\J
+JNÂˆYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊH]]Ñ‘ŠH˜Ú\œÈH[™K›[™İÈËÈ;"©;`­HÈ:îj:é«:¬$:®,;)¢{"ç;&a;!,Bˆ™[HÂˆ™]\›ÂˆBˆ™[H
+™[
+H
+ÈNÈËÈ;'m; à{'¤:éo;&a;(!;g¢:ìí;%ë;) ;e!:è";'¡;"&ˆÛÛœİ]]ÈH]]Ñ‘ˆ	‰ˆ™[HMÈËÈ;f`:äç;)${'m:êm\È:ä©;'¤:ãæH;)á;e¢BˆYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊH]]ÊHÂˆÛİ[™œÙ[Xİ
+
+NÂˆšY
+ÏHNÂˆ˜Ú\œÈHÂˆ™[HÂˆYˆ
+šYH›[™\Ë›[™İ
+HÂˆÛÛœİÛ‘[™H›Û‘[™ÂˆØ[YK™X[ÙÈH[ÂˆØ[YK›[ÙHH	İÛÜ›	ÎÂˆÜYXÚœİÜ
+
+NÂˆYˆ
+Û‘[™
+HÛ‘[™
+
+NÂˆH[ÙHÂˆÜYXÚœÜXZÊ›[™\ÖÙšYJNÂˆBˆBˆB‚ˆËÈKKKKKKKKKH:ì*{`â;-§;co;)¤
+ˆ;e!:è";'¡;&ã;`k
+HKKKKKKKKKBˆËÈ;co;)¤:èg:­îˆ;"«:èkúìáØØ[İÜ˜YÙKˆÈ^›RYˆÈÛ™KÛX\œË[Õ\ÙYúâê:¬á»f§û"&KÜ›Û™ÕšY\Ë[YQœ˜[Y\ÈHBˆÛÛœİV–“WÒÑVHH	ØZKY]XÜËXY™[\™K\^›IÎÂˆ[˜İ[Ûˆ^›RÙ^JÛİ
+HÈ™]\›ˆV–“WÒÑVH
+È	ËIÈ
+ÈÛİÈBˆËÈ;"«:èkúìá:êe:êª;'m;)¢;.¤;"ç8 %ÈÛİ˜]Ê;.¤;"ç:âî{"ç;'fØØ[İÜ˜YÙH;&ä:ë.
+K]J;c#;"ìH:¬¬:¬ï
+HK‚ˆËÈ˜]È:ë.;'¤;%í;'m:­î:ã :èg:êm”ÓÓ‹œ\œÙzéo:¬m:á":æí:âé
+;'¤;(ï;f.;-§:ä&:â¥\Ô^›PÛX\™Y:äì{'f:îa;&ªH;(":¬$
+K‚ˆËÈÜš]T^›SÙú¬ ;$ì:êm˜]ú¬ :ì%:à#;%­;'¤:ãæH:ë-;fª;fe:ä&:¬è;"«:èkû'm:ì%:à#;%­:ãá;'¤:ãæH:ë-;fª;fe:ä':âé‚ˆ]^›SÙĞØXÚHH[Âˆ[˜İ[ÛˆÙ]^›SÙÊÛİ
+HÂˆ]˜]ÎÂˆHÈ˜]ÈHØØ[İÜ˜YÙK™Ù]][J^›RÙ^JÛİ
+JNÈHØ]Ú
+JHÈ˜]ÈH[™Yš[™YÈBˆYˆ
+^›SÙĞØXÚH	‰ˆ^›SÙĞØXÚKœÛİOOHÛİ	‰ˆ^›SÙĞØXÚKœ˜]ÈOOH˜]ÊHÂˆ™]\›ˆ^›SÙĞØXÚK™]NÂˆBˆ]]NÂˆHÈ]HH”ÓÓ‹œ\œÙJ˜]ÊHßNÈHØ]Ú
+JHÈ]HHßNÈBˆ^›SÙĞØXÚHHÈÛİ˜]Ë]HNÂˆ™]\›ˆ]NÂˆBˆ[˜İ[ÛˆÜš]T^›SÙÊÛİ]JHÂˆHÂˆÛÛœİ˜]ÈH”ÓÓ‹œİš[™ÚYJ]JNÂˆØØ[İÜ˜YÙKœÙ]][J^›RÙ^JÛİ
+K˜]ÊNÂˆ^›SÙĞØXÚHHÈÛİ˜]Ë]HNÂˆHØ]Ú
+JHÂˆ›İTİÜ˜YÙQ˜Z[
+
+NÂˆ^›SÙĞØXÚHH[ÈËÈ;$ì:®,;"é;c*8 %:âé;'c;(l;f£:â¥;( ;'©{!£;%ä;!':âé;"ç;'ozâ¥:âéˆBˆBˆ[˜İ[Ûˆ^›Q[JÙËY
+HÂˆYˆ
+[ÙÖÚYJHÙÖÚYHHÈÛ™Nˆ˜[ÙKÛX\œÎˆ[Õ\ÙYˆßKÜ›Û™ÕšY\Îˆ[YQœ˜[Y\ÎˆNÂˆ™]\›ˆÙÖÚYNÂˆBˆ[˜İ[Ûˆ™XÛÜ™^›R[
+Yİ\
+HÂˆÛÛœİÛİHØ[YK˜İ\œ™[ÛİÂˆÛÛœİÙÈHÙ]^›SÙÊÛİ
+NÂˆÛÛœİHH^›Q[JÙËY
+NÂˆKš[Õ\ÙYÜİ\HH
+Kš[Õ\ÙYÜİ\H
+H
+ÈNÂˆÜš]T^›SÙÊÛİÙÊNÂˆBˆ[˜İ[Ûˆ™XÛÜ™^›UÜ›Û™ÊY
+HÂˆÛÛœİÛİHØ[YK˜İ\œ™[ÛİÂˆÛÛœİÙÈHÙ]^›SÙÊÛİ
+NÂˆ^›Q[JÙËY
+KÜ›Û™ÕšY\È
+ÏHNÂˆÜš]T^›SÙÊÛİÙÊNÂˆBˆ[˜İ[Ûˆ™XÛÜ™^›PÛX\ŠYœ˜[Y\Ë›Ò[
+HÂˆÛÛœİÛİHØ[YK˜İ\œ™[ÛİÂˆÛÛœİÙÈHÙ]^›SÙÊÛİ
+NÂˆÛÛœİHH^›Q[JÙËY
+NÂˆK™Û™HHYNÈK˜ÛX\œÈ
+ÏHNÈK[YQœ˜[Y\È
+ÏHœ˜[Y\ÎÂˆËÈKLLH:ìá:îfÈ;`m:é«;%­8 %;g£;b®;%á»'m:îh;(.:à¦;&):êm;dg;"ç{'a:àª:®-:âé
+;eg:ì¢;%®û'/:êm;'(;)à8 %:ì£;%á»'m; à{,+:éã
+BˆYˆ
+›Ò[
+HK››Ò[HYNÂˆÜš]T^›SÙÊÛİÙÊNÂˆBˆËÈKLLH:ìá:îfÈ;`m:é«;%­;"&8 %;g£;b®;%á»'m:îh;(.:à¦;&*:ì*J›Ò[;dg;"çJH:¬';"&ˆ[˜İ[Ûˆİ\›]ÛX\Ûİ[
+Ûİ
+HÂˆÛÛœİÙÈHÙ]^›SÙÊÛİ
+NÂˆ™]\›ˆØš™XİšÙ^\ÊÙÊK™š[\Š
+Y
+HOˆÙÖÚYH	‰ˆÙÖÚYK™Û™H	‰ˆÙÖÚYK››Ò[
+K›[™İÂˆBˆËÈ:ì*{'a;`m:é«;%­;eg;( {'m;'¢:â¥;)à
+:®":¬è:ë.:¬':ì*H;c$;(%H:äìJBˆ[˜İ[Ûˆ\Ô^›PÛX\™Y
+Y
+HÂˆÛÛœİHHÙ]^›SÙÊØ[YK˜İ\œ™[Ûİ
+VÚYNÂˆ™]\›ˆHJH	‰ˆK™Û™JNÂˆBˆËÈ{'©H:®":¬è;'¨:®"8 %:­k;%ëJ;(${"&;,¦0­ú¬£;"ç;c$:­${'©p­úì,:âë;,/z¬è
+{'a;`m:é«;%­;eh:åc:éâ:âé;ef:à¦;%*H;d :é¬:âéˆ[˜İ[ÛˆÌSØÚĞÛİ[
+
+HÂˆ™]\›ˆÌWÖ“Ó‘WÔV–“TË™š[\Š
+Y
+HOˆ\Ô^›PÛX\™Y
+Y
+JK›[™İÂˆBˆËÈ»'©H;( ;&®8 %:­k;%ëJ:êe;%a:é«:¬ê:êªp­ûdg:ìî;,/z¬è0­ú®¯;)á:¬l:é«
+{'a;`m:é«;%­;eh:åc:éâ:âé:®,;&®:®,:¬ ;ef:à¦;) :âé‚ˆËÈÌÛX\Ûİ[
+
+z¬ ;`m:é«;%­;eg:­k;%ëH;"&;( ;&®:®,;&®:®,HÈHÌÛX\Ûİ[
+
+K‚ˆ[˜İ[ÛˆÌÛX\Ûİ[
+
+HÂˆ™]\›ˆÌ—Ö“Ó‘WÔV–“TË™š[\Š
+Y
+HOˆ\Ô^›PÛX\™Y
+Y
+JK›[™İÂˆBˆËÈû'©H;"è:ë.; «8 %;.-J;(':ìí;ej0­ûc®;)ä{"é0­û!¨{-§;`äJ{'a;`m:é«;%­;eh:åc:éâ:âé;)á;e¢zãá:¬ ;ef:à¦:â¥:âé‚ˆËÈ;.-H:¬':ì*H;'¤;,­:â¥™YY^›PÛX\ºèg:¬':ìá:¬%{(':ä&:ëà:èg;'m:¬$»'`;eâ:î#Q;dg;"ç;(!;&ª{'m:âé‚ˆ[˜İ[ÛˆÌĞÛX\Ûİ[
+
+HÂˆ™]\›ˆÌ×Ö“Ó‘WÔV–“TË™š[\Š
+Y
+HOˆ\Ô^›PÛX\™Y
+Y
+JK›[™İÂˆBˆËÈ;'©H;(%zë.:¬£;'m;b®8 %;%í;!è:äd:¬'
+:îa:ì ;(l:¬ p­úìî;'n;dg
+zéo:êª:äd:êª;%a;%o;%í:é¬:âé
+™YYÍÙ^\ÊBˆ[˜İ[ÛˆÍÙ^PÛİ[
+
+HÂˆ™]\›ˆ
+Ø[YK™›YÜËœÍÙ^TÙXÜ™]ÈHˆ
+H
+È
+Ø[YK™›YÜËœÍÙ^RYÈHˆ
+NÂˆBˆËÈ:­$z¬è:å,{)àQ;&);%ï8 %:èì:è&È;"©;e`0­úì&;)çH:ìí;"©[\;(${-"zéâ:âé;ef:à¦;%*H:í¦zâ¥:âé
+;-g:ã :¬'
+K‚ˆËÈ;em;)à:âê:éä
+:­k;%ëx¤h:èì:è&È:­${'©Jzèg:éã;(!:í ;(':¬l:ä':âé‚ˆ[˜İ[ÛˆYYİXÚÙ\Š
+HÂˆØ[YK™›YÜË˜YİXÚÙ\œÈHX]›Z[Š
+Ø[YK™›YÜË˜YİXÚÙ\œÈ
+H
+ÈJNÂˆBˆËÈ{'©H;f!:­ :¬£;'m;b®8 %:­k;%ëHú¬'
+;(!;fe;'f:ì*p­û'¨:®-:ìízãá0­û!£;c#;/e:á"
+zéo:êª:äd;`m:é«;%­;em;%o;%í:é¬:âéˆ[˜İ[ÛˆÍPÛX\Ûİ[
+
+HÂˆ™]\›ˆÍWÖ“Ó‘WÔV–“TË™š[\Š
+Y
+HOˆ\Ô^›PÛX\™Y
+Y
+JK›[™İÂˆBˆËÈ{'©H;eâ:î#8à#;cë:­ï;eg;)äxà#H8 %:èê:ëî;'f:êª{!£:é«;%b:à­ˆ;,¦;'c{f£:â¥;)á;)ç;'(;&ª{eg;(%zìí:èg;"è:è¬:éo;#$ú¬èˆËÈ;'m;fá;%å;!£;'(;( {'/:èg:ìà;eg:âé
+›YÜË›[ZU\İ:èg;)á;e¢JKˆ;eâ:î#
+ÛŞZÛYJ{%ä:ãá;,*{eh:åc:éâ:âé;f.;-§:ä':âé‚ˆÛÛœİSRWÒP—ÓS‘TÈHÂˆ	úèê:ëîˆ»%­;!';&`ˆ;(!;fe:¬ ;&®:è):ãá:®"{ef:¬£:ì&û)à;%b»%a:ãá:­';,+»%aˆ‰Ëˆ	úèê:ëîˆºìízãá;%b;*¯H:ë.;'`:à¦;)${%ä;%í;%­:ãá:ãïˆ;!':äd:ém;)à:éâˆ‰Ëˆ	úèê:ëîˆ»!£;c#;%ä;%b{'/:êm;,.:å,:ç.ûemˆ;'o;%­:à¦:¬è;"í»'a:åd:ì*{e©{`©:éo;'¨:®d:¯®H:â#:çë:í$ˆ‰Ëˆ	úèê:ëîˆ»!.:¬ìû'a:âé;fe{'n;ef:êm;f!:­ :ë.;'m;%í:é­:¬l;%oˆ‰Ëˆ	úèê:ëîˆ¸ )ºá"; çz¬ zìí:âé;%*{%*{ef:á)ˆ:­î:çì; «:ç£:à¦:ãá;(¢û%a;emˆ‰Ëˆ	úèê:ëîˆº­î:ë.;'`;'!;eæ;emˆ:à¦:éã:ëïû%­ˆ‰Ëˆ	úèê:ëîˆºì%»%ä:à¦:¬ ;)à:éâˆ:à­:¬ :âé;%c;%a;!';em;)!:¬£ˆ‰Ëˆ	úèê:ëîˆ¸ )»&g;'¤:¯®:à¦:¬ :è):¬è;emÈ:­î:àéH:à¦:ç¤H;'¢;'/:êm:ä&;'¥»%aˆ‰Ëˆ	úèê:ëîˆº¬ ;)à:éâˆ8 )»(':ì':à¦:éã;'¢;'/:êm;%b:ãïÈ‰ËˆNÂˆ[˜İ[ÛˆY˜[˜ÙS[ZU›ÚXÙJ
+HÂˆÛÛœİYHØ[YK™›YÜË›[ZU\İÂˆÛÛœİ[™HHSRWÒP—ÓS‘TÖÓX]›Z[ŠYSRWÒP—ÓS‘TË›[™İHJWNÂˆØ[YK™›YÜË›[ZU\İHY
+ÈNÂˆØ]™J
+NÂˆØ[YK››İXÙHHÈ^ˆ[™KˆŒNÂˆB‚ˆËÈ:ì*H;'¡{'©Kûaí;'©{%ä:éç»-¬:çì;`à;'¡; à{`ç:éo:éç»-¦:âé
+ÚXÚÕØ\œ;%ä;!';f.;-§
+Bˆ[˜İ[ÛˆŞ[˜Ô^›T[Š
+HÂˆÛÛœİ^ˆHÙ]^›Q›Ü“X\
+Ø[YK›X\
+NÂˆYˆ
+^ŠHÂˆYˆ
+YØ[YKœ^›T[ˆØ[YKœ^›T[‹›X\OOHØ[YK›X\
+Hİ\^›T[Š^ŠNÂˆH[ÙHÂˆØ[YKœ^›T[ˆH[ÂˆBˆBˆ[˜İ[Ûˆİ\^›T[Š^›JHÂˆÛÛœİ[ˆHÂˆYˆ^›KšYˆX\ˆ^›K›X\ˆ^›Kˆİ[Ù\œÎˆ×KËÈÈHH
+˜XÙ\È;(!;&ª{'m;)à:éã:­î:é«:®,:èê;e!:¬í{&ª{'m:ço;ek{ àH:ì,;%í
+Bˆ[YQœ˜[Y\ÎˆËÈ;'¡{'©_»`m:é«;%­;e!:è";'¡:â!;( H
+;'¤;,­;.m;&­;a,
+Bˆ›\ÚˆËÈ;(${-"Kû&):âíH;fe:êm;e#:ç¦;"çˆØ\›ÛÛÛˆËÈ:¬¯z¬è:ã ; «;"©:èg;bàˆNÂˆYˆ
+^›K\HOOH	ØÛÜY\ÉÊHÂˆËÈ:­k;%ëx¤hNˆ:å¨:ãá:â¥:à­;(%zìí; «:ìî8 %;e#:è";'m;%­:éo;e/;em:ãá:éç{.g:âé
+úì,;!£JBˆ[‹˜ÛÜY\ÈH^›K˜ÛÜY\Ë›X\
+
+ËJHOˆ
+ÈˆË
+ˆËNˆËH
+ˆËÙYYˆH
+ˆËÛİˆ˜[ÙHJJNÂˆ[‹˜ÛÛXİYHÂˆH[ÙHYˆ
+^›K\HOOH	Û]™\œÉÊHÂˆËÈ:­k;%ëx¤hˆ;.ê:ì¨;'m;%­; à{'¤
+È;,*:âê:è":ì¡ˆ[‹˜›ŞYHÈËÈ;)à:®":ìª;b®:éo;gd:ém:â¥; à{'¤
+^›K˜›Ş\È;'n:ãl{"©
+Bˆ[‹™]™\YHÈËÈ:ì&;!¨{ej;'/:èg:ãã:é¬; à{'¤;"&
+û'm:êm;`m:é«;%­
+BˆH[ÙHYˆ
+^›K\HOOH	İ›ÚXÙ\ÉÊHÂˆËÈ»'©H:­k;%ëx¤hˆ:âé:én:êª{!£:é«;"&;)äH
+È:ì&;)çH:ë.:èê;e!;.m;&­;b®ˆ[‹›ÚXÙ\ÈH×NÈËÈ:äé;'`:êª{!£:é«”ÈY:äéˆ[‹›ÛÜÈHÈËÈ:ì&;)çH:ë.:èê;e!;f§û"&
+;%ì;-§:âê:¬á
+BˆH[ÙHYˆ
+^›K\HOOH	Ü™]˜Z[‰ÊHÂˆËÈ»'©H:­k;%ëx¤hNˆ:ì&:è`; «;)á;"&;)äH
+È;c$:ãáz®,;b+;'¡Bˆ[‹œİÜÈHÈËÈ;,fz®-:ì&:è`; «;)á;"&
+;-g:ã ÊBˆ[‹ZÙ[ˆH×NÈËÈ;'m:ëî;,fz®-;!(:ì&;'n:ãl{"©ˆ[‹™™YHÈËÈ;c$:ãáz®,;%ä;b+;'¡{eg;"&
+û'm:êm;`m:é«;%­
+BˆH[ÙHYˆ
+^›K\HOOH	Û[\ÉÊHÂˆËÈ»'©H:­k;%ëx¤hˆ:çª;e!;($:äìBˆ[‹›]H^›K›[\Ë›X\
+
+
+HOˆ˜[ÙJNÂˆ[‹›]Ûİ[HÂˆH[ÙHYˆ
+^›K\HOOH	İ\ÉÊHÂˆËÈû'©H{.-Nˆ;(':ìí;*¯{)à;,a;`çH8 %™\ÛÛ™Y
+;,a;`çH;&a:èã;'n:ãl{"©
+KÛÜœ™Xİ
+;-§;,¦;'¢:â¥;,a;`çH;"&
+Bˆ[‹œ™\ÛÛ™YH×NÂˆ[‹˜ÛÜœ™XİHÂˆ[‹˜\İYH^›K››İ\Ë›X\
+
+
+HOˆ˜[ÙJNÈËÈû!£zìízèg:ì¯{%ä:í¦{'`;*¯{)àˆH[ÙHYˆ
+^›K\HOOH	ØÛÛ\\™IÊHÂˆËÈû'©H».-Nˆ;&ä:ìî:ã ;(l8 %ÛÛ™Y
+;)à:êªH;&a:èã;'n:ãl{"©
+Bˆ[‹œÛÛ™YH^›KœİÜË›X\
+
+
+HOˆ˜[ÙJNÂˆ[‹œÛÛ™YÛİ[HÂˆH[ÙHYˆ
+^›K\HOOH	Øœ›ØYØ\İ	ÊHÂˆËÈû'©Hû.-Nˆ;(%{(%H:ìí:ãáúâê:¬á8 %İYÙH
+;(%{(%zë.
+x¡¤ŒJ;-§;,¦
+x¡¤ŒŠ:è":ì¡
+Bˆ[‹œİYÙHHÂˆH[ÙHYˆ
+^›K\HOOH	Ü›İ[]IÊHÂˆËÈ;'©H:­k;%ëx¤hˆ:èì:è&Ê:ëî:ào
+H
+È;,/z¬è;%í;!èˆ[‹œÜ[œÈHÈËÈ:èì:è&û'a:ãã:é¬;f§û"&
+:­$z¬è:å,{)à:â!;( H8 %;"';(!;g¢:ëî:ào
+Bˆ[‹™ÛİÙ^HH˜[ÙNÂˆH[ÙHYˆ
+^›K\HOOH	ÜÚYÛ\	ÊHÂˆËÈ;'©H:­k;%ëx¤hNˆ:¬":é¯:®.;dg;)à;c$;a­z¬ï;%ë:í 
+È;&):âíH;f§û"&ˆ[‹œ\ÜÙYH˜[ÙNÂˆ[‹Ü›Û™ÈHÂˆH[ÙHYˆ
+^›K\HOOH	Ø˜XÚÜİYÙIÊHÂˆËÈ;'©H:­k;%ëx¤hˆ:éâ;"©;a,;`©;ej;(%H; «;&ªH;%ë:í 
+È;%b;*¯H:ë.:¬':ì*H;%ë:í ˆ[‹˜\\ÙYH˜[ÙNÂˆ[‹›Ü[™YH˜[ÙNÂˆH[ÙHYˆ
+^›K\HOOH	ØØ[	ÊHÂˆËÈ{'©H:­k;%ëx¤hˆ:èê:ëî;'f:¬¯z¬è;f§û"&
+ûf£
+H;fá:ì¢;)î;(l; «;%ä;(!;fe:éo:ì&úâ¥:âéˆ[‹Ø\›Ûİ[HÂˆH[ÙHYˆ
+^›K\HOOH	ØÚXÚÙÛÜ‰ÊHÂˆËÈ{'©H:­k;%ëx¤hNˆ:ë.;'a;)à{($H;%í;%â:â¥;)à;%ë:í ˆ[‹›Ü[™YH˜[ÙNÂˆH[ÙHYˆ
+^›K\HOOH	ÜÛÙ˜IÊHÂˆËÈ{'©H:­k;%ëx¤hˆ;%b{'c;%ë:í 
+È;'o;%­:à¦:®,:ì¡;bì:®,:¬£;'m;)à
+[L;e!:è";'¡
+Bˆ[‹œÚ][™ÈH˜[ÙNÂˆ[‹œİ[™[Y\ˆHÂˆH[ÙHÂˆËÈ:­k;%ëx¤h
+˜XÙ\ÊNˆ;(%zìí;a¨;`l:ì*Bˆ[‹š[HÈšXÚÛ˜[YNˆYKØÚÛÛˆYKY™\ÜÎˆYKÛ™NˆYK˜XÙNˆYHNÂˆ[‹™Ú]™[ˆH×NÈËÈ:ä&:ãã:é­;"&;'¢:¬£:à­;) ;a¨;`l;`©:äéˆ[‹˜›Ø\™˜XÙHH˜[ÙNÈËÈ:¬£;"ç;c$;%ä:¬í{'(;eg;%¯:­m; «;)á
+;& z­k8 %;)à;&®;"&;%á»'c
+Bˆ[‹›X^›Ø\™HÈËÈ:ì*H;e#:è";'m;)$H:à­:ìí:à®;(%zìí;-g:¬è;.f
+:ââzá);'¡;(';&n
+H8 %:ìí;"©;/g:ì,H;'n;b®:èg;&ªBˆBˆØ[YKœ^›T[ˆH[ÂˆBˆÛÛœİ’UPÖWÓPR×ÓPVHNÂˆÛÛœİ’UPÖWÔ‘PÓÕ‘T–WÓ‘QQHÎÂ‚ˆ[˜İ[Ûˆš]˜XŞSXZÊ
+HÈ™]\›ˆX]›X^
+X]›Z[Š’UPÖWÓPR×ÓPVØ[YK™›YÜËœš]˜XŞSXZÈ
+JNÈBˆ[˜İ[Ûˆš]˜XŞT™\Üİ\™T›Ùš[JŠHÂˆÛÛœİ]™[HX]›X^
+X]›Z[Š’UPÖWÓPR×ÓPVˆ
+JNÂˆÛÛœİX›HHÂˆÈX™[ˆ	û%b;(!	Ëİ[Ù\•Ø[Yˆ›Ú\ÙNˆ	û(l;&ª{ej	ÈKˆÈX™[ˆ	û,';,';eg;"ç;!(	Ëİ[Ù\•Ø[YˆK›Ú\ÙNˆ	û"ç;!(	ÈKˆÈX™[ˆ	û'm:é¡;'m:í¢:é¯	Ëİ[Ù\•Ø[YˆK›Ú\ÙNˆ	û!£{ «{'¡	ÈKˆÈX™[ˆ	úå,:ço:í¦zâ¥:­$z¬è	Ëİ[Ù\•Ø[Yˆ‹›Ú\ÙNˆ	ú­$z¬è	ÈKˆÈX™[ˆ	úë.;%gˆ;fe{'n;)§z¬ 	Ëİ[Ù\•Ø[Yˆ‹›Ú\ÙNˆ	ûfe{'n;&¥:­k	ÈKˆÈX™[ˆ	ûf£:ìíH;ea;&¥	Ëİ[Ù\•Ø[YˆË›Ú\ÙNˆ	û-¥;( IÈKˆNÂˆ™]\›ˆØš™Xİ˜\ÜÚYÛŠÈ]™[KX›VÛ]™[JNÂˆBˆ[˜İ[Ûˆš]˜XŞS]™[X™[
+ŠHÈ™]\›ˆš]˜XŞT™\Üİ\™T›Ùš[JŠK›X™[ÈBˆ[˜İ[ÛˆÚTİ™Y]š\İX[›Ùš[J‹İÑÜ˜\XÜÊHÂˆÛÛœİ]™[HX]›X^
+X]›Z[Š’UPÖWÓPR×ÓPVˆ
+JNÂˆÛÛœİİÈHH[İÑÜ˜\XÜÎÂˆ™]\›ˆÂˆ]™[ˆYÚYÛœÎˆİÈÈX]›Z[ŠËH
+ÈX]™›ÛÜŠ]™[ÈŠJHˆX]›Z[Šˆ
+È]™[
+KˆÙ[œÛÜœÎˆİÈÈX]›Z[Š‹X]™›ÛÜŠ]™[ÈÊJHˆX]›Z[ŠËX]™›ÛÜŠ
+]™[
+ÈJHÈŠJKˆX™[ÚYİÜÎˆİÈÈX]›Z[Š‹]™[HÈˆˆ]™[HˆÈHˆ
+HˆX]›Z[Š]™[
+KˆÛİÎˆ[İÈ	‰ˆ]™[HËˆØØ[“[™\Îˆ˜[ÙKˆNÂˆBˆ[˜İ[ÛˆÚ\\Œ’X•š\İX[›Ùš[J‹İÑÜ˜\XÜÊHÂˆÛÛœİ]™[HX]›X^
+X]›Z[ŠËˆ
+JNÂˆÛÛœİİÈHH[İÑÜ˜\XÜÎÂˆ™]\›ˆÂˆ]™[ˆ™XÛÛ[Y[™ÚYÛœÎˆİÈÈX]›Z[Š‹H
+ÈX]™›ÛÜŠ]™[ÈÊJHˆX]›Z[ŠKˆ
+È]™[
+KˆXÚÓX\šÜÎˆİÈÈHˆX]›Z[ŠËH
+È]™[
+KˆX™[Îˆ[İËˆ[ØÜ™Y[”ÚÙ]Îˆ˜[ÙKˆNÂˆBˆ[˜İ[ÛˆÚ\\ŒÒX•š\İX[›Ùš[J‹[[Ü‘š^YİÑÜ˜\XÜÊHÂˆÛÛœİ]™[HX]›X^
+X]›Z[ŠËˆ
+JNÂˆÛÛœİš^YHH\[[Ü‘š^YÂˆÛÛœİİÈHH[İÑÜ˜\XÜÎÂˆ™]\›ˆÂˆ]™[ˆš^YˆXY[™TÚYÛœÎˆš^YÈ
+İÈÈHˆŠHˆ
+İÈÈX]›Z[Š‹H
+ÈX]™›ÛÜŠ]™[ÈŠJHˆX]›Z[Š‹È
+È]™[
+JKˆXÚÓX\šÜÎˆš^YÈ
+İÈÈˆJHˆ
+İÈÈHˆX]›Z[ŠËH
+È]™[
+JKˆX™[Îˆ[İËˆ[ØÜ™Y[“›Ú\ÙNˆ˜[ÙKˆNÂˆBˆ[˜İ[ÛˆÚ\\X•š\İX[›Ùš[J‹İÑÜ˜\XÜÊHÂˆÛÛœİ]™[HX]›X^
+X]›Z[Šˆ
+JNÂˆÛÛœİİÈHH[İÑÜ˜\XÜÎÂˆ™]\›ˆÂˆ]™[ˆ™[Û”ÚYÛœÎˆİÈÈX]›Z[ŠËH
+ÈX]™›ÛÜŠ]™[ÈŠJHˆX]›Z[Š‹ˆ
+È]™[
+KˆÛÛ™™]NˆİÈÈHˆX]›Z[ŠËH
+ÈX]™›ÛÜŠ]™[ÈŠJKˆX™[Îˆ[İËˆ[ØÜ™Y[‘›\Úˆ˜[ÙKˆNÂˆBˆ[˜İ[ÛˆÚ\\RX•š\İX[›Ùš[J‹İÑÜ˜\XÜÊHÂˆÛÛœİ]™[HX]›X^
+X]›Z[ŠËˆ
+JNÂˆÛÛœİİÈHH[İÑÜ˜\XÜÎÂˆ™]\›ˆÂˆ]™[ˆØ\›S[\ÎˆİÈÈX]›Z[Š‹H
+ÈX]™›ÛÜŠ]™[ÈŠJHˆX]›Z[ŠKˆ
+È]™[
+Kˆ›ÚXÙTš\\ÎˆİÈÈHˆX]›Z[ŠËH
+È]™[
+KˆX™[Îˆ[İËˆ[ØÜ™Y[›\ˆ˜[ÙKˆNÂˆBˆ[˜İ[ÛˆYš]˜XŞSXZÊ™X\ÛÛŠHÂˆÛÛœİ™Y›Ü™HHš]˜XŞSXZÊ
+NÂˆÛÛœİY\ˆHX]›Z[Š’UPÖWÓPR×ÓPV™Y›Ü™H
+ÈJNÂˆØ[YK™›YÜËœš]˜XŞSXZÈHY\ÂˆYˆ
+Y\ˆH’UPÖWÓPR×ÓPV
+HÂˆØ[YK™›YÜËœš]˜XŞT™XÛİ™\PXİ]™HHYNÂˆYˆ
+YØ[YK™›YÜËœš]˜XŞT™XÛİ™\JHØ[YK™›YÜËœš]˜XŞT™XÛİ™\HHÂˆØ[YK››İXÙHHÈ^ˆ	úán;-§:ãáPV8 %;)à;&¬:¬':èg;gj{%­;)á;(%zìí;(l:¬ Hú¬':éo;f£;"&;ef;'¤	ËˆŒLNÂˆH[ÙHYˆ
+Y\ˆHÊHÂˆØ[YK››İXÙHHÈ^ˆ:án;-§:ãá	ØY\ŸKÍH8 %:¬ ;)ç:­$z¬è;&`:­î:é¯;'¤:¬ :ãe:å,:ço:í¦zâ¥:âéˆMŒNÂˆH[ÙHÂˆØ[YK››İXÙHHÈ^ˆ:án;-§:ãá	ØY\ŸKÍH8 %	Ü™X\ÛÛˆ	û(%zìí:­î:é¯;'¤:¬ :í¦{%â:âé	ßXˆMNÂˆBˆØ]™J
+NÂˆBˆ[˜İ[Ûˆ›İTš]˜XŞT™XÛİ™\TYXÙJ
+HÂˆYˆ
+YØ[YK™›YÜËœš]˜XŞT™XÛİ™\PXİ]™JH™]\›ÂˆØ[YK™›YÜËœš]˜XŞT™XÛİ™\HHX]›Z[Š’UPÖWÔ‘PÓÕ‘T–WÓ‘QQ
+Ø[YK™›YÜËœš]˜XŞT™XÛİ™\H
+H
+ÈJNÂˆYˆ
+Ø[YK™›YÜËœš]˜XŞT™XÛİ™\HH’UPÖWÔ‘PÓÕ‘T–WÓ‘QQ
+HÂˆØ[YK™›YÜËœš]˜XŞSXZÈHÂˆØ[YK™›YÜËœš]˜XŞT™XÛİ™\HHÂˆØ[YK™›YÜËœš]˜XŞT™XÛİ™\PXİ]™HH˜[ÙNÂˆØ[YK››İXÙHHÈ^ˆ	ûf£:ìíH;&a:èã8 %:án;-§:ãá‹Ízèg:à«»%a;(c:âé	ËˆNNÂˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆH[ÙHÂˆØ[YK››İXÙHHÈ^ˆ;(%zìí;(l:¬ H;f£;"&	ÙØ[YK™›YÜËœš]˜XŞT™XÛİ™\_KÉÔ’UPÖWÔ‘PÓÕ‘T–WÓ‘QQXˆMNÂˆBˆØ]™J
+NÂˆB‚ˆËÈ;)à:®":ì%»%ä:à­:ìí:à®;a¨;`l
+:ä&:ãã:é­;"&;'¢:â¥:¬ È
+È:¬£;"ç;c$:¬í{'(;%¯:­m; «;)á
+Bˆ[˜İ[ÛˆÚ]™[•ÚÙ[œÊ[ŠHÂˆ™]\›ˆ[‹™Ú]™[‹˜ÛÛ˜Ø]
+[‹˜›Ø\™˜XÙHÈÉÙ˜XÙI×Hˆ×JNÂˆBˆËÈ;e!:èg;ea:ìí:äç;.m;&­;b®
+:ââzá);'¡;(';&n
+H8 %È;'m; à{'m:êm;"©;a¨;.éˆ[˜İ[Ûˆ›Ø\™Ûİ[
+[ŠHÂˆ™]\›ˆÚ]™[•ÚÙ[œÊ[ŠK™š[\Š
+ÊHOˆÈOOH	ÛšXÚÛ˜[YIÊK›[™İÂˆBˆËÈ; à{`ç;%ä;!';f!;'«:âê:¬á;'(:ãá8 %;g£;b®:¬ ;'m:âê:¬á:éo:å,:ço:¬!:âéˆ[˜İ[Ûˆ^›Tİ\
+[ŠHÂˆYˆ
+[‹œ^›K\HOOH	ØÛÜY\ÉÊH™]\›ˆ	ØÛÜY\ÉÎÂˆYˆ
+[‹œ^›K\HOOH	Û]™\œÉÊH™]\›ˆ	Û]™\œÉÎÂˆYˆ
+[‹œ^›K\HOOH	İ›ÚXÙ\ÉÊH™]\›ˆ	İ›ÚXÙ\ÉÎÂˆYˆ
+[‹œ^›K\HOOH	Ü™]˜Z[‰ÊH™]\›ˆ	Ü™]˜Z[‰ÎÂˆYˆ
+[‹œ^›K\HOOH	Û[\ÉÊH™]\›ˆ	Û[\ÉÎÂˆYˆ
+[‹œ^›K\HOOH	İ\ÉÊH™]\›ˆ	İ\ÉÎÂˆYˆ
+[‹œ^›K\HOOH	ØÛÛ\\™IÊH™]\›ˆ	ØÛÛ\\™IÎÂˆYˆ
+[‹œ^›K\HOOH	Øœ›ØYØ\İ	ÊH™]\›ˆÉØÛÜœ™Xİ	Ë	ÜÛİ\˜ÙIË	Û]™\‰×VÜ[‹œİYÙWH	Û]™\‰ÎÂˆYˆ
+[‹œ^›K\HOOH	Ü›İ[]IÊH™]\›ˆ	Ü›İ[]IÎÂˆYˆ
+[‹œ^›K\HOOH	ÜÚYÛ\	ÊH™]\›ˆ	ÜÚYÛ\	ÎÂˆYˆ
+[‹œ^›K\HOOH	Ø˜XÚÜİYÙIÊH™]\›ˆ	Ø˜XÚÜİYÙIÎÂˆYˆ
+[‹œ^›K\HOOH	ØØ[	ÊH™]\›ˆ	ØØ[	ÎÂˆYˆ
+[‹œ^›K\HOOH	ØÚXÚÙÛÜ‰ÊH™]\›ˆ	ØÚXÚÙÛÜ‰ÎÂˆYˆ
+[‹œ^›K\HOOH	ÜÛÙ˜IÊH™]\›ˆ	ÜÛÙ˜IÎÂˆÛÛœİÜ[HÚ]™[•ÚÙ[œÊ[ŠNÂˆYˆ
+Ü[›[™İOOH
+H™]\›ˆ	İÚÙ[œÉÎÂˆYˆ
+Ü[™š[\Š
+ÊHOˆÈOOH	ÛšXÚÛ˜[YIÊK›[™İHÊH™]\›ˆ	Ù\˜\Ù\‰ÎÂˆYˆ
+[‹˜›Ø\™˜XÙJH™]\›ˆ	Ø›Ø\™	ÎÂˆ™]\›ˆ	Ù^]	ÎÂˆBˆ[˜İ[ÛˆÜ]Û”İ[Ù\Š[ŠHÂˆËÈ;e#:è";'m;%­;%ä;!':ê/:­k;!'{%ä;!':äì{'©BˆÛÛœİHØ[YKœ^Y\ÂˆÛÛœİ˜\ˆHLÈÈˆMËNˆˆHˆÈˆ‹NˆˆNÂˆ[‹œİ[Ù\œËœ\Ú
+Èˆ˜\‹
+ˆËNˆ˜\‹H
+ˆÈJNÂˆBˆËÈ:ìí:äç;.m;&­;b®;%ä:éç»-¬;"©;a¨;.é:éo;"©;cìû!£:ên
+È;'m; à{'m:êm;-g;!£K:ëî:éã;'m:êm;(!:í ;!£:ên
+Bˆ[˜İ[Ûˆ™Yœ™\Úİ[Ù\œÊ[ŠHÂˆYˆ
+›Ø\™Ûİ[
+[ŠHHÊHÂˆÛÛœİXZÈHš]˜XŞSXZÊ
+NÂˆÛÛœİØ[YHX]›X^
+Kš]˜XŞT™\Üİ\™T›Ùš[JXZÊKœİ[Ù\•Ø[Y
+NÂˆÚ[H
+[‹œİ[Ù\œË›[™İØ[Y
+HÜ]Û”İ[Ù\Š[ŠNÂˆYˆ
+[‹œİ[Ù\œË›[™İˆØ[Y
+H[‹œİ[Ù\œË›[™İHØ[YÂˆH[ÙHÂˆ[‹œİ[Ù\œË›[™İHÂˆ[‹™›\ÚHÂˆBˆBˆËÈ:éé;e!:è";'¡ˆ;"ç:¬!:â!;( H
+È:­k;%ëzìá;&à;)à{'m:â¥:ë/;,­:¬,{"èˆ[˜İ[Ûˆ\]T^›UÛÜ›
+
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[Âˆ[‹[YQœ˜[Y\È
+ÏHNÂˆYˆ
+[‹™›\Úˆ
+H[‹™›\ÚOHNÂˆYˆ
+[‹Ø\›ÛÛÛˆ
+H[‹Ø\›ÛÛÛOHNÂˆYˆ
+[‹œ^›K\HOOH	ØÛÜY\ÉÊHÈ\]PÛÜY\Ê[ŠNÈ™]\›ÈBˆYˆ
+[‹œ^›K\HOOH	Û]™\œÉÊH™]\›ÈËÈ;.ê:ì¨;'m;%­; à{'¤:â¥[YQœ˜[Y\úèg:­î:é«:®,;%ä;!';&à;)à{'n:âéˆËÈ»'©H:­k;%ëzäé;'`;(l; «0­û(${-"{'/:èg:éã;)á;e¢H
+:éé;e!:è";'¡:¬,{"è;eh:ë/;,­;%á»'c
+BˆYˆ
+[‹œ^›K\HOOH	İ›ÚXÙ\ÉÈ[‹œ^›K\HOOH	Ü™]˜Z[‰È[‹œ^›K\HOOH	Û[\ÉÊH™]\›ÂˆËÈû'©H:­k;%ëzäé:ãá;(l; «0­û!(;`ç{'/:èg:éã;)á;e¢H
+:éé;e!:è";'¡:¬,{"è;eh:ë/;,­;%á»'c
+BˆYˆ
+[‹œ^›K\HOOH	İ\ÉÈ[‹œ^›K\HOOH	ØÛÛ\\™IÈ[‹œ^›K\HOOH	Øœ›ØYØ\İ	ÊH™]\›ÂˆËÈ;'©H:­k;%ëzäé:ãá;(l; «0­û!(;`ç{'/:èg:éã;)á;e¢H
+:éé;e!:è";'¡:¬,{"è;eh:ë/;,­;%á»'c
+BˆYˆ
+[‹œ^›K\HOOH	Ü›İ[]IÈ[‹œ^›K\HOOH	ÜÚYÛ\	È[‹œ^›K\HOOH	Ø˜XÚÜİYÙIÊH™]\›ÂˆËÈ{'©H:­k;%ëzäé8 %Ø[ØÚXÚÙÛÜºâ¥;(l; «:èg:éã;)á;e¢KˆÛÙ˜{'f:ì¡;bì:®,;`à;'m:ê.:â¥ˆËÈ\]UÛÜ›
+
+{%ä;!':ìá:ãá:èg;,¦:é«;eg:âé
+;'m:ãæ{'a;'¨:¬ ;%o;ef:ëà:èg
+K‚ˆYˆ
+[‹œ^›K\HOOH	ØØ[	È[‹œ^›K\HOOH	ØÚXÚÙÛÜ‰È[‹œ^›K\HOOH	ÜÛÙ˜IÊH™]\›ÂˆËÈ8¥ 8¥ ˜XÙ\Îˆ;"©;a¨;.é;-¥:¬ªJ:ì&;!£zãáØ[ØX›H;,­;`k
+H
+È;(${-"H;,¦:é«8¥ 8¥ ˆYˆ
+›Ø\™Ûİ[
+[ŠHˆ[‹›X^›Ø\™
+H[‹›X^›Ø\™H›Ø\™Ûİ[
+[ŠNÈËÈ;-g:¬è;.f;-¥;( BˆYˆ
+P\œ˜^Kš\Ğ\œ˜^J[‹œİ[Ù\œÊJH™]\›ÂˆÛÛœİHØ[YKœ^Y\ÂˆÛÛœİÜHSÕ‘WÔÔQQ
+ˆNÂˆ›Üˆ
+ÛÛœİÈÙˆ[‹œİ[Ù\œÊHÂˆÛÛœİHœHËœHHœHHËœNÂˆÛÛœİ\İHX]š\İ
+JHNÂˆÛÛœİŞHÈ\İ
+ˆÜŞHHHÈ\İ
+ˆÜÂˆËÈ;-¥zìáØ[ØX›H;,­;`k
+:ì¯{'a;a­z¬ï;ef;)à;%bº¬£
+BˆYˆ
+TÓÓQ
+[P]
+Ø[YK›X\X]œ›İ[™
+
+Ëœ
+ÈŞ
+HÈÊKX]œ›İ[™
+ËœHÈÊJJJHËœ
+ÏHŞÂˆYˆ
+TÓÓQ
+[P]
+Ø[YK›X\X]œ›İ[™
+ËœÈÊKX]œ›İ[™
+
+ËœH
+ÈŞJHÈÊJJJHËœH
+ÏHŞNÂˆYˆ
+X]š\İ
+œHËœœHHËœJHÈ
+ˆJHÂˆ[‹™›\ÚHÂˆYˆ
+[‹Ø\›ÛÛÛH
+HÂˆ[‹Ø\›ÛÛÛHLÈËÈ;%ì;!£H;(${-"H;"©:èg;bàˆYš]˜XŞSXZÊ	û(%zìí:­î:é¯;'¤:¬ :í¦{%â:âé	ÊNÂˆ™Yœ™\Úİ[Ù\œÊ[ŠNÂˆÛİ[™˜[\
+
+NÂˆBˆBˆBˆBˆËÈ:­k;%ëx¤hNˆ:å¨:ãá:â¥; «:ìî8 %;e#:è";'m;%­:éo;e/;em:ãá:éçJúì,;!£K;"©;a¨;.é;'m:ãæH:èg;)àH;'«;fg;&ªJK‚ˆËÈ:í¦{'¨{'/:êm
+;(${-"JH;f£;"&ˆú¬':éo:êª:äd;f£;"&;ef:êm;`m:é«;%­‚ˆËÂˆËÈ:ì¯H:àgKúêª;!':é«;%ä:ê¬:é«:êm:ãá:éçH;-¥{'mÓÓQ;%ä:éâ{f ;(';'¤:é«;'n:ãl;&";(!;cë;f£H:ì&:¬¯BˆËÈ
+ğåÕÊ{'`;`à;'o;)${"ë:¬l;'f:¬®{.j;'a;&¥:­k;em;e#:è";'m;%­:¬ :ì¯H;*¯{%ä;!':å,:ço;'¨{%a:ãáˆËÈ:âïû)à:ê®ûef:â¥:ì¡:­î:¬ ;'¢;%â:âéˆ;cë;f£{'a:ê/;( ;c$;(%{ef:¬è:ì&:¬¯{'a;`©;&¬:êl:éâ{g¢:êmˆËÈ:ì¯H:å,:ço:ëî:àa:çë;)à:¬l:à¦;)${%fH;*¯{'/:èg:ì ;%­;/e:á";%ä:ào;)à;%bº¬£;eg:âé‚ˆ[˜İ[ÛˆÛÜU[UØ[ØX›JJHÂˆ™]\›ˆTÓÓQ
+[P]
+Ø[YK›X\X]œ›İ[™
+ÈÊKX]œ›İ[™
+HÈÊJJNÂˆBˆ[˜İ[ÛˆS[İ™PÛÜJËŞŞJHÂˆËÈ;-¥H:í¡:é«;"«:ço;'m:äç8 %:ã :¬ H:ãá:éç{'m:ì¯{%ä:éâ{f :ãá;%í:é¬;-¥{'/:èg:ëî:àa:çë;)á:âéˆ][İ™YH˜[ÙNÂˆYˆ
+Ş	‰ˆÛÜU[UØ[ØX›JËœ
+ÈŞËœJJHÈËœ
+ÏHŞÈ[İ™YHYNÈBˆYˆ
+ŞH	‰ˆÛÜU[UØ[ØX›JËœËœH
+ÈŞJJHÈËœH
+ÏHŞNÈ[İ™YHYNÈBˆ™]\›ˆ[İ™YÂˆBˆ[˜İ[Ûˆ\]PÛÜY\Ê[ŠHÂˆÛÛœİHØ[YKœ^Y\ÂˆËÈ;'n;($H;`à;'o;%ä;!':ãá;'¨{g¢:¬£
+:ì¯H;*¯H;($z­ï;"ç;g¢;b®:ì%{"©:åc:ë.;%ä;)${"ë:¬®{.j;'m;%­:è-zâé
+BˆÛÛœİĞTT‘WÔˆHÈ
+ˆKŒÂˆ›Üˆ
+ÛÛœİÈÙˆ[‹˜ÛÜY\ÊHÂˆYˆ
+Ë™Ûİ
+HÛÛ[YNÂˆÛÛœİHËœHœHHËœHHœNÂˆÛÛœİ\İHX]š\İ
+JHNÂˆËÈ;cë;f£{'a;'m:ãæzìí:âé:ê/;( 8 %;/e:á";%ä:ê¬:é¬;(l:¬ zãá:âïúâ¥;)¢{"ç;f£;"&ˆYˆ
+\İĞTT‘WÔŠHÂˆË™ÛİHYNÂˆ[‹˜ÛÛXİY
+ÏHNÂˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆØ[YK››İXÙHHÈ^ˆ:à­;(l:¬ {'a:ä&;,/»%f:âéH
+	Ü[‹˜ÛÛXİYKÌÊXˆLŒNÂˆYˆ
+[‹˜ÛÛXİYHÊHÈÛX\”^›J[ŠNÈ™]\›ÈBˆÛÛ[YNÂˆBˆYˆ
+\İÈ
+ˆÊHÂˆËÈ:¬ :®c;&¬:êm:ãá:éçH
+;e#:è";'m;%­;'m:ãæ{'fúì,;!£H8 %;%í:é¬:¬íz¬!;%ä;!(:¬¬:­kH:å,:ço;'¨{g£:âé
+BˆÛÛœİÜHSÕ‘WÔÔQQ
+ˆÎÂˆÛÛœİŞHÈ\İ
+ˆÜŞHHHÈ\İ
+ˆÜÂˆYˆ
+]S[İ™PÛÜJËŞŞJJHÂˆËÈ;&a;(!:éâ{g¦
+:ì¯H:àgJH8 %:éíH;)${%fH;*¯{'/:èg; ­;)çH:ì ;%­:ào;'¡;em;('ˆÛÛœİX\HPTÖÙØ[YK›X\NÂˆÛÛœİZYH
+
+X\[\ÖÌK›[™İHJHÈŠH
+ˆÎÂˆÛÛœİZYHH
+
+X\[\Ë›[™İHJHÈŠH
+ˆÎÂˆÛÛœİHZYHËœHHZYHHËœNÂˆÛÛœİHX]š\İ
+JHNÂˆS[İ™PÛÜJË
+È
+H
+ˆÜ
+HÈ
+H
+ˆÜ
+NÂˆBˆH[ÙHÂˆËÈ:ê`:êm;(¡{'m;,¦:çï;ef:â¦;ef:â¦:å¨:âé:âã:âéˆÛÛœİŞHX]œÚ[Š
+Ø[YK[YH
+ÈËœÙYY
+HÈ
+H
+ˆÂˆÛÛœİŞHHX]˜ÛÜÊ
+Ø[YK[YH
+ÈËœÙYY
+HÈLŠH
+ˆÂˆS[İ™PÛÜJËŞŞJNÂˆBˆBˆBˆËÈ;co;)¤:ë/;,­
+:âê:éä0­ú¬£;"ç;c$0­û)à;&¬:¬'0­û-§:­k0­úè":ì¡0­úì&;!¨{ej
+H8 %;(£;dg:èg;c$;(%H
+;'m:ãæH;,*:âê
+È; à{f.;'¤{&ªJBˆ[˜İ[Ûˆ^›SØš]
+X\YJHÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆYˆ
+\[ˆ[‹›X\OOHX\Y
+H™]\›ˆ[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆYˆ
+^‹\HOOH	ØÛÜY\ÉÊH™]\›ˆ[ÈËÈ:­${'©{'f; «:ìî;'`;(${-"J;-¥:¬ªJ{'/:èg:éã;f£;"&ˆYˆ
+^‹\HOOH	İ›ÚXÙ\ÉÊH™]\›ˆ[ÈËÈ:âé:én:êª{!£:é«:â¥”È:ã ;fe:èg:éã;"&;)äBˆYˆ
+^‹\HOOH	Û]™\œÉÊHÂˆ›Üˆ
+ÛÛœİˆÙˆ^‹›]™\œÊHYˆ
+‹OOH	‰ˆ‹HOOHJH™]\›ˆÈÚ[™ˆ	Û]™\‰Ë™YˆˆNÂˆYˆ
+^‹œ™]\›š[‹OOH	‰ˆ^‹œ™]\›š[‹HOOHJH™]\›ˆÈÚ[™ˆ	Øš[‰ÈNÂˆ™]\›ˆ[ÂˆBˆYˆ
+^‹\HOOH	Ü™]˜Z[‰ÊHÂˆ›Üˆ
+]HHÈH^‹œİÜË›[™İÈJÊÊHÂˆÛÛœİH^‹œİÜÖÚWNÂˆYˆ
+OOH	‰ˆHOOHJH™]\›ˆÈÚ[™ˆ	ÜİÉËYˆHNÂˆBˆYˆ
+^‹œ™XY\‹OOH	‰ˆ^‹œ™XY\‹HOOHJH™]\›ˆÈÚ[™ˆ	Ü™XY\‰ÈNÂˆ™]\›ˆ[ÂˆBˆYˆ
+^‹\HOOH	Û[\ÉÊHÂˆ›Üˆ
+]HHÈH^‹›[\Ë›[™İÈJÊÊHÂˆÛÛœİH^‹›[\ÖÚWNÂˆYˆ
+OOH	‰ˆHOOHJH™]\›ˆÈÚ[™ˆ	Û[\	ËYˆHNÂˆBˆ™]\›ˆ[ÂˆBˆYˆ
+^‹\HOOH	İ\ÉÊHÂˆ›Üˆ
+]HHÈH^‹››İ\Ë›[™İÈJÊÊHÂˆÛÛœİˆH^‹››İ\ÖÚWNÂˆYˆ
+‹OOH	‰ˆ‹HOOHJH™]\›ˆÈÚ[™ˆ	İ\›İIËYˆHNÂˆBˆYˆ
+^‹œİX›Z]›ŞOOH	‰ˆ^‹œİX›Z]›ŞHOOHJH™]\›ˆÈÚ[™ˆ	İ\›Ş	ÈNÂˆ™]\›ˆ[ÂˆBˆYˆ
+^‹\HOOH	ØÛÛ\\™IÊHÂˆ›Üˆ
+]HHÈH^‹œİÜË›[™İÈJÊÊHÂˆÛÛœİH^‹œİÜÖÚWNÂˆYˆ
+OOH	‰ˆHOOHJH™]\›ˆÈÚ[™ˆ	ØÜİÉËYˆHNÂˆBˆ™]\›ˆ[ÂˆBˆYˆ
+^‹\HOOH	Øœ›ØYØ\İ	ÊHÂˆYˆ
+^‹\›Z[˜[KOOH	‰ˆ^‹\›Z[˜[KHOOHJH™]\›ˆÈÚ[™ˆ	Ø\›LIÈNÂˆYˆ
+^‹\›Z[˜[‹OOH	‰ˆ^‹\›Z[˜[‹HOOHJH™]\›ˆÈÚ[™ˆ	Ø\›L‰ÈNÂˆYˆ
+^‹›]™\‹OOH	‰ˆ^‹›]™\‹HOOHJH™]\›ˆÈÚ[™ˆ	Ø›]™\‰ÈNÂˆ™]\›ˆ[ÂˆBˆYˆ
+^‹\HOOH	Ü›İ[]IÊHÂˆ›Üˆ
+]HHÈH^‹œ›İ[]\Ë›[™İÈJÊÊHÂˆÛÛœİˆH^‹œ›İ[]\ÖÚWNÂˆYˆ
+‹OOH	‰ˆ‹HOOHJH™]\›ˆÈÚ[™ˆ	Ü›İ[]IËYˆHNÂˆBˆYˆ
+^‹[œİX‹OOH	‰ˆ^‹[œİX‹HOOHJH™]\›ˆÈÚ[™ˆ	İ[œİX‰ÈNÂˆYˆ
+^‹˜Ú\İOOH	‰ˆ^‹˜Ú\İHOOHJH™]\›ˆÈÚ[™ˆ	ØÚ\İ	ÈNÂˆ™]\›ˆ[ÂˆBˆYˆ
+^‹\HOOH	ÜÚYÛ\	ÊHÂˆYˆ
+^‹™›ÜšËOOH	‰ˆ^‹™›ÜšËHOOHJH™]\›ˆÈÚ[™ˆ	Ù›ÜšÉÈNÂˆYˆ
+^‹šYÚ\İOOH	‰ˆ^‹šYÚ\İHOOHJH™]\›ˆÈÚ[™ˆ	ÚYÚ\İ	ÈNÂˆ™]\›ˆ[ÂˆBˆYˆ
+^‹\HOOH	Ø˜XÚÜİYÙIÊHÂˆYˆ
+^‹›X\İ\šÙ^KOOH	‰ˆ^‹›X\İ\šÙ^KHOOHJH™]\›ˆÈÚ[™ˆ	ÛX\İ\šÙ^IÈNÂˆYˆ
+^‹˜]]\›KOOH	‰ˆ^‹˜]]\›KHOOHJH™]\›ˆÈÚ[™ˆ	Ø]]\›IÈNÂˆYˆ
+^‹™ÛÜ‹OOH	‰ˆ^‹™ÛÜ‹HOOHJH™]\›ˆÈÚ[™ˆ	ÛÙ™œİYÙYÛÜ‰ÈNÂˆ™]\›ˆ[ÂˆBˆYˆ
+^‹\HOOH	ØØ[	ÊHÂˆYˆ
+^‹œÛ™KOOH	‰ˆ^‹œÛ™KHOOHJH™]\›ˆÈÚ[™ˆ	ÜÛ™IÈNÂˆ™]\›ˆ[ÂˆBˆYˆ
+^‹\HOOH	ØÚXÚÙÛÜ‰ÊHÂˆYˆ
+^‹™ÛÜ‹OOH	‰ˆ^‹™ÛÜ‹HOOHJH™]\›ˆÈÚ[™ˆ	ØÚXÚÙÛÜ‰ÈNÂˆ™]\›ˆ[ÂˆBˆYˆ
+^‹\HOOH	ÜÛÙ˜IÊHÂˆYˆ
+^‹œÛÙ˜KOOH	‰ˆ^‹œÛÙ˜KHOOHJH™]\›ˆÈÚ[™ˆ	ÜÛÙ˜[Øš‰ÈNÂˆ™]\›ˆ[ÂˆBˆ›Üˆ
+ÛÛœİÙˆ^‹\›Z[˜[ÊHYˆ
+OOH	‰ˆHOOHJH™]\›ˆÈÚ[™ˆ	İ\›Z[˜[	Ë™YˆNÂˆYˆ
+^‹™\˜\Ù\‹OOH	‰ˆ^‹™\˜\Ù\‹HOOHJH™]\›ˆÈÚ[™ˆ	Ù\˜\Ù\‰ÈNÂˆYˆ
+^‹™^]Ëš\OOH	‰ˆ^‹™^]Ëš\HOOHJH™]\›ˆÈÚ[™ˆ	İš\	ÈNÂˆYˆ
+^‹™^]Ë››Ü›X[OOH	‰ˆ^‹™^]Ë››Ü›X[HOOHJH™]\›ˆÈÚ[™ˆ	Û›Ü›X[	ÈNÂˆ™]\›ˆ[ÂˆBˆËÈ:éâ;(ï:ìî:ë/;,­;&`; à{f.;'¤{&ªH
+[\˜Xİ;%ä;!';f.;-§
+Kˆ;,¦:é«;e¢;'/:êmYK‚ˆ[˜İ[Ûˆ[\˜Xİ^›J
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆYˆ
+\[ŠH™]\›ˆ˜[ÙNÂˆÛÛœİˆH˜XÚ[™Õ[J
+NÂˆÛÛœİØšˆH^›SØš]
+Ø[YK›X\‹‹JNÂˆYˆ
+[ØšŠH™]\›ˆ˜[ÙNÂˆYˆ
+Øš‹šÚ[™OOH	İ\›Z[˜[	ÊHÜ[•\›Z[˜[
+Øš‹œ™YŠNÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	Ù\˜\Ù\‰ÊHÜ[‘\˜\Ù\Š
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	İš\	ÊHÜ[•š\^]
+
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	Û›Ü›X[	ÊHÜ[“›Ü›X[^]
+
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	Û]™\‰ÊHÜ[“]™\ŠØš‹œ™YŠNÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	Øš[‰ÊHÜ[”™]\›š[Š
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	ÜİÉÊHÜ[”İÊØš‹šY
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	Ü™XY\‰ÊHÜ[”™XY\Š
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	Û[\	ÊHÜ[“[\
+Øš‹šY
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	İ\›İIÊHÜ[•\›İJØš‹šY
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	İ\›Ş	ÊHÜ[•\›Ş
+
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	ØÜİÉÊHÜ[ÛÛ\\™TİÊØš‹šY
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	Ø\›LIÊHÜ[œ›ØYØ\İ\›LJ
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	Ø\›L‰ÊHÜ[œ›ØYØ\İ\›LŠ
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	Ø›]™\‰ÊHÜ[œ›ØYØ\İ]™\Š
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	Ü›İ[]IÊHÜ[”›İ[]JØš‹šY
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	İ[œİX‰ÊHÜ[•[œİXŠ
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	ØÚ\İ	ÊHÜ[Ú\İ
+
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	Ù›ÜšÉÊHÜ[‘›ÜšÊ
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	ÚYÚ\İ	ÊHÜ[’YÚ\İ
+
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	ÛX\İ\šÙ^IÊHÜ[“X\İ\’Ù^J
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	Ø]]\›IÊHÜ[]]\›J
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	ÛÙ™œİYÙYÛÜ‰ÊHÜ[“Ù™œİYÙQÛÜŠ
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	ÜÛ™IÊHÜ[”Û™J
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	ØÚXÚÙÛÜ‰ÊHÜ[ÚXÚÑÛÜŠ
+NÂˆ[ÙHYˆ
+Øš‹šÚ[™OOH	ÜÛÙ˜[Øš‰ÊHÜ[”ÛÙ˜J
+NÂˆ™]\›ˆYNÂˆBˆËÈ»'©H:­k;%ëx¤hNˆ:ì&:è`; «;)á;!(:ì&;(l; «8¡¤ˆ;"&;)äH
+:ço:ìª:¬':­î;cë;ej
+Bˆ[˜İ[ÛˆÜ[”İÊY
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆYˆ
+[‹ZÙ[‹š[˜ÛY\ÊY
+JHÂˆİ\X[ÙÊÉø )»'m:ëî;,fz®-;!(:ì&;'m:âé‰×K^‹]JNÂˆ™]\›ÂˆBˆ[‹ZÙ[‹œ\Ú
+Y
+NÂˆ[‹œİÜÈ
+ÏHNÂˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆØ[YK››İXÙHHÈ^ˆ:ì&:è`; «;)á;'a;,fz¬¯:âéH
+	Ü[‹œİÜßKÌÊXˆLŒNÂˆİ\X[ÙÊÜ^‹œİÜÖÚYK™›İ[™K^‹]JNÂˆBˆËÈ»'©H:­k;%ëx¤hNˆ;c$:ãáz®,:âê:éä8 %:ì&:è`; «;)á;'a;eg;'©{%*H;b+;'¡H
+;b+;'¡zéâ:âé;c$;(%H:­d;(%JBˆ[˜İ[ÛˆÜ[”™XY\Š
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆÛÛœİ™H^‹œ™XY\ÂˆÛÛœİ]˜Z[H[‹œİÜÈH[‹™™YÂˆYˆ
+]˜Z[H
+HÈİ\X[ÙÊÜ™™[\WK™›˜[YJNÈ™]\›ÈBˆİ\ÚÚXÙJ	Ü™œ›Û\WŠ:¬ ;)á:ì&:è`; «;)á	Ø]˜Z[{'©JXÉúá(úâ¥:âé	Ë	ú­î:éã:äe:âé	×K
+JHOˆÂˆYˆ
+HOOH
+HÂˆÛÛœİ[™HH™œİ\ÖÓX]›Z[Š[‹™™Y™œİ\Ë›[™İHJWNÂˆ[‹™™Y
+ÏHNÂˆÛİ[™œÙ[Xİ
+
+NÂˆYˆ
+[‹™™YHÊHÈÛX\”^›J[ŠNÈ™]\›ÈBˆİ\X[ÙÊØ	Û[™_WŠ;c$:ãáz®,;%ä	Ü[‹™™YKÌû'©H;b+;'¡JXK™›˜[YJNÂˆH[ÙHYˆ
+Hˆ
+HÂˆİ\X[ÙÊÉÊ;c$:ãáz®,;%ä;!';!¤;'a:åä:âé
+I×K™›˜[YJNÂˆBˆJNÂˆBˆËÈ»'©H:­k;%ëx¤hˆ:çª;e!;(l; «8¡¤ˆ;($:äìH
+ú¬':êm;`m:é«;%­
+Bˆ[˜İ[ÛˆÜ[“[\
+Y
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆYˆ
+[‹›]ÚYJHÈİ\X[ÙÊÉû'm:ëî;/';)á:çª;e!:âé—»(ï:ìà;'m;ff;ef:âé‰×K^‹]JNÈ™]\›ÈBˆ[‹›]ÚYHHYNÂˆ[‹›]Ûİ[
+ÏHNÂˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆØ[YK››İXÙHHÈ^ˆ:çª;e!;%ä:í¢;'a;/,:âéH
+	Ü[‹›]Ûİ[KÌÊXˆLŒNÂˆYˆ
+[‹›]Ûİ[HÊHÈÛX\”^›J[ŠNÈ™]\›ÈBˆİ\X[ÙÊÉû`àH8 %:çª;e!;%ä:í¢;'m:äé;%­;&e:âé—»(ï:ìà;'m;(l:®";ff;em;)á:âé‰×K^‹]JNÂˆBˆËÈû'©H{.-Nˆ;(':ìí;*¯{)à;(l; «8 %;-§;,¦;'(:ë-:éo;'o{%­:ìî:âé
+;,a;`ç{'`;,a;`ç{ej;%ä;!'
+Bˆ[˜İ[ÛˆÜ[•\›İJY
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆÛÛœİˆH^‹››İ\ÖÚYNÂˆYˆ
+[‹œ™\ÛÛ™Yš[˜ÛY\ÊY
+JHÂˆİ\X[ÙÊÜ[‹˜\İYÚYBˆÈ	Û‹›X™[W–û!£zìízèg:ì¯{%ä:í¦{%­:ì¡:è.:âé˜ˆˆ	Û‹›X™[W»'m:ëî;,a;`ç{ej;%ä:á(û%â:âé˜K^‹]JNÂˆ™]\›ÂˆBˆİ\X[ÙÊÛ‹^K^‹]JNÂˆBˆËÈû'©H{.-Nˆ;,a;`ç{ej8 %;(':ìí:éo;ef:à¦:¬ê:ço;(';-§ˆ;-§;,¦;'¢:â¥;*¯{)à:éã;(%zâíJ»'©{'m:êm;`m:é«;%­
+Bˆ[˜İ[ÛˆÜ[•\›Ş
+
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆÛÛœİ™[XZ[ˆH^‹››İ\Ë›X\
+
+‹JHOˆJK™š[\Š
+JHOˆ\[‹œ™\ÛÛ™Yš[˜ÛY\ÊJJNÂˆYˆ
+\™[XZ[‹›[™İ
+HÈİ\X[ÙÊÉû,a;`ç{ej;'m:¬ :äçH;,/:âé‰×K^‹œİX›Z]›Ş›˜[YJNÈ™]\›ÈBˆÛÛœİX™[ÈH™[XZ[‹›X\
+
+JHOˆ^‹››İ\ÖÚWK›X™[
+K˜ÛÛ˜Ø]
+Éú­î:éã:äd:®,	×JNÂˆİ\ÚÚXÙJ	û,a;`ç{ejˆ;%­:å©;(':ìí:éo;,a;`ç{eh:®c;&¥ÉËX™[Ë
+Ù[
+HOˆÂˆYˆ
+Ù[Ù[H™[XZ[‹›[™İ
+H™]\›ÂˆÛÛœİYH™[XZ[–ÜÙ[NÂˆÛÛœİˆH^‹››İ\ÖÚYNÂˆ[‹œ™\ÛÛ™Yœ\Ú
+Y
+NÂˆYˆ
+‹œÛİ\˜ÙY
+HÂˆ[‹˜ÛÜœ™Xİ
+ÏHNÂˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆYˆ
+[‹˜ÛÜœ™XİHŠHÈÛX\”^›J[ŠNÈ™]\›ÈBˆËÈ;(%zâíH;e/:äç:ì,{'`:îa;,*:âê:éä;d£{!(;ef:à¦:èg8 %:ã ;fe; à{'¤:éo:¬®{,ä:ça;&¬;)à;%bºâ¥:âéˆØ[YK››İXÙHHÈ^ˆ8à#	Û‹›X™[xà#H;,a;`çH8 %;-§;,¦:¬ ;fe{"é;ef:âéˆ
+	Ü[‹˜ÛÜœ™XİKÌŠXˆMLNÂˆH[ÙHÂˆ™XÛÜ™^›UÜ›Û™Ê[‹šY
+NÂˆ[‹˜\İYÚYHHYNÂˆ[‹™›\ÚHLÂˆÛİ[™Ü›Û™Ê
+NÂˆİ\X[ÙÊÂˆ8à#	Û‹›X™[xà#{'a
+:éo
+H;,a;`ç{e¢:âé8 )—»ef;)à:éã;-§;,¦:¬ ;%á»%â:âéXˆ	úâé;'c:à¨:ì¯{%ä:ã :ë.;)çzéã;ef:¬£–û!£zìízèg:í¦{%­:ì¡:è.:âé‰ËˆK^‹]JNÂˆBˆJNÂˆBˆËÈû'©H».-Nˆ; «;)á;(l; «8¡¤ˆ;&ä:ìî:¬ï:âé:én;($;'aû)à;!(:âé:èg;)à:êªH
+;!.;'©H:êª:äd:éç»g¢:êm;`m:é«;%­
+Bˆ[˜İ[ÛˆÜ[ÛÛ\\™TİÊY
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆÛÛœİH^‹œİÜÖÚYNÂˆYˆ
+[‹œÛÛ™YÚYJHÈİ\X[ÙÊÜ™›İ[™K^‹]JNÈ™]\›ÈBˆÛÛœİÓQWÕVHÈ›\ˆ	û(£;&¬:ì&;(!	Ëš[™Ù\œÎˆ	û!¤:¬ :çoHº¬'	Ë]Nˆ	úà¨;)ç:¬ :ëî:ç¦	ÈNÂˆÛÛœİÛYRYH^‹›Ü[ÛœËš[™^ÙŠÓQWÕVÜ˜ÛYWJNÂˆİ\ÚÚXÙJ	û&ä:ìî:¬ï;"é:é¬; «;)á;'a:à¦:ç ;g¢:á¤ú¬è:îa:­d;eg:âé—ºë-;%áû'm:âé:éo:®cÉË^‹›Ü[ÛœËœÛXÙJ
+K
+Ù[
+HOˆÂˆYˆ
+Ù[
+H™]\›ÂˆYˆ
+Ù[OOHÛYRY
+HÂˆ[‹œÛÛ™YÚYHHYNÂˆ[‹œÛÛ™YÛİ[
+ÏHNÂˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆØ[YK››İXÙHHÈ^ˆ;,*;'m:éo;,/»%a:àâ:âéH
+	Ü[‹œÛÛ™YÛİ[KÌÊXˆLŒNÂˆYˆ
+[‹œÛÛ™YÛİ[HÊHÈÛX\”^›J[ŠNÈ™]\›ÈBˆİ\X[ÙÊÜ™›İ[™K^‹]JNÂˆH[ÙHÂˆ™XÛÜ™^›UÜ›Û™Ê[‹šY
+NÂˆ[‹™›\ÚHLÂˆÛİ[™Ü›Û™Ê
+NÂˆİ\X[ÙÊÉø )»%a:ââ:âéˆ:âé;"ç:í$;%o:¬¨:âé‰×K^‹]JNÂˆBˆJNÂˆBˆËÈû'©Hû.-H8¤hˆ;(%{(%zë.:¬è:ém:®,8 %:¬ï;'©H;%áºâ¥:ë.;'©{'m;(%zâíBˆ[˜İ[ÛˆÜ[œ›ØYØ\İ\›LJ
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆYˆ
+[‹œİYÙHˆ
+HÈİ\X[ÙÊÉû'm:ëî;(%{(%zë.;'a:¬ê:ç¤:âé‰×K^‹\›Z[˜[K›˜[YJNÈ™]\›ÈBˆÛÛœİX™[ÈH^‹˜ÛÜœ™Xİ[ÛœË›X\
+
+ÊHOˆË^
+NÂˆİ\ÚÚXÙJ	û(%{(%zë.:âê:éäˆ:à­:ìí:à¯:ë.;'©{'a:¬è:ém;!.;&¥‰ËX™[Ë
+Ù[
+HOˆÂˆYˆ
+Ù[
+H™]\›ÂˆYˆ
+^‹˜ÛÜœ™Xİ[ÛœÖÜÙ[K›ÚÊHÂˆ[‹œİYÙHHNÂˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆİ\X[ÙÊÉø )º¬ï;'©H;%á»'m;'¢:â¥:­î:ã :èg—»(%{(%zë.;'m;(%{em;(c:âé‰×K^‹\›Z[˜[K›˜[YJNÂˆH[ÙHÂˆ™XÛÜ™^›UÜ›Û™Ê[‹šY
+NÂˆ[‹™›\ÚHLÂˆÛİ[™Ü›Û™Ê
+NÂˆİ\X[ÙÊÉø )»'m:¬m:æ$:âé:én;eé:äç:ço;'n;'o:ïä;'m:âé—ºâé;"ç:¬ê:ço;%o:¬¨:âé‰×K^‹\›Z[˜[K›˜[YJNÂˆBˆJNÂˆBˆËÈû'©Hû.-H8¤hNˆ;-§;,¦:í¦{'m:®,8 %{.-H;(':ìí;)$H;-§;,¦;'¢:â¥:¬ û'a;!(;`çBˆ[˜İ[ÛˆÜ[œ›ØYØ\İ\›LŠ
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆYˆ
+[‹œİYÙHJHÈİ\X[ÙÊÉû(%{(%zë.:í ;a,:¬ê:ço;%o;eg:âé‰×K^‹\›Z[˜[‹›˜[YJNÈ™]\›ÈBˆYˆ
+[‹œİYÙHˆJHÈİ\X[ÙÊÉû'm:ëî;-§;,¦:éo:í¦{& :âé‰×K^‹\›Z[˜[‹›˜[YJNÈ™]\›ÈBˆÛÛœİX™[ÈH^‹œÛİ\˜Ù\Ë›X\
+
+ÊHOˆË›X™[
+NÂˆİ\ÚÚXÙJ	û-§;,¦:âê:éäˆ:í¦{'o;(':ìí:éo:¬è:ém;!.;&¥‰ËX™[Ë
+Ù[
+HOˆÂˆYˆ
+Ù[
+H™]\›ÂˆYˆ
+^‹œÛİ\˜Ù\ÖÜÙ[K›ÚÊHÂˆ[‹œİYÙHHÂˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆİ\X[ÙÊÉû-§;,¦:¬ :í¦{%â:âé—»'m;(':è":ì¡:éã:àª;%f:âé‰×K^‹\›Z[˜[‹›˜[YJNÂˆH[ÙHÂˆ™XÛÜ™^›UÜ›Û™Ê[‹šY
+NÂˆ[‹™›\ÚHLÂˆÛİ[™Ü›Û™Ê
+NÂˆİ\X[ÙÊÉø )»-§;,¦:¬ ;%áºâ¥;(':ìí:âé—ºâé;"ç:¬ê:ço;%o:¬¨:âé‰×K^‹\›Z[˜[‹›˜[YJNÂˆBˆJNÂˆBˆËÈû'©Hû.-H8¤hˆ;!¨{-§:è":ì¡8 %:âîz®,:êm;`m:é«;%­
+]—Ùš^
+H
+È;eâ:î#;em;('
+[[Ü‘š^Y
+Bˆ[˜İ[ÛˆÜ[œ›ØYØ\İ]™\Š
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆYˆ
+[‹œİYÙHŠHÈİ\X[ÙÊÉû%a;)àH;'m:ém:âé—»(%{(%zë.:¬ï;-§;,¦:í ;a,:éâ;,ä;%o;eg:âé‰×K^‹›]™\‹›˜[YJNÈ™]\›ÈBˆİ\ÚÚXÙJ	û!¨{-§:è":ì¡—»)à:®";!¨{-§;eh:®c;&¥È
+:ä&:ãã:é­;"&;%áºâé
+IËÉúâîz®-:âé	Ë	ú­î:éã:äe:âé	×K
+JHOˆÂˆYˆ
+HOOH
+HÛX\”^›J[ŠNÂˆ[ÙHYˆ
+Hˆ
+Hİ\X[ÙÊÉÊ:è":ì¡;%ä;!';!¤;'a:åä:âé
+I×K^‹›]™\‹›˜[YJNÂˆJNÂˆBˆËÈ8¥ 8¥ ;'©H:­k;%ëx¤h8à#:èì:è&È:­${'©xà#H8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ ˆËÈ:èì:è&È:âê:éä8 %:ãã:é«:êmºâî{,ªHº¬ï;ej:®æ:­$z¬è:å,{)à:¬ :í¦zâ¥:âéˆ;%®úâ¥:¬ û'`;%áºâé
+;"';(!;g¢:ëî:ào
+K‚ˆ[˜İ[ÛˆÜ[”›İ[]JY
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆÛÛœİˆH^‹œ›İ[]\ÖÚYNÂˆ[‹œÜ[œÈH
+[‹œÜ[œÈ
+H
+ÈNÂˆYYİXÚÙ\Š
+NÂˆÛİ[™œÙ[Xİ
+
+NÂˆİ\X[ÙÊÂˆ	Ü‹›˜[Y_Nˆ:äç:ém:émzäç:ém:émx )ˆºâî{,ªH˜ˆ	úì&;)ç{'m:â¥:­$z¬è:å,{)à:¬ »fe:êm:¬ ;'©{'¤:é«;%ä;ef:à¦:ãe:í¦{%â:âé‰ËˆK‹›˜[YJNÂˆBˆËÈ;em;)à:âê:éä8 %;`l8à#;f';`çH;'(;)à8à#HœÈ;'¤{'`8à#;em;)à8à#J:âé;`k;c*;a-;,­;eæ
+Kˆ;em;)à;em;%o:å,{)à:¬ ; «:ço;)á:âé‚ˆ[˜İ[ÛˆÜ[•[œİXŠ
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆİ\ÚÚXÙJ^‹[œİX‹˜\ÚËÉû`o;)à{eg8à#;f';`çH:¬á;!£H:ì&ú®,8à#IË	Ê:­k;!'{'f;'¤{'`:® ;%*
+H;em;)à	×K
+JHOˆÂˆYˆ
+HOOH
+Hİ\X[ÙÊÜ^‹[œİX‹šÙY\™\WK^‹[œİX‹›˜[YJNÂˆ[ÙHYˆ
+HOOHJHÂˆØ[YK™›YÜË˜YİXÚÙ\œÈHÂˆØ]™J
+NÂˆİ\X[ÙÊÜ^‹[œİX‹˜Ø[˜Ù[™\WK^‹[œİX‹›˜[YJNÂˆH[ÙHİ\X[ÙÊÉÊ;,/{'a:âêû%f:âé
+I×K^‹[œİX‹›˜[YJNÂˆJNÂˆBˆËÈ:èì:è&È:ä©;,/z¬è; à{'¤8 %:îa:ì ;(l:¬ H;%í;!è
+;)á;)ç:êª{dg
+Bˆ[˜İ[ÛˆÜ[Ú\İ
+
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆYˆ
+[‹™ÛİÙ^JHÈİ\X[ÙÊÉû,/z¬è;%b;aaH:îb; à{'¤:ïä;'m:âé‰×K^‹˜Ú\İ›˜[YJNÈ™]\›ÈBˆ[‹™ÛİÙ^HHYNÂˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆÛX\”^›J[ŠNÂˆB‚ˆËÈ8¥ 8¥ ;'©H:­k;%ëx¤hH8à#;f£;&ä:¬ ;'¡H:¬ê:êªxà#H8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ ˆËÈ:¬":é¯:®.;dg;)à;c$8 %;)á;)ç:ãá:êe;'n;'a:¬è:én:âéˆ;&):âí{'m:êm;ej;(%{%ä:¬n:è);'¡z­k:èg:ä&:ãã;%a:¬!:âé‚ˆ[˜İ[ÛˆÜ[‘›ÜšÊ
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆİ\ÚÚXÙJ^‹™›ÜšË˜\ÚË^‹™›ÜšË›Ü[ÛœË›X\
+
+ÊHOˆË›X™[
+K
+JHOˆÂˆYˆ
+H
+HÈİ\X[ÙÊÉÊ;c.úéä;%g»%ä;!';'¨;"ç:êb;-á:âé
+I×K^‹™›ÜšË›˜[YJNÈ™]\›ÈBˆÛÛœİÜH^‹™›ÜšË›Ü[ÛœÖÚWNÂˆYˆ
+Ü›ÚÊHÂˆ[‹œ\ÜÙYHYNÂˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆİ\X[ÙÊÜ^‹™›ÜšË›ÚÔ™\WK^‹™›ÜšË›˜[YJNÂˆH[ÙHÂˆ[‹Ü›Û™ÈH
+[‹Ü›Û™È
+H
+ÈNÂˆ™XÛÜ™^›UÜ›Û™Ê[‹šY
+NÂˆ[‹™›\ÚHLÂˆÛİ[™Ü›Û™Ê
+NÂˆÙ]ÜÍ
+KJNÈËÈ;ej;(%H:ä&:ãã:é¯8 %:¬":é¯:®.;'¡z­k:ègˆİ\X[ÙÊÜ^‹™›ÜšË˜\™\WK^‹™›ÜšË›˜[YJNÂˆBˆJNÂˆBˆËÈ;e#:è";'m;%­;'!;.f:éo;)¢{"ç;'«:ì,;.f
+;ej;(%H:ä&:ãã:é¯
+H8 %:ì*{`â;-§;(£;dg;(!;&ªH;eë;coˆ[˜İ[ÛˆÙ]ÜÍ
+JHÂˆÛÛœİHØ[YKœ^Y\ÂˆHÈHHNÈœH
+ˆÎÈœHHH
+ˆÎÈ›[İš[™ÈH˜[ÙNÂˆBˆËÈ:¬ê:êªH:àgH:ìî;'n;fe{'n;ej8 %:¬":é¯:®.;'a;a­z¬ï;em;%o:ìî;'n;dg;%í;!è:éo:à­;) :âéˆ[˜İ[ÛˆÜ[’YÚ\İ
+
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆYˆ
+\[‹œ\ÜÙY
+HÈİ\X[ÙÊÜ^‹šYÚ\İ›ØÚÙY™\WK^‹šYÚ\İ›˜[YJNÈ™]\›ÈBˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆÛX\”^›J[ŠNÂˆB‚ˆËÈ8¥ 8¥ ;'©H:­k;%ëx¤hˆ8à#:ì,{"©;ac;'m;)à8à#H8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ ˆËÈ:îfúà¦:â¥:éâ;"©;a,;`©8 %;)à:é¡:®.;,¦:çï:ìí;'m;)à:éã;ej;(%{'m:âéˆ;.m:äç;eg;'©{'a;'o;"ç;( {'/:èg;få;,ä:¬!:âé‚ˆ[˜İ[ÛˆÜ[“X\İ\’Ù^J
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆYˆ
+Ø[YK™›YÜËœÍÙ^TÙXÜ™]	‰ˆØ[YK™›YÜËœÍÙ^RY
+HÂˆİ\X[ÙÊÉø )»'m;(';'m:¬m;ea;&¥;%áºâé—»)á;)ç;%í;!è:¬ ;'m:ëî:äd:¬':âé;'¢;'/:ââ:®c‰×K^‹›X\İ\šÙ^K›˜[YJNÂˆ™]\›ÂˆBˆYˆ
+[‹˜\\ÙY
+HÂˆİ\X[ÙÊÉúéâ;"©;a,;`©:â¥;'m:ëî;eg:ì¢;#j:í):âé—¸ )ºâé;"è;%b;!£zâ¥:âé‰×K^‹›X\İ\šÙ^K›˜[YJNÂˆ™]\›ÂˆBˆ[‹˜\\ÙYHYNÂˆÛÛœİİÛ™YH
+Ø[YK™›YÜË™]Ø\™È×JKœÛXÙJ
+NÂˆYˆ
+İÛ™Y›[™İˆ	‰ˆYØ[YK™›YÜËœÍİÛ[Ø\™
+HÂˆÛÛœİİÛ[ˆHİÛ™YÌNÂˆØ[YK™›YÜË™]Ø\™ÈHØ[YK™›YÜË™]Ø\™Ë™š[\Š
+Y
+HOˆYOOHİÛ[ŠNÂˆØ[YK™›YÜËœÍİÛ[Ø\™HİÛ[ÂˆØ]™J
+NÂˆÛİ[™Ü›Û™Ê
+NÂˆİ\X[ÙÊÂˆ	úîfúà¦:â¥:éâ;"©;a,;`©:éo;)ä{%­:äé;'¤:ë.;'m»"©:ém:émx )ˆ;%í:é«:è):â¥:äëûef:ãe:ââ	Ëˆ;%­:â¤; â;)§z¬l;.m:äç8à#	ÑU’QSÑWĞĞT‘ÖÜİÛ[—K]_xà#z¬ ; «:ço;(c:âéXˆ	ø )»'m:¬l:¬í{)ç:¬ ;%a:ââ;%â:­k:à¦—Šºâê:¬á;'n;)§H;,/z­k;%ä;!':ä&;,/»'a;"&;'¢;'a;)à:ãá
+IËˆK^‹›X\İ\šÙ^K›˜[YJNÂˆH[ÙHÂˆİ\X[ÙÊÂˆ	úîfúà¦:â¥:éâ;"©;a,;`©:éo;)ä{%­:äé;'¤:ë.;'m»"©:ém:émx )ˆ;%í:é«:è):â¥:äëûef:ãe:ââ	Ëˆ	ø )»%a:ë-;'o:ãá;'o;%­:à¦;)à;%b»%f:âé—Š:¬ ;)á;.m:äç:¬ ;%á»%­;!':âé;e¢{'m:âé
+IËˆK^‹›X\İ\šÙ^K›˜[YJNÂˆBˆBˆËÈºâê:¬á;'n;)§H;,/z­k8 %:éâ;"©;a,;`©;%ä:ãá:à§:âî{eg;.m:äç:éo:ä&;,/ºâ¥:âéˆ[˜İ[ÛˆÜ[]]\›J
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆYˆ
+YØ[YK™›YÜËœÍİÛ[Ø\™
+HÂˆİ\X[ÙÊÉÌºâê:¬á;'n;)§H;,/z­kˆ»fe{'n;ehºãá:à§:à­;%ë{'m;%á»%­;&¥ˆ‰×K^‹˜]]\›K›˜[YJNÂˆ™]\›ÂˆBˆİ\ÚÚXÙJ	Ìºâê:¬á;'n;)§H;,/z­kˆºìî;'n;fe{'n»)â:ë.;%ä:âí{em;(ï;!.;&¥8 %;)á;)ç:à¦:éçºà¦;&¥È‰ËˆÉúá);($zââ:âé	Ë	û%a:ââ;&¥	×K
+JHOˆÂˆYˆ
+HOOH
+HÂˆÛÛœİØ\™HØ[YK™›YÜËœÍİÛ[Ø\™ÂˆYˆ
+YØ[YK™›YÜË™]Ø\™ÊHØ[YK™›YÜË™]Ø\™ÈH×NÂˆYˆ
+YØ[YK™›YÜË™]Ø\™Ëš[˜ÛY\ÊØ\™
+JHØ[YK™›YÜË™]Ø\™Ëœ\Ú
+Ø\™
+NÂˆØ[YK™›YÜËœÍİÛ[Ø\™H[ÂˆØ]™J
+NÂˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆİ\X[ÙÊØ;'n;)§H;&a:èã—»)§z¬l;.m:äç8à#	ÑU’QSÑWĞĞT‘ÖØØ\™K]_xà#zéo:ä&;,/»%f:âéXK^‹˜]]\›K›˜[YJNÂˆH[ÙHÂˆİ\X[ÙÊÉÈ¸ )º­î:çï:¬é:ç ;eg:ãl;&¥ˆˆ
+;'n;)§H:ìí:éf
+I×K^‹˜]]\›K›˜[YJNÂˆBˆJNÂˆBˆËÈ;%b;*¯H;'¨:®-:ë.8 %;(%{!'{'`;%í;!è:äd:¬'
+:îa:ì ;(l:¬ p­úìî;'n;dg
+Kˆ;%í:é«:êm:ì&;)ç{'f:ë-:ã :ä©
+]—ÛÙ™œİYÙJH;`m:é«;%­‚ˆ[˜İ[ÛˆÜ[“Ù™œİYÙQÛÜŠ
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆYˆ
+JØ[YK™›YÜËœÍÙ^TÙXÜ™]	‰ˆØ[YK™›YÜËœÍÙ^RY
+JHÂˆİ\X[ÙÊÜ^‹™ÛÜ‹›˜[YH
+È	È;%g»'m:âéˆ;'¨:¬ª;'¢:âé‰Ëˆ;%í;!è	ÜÍÙ^PÛİ[
+
+_KÌˆ;fezìíˆ;(%{!'zã :ègºäd;%í;!è:éo:êª:äd;,fz¬ª;&);'¤˜K^‹™ÛÜ‹›˜[YJNÂˆ™]\›ÂˆBˆ[‹›Ü[™YHYNÂˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆÛX\”^›J[ŠNÂˆB‚ˆËÈ8¥ 8¥ {'©H:­k;%ëx¤h8à#;(!;fe;'f:ì*xà#H8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ ˆËÈ;&®:é«:â¥;(!;fe8 %:èê:ëî:¬ ºì&û)à:éâºéoûf£:éä:é¬:âéˆ:ì¢;)î;(l; «;%ä:ì&û'/:êm
+;.g:­k:êª{!£:é«
+H;`m:é«;%­‚ˆ[˜İ[ÛˆÜ[”Û™J
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆÛÛœİˆH[‹Ø\›Ûİ[ÂˆYˆ
+ˆÊHÂˆ[‹Ø\›Ûİ[Hˆ
+ÈNÂˆÛİ[™œÙ[Xİ
+
+NÂˆİ\X[ÙÊÜ^‹Ø\›“[™\ÖÛ—WK^‹œÛ™K›˜[YJNÂˆ™]\›ÂˆBˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆÛX\”^›J[ŠNÂˆB‚ˆËÈ8¥ 8¥ {'©H:­k;%ëx¤hH8à#;'¨:®-:ìízãá8à#H8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ ˆËÈ;'¨:®-:ë.8 %:èê:ëî:¬ »'!;eæL	Hºço:éä:é«;)à:éã;)à{($H;%í:êm:­î:àéH:ì'{'`:ì¨:ç :âé
+;'!;eæ;%á»'c
+K‚ˆËÈ:ìí{!({f.ˆ:ì¨:ç :âé;%ä;!':èê:ëî:êª{!£:é«:¬ ;ge:äé:é¬:âé
+›YÜËšX\™[ZJH8 %ÛX\“[™\û%ä:âí:¬ª;'¢:âé‚ˆ[˜İ[ÛˆÜ[ÚXÚÑÛÜŠ
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[Âˆ[‹›Ü[™YHYNÂˆYˆ
+YØ[YK™›YÜËšX\™[ZJHÈØ[YK™›YÜËšX\™[ZHHYNÈBˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆÛX\”^›J[ŠNÂˆB‚ˆËÈ8¥ 8¥ {'©H:­k;%ëx¤hˆ8à#;!£;c#;/e:á"8à#H8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ ˆËÈ;cë:­ï;eg;!£;c#8 %;(l; «:èg;%bz®,;"ç;'¤{eg:âéˆ;%b{%a;'¢:â¥:ãæ{%b;fe:êm;%ä:å,:ç.ûeg; âH;&):ì¡:è";'m:¬ ˆËÈ:®e:é«:¬è
+™YXÙQ:ì,:è)8 %;(%{( {'n;bí;b®:éã
+H:èê:ëî;'f;.k{,+;'m;'m;%­;)á:âéˆ;'o;%­:à¦:è):êm
+;`â;-§
+BˆËÈ:ì*{e©{`©:éoL;e!:è";'¡
+;%oHû-"
+H;%ì;!£{'/:èg:â#:çë;%o;eg:âé
+;'m;`â;"ç:é«;!bÈ8 %\]TÛÙ˜Tİ[™
+K‚ˆ[˜İ[ÛˆÜ[”ÛÙ˜J
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆYˆ
+[‹œÚ][™ÊH™]\›Âˆ[‹œÚ][™ÈHYNÂˆ[‹œİ[™[Y\ˆHÂˆ[‹œÚ]œ˜[Y\ÈHÂˆÛİ[™œÙ[Xİ
+
+NÂˆÛÛœİ[™\ÈHÉû!£;c#;%ä;%b{%f:âéˆ8 )»cë:­ï;ef:âé‰×K˜ÛÛ˜Ø]
+^‹œ˜Z\ÙS[™\È×JNÂˆ[™\Ëœ\Ú
+	Ê:ì*{e©{`©:éoû-";'m; àH:¯®H:â!:ém:¬è;'¢;'/:êm;'o;%­:à¨;"&;'¢:âé
+IÊNÂˆİ\X[ÙÊ[™\Ë^‹œÛÙ˜K›˜[YJNÂˆBˆÛÛœİÓÑWÔÕS‘Ñ”SQTÈHLÈËÈŒû-";'(;)àˆ;c$;(%H8 %[:ì*{e©{`©L;e!:è";'¡;%ì;!£Bˆ[˜İ[Ûˆ\]TÛÙ˜Tİ[™
+
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[Âˆ[‹œÚ]œ˜[Y\ÈH
+[‹œÚ]œ˜[Y\È
+H
+ÈNÂˆÛÛœİ[R[H[š\Ê	İ\	ÊH[š\Ê	ÙİÛ‰ÊH[š\Ê	ÛY	ÊH[š\Ê	ÜšYÚ	ÊNÂˆYˆ
+[R[
+H[‹œİ[™[Y\ˆH
+[‹œİ[™[Y\ˆ
+H
+ÈNÂˆ[ÙH[‹œİ[™[Y\ˆHÈËÈ;'m;`â;"ç:é«;!bÂˆYˆ
+[‹œİ[™[Y\ˆHÓÑWÔÕS‘Ñ”SQTÊHÂˆ[‹œÚ][™ÈH˜[ÙNÂˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆÛX\”^›J[ŠNÂˆBˆB‚ˆËÈ»'©H:­k;%ëx¤hˆ:âé:én:êª{!£:é«”È:ã ;fe8¡¤ˆ;"&;)äH
+[\˜Xİ;'f”È:í¡:®,;%ä;!';f.;-§
+Bˆ[˜İ[ÛˆÛÛXİ›ÚXÙJœÒY
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆYˆ
+\[ˆ[‹œ^›K\HOOH	İ›ÚXÙ\ÉÊH™]\›ˆ˜[ÙNÂˆÛÛœİ^ˆH[‹œ^›NÂˆÛÛœİ[™HH^‹›ÚXÙS[™\ÖÛœÒYNÂˆYˆ
+[[™JH™]\›ˆ˜[ÙNÂˆYˆ
+\[‹›ÚXÙ\Ëš[˜ÛY\ÊœÒY
+JHÂˆ[‹›ÚXÙ\Ëœ\Ú
+œÒY
+NÂˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆØ[YK››İXÙHHÈ^ˆ:âé:én:êª{!£:é«:éo:äé;%â:âé
+	Ü[‹›ÚXÙ\Ë›[™İKÌÊXˆLŒNÂˆYˆ
+[‹›ÚXÙ\Ë›[™İHÊHÂˆİ\X[ÙÊÛ[™H
+È	×¸ )»!bÈ:âé;(l:®";%*H:âé:én;'m;%o:®,;& :âé‰×K	úâé:én:êª{!£:é«	Ë
+
+HOˆÛX\”^›J[ŠJNÂˆ™]\›ˆYNÂˆBˆBˆİ\X[ÙÊÛ[™WK	úâé:én:êª{!£:é«	ÊNÂˆ™]\›ˆYNÂˆBˆËÈ:­k;%ëx¤hˆ;,*:âê:è":ì¡8 %;)à:®";gd:ém:â¥; à{'¤;'f:è";'n:¬ï:éç»'/:êm:ì&;!¨K;bà:é«:êm;-§;ef
+;&):âíH:®,:ègJBˆ[˜İ[ÛˆÜ[“]™\ŠŠHÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆÛÛœİ›ŞH^‹˜›Ş\ÖÜ[‹˜›ŞYNÂˆİ\ÚÚXÙJ	Û‹›˜[Y_K—ºìª;b®;'!; à{'¤ˆ8à#	Ø›Ş›X™[xà#H8 %	Ø›Ş›[™_H:è";'n—ºè":ì¡:éo:âîz®.:®c;&¥ØÉúâîz®-:âé	Ë	ú­î:éã:äe:âé	×K
+JHOˆÂˆYˆ
+HOOH
+HÂˆYˆ
+‹›[™HOOH›Ş›[™JHÂˆ[‹™]™\Y
+ÏHNÂˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆYˆ
+[‹™]™\YH^‹˜›Ş\Ë›[™İ
+HÈÛX\”^›J[ŠNÈ™]\›ÈBˆ[‹˜›ŞYHX]›Z[Š[‹˜›ŞY
+ÈK^‹˜›Ş\Ë›[™İHJNÂˆİ\X[ÙÊØ:ãg;.îHH8à#	Ø›Ş›X™[xà#H; à{'¤:¬ ºì&;!¨{ej;'/:èg:ëî:àa:çë;(.:äé;%­:¬%:âé—Š:ì&;!¨H	Ü[‹™]™\YKÉÜ^‹˜›Ş\Ë›[™İJXK^‹]JNÂˆH[ÙHÂˆ™XÛÜ™^›UÜ›Û™Ê[‹šY
+NÂˆ[‹™›\ÚHLÂˆÛİ[™Ü›Û™Ê
+NÂˆİ\X[ÙÊÂˆ8 )»%eËˆ8à#	Ø›Ş›X™[xà#H; à{'¤:¬ º­î:ã :èg;-§;ef:­k:èg:îh;(.:à¦:¬%:âé˜ˆ	úãg;.îKˆ:¬&{'`:ço:ìª;'f; â; à{'¤:¬ ºìª;b®;'!:èg;&+:ço;&*:âé‰ËˆK^‹]JNÂˆBˆH[ÙHYˆ
+Hˆ
+HÂˆİ\X[ÙÊÉÊ:è":ì¡;%ä;!';!¤;'a:åä:âé
+I×K‹›˜[YJNÂˆBˆJNÂˆBˆ[˜İ[ÛˆÜ[”™]\›š[Š
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆÛÛœİˆH[‹™]™\YÂˆİ\X[ÙÊÛˆˆˆÈ:ì&;!¨{ej;'m:âé—ºä&:ãã;%a;&*; à{'¤	ÛŸz¬':¬ ;%£;(!;g¢;#$û%ë;'¢:âé˜ˆˆ	úì&;!¨{ej;'m:âéˆ8 )»%a;)àH:îa;%­;'¢:âé‰×K^‹œ™]\›š[‹›˜[YJNÂˆBˆ[˜İ[ÛˆÜ[•\›Z[˜[
+
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆÛÛœİ[™XYHH[‹™Ú]™[‹š[˜ÛY\Êœ™\]Z\™JH
+œÚ\™H	‰ˆ[‹˜›Ø\™˜XÙJNÂˆYˆ
+[™XYJHÈİ\X[ÙÊØ;'m:ëî	Ü^‹ÚÙ[œÖİœ™\]Z\™W_{'a
+:éo
+H;)+;%­;&¥˜K›˜[YJNÈ™]\›ÈBˆYˆ
+\[‹š[İœ™\]Z\™WJHÈİ\X[ÙÊØ;)à:®";'`	Ü^‹ÚÙ[œÖİœ™\]Z\™W_{'m
+:¬ 
+H;%á»%­;&¥˜K›˜[YJNÈ™]\›ÈBˆİ\ÚÚXÙJ	İ˜\ÚßW—‰Ü^‹ÚÙ[œÖİœ™\]Z\™W_{'a
+:éo
+H;)!:®c;&¥ØÉû) :âé	Ë	û%b;) :âé	×K
+JHOˆÂˆYˆ
+HOOH
+HÂˆ[‹š[İœ™\]Z\™WHH˜[ÙNÂˆYˆ
+œÚ\™JH[‹˜›Ø\™˜XÙHHYNÈ[ÙH[‹™Ú]™[‹œ\Ú
+œ™\]Z\™JNÂˆ™Yœ™\Úİ[Ù\œÊ[ŠNÂˆÛİ[™œÙ[Xİ
+
+NÂˆİ\X[ÙÊİY\×K›˜[YJNÂˆH[ÙHYˆ
+Hˆ
+HÂˆİ\X[ÙÊİ››È	ø )»%c:¬¨;%­;&¥‰×K›˜[YJNÂˆBˆJNÂˆBˆ[˜İ[ÛˆÜ[‘\˜\Ù\Š
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆÛÛœİÜÈH[‹™Ú]™[‹›X\
+
+ÊHOˆ
+ÈÙ^NˆËØÚÙYˆ˜[ÙHJJNÂˆYˆ
+[‹˜›Ø\™˜XÙJHÜËœ\Ú
+ÈÙ^Nˆ	Ù˜XÙIËØÚÙYˆYHJNÈËÈ:¬í{'(:í¡8 %; «{(':í¢:¬ 
+;dg;"ç:éã
+BˆYˆ
+ÜË›[™İOOH
+HÈİ\X[ÙÊÜ^‹™\˜\Ù\‹™[\WK^‹™\˜\Ù\‹›˜[YJNÈ™]\›ÈBˆÛÛœİX™[ÈHÜË›X\
+
+ÊHOˆ^‹ÚÙ[œÖÛËšÙ^WH
+È
+Ë›ØÚÙYÈ	Ê:¬í{'(:ä*0­û «{(':í¢:¬ 
+IÈˆ	ÉÊJNÂˆX™[Ëœ\Ú
+	ú­î:éã:äd:®,	ÊNÂˆİ\ÚÚXÙJ^‹™\˜\Ù\‹œ›Û\X™[Ë
+JHOˆÂˆYˆ
+HHHÜË›[™İ
+H™]\›ÂˆÛÛœİÈHÜÖÚWNÂˆYˆ
+Ë›ØÚÙY
+HÈÛİ[™˜[\
+
+NÈİ\X[ÙÊÜ^‹™\˜\Ù\‹˜Ø[\˜\ÙWK^‹™\˜\Ù\‹›˜[YJNÈ™]\›ÈBˆÛÛœİYH[‹™Ú]™[‹š[™^ÙŠËšÙ^JNÂˆYˆ
+YH
+H[‹™Ú]™[‹œÜXÙJYJNÂˆ[‹š[ÛËšÙ^WHHYNÈËÈ:ä&:ãã:è):ì&û'cˆ™Yœ™\Úİ[Ù\œÊ[ŠNÂˆ›İTš]˜XŞT™XÛİ™\TYXÙJ
+NÂˆÛİ[™˜ÛÜœ™Xİ
+
+NÂˆİ\X[ÙÊØ	Ü^‹ÚÙ[œÖÛËšÙ^W_H;(%zìí:éo;)à;&è;%­;&¥˜ˆØ[YK™›YÜËœš]˜XŞT™XÛİ™\PXİ]™HÈ;gj{%­;)á;(%zìí;(l:¬ {'a;f£;"&;e¢:âéˆ
+	ÙØ[YK™›YÜËœš]˜XŞT™XÛİ™\_KÉÔ’UPÖWÔ‘PÓÕ‘T–WÓ‘QQJXˆ;f!;'«:án;-§:ãáˆ	Üš]˜XŞSXZÊ
+_KÍH
+	Üš]˜XŞS]™[X™[
+š]˜XŞSXZÊ
+J_JXK^‹™\˜\Ù\‹›˜[YJNÂˆJNÂˆBˆ[˜İ[ÛˆÜ[•š\^]
+
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆİ\ÚÚXÙJ	Ü^‹™^]Ëš\˜\ÚßW—ºàª;'`;(%zìí:éo;(!:í ;)!:®c;&¥ØÉû(!:í ;) :âé	Ë	û%b;) :âé	×K
+JHOˆÂˆYˆ
+HOOH
+HÂˆ›Üˆ
+ÛÛœİÈ[ˆ[‹š[
+HYˆ
+[‹š[Ú×JHÈ[‹š[Ú×HH˜[ÙNÈ[‹™Ú]™[‹œ\Ú
+ÊNÈBˆÜ]Û”İ[Ù\Š[ŠNÈÜ]Û”İ[Ù\Š[ŠNÈËÈ;ej;(%Nˆ;"©;a¨;.éˆ;-¥:¬ ˆYš]˜XŞSXZÊ	úàª;'`;(%zìí:éo;eg:®¯:ì¢;%ä:á&:¬¯:âé	ÊNÂˆ™XÛÜ™^›UÜ›Û™Ê[‹šY
+NÂˆ[‹™›\ÚHLÂˆÛİ[™Ü›Û™Ê
+NÂˆİ\X[ÙÊÜ^‹™^]Ëš\˜\K^‹™^]Ëš\›˜[YJNÂˆH[ÙHYˆ
+Hˆ
+HÂˆİ\X[ÙÊÉø )»%ë{"ç;"&; à{emˆ:­î:éã:äd;'¤‰×K^‹™^]Ëš\›˜[YJNÂˆBˆJNÂˆBˆ[˜İ[ÛˆÜ[“›Ü›X[^]
+
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆYˆ
+Ø[YK™›YÜËœš]˜XŞT™XÛİ™\PXİ]™JHÂˆİ\X[ÙÊÉúán;-§:ãá:¬ :á":ë-:á¤ºâé—º­î:é¯;'¤:¬ :ë.;%gº®c;)à:å,:ço:í¦{%â:âé‰Ë;)à;&¬:¬':èg;gj{%­;)á;(%zìí;(l:¬ {'a	Ô’UPÖWÔ‘PÓÕ‘T–WÓ‘QQz¬';f£;"&;ef;'¤ˆ
+	ÙØ[YK™›YÜËœš]˜XŞT™XÛİ™\HKÉÔ’UPÖWÔ‘PÓÕ‘T–WÓ‘QQJXK^‹™^]Ë››Ü›X[›˜[YJNÂˆ™]\›ÂˆBˆÛÛœİ›Û“šXÚÈHÚ]™[•ÚÙ[œÊ[ŠK™š[\Š
+ÊHOˆÈOOH	ÛšXÚÛ˜[YIÊNÂˆYˆ
+›Û“šXÚË›[™İˆJHÈİ\X[ÙÊÜ^‹™^]Ë››Ü›X[ÛÓX[WK^‹™^]Ë››Ü›X[›˜[YJNÈ™]\›ÈBˆİ\ÚÚXÙJ	Ü^‹™^]Ë››Ü›X[˜\ÚßW—ºââzá);'¡;'a;(ï:¬è:à¦:¬":®c;&¥ØÉúà¦:¬!:âé	Ë	û%a;)àI×K
+JHOˆÂˆYˆ
+HOOH
+HÂˆYˆ
+[‹š[›šXÚÛ˜[YJHÈ[‹š[›šXÚÛ˜[YHH˜[ÙNÈ[‹™Ú]™[‹œ\Ú
+	ÛšXÚÛ˜[YIÊNÈBˆÛX\”^›J[ŠNÂˆH[ÙHYˆ
+Hˆ
+HÂˆİ\X[ÙÊÉÊ:ë.;%g»%ä;!';'¨;"ç:êb;-á:âé
+I×K^‹™^]Ë››Ü›X[›˜[YJNÂˆBˆJNÂˆBˆËÈ;`m:é«;%­ˆ:ìí; àH;.m:äç;)à:®"J;)$zìíH:ì*{)à
+H
+È:èg:­î:®,:ègH
+È;( ;'©H
+È:¬l:é«:ìíz­à8 %:êª:äè:­k;%ëH:¬í{&ªBˆ[˜İ[ÛˆÛX\”^›J[ŠHÂˆÛÛœİ^ˆH[‹œ^›NÂˆYˆ
+YØ[YK™›YÜË™]Ø\™ÊHØ[YK™›YÜË™]Ø\™ÈH×NÂˆÛÛœİœ™\ÚH^‹œ™]Ø\™Ë™š[\Š
+Y
+HOˆYØ[YK™›YÜË™]Ø\™Ëš[˜ÛY\ÊY
+JNÂˆYˆ
+œ™\Ú›[™İ
+HØ[YK™›YÜË™]Ø\™ÈHØ[YK™›YÜË™]Ø\™Ë˜ÛÛ˜Ø]
+œ™\Ú
+NÂˆÛÛœİ\ÔÌHHÌWÖ“Ó‘WÔV–“TËš[˜ÛY\Ê[‹šY
+NÂˆÛÛœİ\ÔÌˆHÌ—Ö“Ó‘WÔV–“TËš[˜ÛY\Ê[‹šY
+NÂˆÛÛœİ\ÔÌÈHÌ×Ö“Ó‘WÔV–“TËš[˜ÛY\Ê[‹šY
+NÂˆÛÛœİ\ÔÍHÍÖ“Ó‘WÔV–“TËš[˜ÛY\Ê[‹šY
+NÂˆÛÛœİ\ÔÍHHÍWÖ“Ó‘WÔV–“TËš[˜ÛY\Ê[‹šY
+NÂˆÛÛœİØÚÜĞ™Y›Ü™HH\ÔÌˆÈÌÛX\Ûİ[
+
+Hˆ\ÔÌHÈÌSØÚĞÛİ[
+
+HˆÂˆÛÛœİİ\›]H\[‹\ÙY[ÈËÈKLLH;'m:çì;%ä;!';g£;b®:éo;eg:ì¢:ãá;%b;%í;%â;'/:êm:ìá:îfÈ;`m:é«;%­ˆ™XÛÜ™^›PÛX\Š[‹šY[‹[YQœ˜[Y\Ëİ\›]
+NÂˆËÈ;(${"&;,¦;%ä;!':à­:ìí:à®;(%zìí;-g:¬è;.f:éo:®,:ègH
+:ìí;"©;/g:ì,H;'n;b®:èg:í¡:®,;&ªJH8 %;'m;(!;-g:¬è;.f;&`:îa:­d;em;'(;)àˆYˆ
+^‹\HOOH	İ˜XÙ\ÉÊHÂˆØ[YK™›YÜË˜XÙQÚ]™[ˆHX]›X^
+Ø[YK™›YÜË˜XÙQÚ]™[ˆ[‹›X^›Ø\™
+NÂˆBˆËÈû'©Hû.-J;!¨{-§;`äJH;`m:é«;%­H;(%{(%H:ìí:ãá;&a:èã8 %;eâ:î#
+;!£:ë.:¬l:é«
+z¬ ;em;(':ä&:â¥;"':¬!ˆYˆ
+[‹šYOOH	Øœ›ØYØ\İ	ÊHØ[YK™›YÜËœ[[Ü‘š^YHYNÂˆËÈ;'©H:­k;%ëx¤h0­ø¤hH;`m:é«;%­H;%í;!è;f£zäçH
+:îa:ì ;(l:¬ p­úìî;'n;dg
+H8 %;(%zë.
+™YYÍÙ^\ÊH:¬':ì*H;(l:¬mˆYˆ
+[‹šYOOH	Ü›İ[]IÊHØ[YK™›YÜËœÍÙ^TÙXÜ™]HYNÂˆYˆ
+[‹šYOOH	ÜÚYÛ\	ÊHØ[YK™›YÜËœÍÙ^RYHYNÂˆØ[YKœ^›T[ˆH[ÂˆËÈ:ìíz­à;)à;($
+:ãl;'m;a,;fe:ä'^]ÊKˆ:®,:ìî;'`:¬l:é«;'¡z­k;%g‹‚ˆÛÛœİ^]H^‹™^]ÈÈX\ˆ	Ùœ™Y\İ™Y]	ËˆNNˆŒHNÂˆØ[YK›X\H^]›X\ÂˆÛÛœİHØ[YKœ^Y\ÂˆH^]ÈHH^]NÈœH^]
+ˆÎÈœHH^]H
+ˆÎÈ›[İš[™ÈH˜[ÙNÂˆ[™[]J	İ\	ÊNÈ[™[]J	ÙİÛ‰ÊNÈ[™[]J	ÛY	ÊNÈ[™[]J	ÜšYÚ	ÊNÂˆİXÚÑ\ˆH[ÈİXÚÔ™\X]œ˜[Y\ÈHÂˆÛİ[™Ø\œ
+
+NÂˆÛİ[™œ^SX\™ÛJPTÖÙ^]›X\KœÛÛ™ÊNÈËÈ;'m;(!:­k;%ëH‘ÓH;&a;(!;(¡zèã;fá:ìíz­à:éíH:¬èzéãˆÛÛœİ[™\ÈH
+^‹˜ÛX\“[™\ÈÉúì*{'a:îh;(.:à¦;&e:âé‰×JKœÛXÙJ
+NÂˆËÈ:ìí; àH;.m:äç;&`;'¨:®"û)á;e¢H;%b:à­:éo;eg; à{'¤:èg:ë-ºâ¥:âé8 %;`m:é«;%­:¯+:é«; à{'¤:âé;'m;%­;b®ˆÛÛœİZ[Hœ™\Ú›X\
+
+Y
+HOˆ8¥áˆ;)§z¬l;.m:äç8à#	ÑU’QSÑWĞĞT‘ÖÚYK]_xà#H;f£zäçHX
+NÂˆËÈKLLH:ìá:îfÈ;`m:é«;%­8 %;g£;b®;%á»'m:îh;(.:à¦;&*:ì*{'m:êm;)¢{"ç;dg;"ç{'a;%c:è);) :âé
+;g£;b®; «;&ªH:ì£;%á»'c
+BˆYˆ
+İ\›]
+HZ[œ\Ú
+	ø§)È:ìá:îfÈ;`m:é«;%­8 %;g£;b®;%á»'m:îh;(.:à¦;&e:âéIÊNÂˆÛÛœİØÚÜÈH\ÔÌˆÈÌÛX\Ûİ[
+
+Hˆ\ÔÌHÈÌSØÚĞÛİ[
+
+HˆÂˆYˆ
+
+\ÔÌH\ÔÌŠH	‰ˆØÚÜÈˆØÚÜĞ™Y›Ü™JHÂˆYˆ
+\ÔÌŠHÂˆÛÛœİ[HÈHØÚÜÎÂˆZ[œ\Ú
+[HˆÈ	ú­${'©H;*¯{%ä;!':¬l:ã ;eg;( ;&®;'m»"&;câ{'/:èg:éç»-¬;)à:â¥;!£:é«:¬ :à«:âéIÂˆˆ:­${'©{'f:¬l:ã ;eg;( ;&®;'mº®,;&®:®,:éo;ef:à¦:à«»-á:âéˆ
+:®,;&®:®,	İ[KÌÊX
+NÂˆH[ÙHÂˆZ[œ\Ú
+ØÚÜÈHÂˆÈ	û,¨;.îH8 %:¬l:é«;'f:®":¬è;%ä;!'ºéâ;)à:éâH;'¨:®";'m;d :é«:â¥;!£:é«:¬ :à«:âéIÂˆˆ;,¨;.éKˆ:¬l:é«;'f:®":¬è;%ä;!'»'¨:®";d :é«:â¥;!£:é«:¬ :à«:âéˆ
+	ÛØÚÜßKÌÊX
+NÂˆBˆH[ÙHYˆ
+\ÔÌÊHÂˆÛÛœİˆHÌĞÛX\Ûİ[
+
+NÂˆZ[œ\Ú
+ˆHÂˆÈ	ú¬l:é«;*¯{%ä;!';ej;!,{'m:äé:é¬:âéW» à{($:ë.:äé;'m;ef:à¦:äf;%í:é«:®,;"ç;'¤{eg:âé‰Âˆˆ;"è:ë.; «	ÛŸKÌû.-{'a;(%zé«;e¢:âé˜
+NÂˆH[ÙHYˆ
+\ÔÍ	‰ˆ
+[‹šYOOH	Ü›İ[]IÈ[‹šYOOH	ÜÚYÛ\	ÊJHÂˆÛÛœİˆHÍÙ^PÛİ[
+
+NÂˆZ[œ\Ú
+ˆH‚ˆÈ	ø )»%í;!è:¬ :êª:äd:êª;& :âéW»%a;/ ;'m:äç;(%zë.;%b;*¯{%ä;!'ºì&;'d{ef:â¥;!£:é«:¬ :äé:é¬:âé‰Âˆˆ;%í;!è:éo;ef:à¦;!¤;%ä:á(û%â:âéˆ
+	ÛŸKÌŠX
+NÂˆH[ÙHYˆ
+\ÔÍJHÂˆÛÛœİˆHÍPÛX\Ûİ[
+
+NÂˆZ[œ\Ú
+ˆHÂˆÈ	ø )»f!:­ ;%b;*¯{%ä;!':ë.;'m;"©:ém:ém»%í:é«:â¥;!£:é«:¬ :äé:é¬:âéIÂˆˆ;fe{'n;ef:â¥;&ªz®,:éo;ef:à¦:àâ:âéˆ
+	ÛŸKÌÊX
+NÂˆBˆYˆ
+Z[›[™İ
+H[™\Ëœ\Ú
+Z[š›Ú[Š	×‰ÊJNÂˆØ]™J
+NÂˆİ\X[ÙÊ[™\Ë^‹]JNÂˆB‚ˆËÈ;&å:äç;!(;`ç{)à:ì%{"©8 %:âê:éä; à{f.;'¤{&ªp­û'm;fá:êª:äè:ì*{'m; «;&ªH
+:ì,;bàY\˜ŞH:êe:âm;"©;`à;'o;'«; «;&ªJBˆ[˜İ[Ûˆİ\ÚÚXÙJ›Û\Ü[ÛœËÛ”XÚÊHÂˆØ[YK˜ÚÚXÙHHÈ›Û\Ü[ÛœËİ\œÛÜˆÛ”XÚÈNÂˆØ[YK˜ÚÚXÙT™]HØ[YK›[ÙNÂˆØ[YK›[ÙHH	ØÚÚXÙIÎÂˆÛİ[™œÙ[Xİ
+
+NÂˆYˆ
+Ø[YKÊHÜYXÚœÜXZÊ›Û\
+NÂˆBˆ[˜İ[Ûˆ\]PÚÚXÙJ
+HÂˆÛÛœİÈHØ[YK˜ÚÚXÙNÂˆYˆ
+XÊHÈØ[YK›[ÙHHØ[YK˜ÚÚXÙT™]	İÛÜ›	ÎÈ™]\›ÈBˆÛÛœİˆHË›Ü[ÛœË›[™İÂˆYˆ
+\İ™\ÜÙY
+	İ\	ÊH\İ™\ÜÙY
+	ÙİÛ‰ÊJHÂˆË˜İ\œÛÜˆH\İ™\ÜÙY
+	İ\	ÊHÈ
+Ë˜İ\œÛÜˆ
+ÈˆHJH	Hˆˆ
+Ë˜İ\œÛÜˆ
+ÈJH	HÂˆÛİ[™˜›\
+
+NÂˆYˆ
+Ø[YKÊHÜYXÚœÜXZÊ	ØË˜İ\œÛÜˆ
+È_zì¢	ØË›Ü[ÛœÖØË˜İ\œÛÜ—_X
+NÈËÈ;'o{%­;(ï:®,;($z­ï;!,BˆBˆYˆ
+\İ™\ÜÙY
+	ØØ[˜Ù[	ÊJHÂˆÛÛœİØˆHË›Û”XÚÎÈØ[YK˜ÚÚXÙHH[ÈØ[YK›[ÙHHØ[YK˜ÚÚXÙT™]	İÛÜ›	ÎÂˆÜYXÚœİÜ
+
+NÈYˆ
+ØŠHØŠLJNÂˆ™]\›ÂˆBˆYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊJHÂˆÛÛœİØˆHË›Û”XÚËYHË˜İ\œÛÜÂˆØ[YK˜ÚÚXÙHH[ÈØ[YK›[ÙHHØ[YK˜ÚÚXÙT™]	İÛÜ›	ÎÂˆÜYXÚœİÜ
+
+NÈYˆ
+ØŠHØŠY
+NÂˆ™]\›ÂˆBˆBˆ[˜İ[Ûˆ˜]ĞÚÚXÙJ
+HÂˆÛÛœİÈHØ[YK˜ÚÚXÙNÂˆYˆ
+XÊH™]\›ÂˆÛÛœİX^ÈHÈHHÂˆİ™›ÛHœÊMŠNÂˆÛÛœİ›Û\[™\ÈHYX\İ\™UÜ˜\
+Ëœ›Û\X^ÊNÂˆÛÛœİÜH
+Ì
+NÂˆÛÛœİ›ŞHX]›X^
+LŒÌ
+È›Û\[™\È
+ˆ
+
+H
+ÈL
+ÈË›Ü[ÛœË›[™İ
+ˆÜ
+È
+NÂˆÛÛœİHHH›ŞHLÂˆ]›Ş
+L‹KÈH›Ş
+NÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊMŠNÂˆ]HHH
+ÈÌÂˆHH˜]Ô]Y\İ[Û•^
+Ëœ›Û\ÌKX^Ë
+
+JH
+ÈLÂˆ›Üˆ
+]HHÈHË›Ü[ÛœË›[™İÈJÊÊHÂˆ˜]ĞÚÚXÙUÜ˜\Y
+Ë›Ü[ÛœÖÚWKH
+ÈHOOHË˜İ\œÛÜ‹X^ÈHŒ
+ŒŠJNÂˆH
+ÏHÜÂˆBˆB‚ˆËÈLKÖLˆ:ì&;'dp­û&¥;,«H;!(;`ç{'`8à#;(%zâíH;%áºâ¥8à#H;!(;`ç{'m:ço;ac;"©;b®úí!û'm;'¤:ãæ{'/:èg;gf:è):ìí:à¯;"&;'¢:ãá:ègBˆËÈØ[YK˜ÚÚXÙKœ™XXİ[Ûˆ;`ç:­î:éo:âê:âé
+;co;)¤;!(;`ç{,/z¬ï:­k:í¡8 %:í"{eã0­ûc$:ìá:äì{'`;`ç:­î;%á»'c
+K‚ˆ[˜İ[Ûˆİ\™XXİ[ÛÚÚXÙJ›Û\Ü[ÛœËÛ”XÚÊHÂˆİ\ÚÚXÙJ›Û\Ü[ÛœËÛ”XÚÊNÂˆYˆ
+Ø[YK˜ÚÚXÙJHØ[YK˜ÚÚXÙKœ™XXİ[ÛˆHYNÂˆBˆËÈLH;(ï;'n:¬íH:ì&;'dH;!(;`çH8 %;(%zâíH;%áºâ¥»)à;!(:âéˆ:¬è:én:¬$»'a›YÜËœ^Y\•›ÚXÙVÚÙ^W{%ä;( ;'©{ef:¬èˆËÈ;!(;`ç{%ä:å,:ço:âé;'c;eg;)!
+:ì&:å%û& {'múì%{ «:¬ :­î:éä;'a:ì&û%a;) :âé
+{'m:í¡:®,;eg:âéˆ;"©;`­J
+{ef:êmˆËÈ:®,:ìî
+:ì¢
+H:í¡:®,:èg:äe:âéˆ;a©ˆ;-":äìH:â":á¤»'m:éâ:én;'(:ê.
+È:å,:ç.ûejˆ
+İ\ÚÚXÙH;'«; «;&ªJBˆ[˜İ[Ûˆİ\^Y\•›ÚXÙJÙ^K›Û\Ü[ÛœËÜXZÙ\‹™\Y\Ë[ŠHÂˆİ\™XXİ[ÛÚÚXÙJ›Û\Ü[ÛœË
+JHOˆÂˆÛÛœİYH
+HHHÜ[ÛœË›[™İ
+HÈˆNÈËÈ;"©;`­Kû-ê;!£H:®,:ìî:í¡:®,ˆYˆ
+YØ[YK™›YÜËœ^Y\•›ÚXÙJHØ[YK™›YÜËœ^Y\•›ÚXÙHHßNÂˆØ[YK™›YÜËœ^Y\•›ÚXÙVÚÙ^WHHYÂˆØ]™J
+NÂˆİ\X[ÙÊÜ™\Y\ÖÚYWKÜXZÙ\‹[ˆ[
+NÂˆJNÂˆB‚ˆËÈúâê:¬á;($;)á;g£;b®;&):ì¡:è";'m
+;co;)¤;(!;&ªJH8 %
+:æ$:â¥:êe:âm8¥­»g£;b®
+zèg;%í:¬è:â!:éo:åc:éâ:âé:ãe:¬íz¬'ˆ[˜İ[ÛˆÜ[’[
+
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆYˆ
+\[ŠH™]\›Âˆ[‹\ÙY[HYNÈËÈKLLH;'m:ì*{%ä;!';g£;b®:éo;eg:ì¢;'m:ço:ãá;%í:êm	úìá:îfÈ;`m:é«;%­	È;'¤:¬ª{'m; «:ço;)á:âéˆÛÛœİİ\H^›Tİ\
+[ŠNÂˆØ[YKš[HÈİ\]™[ˆK[Îˆ
+[‹œ^›Kš[ÖÜİ\H×JKœÛXÙJ
+HNÂˆØ[YKš[™]HØ[YK›[ÙNÂˆØ[YK›[ÙHH	Ú[	ÎÂˆ™XÛÜ™^›R[
+[‹šYİ\
+NÈËÈ;g£;b®; «;&ªH;f§û"&:éo:âê:¬á:ìá:èg:èg:­î;%ä:®,:ègBˆÛİ[™œÙ[Xİ
+
+NÂˆYˆ
+Ø[YKÈ	‰ˆØ[YKš[š[ÖÌJHÜYXÚœÜXZÊØ[YKš[š[ÖÌJNÂˆBˆ[˜İ[ÛˆY˜[˜ÙR[
+
+HÂˆÛÛœİHØ[YKš[ÂˆYˆ
+Z
+H™]\›ÂˆYˆ
+›]™[š[Ë›[™İ
+HÂˆ›]™[
+ÏHNÂˆÛİ[™˜›\
+
+NÂˆYˆ
+Ø[YKÈ	‰ˆš[ÖÚ›]™[HWJHÜYXÚœÜXZÊš[ÖÚ›]™[HWJNÂˆBˆBˆ[˜İ[ÛˆÛÜÙR[
+
+HÂˆØ[YK›[ÙHHØ[YKš[™]	İÛÜ›	ÎÂˆØ[YKš[H[ÂˆÜYXÚœİÜ
+
+NÂˆÛİ[™œÙ[Xİ
+
+NÂˆBˆ[˜İ[Ûˆ\]R[
+
+HÂˆËÈ:â¥Ù^YİÛˆ;en:äé:çë;%ä;!'Y˜[˜ÙR[:éo;)à{($H;f.;-§
+:ãe:¬íz¬'
+KˆÖºèg:âêúâ¥:âé‚ˆYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊH\İ™\ÜÙY
+	ØØ[˜Ù[	ÊJHÈÛÜÙR[
+
+NÈ™]\›ÈBˆBˆÛÛœİS•ÔÕTÓP‘SHÈÚÙ[œÎˆ	û(%zìí;a¨;`l	Ë›Ø\™ˆ	ú¬£;"ç;c$	Ë\˜\Ù\ˆ	û)à;&¬:¬'	Ë^]ˆ	û-§:­k	ËˆÛÜY\Îˆ	úå¨:ãá:â¥;(l:¬ IË]™\œÎˆ	û,*:âê:è":ì¡	Ëˆ›ÚXÙ\Îˆ	úâé:én:êª{!£:é«	Ë™]˜Z[ˆ	úì&:è`; «;)á	Ë[\Îˆ	úçª;e!	Ëˆ›İ[]Nˆ	úèì:è&È:­${'©IËÚYÛ\ˆ	ûf£;&ä:¬ ;'¡H:¬ê:êªIË˜XÚÜİYÙNˆ	úì,{"©;ac;'m;)à	ËˆØ[ˆ	û(!;fe;'f:ì*IËÚXÚÙÛÜˆ	û'¨:®-:ìízãá	ËÛÙ˜Nˆ	û!£;c#;/e:á"	ÈNÂˆ[˜İ[Ûˆ˜]Ò[
+
+HÂˆ˜]ÕÛÜ›
+
+NÂˆİ™š[İ[HH	Ü™Ø˜JÌŠIÎÂˆİ™š[™Xİ
+Ë
+NÂˆÛÛœİHØ[YKš[ÂˆYˆ
+Z
+H™]\›ÂˆÛÛœİ›ŞÈHX]›Z[ŠÈH
+NÂˆÛÛœİ›ŞHX]œ›İ[™
+ÈÈˆH›ŞÈÈŠNÂˆÛÛœİX^ÈH›ŞÈHÂˆİ™›ÛHœÊMJNÂˆ][™\ÈHÂˆ›Üˆ
+]HHÈH›]™[ÈJÊÊH[™\È
+ÏHYX\İ\™UÜ˜\
+	ÚH
+È_Kˆ	Úš[ÖÚW_XX^ÊH
+ÈÂˆÛÛœİ›ŞHX]œ›İ[™
+
+È[™\È
+ˆ
+
+H
+ÈÌ
+NÂˆÛÛœİ›ŞHHX]œ›İ[™
+ÈˆH›ŞÈŠNÂˆ]›Ş
+›Ş›ŞK›ŞË›Ş
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆİ™š[İ[HH	ÈÙ™™	ÎÂˆİ™›ÛHœÊM‹YJNÂˆİ™š[^
+;g£;b®8 %	ÒS•ÔÕTÓP‘SÚœİ\Hœİ\H
+	Ú›]™[KÉÚš[Ë›[™İJX›Ş
+ÈŒ‹›ŞH
+ÈÌ
+NÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊMJNÂˆ]HH›ŞH
+ÈNÂˆ›Üˆ
+]HHÈH›]™[ÈJÊÊHÂˆHH˜]Ô]Y\İ[Û•^
+	ÚH
+È_Kˆ	Úš[ÖÚW_X›Ş
+ÈŒ‹KX^Ë
+
+JH
+ÈÂˆBˆİ™š[İ[HH	ÈÎ	ÎÂˆİ™›ÛHœÊLŠNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆÛÛœİ[Ü™HH›]™[š[Ë›[™İÈ	Ò:ãe:ìí:®,0­È	Èˆ	ÉÎÂˆİ™š[^
+	Û[Ü™_VÖˆ:âêú®,ÈÈ‹›ŞH
+È›ŞHLŠNÂˆİ^[YÛˆH	ÛY	ÎÂˆB‚ˆËÈ;co;)¤:ë/;,­:­î:é«:®,
+;`à;'o;'!;"©;e!:ço;'m;b®úë.
+È:ço:ìª
+Bˆ[˜İ[Ûˆ˜]Ô^›SØš™XİÊŞŞJHÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİ^ˆH[‹œ^›NÂˆÛÛœİ›ØˆHX]œ›İ[™
+X]œÚ[ŠØ[YK[YHÈŒŠH
+ˆŠNÂˆÛÛœİX™[H
+K^ÛÛ
+HOˆÂˆİ™›ÛHœÊLKYJNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ›[™UÚYHÎÈİœİ›ÚÙTİ[HH	ÈÌ	ÎÂˆİœİ›ÚÙU^
+^
+ÈÈÈ‹HH
+NÂˆİ™š[İ[HHÛÛ	ÈÙ™™‰ÎÂˆİ™š[^
+^
+ÈÈÈ‹HH
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆNÂˆÛÛœİ›ŞH
+KÛÛX\šËX\šĞÛÛ
+HOˆÂˆİ™š[İ[HHÛÛÂˆİ™š[™Xİ
+
+È‹H
+ÈÈHL‹ÈHLŠNÂˆİœİ›ÚÙTİ[HH	ÈÙ™™‰ÎÈİ›[™UÚYHÂˆİœİ›ÚÙT™Xİ
+
+È‹H
+ÈÈHL‹ÈHLŠNÂˆİ™š[İ[HHX\šĞÛÛ	ÈÙ™™‰ÎÂˆİ™›ÛHœÊM‹YJNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[^
+X\šË
+ÈÈÈ‹H
+ÈÈÈˆ
+È
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆNÂˆYˆ
+^‹\HOOH	İ›ÚXÙ\ÉÊH™]\›ÈËÈ:êe;%a:é«:¬ê:êªNˆ:­î:é­:ë/;,­;%á»'c
+:ë.0­Ó”úâ¥;`à;'oû%å;bì;bì:èg
+BˆYˆ
+^‹\HOOH	ØÛÜY\ÉÊHÂˆËÈ:­k;%ëx¤hNˆ:å¨:ãá:â¥:à­;(%zìí; «:ìî
+:ì&;)ç{'m:â¥;(l:¬ JBˆ›Üˆ
+ÛÛœİÈÙˆ[‹˜ÛÜY\ÊHÂˆYˆ
+Ë™Ûİ
+HÛÛ[YNÂˆÛÛœİHX]œ›İ[™
+ËœHŞ
+KHHX]œ›İ[™
+ËœHHŞHHŠNÂˆ›Ş
+H
+È›Ø‹	ÈÌØM™XMIË	ø¥â	Ë	ÈØÙ™N™‰ÊNÂˆX™[
+H
+È›Ø‹	úà­;(l:¬ IË	ÈØÙ™N™‰ÊNÂˆBˆ™]\›ÂˆBˆYˆ
+^‹\HOOH	Û]™\œÉÊHÂˆËÈ:­k;%ëx¤hˆ;,*:âê:è":ì¡ú¬'
+È:ì&;!¨{ej
+È:ìª;b®:éo;gd:ém:â¥; à{'¤ˆ›Üˆ
+ÛÛœİˆÙˆ^‹›]™\œÊHÂˆÛÛœİHX]œ›İ[™
+‹
+ˆÈHŞ
+KHHX]œ›İ[™
+‹H
+ˆÈHŞHHŠNÂˆ›Ş
+K	ÈÍ˜ML˜IË	ø¡¥IË	ÈÙ™™˜L	ÊNÂˆX™[
+K‹›˜[YK	ÈÙ™™˜L	ÊNÂˆBˆÛÛœİš[ˆH^‹œ™]\›š[Âˆ›Ş
+X]œ›İ[™
+š[‹
+ˆÈHŞ
+KX]œ›İ[™
+š[‹H
+ˆÈHŞHHŠK	ÈÌ˜MXLØIË	ø§ì‰Ë	ÈÎL	ÊNÂˆX™[
+X]œ›İ[™
+š[‹
+ˆÈHŞ
+KX]œ›İ[™
+š[‹H
+ˆÈHŞHHŠKš[‹›˜[YK	ÈÎL	ÊNÂˆËÈ:ìª;b®;'!; à{'¤8 %[YQœ˜[Y\úèg;&o;*¯x¡¤»&):én;*¯J;-§;ef:­k:ì*{e©JH;"';ff;'m:ãæBˆÛÛœİ™[H^‹˜™[ÂˆÛÛœİÜ[ˆH™[HH™[ÂˆÛÛœİH™[
+ˆÈ
+È
+
+[‹[YQœ˜[Y\È
+ˆKJH	H
+Ü[ˆ
+ˆÊJNÂˆÛÛœİHX]œ›İ[™
+HŞ
+KHHX]œ›İ[™
+™[H
+ˆÈHŞHHŠNÂˆÛÛœİİ\›ŞH^‹˜›Ş\ÖÜ[‹˜›ŞYNÂˆ›Ş
+K	ÈÎM˜LŒ	Ë	ø¥¨ÉË	ÈÙ™™Œ˜N	ÊNÂˆËÈ:ço:ìª
+8à#8 )“»f.8à#p­úè";'n
+{'`;e#:è";'m;%­:¬ ; à{'¤û`à;'o;'m:à­:èg:¬ :®c;'m:¬%;'a:åc:éã:ìí;'n:âéˆËÈ
+:ê`:é«;!':ãá:â¦:ìí;'m:êm:è";'n;'a:­lû'm;fe{'n;ef:çë:âé:¬ :¬";'m;'(:¬ ;%á»%­;(.;,/z¬è;co;)¤;'f:®-;'©{'m;(ïzâ¥:âé
+K‚ˆÛÛœİ›Ş[VHÈË›Ş[VHH™[NÂˆÛÛœİ™X\ˆHX]›X^
+X]˜XœÊØ[YKœ^Y\‹H›Ş[V
+KX]˜XœÊØ[YKœ^Y\‹HH›Ş[VJJHHÎÂˆYˆ
+™X\ŠHX™[
+K	Øİ\›Ş›X™[p­ÉØİ\›Ş›[™_X	ÈÙ™™Œ˜N	ÊNÂˆ™]\›ÂˆBˆYˆ
+^‹\HOOH	Ü™]˜Z[‰ÊHÂˆËÈ»'©H:­k;%ëx¤hNˆ:ì&:è`; «;)á;!(:ì&ú¬'
+È;c$:ãáz®,:âê:éäˆ›Üˆ
+]HHÈH^‹œİÜË›[™İÈJÊÊHÂˆÛÛœİH^‹œİÜÖÚWNÂˆÛÛœİHX]œ›İ[™
+
+ˆÈHŞ
+KHHX]œ›İ[™
+H
+ˆÈHŞHHŠNÂˆÛÛœİZÙ[ˆH[‹ZÙ[‹š[˜ÛY\ÊJNÂˆ›Ş
+H
+È›Ø‹ZÙ[ˆÈ	ÈÌØLØLØIÈˆ	ÈÍ˜ML˜IËZÙ[ˆÈ	ğ­ÉÈˆ	ø¥©	ËZÙ[ˆÈ	ÈÍ‰Èˆ	ÈÙ™™˜L	ÊNÂˆX™[
+KZÙ[ˆÈ	Ê:îb;!(:ì&
+IÈˆ	úì&:è`; «;)á	ËZÙ[ˆÈ	ÈÎ	Èˆ	ÈÙ™™˜L	ÊNÂˆBˆÛÛœİ™H^‹œ™XY\ÂˆÛÛœİ›HX]œ›İ[™
+™
+ˆÈHŞ
+K›HHX]œ›İ[™
+™H
+ˆÈHŞHHŠNÂˆ›Ş
+››K	ÈÌ˜MM˜IË	ø§ìÉË	ÈØN™‰ÊNÂˆX™[
+››K;c$:ãáz®,	Ü[‹™™YKÌØ	ÈØN™‰ÊNÂˆ™]\›ÂˆBˆYˆ
+^‹\HOOH	Û[\ÉÊHÂˆËÈ»'©H:­k;%ëx¤hˆ:çª;e!ú¬'
+;($:äìH; à{`ç;dg;"ç
+Bˆ›Üˆ
+]HHÈH^‹›[\Ë›[™İÈJÊÊHÂˆÛÛœİH^‹›[\ÖÚWNÂˆÛÛœİHX]œ›İ[™
+
+ˆÈHŞ
+KHHX]œ›İ[™
+H
+ˆÈHŞHHŠNÂˆÛÛœİÛˆH[‹›]ÚWNÂˆ›Ş
+H
+È
+ÛˆÈˆ›ØŠKÛˆÈ	ÈÎM˜LŒ	Èˆ	ÈÌ˜L˜L˜IËÛˆÈ	ø¦ 	Èˆ	ø§)‰ËÛˆÈ	ÈÙ™™Œ˜N	Èˆ	ÈÍMM‰ÊNÂˆX™[
+KÛˆÈ	û/';)ä	Èˆ	úçª;e!	ËÛˆÈ	ÈÙ™™Œ˜N	Èˆ	ÈÎIÊNÂˆBˆ™]\›ÂˆBˆYˆ
+^‹\HOOH	İ\ÉÊHÂˆËÈû'©H{.-Nˆ;(':ìí;*¯{)à{'©H
+È;,a;`ç{ejˆ›Üˆ
+]HHÈH^‹››İ\Ë›[™İÈJÊÊHÂˆÛÛœİˆH^‹››İ\ÖÚWNÂˆÛÛœİHX]œ›İ[™
+‹
+ˆÈHŞ
+KHHX]œ›İ[™
+‹H
+ˆÈHŞHHŠNÂˆÛÛœİ\İYH[‹˜\İYÚWNÂˆÛÛœİ™\ÛÛ™YH[‹œ™\ÛÛ™Yš[˜ÛY\ÊJNÂˆÛÛœİÛÛH\İYÈ	ÈÎL˜L˜IÈˆ™\ÛÛ™YÈ	ÈÌØLØLØIÈˆ	ÈÍ˜MXL˜IÎÂˆÛÛœİX\šÈH\İYÈ	ÈIÈˆ™\ÛÛ™YÈ	ğ­ÉÈˆ	ø§#‰ÎÂˆ›Ş
+H
+È
+™\ÛÛ™YÈˆ›ØŠKÛÛX\šË\İYÈ	ÈÙ™˜ŒL	Èˆ	ÈÙ™™M˜L	ÊNÂˆX™[
+K\İYÈ	Öû!£zìíIÈˆ‹›X™[\İYÈ	ÈÙ™MÌ	Èˆ	ÈÙ™™M˜L	ÊNÂˆBˆÛÛœİˆH^‹œİX›Z]›ŞÂˆ›Ş
+X]œ›İ[™
+‹
+ˆÈHŞ
+KX]œ›İ[™
+‹H
+ˆÈHŞHHŠK	ÈÌ˜MM˜IË	ø¥¯	Ë	ÈØN™‰ÊNÂˆX™[
+X]œ›İ[™
+‹
+ˆÈHŞ
+KX]œ›İ[™
+‹H
+ˆÈHŞHHŠK	Ø‹›˜[Y_H	Ü[‹˜ÛÜœ™XİKÌ˜	ÈØN™‰ÊNÂˆ™]\›ÂˆBˆYˆ
+^‹\HOOH	ØÛÛ\\™IÊHÂˆËÈû'©H».-Nˆ; «;)áû'©H
+;&ä:ìî:ã ;(l
+Bˆ›Üˆ
+]HHÈH^‹œİÜË›[™İÈJÊÊHÂˆÛÛœİH^‹œİÜÖÚWNÂˆÛÛœİHX]œ›İ[™
+
+ˆÈHŞ
+KHHX]œ›İ[™
+H
+ˆÈHŞHHŠNÂˆÛÛœİÛÛ™YH[‹œÛÛ™YÚWNÂˆ›Ş
+H
+È
+ÛÛ™YÈˆ›ØŠKÛÛ™YÈ	ÈÌØLØLØIÈˆ	ÈÍ˜ML˜IËÛÛ™YÈ	ø§$ÉÈˆ	ø¥©‰ËÛÛ™YÈ	ÈÎL	Èˆ	ÈÙ™™˜L	ÊNÂˆX™[
+KÛÛ™YÈ	úã ;(l;&a:èã	Èˆ	û «;)á	ËÛÛ™YÈ	ÈÎL	Èˆ	ÈÙ™™˜L	ÊNÂˆBˆ™]\›ÂˆBˆYˆ
+^‹\HOOH	Øœ›ØYØ\İ	ÊHÂˆËÈû'©Hû.-Nˆ:âê:éäº¬'
+;(%{(%zë.0­û-§;,¦
+H
+È;!¨{-§:è":ì¡ˆÛÛœİHH^‹\›Z[˜[KˆH^‹\›Z[˜[‹ˆH^‹›]™\ÂˆÛÛœİ[ˆHX]œ›İ[™
+K
+ˆÈHŞ
+K^HHX]œ›İ[™
+KH
+ˆÈHŞHHŠNÂˆ›Ş
+[‹^K[‹œİYÙHˆÈ	ÈÌØLØLØIÈˆ	ÈÌ˜MM˜IË[‹œİYÙHˆÈ	ø§$ÉÈˆ	ø¤h	Ë[‹œİYÙHˆÈ	ÈÎL	Èˆ	ÈØN™‰ÊNÂˆX™[
+[‹^KK›˜[YK[‹œİYÙHˆÈ	ÈÎL	Èˆ	ÈØN™‰ÊNÂˆÛÛœİ›ˆHX]œ›İ[™
+‹
+ˆÈHŞ
+KHHX]œ›İ[™
+‹H
+ˆÈHŞHHŠNÂˆ›Ş
+›‹K[‹œİYÙHˆHÈ	ÈÌØLØLØIÈˆ	ÈÌ˜MM˜IË[‹œİYÙHˆHÈ	ø§$ÉÈˆ	ø¤hIË[‹œİYÙHˆHÈ	ÈÎL	Èˆ	ÈØN™‰ÊNÂˆX™[
+›‹K‹›˜[YK[‹œİYÙHˆHÈ	ÈÎL	Èˆ	ÈØN™‰ÊNÂˆÛÛœİ›ˆHX]œ›İ[™
+‹
+ˆÈHŞ
+KHHX]œ›İ[™
+‹H
+ˆÈHŞHHŠNÂˆ›Ş
+›‹H
+È›Ø‹[‹œİYÙHHˆÈ	ÈÎM˜LŒ	Èˆ	ÈÌØLØLØIË	ø¡¥IË[‹œİYÙHHˆÈ	ÈÙ™™	Èˆ	ÈÍÍÍÉÊNÂˆX™[
+›‹K‹›˜[YK[‹œİYÙHHˆÈ	ÈÙ™™	Èˆ	ÈÎ	ÊNÂˆ™]\›ÂˆBˆYˆ
+^‹\HOOH	Ü›İ[]IÊHÂˆËÈ;'©H:­k;%ëx¤hˆ:èì:è&È:âê:éäú¬'
+È;em;)à:âê:éä
+È;,/z¬è; à{'¤ˆ›Üˆ
+ÛÛœİˆÙˆ^‹œ›İ[]\ÊHÂˆÛÛœİHX]œ›İ[™
+‹
+ˆÈHŞ
+KHHX]œ›İ[™
+‹H
+ˆÈHŞHHŠNÂˆ›Ş
+H
+È›Ø‹	ÈÎL˜M˜IË	ø¥ã‰Ë	ÈÙ™˜ŒM‰ÊNÂˆX™[
+K‹›˜[YK	ÈÙ™˜ŒM‰ÊNÂˆBˆÛÛœİHH^‹[œİXÂˆ›Ş
+X]œ›İ[™
+K
+ˆÈHŞ
+KX]œ›İ[™
+KH
+ˆÈHŞHHŠK	ÈÌ˜MM˜IË	ø¦å	Ë	ÈØN™‰ÊNÂˆX™[
+X]œ›İ[™
+K
+ˆÈHŞ
+KX]œ›İ[™
+KH
+ˆÈHŞHHŠKK›˜[YK	ÈØN™‰ÊNÂˆÛÛœİÈH^‹˜Ú\İÂˆ›Ş
+X]œ›İ[™
+Ë
+ˆÈHŞ
+KX]œ›İ[™
+ËH
+ˆÈHŞHHŠK[‹™ÛİÙ^HÈ	ÈÌØLØLØIÈˆ	ÈÍ˜ML˜IËˆ[‹™ÛİÙ^HÈ	ğ­ÉÈˆ	ü'å$IË[‹™ÛİÙ^HÈ	ÈÍ‰Èˆ	ÈÙ™™	ÊNÂˆX™[
+X]œ›İ[™
+Ë
+ˆÈHŞ
+KX]œ›İ[™
+ËH
+ˆÈHŞHHŠK[‹™ÛİÙ^HÈ	Ê:îb; à{'¤
+IÈˆË›˜[YKˆ[‹™ÛİÙ^HÈ	ÈÎ	Èˆ	ÈÙ™™	ÊNÂˆ™]\›ÂˆBˆYˆ
+^‹\HOOH	ÜÚYÛ\	ÊHÂˆËÈ;'©H:­k;%ëx¤hNˆ:¬":é¯:®.;dg;)à;c$
+È:ìî;'n;fe{'n;ejˆÛÛœİˆH^‹™›ÜšÎÂˆ›Ş
+X]œ›İ[™
+‹
+ˆÈHŞ
+KX]œ›İ[™
+‹H
+ˆÈHŞHHŠK[‹œ\ÜÙYÈ	ÈÌØLØLØIÈˆ	ÈÍ˜MXL˜IËˆ[‹œ\ÜÙYÈ	ø§$ÉÈˆ	ø¤`‰Ë[‹œ\ÜÙYÈ	ÈÎL	Èˆ	ÈÙ™™M˜L	ÊNÂˆX™[
+X]œ›İ[™
+‹
+ˆÈHŞ
+KX]œ›İ[™
+‹H
+ˆÈHŞHHŠK‹›˜[YK[‹œ\ÜÙYÈ	ÈÎL	Èˆ	ÈÙ™™M˜L	ÊNÂˆÛÛœİXÈH^‹šYÚ\İÂˆ›Ş
+X]œ›İ[™
+XË
+ˆÈHŞ
+KX]œ›İ[™
+XËH
+ˆÈHŞHHŠK[‹œ\ÜÙYÈ	ÈÍ˜ML˜IÈˆ	ÈÌØLØLØIËˆ[‹œ\ÜÙYÈ	ü'å$IÈˆ	ü'å$‰Ë[‹œ\ÜÙYÈ	ÈÙ™™	Èˆ	ÈÎ	ÊNÂˆX™[
+X]œ›İ[™
+XË
+ˆÈHŞ
+KX]œ›İ[™
+XËH
+ˆÈHŞHHŠKXË›˜[YK[‹œ\ÜÙYÈ	ÈÙ™™	Èˆ	ÈÎ	ÊNÂˆ™]\›ÂˆBˆYˆ
+^‹\HOOH	Ø˜XÚÜİYÙIÊHÂˆËÈ;'©H:­k;%ëx¤hˆ:éâ;"©;a,;`©
+;ej;(%JH
+Èºâê:¬á;'n;)§H;,/z­k
+È;%b;*¯H:ë.ˆÛÛœİZÈH^‹›X\İ\šÙ^NÂˆ›Ş
+X]œ›İ[™
+ZË
+ˆÈHŞ
+KX]œ›İ[™
+ZËH
+ˆÈHŞHHŠH
+È›Ø‹[‹˜\\ÙYÈ	ÈÌØLØLØIÈˆ	ÈÎM˜LŒ	Ëˆ	ü'å$IË[‹˜\\ÙYÈ	ÈÎ	Èˆ	ÈÙ™™	ÊNÂˆX™[
+X]œ›İ[™
+ZË
+ˆÈHŞ
+KX]œ›İ[™
+ZËH
+ˆÈHŞHHŠKZË›˜[YK[‹˜\\ÙYÈ	ÈÎ	Èˆ	ÈÙ™™	ÊNÂˆÛÛœİ]H^‹˜]]\›NÂˆ›Ş
+X]œ›İ[™
+]
+ˆÈHŞ
+KX]œ›İ[™
+]H
+ˆÈHŞHHŠK	ÈÌ˜MM˜IË	ø¤hIË	ÈØN™‰ÊNÂˆX™[
+X]œ›İ[™
+]
+ˆÈHŞ
+KX]œ›İ[™
+]H
+ˆÈHŞHHŠK]›˜[YK	ÈØN™‰ÊNÂˆÛÛœİÛÒÙ^\ÈHØ[YK™›YÜËœÍÙ^TÙXÜ™]	‰ˆØ[YK™›YÜËœÍÙ^RYÂˆÛÛœİˆH^‹™ÛÜÂˆ›Ş
+X]œ›İ[™
+‹
+ˆÈHŞ
+KX]œ›İ[™
+‹H
+ˆÈHŞHHŠKÛÒÙ^\ÈÈ	ÈÌ˜MXLØIÈˆ	ÈÌØLØLØIËˆÛÒÙ^\ÈÈ	ü'æª‰Èˆ	ü'å$‰ËÛÒÙ^\ÈÈ	ÈÎL	Èˆ	ÈÎIÊNÂˆX™[
+X]œ›İ[™
+‹
+ˆÈHŞ
+KX]œ›İ[™
+‹H
+ˆÈHŞHHŠK‹›˜[YKÛÒÙ^\ÈÈ	ÈÎL	Èˆ	ÈÎIÊNÂˆ™]\›ÂˆBˆYˆ
+^‹\HOOH	ØØ[	ÊHÂˆËÈ{'©H:­k;%ëx¤hˆ;&®:é«:â¥;(!;fe
+:¬¯z¬è;f§û"&;%ä:å,:ço; â{'m:ì%:à$:âé
+BˆÛÛœİH^‹œÛ™NÂˆÛÛœİˆH[‹Ø\›Ûİ[Âˆ›Ş
+X]œ›İ[™
+
+ˆÈHŞ
+KX]œ›İ[™
+H
+ˆÈHŞHHŠH
+È›Ø‹ˆHÈÈ	ÈÍ˜ML˜IÈˆ	ÈÎL˜L˜IËˆ	ø¦#‰ËˆHÈÈ	ÈÙ™™	Èˆ	ÈÙ™˜ŒL	ÊNÂˆX™[
+X]œ›İ[™
+
+ˆÈHŞ
+KX]œ›İ[™
+H
+ˆÈHŞHHŠK	Ü›˜[Y_H
+	ÓX]›Z[Š‹Ê_KÌÊXˆˆHÈÈ	ÈÙ™™	Èˆ	ÈÙ™˜ŒL	ÊNÂˆ™]\›ÂˆBˆYˆ
+^‹\HOOH	ØÚXÚÙÛÜ‰ÊHÂˆËÈ{'©H:­k;%ëx¤hNˆ:èê:ëî:¬ :éä:é«:â¥;'¨:®-:ë.ˆÛÛœİˆH^‹™ÛÜÂˆ›Ş
+X]œ›İ[™
+‹
+ˆÈHŞ
+KX]œ›İ[™
+‹H
+ˆÈHŞHHŠK[‹›Ü[™YÈ	ÈÌ˜MXLØIÈˆ	ÈÍ˜L˜L˜IËˆ[‹›Ü[™YÈ	ü'æª‰Èˆ	ü'å$‰Ë[‹›Ü[™YÈ	ÈÎL	Èˆ	ÈÙ™˜ŒL	ÊNÂˆX™[
+X]œ›İ[™
+‹
+ˆÈHŞ
+KX]œ›İ[™
+‹H
+ˆÈHŞHHŠK‹›˜[YK[‹›Ü[™YÈ	ÈÎL	Èˆ	ÈÙ™˜ŒL	ÊNÂˆ™]\›ÂˆBˆYˆ
+^‹\HOOH	ÜÛÙ˜IÊHÂˆËÈ{'©H:­k;%ëx¤hˆ;cë:­ï;eg;!£;c#
+;%b{'/:êm:å,:ç.ûeg; â{'/:èg:ì%:à$:âé
+BˆÛÛœİÙˆH^‹œÛÙ˜NÂˆ›Ş
+X]œ›İ[™
+Ù‹
+ˆÈHŞ
+KX]œ›İ[™
+Ù‹H
+ˆÈHŞHHŠK[‹œÚ][™ÈÈ	ÈØÎMØIÈˆ	ÈÍ˜ML˜IËˆ	ø¥ãIË[‹œÚ][™ÈÈ	ÈÙ™™M˜ÎIÈˆ	ÈÙ™™˜L	ÊNÂˆX™[
+X]œ›İ[™
+Ù‹
+ˆÈHŞ
+KX]œ›İ[™
+Ù‹H
+ˆÈHŞHHŠKÙ‹›˜[YK[‹œÚ][™ÈÈ	ÈÙ™™M˜ÎIÈˆ	ÈÙ™™˜L	ÊNÂˆ™]\›ÂˆBˆ›Üˆ
+ÛÛœİÙˆ^‹\›Z[˜[ÊHÂˆÛÛœİHX]œ›İ[™
+
+ˆÈHŞ
+KHHX]œ›İ[™
+H
+ˆÈHŞHHŠNÂˆÛÛœİÚ]™[ˆH[‹™Ú]™[‹š[˜ÛY\Êœ™\]Z\™JH
+œÚ\™H	‰ˆ[‹˜›Ø\™˜XÙJNÂˆ˜]Ó[ÛŠİ[YKH
+È›Ø‹ĞĞSJNÂˆX™[
+K›˜[YH
+È
+Ú]™[ˆÈ	È8§$ÉÈˆ	ÉÊKÚ]™[ˆÈ	ÈÎL	Èˆ	ÈÙ™™‰ÊNÂˆBˆÛÛœİ\ˆH^‹™\˜\Ù\‹^H^‹™^]ÎÂˆ›Ş
+X]œ›İ[™
+\‹
+ˆÈHŞ
+KX]œ›İ[™
+\‹H
+ˆÈHŞHHŠK	ÈÌ˜MM˜IË	ø£*ÉË	ÈØN™‰ÊNÂˆX™[
+X]œ›İ[™
+\‹
+ˆÈHŞ
+KX]œ›İ[™
+\‹H
+ˆÈHŞHHŠK	û)à;&¬:¬'	Ë	ÈØN™‰ÊNÂˆ›Ş
+X]œ›İ[™
+^š\
+ˆÈHŞ
+KX]œ›İ[™
+^š\H
+ˆÈHŞHHŠK	ÈÎM˜LŒ	Ë	ø¦!IË	ÈÙ™™	ÊNÂˆX™[
+X]œ›İ[™
+^š\
+ˆÈHŞ
+KX]œ›İ[™
+^š\H
+ˆÈHŞHHŠK	Õ’T;-§:­k	Ë	ÈÙ™™	ÊNÂˆ›Ş
+X]œ›İ[™
+^››Ü›X[
+ˆÈHŞ
+KX]œ›İ[™
+^››Ü›X[H
+ˆÈHŞHHŠK	ÈÌ˜MXLØIË	ø¡ªIË	ÈÎL	ÊNÂˆX™[
+X]œ›İ[™
+^››Ü›X[
+ˆÈHŞ
+KX]œ›İ[™
+^››Ü›X[H
+ˆÈHŞHHŠK	û'o:ì&;-§:­k	Ë	ÈÎL	ÊNÂˆBˆ[˜İ[Ûˆ˜]Ò[›ÓX“Øš™XİÊŞŞJHÂˆYˆ
+Ø[YK›X\OOH	Ú[›ÛX‰ÊH™]\›ÂˆÛÛœİ›ÜÈHPTÔ“ÔËš[›ÛXˆ×NÂˆÛÛœİ›ØˆHØ[YKœ™YXÙQÈˆX]œ›İ[™
+X]œÚ[ŠØ[YK[YHÈN
+H
+ˆŠNÂˆÛÛœİ˜]ÓX™[H
+K^ÛÛ
+HOˆÂˆYˆ
+]^
+H™]\›Âˆİ™›ÛHœÊLYJNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ›[™UÚYHÎÈİœİ›ÚÙTİ[HH	ÈÌ	ÎÂˆİœİ›ÚÙU^
+^
+ÈÈÈ‹HHJNÂˆİ™š[İ[HHÛÛ	ÈÙ™™‰ÎÂˆİ™š[^
+^
+ÈÈÈ‹HHJNÂˆİ^[YÛˆH	ÛY	ÎÂˆNÂˆ›Üˆ
+ÛÛœİ›ÜÙˆ›ÜÊHÂˆÛÛœİHX]œ›İ[™
+›Ü
+ˆÈHŞ
+NÂˆÛÛœİHHX]œ›İ[™
+›ÜH
+ˆÈHŞHH
+NÂˆÛÛœİÛ™HH›Ü™›YÈ	‰ˆØ[YK™›YÜÖÜ›Ü™›Y×NÂˆÛÛœİÛÛHÛ™HÈ	ÈÍXMŒMÎ	Èˆ
+›Ü˜ÛYHÈ	ÈÙŒÎL	Èˆ	ÈÎ™Ù™‰ÊNÂˆÛÛœİ\Ğİ\œ™[ÛYHH›Ü˜ÛYH	‰ˆYÛ™H	‰ˆYØ[YK™›YÜËš[›ÑÛÜ“Ü[‚ˆ	‰ˆ
+
+›Ü™›YÈOOH	Ú[›ĞÛYLIÈ	‰ˆYØ[YK™›YÜËš[›ĞÛYLJBˆ
+›Ü™›YÈOOH	Ú[›ĞÛYL‰È	‰ˆØ[YK™›YÜËš[›ĞÛYLH	‰ˆYØ[YK™›YÜËš[›ĞÛYLŠBˆ
+›Ü™›YÈOOH	Ú[›ĞÛYLÉÈ	‰ˆØ[YK™›YÜËš[›ĞÛYLH	‰ˆØ[YK™›YÜËš[›ĞÛYLˆ	‰ˆYØ[YK™›YÜËš[›ĞÛYLÊJNÂˆYˆ
+›ÜšÚ[™OOH	Ù^]	ÊHÂˆÛÛœİÜ[ˆHHYØ[YK™›YÜËš[›ÑÛÜ“Ü[Âˆİ™š[İ[HHÜ[ˆÈ	ÈÌŒLØLÌ	Èˆ	ÈÌ˜LŒÍ‰ÎÂˆİ™š[™Xİ
+
+ÈH
+È‹ÈHM‹ÈHŠNÂˆİœİ›ÚÙTİ[HHÜ[ˆÈ	ÈÎL	Èˆ	ÈÙŒMXIÎÂˆİ›[™UÚYHÂˆİœİ›ÚÙT™Xİ
+
+ÈH
+È‹ÈHM‹ÈHŠNÂˆİ™š[İ[HHÜ[ˆÈ	ÈØ™Y	Èˆ	ÈÙŒÎL	ÎÂˆİ™›ÛHœÊNYJNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[^
+Ü[ˆÈ	ø¡©IÈˆ	ø¥¨ÉË
+ÈÈÈ‹H
+ÈÈÈˆ
+ÈJNÂˆİ^[YÛˆH	ÛY	ÎÂˆ˜]ÓX™[
+KÜ[ˆÈ	û%í:é¬;-§:­k	Èˆ;'¨:®-;-§:­k	Ú[›ĞÛYPÛİ[
+Ø[YK™›YÜÊ_KÌØÜ[ˆÈ	ÈÎL	Èˆ	ÈÙ™™	ÊNÂˆÛÛ[YNÂˆBˆYˆ
+\Ğİ\œ™[ÛYJHÂˆİœØ]™J
+NÂˆİ™ÛØ˜[[HHŒÌˆ
+È
+Ø[YKœ™YXÙQÈˆX]˜XœÊX]œÚ[ŠØ[YK[YHÈL
+JH
+ˆŒŒŠNÂˆİ™š[İ[HH	ÈÙ™™	ÎÂˆİ˜™YÚ[”]
+
+NÂˆİ™[\ÙJ
+ÈÈÈ‹H
+ÈÈÈˆ
+È‹ŒËMX]”H
+ˆŠNÂˆİ™š[
+
+NÂˆİœ™\İÜ™J
+NÂˆBˆİ™š[İ[HHÛ™HÈ	ÈÌÌLÍIÈˆ	ÈÌY	ÎÂˆİ™š[™Xİ
+
+ÈËH
+ÈL
+È›Ø‹ÈHMÈHM
+NÂˆİœİ›ÚÙTİ[HH\Ğİ\œ™[ÛYHÈ	ÈÙ™™ŒXM‰ÈˆÛÛÂˆİ›[™UÚYH\Ğİ\œ™[ÛYHÈÈˆÂˆİœİ›ÚÙT™Xİ
+
+ÈËH
+ÈL
+È›Ø‹ÈHMÈHM
+NÂˆİ™š[İ[HHÛÛÂˆİ™›ÛHœÊM‹YJNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆÛÛœİX\šÈH›ÜšÚ[™OOH	İX›]	ÈÈ	ø¥©	Èˆ›ÜšÚ[™OOH	Û[Ûš]Ü‰ÈÈ	ø¥¨ÉÈˆ›ÜšÚ[™OOH	ÛY[[ÉÈÈ	ø .ÉÈˆ›ÜšÚ[™OOH	Ø›Ø\™	ÈÈ	ø¢ëÉÈˆ›ÜšÚ[™OOH	ÛØÚÙ\‰ÈÈ	ø¥©IÈˆ	ğ­ÉÎÂˆİ™š[^
+Û™HÈ	ø§$ÉÈˆX\šË
+ÈÈÈ‹H
+ÈÈÈˆ
+È
+È›ØŠNÂˆİ^[YÛˆH	ÛY	ÎÂˆÛÛœİX™[^HÛ™HÈ	ûfe{'n:ä*	Èˆ
+›Ü˜ÛYHÈ:âê;!'ˆ	Ü›Ü›X™[Xˆ›Ü›X™[
+NÂˆ˜]ÓX™[
+H
+È›Ø‹X™[^\Ğİ\œ™[ÛYHÈ	ÈÙ™™ŒXM‰ÈˆÛÛ
+NÂˆBˆB‚ˆ[˜İ[Ûˆ›ÛÙİYUš\ÚX›SX\šÜÊ
+HÂˆÛÛœİ›ÜÈHPTÔ“ÔÖÙØ[YK›X\H×NÂˆ™]\›ˆ›ÜË™š[\Š
+›Ü
+HOˆ›Ü™›YÈ›ÜšÚ[™OOH	İ˜XÙIÈ›ÜšÚ[™OOH	ØÛX\š[™ÉÊBˆ›X\
+
+›Ü
+HOˆ
+ÈX\ˆØ[YK›X\ˆ›ÜNˆ›ÜKX™[ˆ›Ü›X™[	ÉËÛ™NˆHJ›Ü™›YÈ	‰ˆØ[YK™›YÜÖÜ›Ü™›Y×JHJJNÂˆBˆ[˜İ[Ûˆ˜]Ñ›Ü™\İ›ÛÙİYSØš™XİÊŞŞJHÂˆYˆ
+VÉÙ›Ü™\İ	Ë	Ù›Ü™\İY\	×Kš[˜ÛY\ÊØ[YK›X\
+HØ[YK™›YÜË™Y™X]Y˜™ZÚŞY[Û[ÛŠH™]\›ÂˆÛÛœİ›ÜÈH
+PTÔ“ÔÖÙØ[YK›X\H×JK™š[\Š
+›Ü
+HOˆ›ÜšÚ[™OOH	İ˜XÙIÈ›ÜšÚ[™OOH	ØÛX\š[™ÉÈ›Ü™›YÊNÂˆËÈ;",ˆ;ge;( {'`;%b:à­;&ªH;(%{( H;dg;"ç{%ä:¬ :®gz¬£;'(;)à;eg:âéˆ:¬ï;eg;c¡;"©úí ;'(:¬$;'a;)!;%ëˆËÈ;( ;(!:è)H:®,:®,;%ä;!':ì¡:ì¡{'¡;'a;)!;'m:¬è;co;)¤:ì*H;'m;c¦{b®;,¦:çï:ìí;'m;)à;%bº¬£;eg:âé‚ˆÛÛœİ›ØˆHÂˆ›Üˆ
+ÛÛœİ›ÜÙˆ›ÜÊHÂˆÛÛœİÛ™HH›Ü™›YÈ	‰ˆØ[YK™›YÜÖÜ›Ü™›Y×NÂˆÛÛœİHX]œ›İ[™
+›Ü
+ˆÈHŞ
+NÂˆÛÛœİHHX]œ›İ[™
+›ÜH
+ˆÈHŞHH
+NÂˆÛÛœİXİ]™HHYÛ™NÂˆYˆ
+Xİ]™JHÂˆİœØ]™J
+NÂˆİ™ÛØ˜[[HHØ[YKœ™YXÙQÈŒMˆˆŒŒÂˆİ™š[İ[HH	ÈÙ™™	ÎÂˆİ˜™YÚ[”]
+
+NÂˆİ™[\ÙJ
+ÈÈÈ‹H
+ÈÈÈˆ
+ÈKLX]”H
+ˆŠNÂˆİ™š[
+
+NÂˆİœ™\İÜ™J
+NÂˆBˆİ™š[İ[HHÛ™HÈ	ÈÍ˜ÌMN	Èˆ	ÈÙ™™	ÎÂˆİ™›ÛHœÊŒYJNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİœİ›ÚÙTİ[HH	ÈÌ	ÎÂˆİ›[™UÚYHÎÂˆİœİ›ÚÙU^
+Û™HÈ	ø§$ÉÈˆ	ø£ IË
+ÈÈÈ‹H
+ÈÈÈˆ
+ÈL
+È›ØŠNÂˆİ™š[^
+Û™HÈ	ø§$ÉÈˆ	ø£ IË
+ÈÈÈ‹H
+ÈÈÈˆ
+ÈL
+È›ØŠNÂˆİ™›ÛHœÊLYJNÂˆÛÛœİX™[^HÛ™HÈ	ûfe{'n;eg;ge;( IÈˆ›Ü›X™[Âˆİœİ›ÚÙU^
+X™[^
+ÈÈÈ‹HHH
+È›ØŠNÂˆİ™š[İ[HHXİ]™HÈ	ÈÙ™™ŒXM‰Èˆ	ÈÎNÎ	ÎÂˆİ™š[^
+X™[^
+ÈÈÈ‹HHH
+È›ØŠNÂˆİ^[YÛˆH	ÛY	ÎÂˆBˆB‚ˆ[˜İ[Ûˆ˜]Ôİ[Ù\œÊŞŞJHÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆËÈ˜XÙ\È;&n;co;)¤0­úí¢;&a;(![ˆ;%ä;!':ãá;e!:è";'¡;'m;(ï{)à;%bº¬£:ì*{%­ˆYˆ
+\[ˆP\œ˜^Kš\Ğ\œ˜^J[‹œİ[Ù\œÊH[‹œİ[Ù\œË›[™İOOH
+H™]\›Âˆ›Üˆ
+ÛÛœİÈÙˆ[‹œİ[Ù\œÊHÂˆÛÛœİ›ØˆHX]œ›İ[™
+X]œÚ[ŠØ[YK[YHÈL
+H
+ˆŠNÂˆ˜]ÔÜš]JİÕSÑT—ÔÔ’UKX]œ›İ[™
+ËœHŞ
+KX]œ›İ[™
+ËœHHŞHHˆ
+È›ØŠKĞĞSJNÂˆBˆBˆËÈ»'©H;eâ:î#8 %;)${%f{'f:¬l:ã ;eg;( ;&®
+:®,;&®:®,HÈH;`m:é«;%­;eg:­k;%ëH;"&
+Bˆ[˜İ[Ûˆ˜]Õ[ØØ[JŞŞJHÂˆÛÛœİŞHX]œ›İ[™
+M
+ˆÈHŞ
+H
+ÈÈÈÂˆÛÛœİŞHHX]œ›İ[™
+H
+ˆÈHŞJH
+ÈÈÈÂˆÛÛœİ[HÈHÌÛX\Ûİ[
+
+NÂˆÛÛœİ[™ÈH
+Ø[YKœ™YXÙQÈˆJH
+ˆ[
+ˆŒMÈËÈ:®,;&®:®,;%ä:îa:è`;em;( ;&®:ã :¬ :®,;&­:âéˆËÈ:®,:äiBˆİ™š[İ[HH	ÈÍXMLØIÎÂˆİ™š[™Xİ
+ŞHËŞHH‹ŠNÂˆİ™š[İ[HH	ÈÌØL™Œ	ÎÂˆİ™š[™Xİ
+ŞHL‹ŞH
+ÈŒ‹JNÂˆËÈ;( ;&®:ã 
+:®,;&­:éâzã 
+BˆÛÛœİ\›SHÂˆÛÛœİHX]˜ÛÜÊ[™ÊH
+ˆ\›SHHX]œÚ[Š[™ÊH
+ˆ\›SÂˆİœİ›ÚÙTİ[HH	ÈØÎLIÎÂˆİ›[™UÚYHÎÂˆİ˜™YÚ[”]
+
+NÂˆİ›[İ™UÊŞHŞHHˆHJNÂˆİ›[™UÊŞ
+ÈŞHHˆ
+ÈJNÂˆİœİ›ÚÙJ
+NÂˆËÈ;(${"ç:äd:¬'
+;eg;*¯zéã;'¥:ç*JBˆÛÛœİ˜]Ô[ˆH
+KØY
+HOˆÂˆİœİ›ÚÙTİ[HH	ÈØNŒØIÎÈİ›[™UÚYHNÂˆİ˜™YÚ[”]
+
+NÈİ›[İ™UÊJNÈİ›[™UÊH
+È
+NÈİœİ›ÚÙJ
+NÂˆİ™š[İ[HH	ÈØNMŒ™‰ÎÂˆİ™š[™Xİ
+HËH
+ÈMÊNÂˆYˆ
+ØY
+HÈİ™š[İ[HH	ÈÙIÎÈİ™š[™Xİ
+HKH
+È‹LŠNÈBˆNÂˆ˜]Ô[ŠŞHŞHHˆHK[ˆ
+NÈËÈ:ë-:¬l;&­
+:à­:è):¬!
+H;*¯{%ä;)äˆ˜]Ô[ŠŞ
+ÈŞHHˆ
+ÈK˜[ÙJNÂˆËÈ:ço:ìªˆİ™›ÛHœÊLYJNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[İ[HH[ˆÈ	ÈÙ™™	Èˆ	ÈÎL	ÎÂˆİœİ›ÚÙTİ[HH	ÈÌ	ÎÈİ›[™UÚYHÎÂˆÛÛœİH[ˆÈ:®,;&®:®,	İ[KÌØˆ	û"&;câHIÎÂˆİœİ›ÚÙU^
+ŞŞHHŒŠNÂˆİ™š[^
+ŞŞHHŒŠNÂˆİ^[YÛˆH	ÛY	ÎÂˆBˆËÈ»'©H:­k;%ëx¤hˆ8 %;%­:äh
+:®¯;)á:¬l:é«
+Kˆ;e#:è";'m;%­;&`;/';)á:çª;e!;(ï:ìà:éã:ì'zâéˆ™YXÙQ:êm:­è;'o:å)‚ˆ[˜İ[Ûˆ˜]Ñ\šÛ™\ÜÊŞŞJHÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆYˆ
+[‹›]Ûİ[HÊH™]\›ÈËÈ:âé;/';)à:êm;&a;(!;g¢:ì'zâéˆYˆ
+Ø[YKœ™YXÙQ
+HÂˆËÈ:­$z¬ï:ëï;!,H:ì,:è)ˆ:ì*{ «;f%H:ã ;"è:­è;'o;eg;&!{'`:å)ˆİ™š[İ[HH	Ü™Ø˜JMJIÎÂˆİ™š[™Xİ
+Ë
+NÂˆ™]\›ÂˆBˆÛÛœİHØ[YKœ^Y\ÂˆÛÛœİŞHX]œ›İ[™
+œHŞ
+H
+ÈÈÈÂˆÛÛœİŞ\HX]œ›İ[™
+œHHŞHHŠH
+ÈÈÈÂˆÛÛœİˆHÈ
+ˆÈËÈ;"ç;%o:ì&:¬¯H;`à;'oˆÛÛœİÜ˜YHİ˜Ü™X]T˜YX[Ü˜YY[
+ŞŞ\È
+ˆ‹ŞŞ\ŠNÂˆYˆ
+Ü˜Y	‰ˆÜ˜Y˜YÛÛÜ”İÜ
+HÂˆÜ˜Y˜YÛÛÜ”İÜ
+	Ü™Ø˜J
+IÊNÂˆÜ˜Y˜YÛÛÜ”İÜ
+Ë	Ü™Ø˜JMJIÊNÂˆÜ˜Y˜YÛÛÜ”İÜ
+K	Ü™Ø˜JLŠIÊNÂˆİ™š[İ[HHÜ˜YÂˆH[ÙHÂˆİ™š[İ[HH	Ü™Ø˜JJIÎÂˆBˆİ™š[™Xİ
+Ë
+NÂˆËÈ;/';)á:çª;e!;(ï:ìà:ãá:ì'z¬£:æªû%­;) :âé
+\İ[˜][Û‹[İ];'/:èg;%­:äh;'a;)à;&­:âé
+BˆİœØ]™J
+NÂˆİ™ÛØ˜[ÛÛ\ÜÚ]SÜ\˜][ÛˆH	Ù\İ[˜][Û‹[İ]	ÎÂˆ›Üˆ
+]HHÈH[‹œ^›K›[\Ë›[™İÈJÊÊHÂˆYˆ
+\[‹›]ÚWJHÛÛ[YNÂˆÛÛœİH[‹œ^›K›[\ÖÚWNÂˆÛÛœİHX]œ›İ[™
+
+ˆÈHŞ
+H
+ÈÈÈÂˆÛÛœİHHX]œ›İ[™
+H
+ˆÈHŞJH
+ÈÈÈÂˆÛÛœİÈHİ˜Ü™X]T˜YX[Ü˜YY[
+KÈ
+ˆKÈ
+ˆÊNÂˆYˆ
+È	‰ˆË˜YÛÛÜ”İÜ
+HÂˆË˜YÛÛÜ”İÜ
+	Ü™Ø˜JJIÊNÂˆË˜YÛÛÜ”İÜ
+K	Ü™Ø˜J
+IÊNÂˆİ™š[İ[HHÎÂˆİ™š[™Xİ
+HÈ
+ˆËHHÈ
+ˆËÈ
+ˆ‹È
+ˆŠNÂˆBˆBˆİœ™\İÜ™J
+NÂˆBˆËÈ»'©H:­k;%ëx¤h8 %:êe;%a:é«:¬ê:êª{'f:îa:á);b®ˆ:èê;e!;eh;"&:ègH:¬ ;'©{'¤:é«:¬ ;)æ{%­;)á:âéˆ™YXÙQ:êm; çzç­K‚ˆ[˜İ[Ûˆ˜]ÑXÚÕšYÛ™]J
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİˆHX]›Z[Š[‹›ÛÜÈÊNÂˆYˆ
+ˆHØ[YKœ™YXÙQ
+H™]\›ÂˆÛÛœİÜ˜YHİ˜Ü™X]T˜YX[Ü˜YY[
+ÈÈ‹È‹
+ˆŒËÈÈ‹È‹
+ˆÍJNÂˆYˆ
+Ü˜Y	‰ˆÜ˜Y˜YÛÛÜ”İÜ
+HÂˆÜ˜Y˜YÛÛÜ”İÜ
+	Ü™Ø˜J
+IÊNÂˆÜ˜Y˜YÛÛÜ”İÜ
+K™Ø˜JL‹Œ	ÌŒN
+ˆŸJX
+NÂˆİ™š[İ[HHÜ˜YÂˆH[ÙHÂˆİ™š[İ[HH™Ø˜JL‹Œ	ÌŒM
+ˆŸJXÂˆBˆİ™š[™Xİ
+Ë
+NÂˆBˆËÈ;fj{f/;%l:îa;%®;b®8 %:¬¯z¬á:éâ;'a:¬ï;(%{( {'f;",»'`:â¦;em;)â:áf;'m:âé
+:âé;`k;a©:®,;(l
+K‚ˆËÈ:éâ;'a;'`:éâ;'c;'f;&*:ãá:¬ ;#$û'o;"&:ègJ;'m; «;&*;.g:­k;"&:éã;`o
+H;(l:®";%*H:ì'{%a;)á:âé8 %ˆËÈ»%­:äd;&­;!.:¬á;%ä;&*:®,:¬ ;/';)á:âéºéo;fe:êm:ì'z®,:èg;,­:¬$;"ç;`©:â¥;.m:ém:éâ;%ì;-§‚ˆÛÛœİTÒ×ĞTÑHHÈš[YÙNˆŒÌ›Ü™\İˆŒŒˆNÂˆ[˜İ[Ûˆ\ÚÕØ\›PÛİ[
+›YÜÊHÂˆ]ˆHÂˆYˆ
+›YÜË›Y\˜ŞPÚÚXÙH	‰ˆ›YÜË›Y\˜ŞPÚÚXÙK˜™ZÚŞY[Û[ÛˆOOH	ÛY\˜ŞIÊHˆ
+ÏHNÂˆ›Üˆ
+]ÈHNÈÈHNÈÊÊÊHYˆ
+›YÜÖØÚ\\‰ØßSY\˜ŞXJHˆ
+ÏHNÂˆ™]\›ˆÂˆBˆ]Ù\ÚÑÜ˜YHÈÙ^NˆLKš[ˆ[NÈËÈz¬$ˆ;.¤;"ç
+˜]Ñ\ÚĞ[XšY[
+Bˆ]Ü]ZY]Ü˜YHÈÙ^NˆLKš[ˆ[NÈËÈˆ;.¤;"ç
+˜]Ô]ZY]šYÛ™]JBˆ[˜İ[Ûˆ˜]Ñ\ÚĞ[XšY[
+
+HÂˆ]HHTÒ×ĞTÑVÙØ[YK›X\NÂˆYˆ
+XHYØ[YK™›YÜÊH™]\›ÂˆYˆ
+Ø[YK›X\OOH	İš[YÙIÊHHHX]›X^
+ŒHHŒH
+ˆ\ÚÕØ\›PÛİ[
+Ø[YK™›YÜÊJNÂˆËÈ;fe:êm;fª:¬ï;)!;'m:®,8 %:­î:ço:ãl;'m;!f;%á»'m;&!{'`:âê; âzéã
+:­$z¬ï:ëï0­û( ;"ç:è)H:ì,:è)
+BˆYˆ
+Ø[YKœ™YXÙQ
+HÂˆİ™š[İ[HH™Ø˜JK	ØH
+ˆŸJXÂˆİ™š[™Xİ
+Ë
+NÂˆ™]\›ÂˆBˆËÈ:®b»'`:àª:îfÈ;%­;"©:é¡8 %;'!
+;ef:â¦
+z¬ :ãe;%­:ähzâé‚ˆËÈ:­î:ço:å%;%®;b®:â¥z¬ :ì%:à%:åc:éã; â:èg:éã:äè:âé
+:éé;e!:è";'¡; ç{!,{'`;( ; «;%¤H;`ç:î%:é¯ÈĞÈ:í :âí
+BˆYˆ
+Ù\ÚÑÜ˜YšÙ^HOOHJHÂˆÛÛœİÜ˜YHİ˜Ü™X]S[™X\‘Ü˜YY[
+
+NÂˆYˆ
+Ü˜Y	‰ˆÜ˜Y˜YÛÛÜ”İÜ
+HÂˆÜ˜Y˜YÛÛÜ”İÜ
+™Ø˜JK	ÓX]›Z[ŠMKH
+ÈŒJ_JX
+NÂˆÜ˜Y˜YÛÛÜ”İÜ
+K™Ø˜JK	ØH
+ˆßJX
+NÂˆÙ\ÚÑÜ˜YHÈÙ^NˆKš[ˆÜ˜YNÂˆH[ÙHÂˆÙ\ÚÑÜ˜YHÈÙ^NˆKš[ˆ™Ø˜JK	Ø_JXNÂˆBˆBˆİ™š[İ[HHÙ\ÚÑÜ˜Y™š[Âˆİ™š[™Xİ
+Ë
+NÂˆB‚ˆËÈ;c#;'m:á$8à#:¬è;&¥;'f:ç,8à#H8 %:­k;%ë{'a;)à:à¨:åc:éâ:âé
+:éíH;(!;ff
+H;fe:êm;'m;eg:âê:¬á;%*H;%­:äd;&ã;)á:âé‚ˆËÈ;co;)¤;%á»'c8 %;"';"&;ef:¬£:éíHY:èg:éã;(%{em;)à:â¥:âê:¬á
+:¬&{'`:îa:á);b®:ì*{"çH;'«; «;&ªJK‚ˆÛÛœİURQUÑSWÓU‘SHÈ]ZY]X\™ˆ]ZY]X\™ˆK]ZY]X\™Îˆ‹ÛŞ[ÜİYÙNˆÈNÂˆ[˜İ[Ûˆ˜]Ô]ZY]šYÛ™]J
+HÂˆÛÛœİˆHURQUÑSWÓU‘SÙØ[YK›X\NÂˆYˆ
+[ŠH™]\›ÈËÈ
+:­k;%ëx¤h
+H:æ$:â¥;em:âîH;%á»'c8¡¤ˆ;dg;"ç;%b;ejˆYˆ
+Ø[YKœ™YXÙQ
+HÂˆİ™š[İ[HH™Ø˜JKKL‹	ÌŒM
+ˆŸJXÂˆİ™š[™Xİ
+Ë
+NÂˆ™]\›ÂˆBˆYˆ
+Ü]ZY]Ü˜YšÙ^HOOHŠHÂˆÛÛœİÜ˜YHİ˜Ü™X]T˜YX[Ü˜YY[
+ÈÈ‹È‹
+ˆŒKÈÈ‹È‹
+ˆÍJNÂˆYˆ
+Ü˜Y	‰ˆÜ˜Y˜YÛÛÜ”İÜ
+HÂˆÜ˜Y˜YÛÛÜ”İÜ
+	Ü™Ø˜J
+IÊNÂˆÜ˜Y˜YÛÛÜ”İÜ
+K™Ø˜JKKL‹	ÌŒˆ
+ˆŸJX
+NÂˆÜ]ZY]Ü˜YHÈÙ^Nˆ‹š[ˆÜ˜YNÂˆH[ÙHÂˆÜ]ZY]Ü˜YHÈÙ^Nˆ‹š[ˆ™Ø˜JKKL‹	ÌŒMˆ
+ˆŸJXNÂˆBˆBˆİ™š[İ[HHÜ]ZY]Ü˜Y™š[Âˆİ™š[™Xİ
+Ë
+NÂˆBˆËÈ;/e;%­8 %;%ë:ãgÈ:¬';'f;'f;'¤ˆ;%b;%a;) 
+;'¤:îa
+H;(l:¬ H;"&:éã;`o
+ÛÜ™SY\˜ŞPÛİ[
+H;,a;&ã;(.:­î:è);)á:âé‚ˆÛÛœİÓÔ‘WĞÒRT—ÔÔÕÈHÂˆÈˆËNˆÈKÈˆKNˆÈKÈˆKNˆÈKÈˆLKNˆÈKˆÈˆËNˆˆKÈˆKNˆˆKÈˆKNˆˆKÈˆLKNˆˆKˆNÂˆ[˜İ[Ûˆ˜]ĞÛÜ™PÚZ\œÊŞŞJHÂˆÛÛœİš[YHÛÜ™SY\˜ŞPÛİ[
+Ø[YK™›YÜÊNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™›ÛHœÊMŠNÂˆ›Üˆ
+]HHÈHÓÔ‘WĞÒRT—ÔÔÕË›[™İÈJÊÊHÂˆÛÛœİÈHÓÔ‘WĞÒRT—ÔÔÕÖÚWNÂˆÛÛœİŞHX]œ›İ[™
+Ë
+ˆÈHŞ
+H
+ÈÈÈÂˆÛÛœİŞHHX]œ›İ[™
+ËH
+ˆÈHŞJH
+ÈÈÈÂˆİ™š[İ[HHHš[YÈ	ÈÙ™™	Èˆ	ÈÌØLØMIÎÂˆİ™š[^
+	ø¥ä	ËŞŞH
+ÈŠNÂˆBˆİ^[YÛˆH	ÛY	ÎÂˆBˆËÈ:­k;%ëHQ8 %;fe:êm;'!;*¯H; à{"ç;dg;"ç
+˜XÙ\Îˆ;e!:èg;ea:ìí:äçÈÛÜY\Îˆ;f£;"&;"&È]™\œÎˆ;)à:®"; à{'¤
+Bˆ[˜İ[Ûˆ˜]Ô^›RY
+
+HÂˆÛÛœİ[ˆHØ[YKœ^›T[Âˆ]]K]Z[[™Ù\ˆH˜[ÙNÂˆYˆ
+[‹œ^›K\HOOH	ØÛÜY\ÉÊHÂˆ]HH:ä&;,/»'`;(l:¬ H	Ü[‹˜ÛÛXİYKÌØÂˆ]Z[H	úå¨:ãá:â¥;(l:¬ {'a;*äû%a:¬ :í¦{'¨{'¤	ÎÂˆH[ÙHYˆ
+[‹œ^›K\HOOH	Û]™\œÉÊHÂˆ]HH:ì&;!¨H	Ü[‹™]™\YKÉÜ[‹œ^›K˜›Ş\Ë›[™İXÂˆËÈ; à{'¤:ço:ìª0­úè";'n;'`:ãe;'m; àH; à{"ç;dg;"ç;ef;)à;%bºâ¥:âé8 %:¬ :®c;'m:¬ ;%o:ìí;'n:âé
+˜]Ô^›SØš™XİÊBˆ]Z[H	úìª;b®:èg:¬ :®c;'m:¬ :êm; à{'¤:ço:ìª;'m:ìí;'n:âé	ÎÂˆH[ÙHYˆ
+[‹œ^›K\HOOH	İ›ÚXÙ\ÉÊHÂˆ]HH:âé:én:êª{!£:é«	Ü[‹›ÚXÙ\Ë›[™İKÌØÂˆ]Z[H	úì&;)ç{'m;)à;%bºâ¥:ë.:ä©:éo;,/»%a:ìí;'¤	ÎÂˆH[ÙHYˆ
+[‹œ^›K\HOOH	Ü™]˜Z[‰ÊHÂˆ]HH:ì&:è`	Ü[‹œİÜßKÌÈ0­È;c$:ãáz®,	Ü[‹™™YKÌØÂˆ]Z[H	úì&:è`; «;)á;'a:êª;%a;c$:ãáz®,;%ä:á(û'¤	ÎÂˆH[ÙHYˆ
+[‹œ^›K\HOOH	Û[\ÉÊHÂˆ]HH:çª;e!	Ü[‹›]Ûİ[KÌØÂˆ]Z[H	û%­:äh;!£H:çª;e!:éo;,/»%a:í¢;'a;/';'¤	ÎÂˆH[ÙHYˆ
+[‹œ^›K\HOOH	İ\ÉÊHÂˆ]HH;,a;`çH	Ü[‹˜ÛÜœ™XİKÌ˜Âˆ]Z[H	û-§;,¦;'¢:â¥;(':ìí:éo;,/»%a;,a;`ç{ef;'¤	ÎÂˆH[ÙHYˆ
+[‹œ^›K\HOOH	ØÛÛ\\™IÊHÂˆ]HH:ã ;(l	Ü[‹œÛÛ™YÛİ[KÌØÂˆ]Z[H	û&ä:ìî:¬ï:âé:én;($;'a;)à:êª{ef;'¤	ÎÂˆH[ÙHYˆ
+[‹œ^›K\HOOH	Øœ›ØYØ\İ	ÊHÂˆ]HH:âê:¬á	ÓX]›Z[Š[‹œİYÙH
+ÈKÊ_KÌØÂˆ]Z[HÉû(%{(%zë.;'a:¬è:ém;'¤	Ë	û-§;,¦:éo:í¦{'m;'¤	Ë	úè":ì¡:éo:âîz®,;'¤	×VÜ[‹œİYÙWH	úè":ì¡:éo:âîz®,;'¤	ÎÂˆH[ÙHYˆ
+[‹œ^›K\HOOH	Ü›İ[]IÊHÂˆ]HH:­$z¬è:å,{)à	ÙØ[YK™›YÜË˜YİXÚÙ\œÈKÍÂˆ]Z[H[‹™ÛİÙ^HÈ	úîa:ì ;(l:¬ H;%í;!è:éo;,/»%f:âéIÈˆ	úèì:è&È:ä©;,/z¬è;%ä;!';%í;!è:éo;,/»'¤	ÎÂˆ[™Ù\ˆH
+Ø[YK™›YÜË˜YİXÚÙ\œÈ
+HHÎÂˆH[ÙHYˆ
+[‹œ^›K\HOOH	ÜÚYÛ\	ÊHÂˆ]HH[‹œ\ÜÙYÈ	ú¬":é¯:®.;a­z¬ï	Èˆ	ú¬":é¯:®.;c$:ìá;(!	ÎÂˆ]Z[H[‹œ\ÜÙYÈ	úìî;'n;fe{'n;ej;%ä;!';%í;!è:éo:ì&û'¤	Èˆ	û)á;)ç:ãá:êe;'n;'a:¬ :è):à­;'¤	ÎÂˆH[ÙHYˆ
+[‹œ^›K\HOOH	Ø˜XÚÜİYÙIÊHÂˆ]HH;%í;!è	ÜÍÙ^PÛİ[
+
+_KÌ˜Âˆ]Z[H[‹›Ü[™YÈ	úë-:ã :ä©:èg:äé;%­;!,:âé	Èˆ	û)á;)ç;%í;!è:äd:¬':èg;%b;*¯H:ë.;'a;%í;'¤	ÎÂˆH[ÙHYˆ
+[‹œ^›K\HOOH	ØØ[	ÊHÂˆ]HH:èê:ëî;'f:éã:éf	ÓX]›Z[Š[‹Ø\›Ûİ[Ê_KÌØÂˆ]Z[H
+[‹Ø\›Ûİ[
+HÈÈ	û(!;fe:éo;(l; «;em:ìí;'¤	Èˆ	ûeg:ì¢:ãe;(l; «;ef:êm:ì&û'a;"&;'¢:âé	ÎÂˆH[ÙHYˆ
+[‹œ^›K\HOOH	ØÚXÚÙÛÜ‰ÊHÂˆ]HH[‹›Ü[™YÈ	úë.;'a;%í;%â:âé	Èˆ	úë.;%g‰ÎÂˆ]Z[H	úèê:ëî;'f:éä;'m;)á;)ç;'n;)à;)à{($H;%í;%­;fe{'n;ef;'¤	ÎÂˆH[ÙHYˆ
+[‹œ^›K\HOOH	ÜÛÙ˜IÊHÂˆÛÛœİœ˜XÈHX]›Z[ŠK
+[‹œİ[™[Y\ˆ
+HÈÓÑWÔÕS‘Ñ”SQTÊNÂˆ]HH[‹œÚ][™ÈÈ;'o;%­:à¦:®,	ÓX]œ›İ[™
+œ˜XÈ
+ˆL
+_IXˆ	û%b{)à;%b»'c	ÎÂˆ]Z[H[‹œÚ][™ÈÈ	úì*{e©{`©:éoû-";'m; àH:¯®H:â#:çë:ì¡;bì;'¤	Èˆ	û!£;c#:éo;(l; «;em;!';%b{%a:ìí;'¤	ÎÂˆ[™Ù\ˆH[‹œÚ][™È	‰ˆœ˜XÈNÂˆH[ÙHÂˆÛÛœİÚ]™[ˆHÚ]™[•ÚÙ[œÊ[ŠNÂˆÛÛœİ›Û“šXÚÈHÚ]™[‹™š[\Š
+ÊHOˆÈOOH	ÛšXÚÛ˜[YIÊNÂˆÛÛœİ˜[Y\ÈHÚ]™[‹›X\
+
+ÊHOˆ[‹œ^›KÚÙ[œÖÚ×JNÂˆ]HH;e!:èg;ea:ìí:äç8 %:à­:ìí:à®;(%zìí	Û›Û“šXÚË›[™İz¬'Âˆ]Z[H˜[Y\Ë›[™İÈ˜[Y\Ëš›Ú[Š	È0­È	ÊHˆ	Ê;%a;)àH;%á»'c
+IÎÂˆ[™Ù\ˆH›Û“šXÚË›[™İHÎÂˆBˆİ™›ÛHœÊLËYJNÂˆÛÛœİÈHX]›X^
+İ›YX\İ\™U^
+]JKÚYİ›YX\İ\™U^
+]Z[
+KÚY
+H
+ÈÂˆÛÛœİÈHX]›Z[ŠÈHŒX]›X^
+ŒÊJNÂˆÛÛœİHX]œ›İ[™
+ÈÈˆHÈÈŠKHHšHØ[YK›\™ÙU^ÈMˆˆÂˆ]›Ş
+KËšŠNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[İ[HH[™Ù\ˆÈ˜YÛÛÜŠ
+HˆØ\›ÛÛÜŠ
+NÂˆİ™š[^
+]KÈÈ‹H
+ÈŒ
+NÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊLŠNÂˆİ™š[^
+]Z[ÈÈ‹H
+È
+Ø[YK›\™ÙU^ÈˆˆÎ
+JNÂˆİ^[YÛˆH	ÛY	ÎÂˆËÈ{'©H:­k;%ëx¤hˆ;!£;c#;/e:á"8 %;'o;%­:à¦:®,:ì¡;bì:®,;)á;e¢H:¬£;'m;)à
+L;e!:è";'¡;,a;&¬:êm;`m:é«;%­
+BˆYˆ
+[‹œ^›K\HOOH	ÜÛÙ˜IÈ	‰ˆ[‹œÚ][™ÊHÂˆÛÛœİœ˜XÈHX]›Z[ŠK
+[‹œİ[™[Y\ˆ
+HÈÓÑWÔÕS‘Ñ”SQTÊNÂˆÛÛœİŞHHH
+Èš
+ÈÂˆİ™š[İ[HH	ÈÌÌÌÉÎÈİ™š[™Xİ
+ŞKËŠNÂˆİ™š[İ[HH	ÈÙLMLØIÎÈİ™š[™Xİ
+ŞKÈ
+ˆœ˜XËŠNÂˆBˆB‚ˆËÈKKKKKKKKKH;&å:äçKKKKKKKKKBˆ[˜İ[Ûˆ˜XÚ[™Õ[J
+HÂˆÛÛœİHØ[YKœ^Y\ÂˆÛÛœİH™\ˆOOH	ÛY	ÈÈLHˆ™\ˆOOH	ÜšYÚ	ÈÈHˆÂˆÛÛœİHH™\ˆOOH	İ\	ÈÈLHˆ™\ˆOOH	ÙİÛ‰ÈÈHˆÂˆ™]\›ˆÈˆ
+ÈNˆH
+ÈHNÂˆB‚ˆËÈû'©H;eâ:î#8à#;!£:ë.:¬l:é«8à#H8 %;!£:ë.:åc:ë.;%ä:ë.:âêû'`; à{($ú¬ìÈ
+;!¨{-§;&a:èã;(!ûfá:ã ; «:í¡:®,
+BˆÛÛœİ•SSÔ—ÔÒÔÈHÂˆÈˆKNˆ˜[YNˆ	úí¡;"ç{)äIÈKˆÈˆŒ‹Nˆ˜[YNˆ	úë.:­k;($	ÈKˆÈˆNˆMK˜[YNˆ	û «;)á:­ 	ÈKˆNÂˆ[˜İ[Ûˆ[\˜Xİ
+
+HÂˆYˆ
+Ø[YKœ^›T[ˆ	‰ˆ[\˜Xİ^›J
+JH™]\›ÂˆÛÛœİˆH˜XÚ[™Õ[J
+NÂˆÛÛœİœÈHœĞ]
+Ø[YK›X\‹‹JNÂˆYˆ
+œÊHÂˆËÈ{'©H:ìí;"©
+:âí;%a
+H8 %;%a;)àH;!):äç{ef;)à;%b»%f;'/:êm;!):äçH:ì,;bà:èg;'m;fá;%å:ä&:ãã:é¬;.g:­k:ègˆYˆ
+œËšYOOH	ÜİZš\Ø›ÜÜÉÊHÂˆYˆ
+YØ[YK™›YÜË˜Ú\\ŒPÛX\ŠHÈİ\˜]R[›Ê	ÜİZš\[Û‰Ë	ÜİZš\[Û—Ø›ÜÜÉÊNÈ™]\›ÈBˆİ\X[ÙÊÂˆ	úâí;%aˆºãezí¡;%ä;ef:à¦;%*H:ãã:è);(ï:¬è;'¢;%­—¸ )ºîb;!¤;'n:ãl;'m; à{ef:¬£;%b;eâ;(!;emˆ‰Ëˆ	úâí;%aˆºço:ìª:ãá:âé:å¯:â¥;)${'m;%o—¸à#;.g:­k:¬ ;) :¬ øà#{'m;%a:ââ:ço8 )—»&ä:ç¦;.g:­k:¬l;& ;'/:ââ:®cˆ‰ËˆK	úâí;%a	ÊNÂˆ™]\›ÂˆBˆËÈ»'©H:ìí;"©
+:®,;&®
+H8 %;%a;)àH;!):äç{ef;)à;%b»%f;'/:êm:éâ;'c;(l:¬ H:ì,;bà:èg;'m;fá;%å:ä&:ãã:é¬;.g:­k:ègˆYˆ
+œËšYOOH	ÜY[Û™×Ø›ÜÜÉÊHÂˆYˆ
+YØ[YK™›YÜË˜Ú\\ŒÛX\ŠHÈİ\˜]R[›Ê	ÜY[ÛšX[™Û[Û‰Ë	ÜY[ÛšX[™×Ø›ÜÜÉÊNÈ™]\›ÈBˆİ\X[ÙÊÂˆ	ú®,;&®ˆ»&¥;)¦;'`;%¤{*¯H:âé;'«:í$—¸ )»"ç:¬!;'`;( :¬n:é«:â¥:ãl;%b:®,;&®;%­ˆ‰Ëˆ	ú®,;&®ˆ»bà:é­;fezéhÈ8 )»'¢;)à—º­ï:ãl:­î:¬£;'m; à{eg:¬£;%a:ââ:ãe:ço:¬èˆ‰ËˆK	ú®,;&®	ÊNÂˆ™]\›ÂˆBˆËÈû'©H:ìí;"©
+:­î:çí;"î
+H8 %;%a;)àH;!):äç{ef;)à;%b»%f;'/:êm:éâ;'c;(l:¬ H:ì,;bà:èg;'m;fá;%å:ä&:ãã:é¬;.g:­k:ègˆYˆ
+œËšYOOH	ÚØ[™ØZ×Ø›ÜÜÉÊHÂˆYˆ
+YØ[YK™›YÜË˜Ú\\ŒĞÛX\ŠHÈİ\˜]R[›Ê	ÚØ[™ØZÛ[Û‰Ë	ÚØ[™ØZ×Ø›ÜÜÉÊNÈ™]\›ÈBˆİ\X[ÙÊÂˆ	ú­î:çí;"îˆ»&¥;)¦;'`:êª:ém:êm:êª:én:âé:¬è;#j—¸ )» çz¬ zìí:âé:ãá{'¤:äé;'m:ãe:ëïû%­;(ï:ãe:çoˆ‰Ëˆ	ú­î:çí;"îˆ–û(%{(%WH;%­;(';'f:à¦:éo;(%{(%{ejzââ:âé—¸ )»'m:ë.;'©K:éâ;'c;%ä:äé;%­ˆ‰ËˆK	ú­î:çí;"î	ÊNÂˆ™]\›ÂˆBˆËÈ;'©H:ìí;"©
+:ì&;)çJH8 %;%a;)àH;!):äç{ef;)à;%b»%f;'/:êm:éâ;'c;(l:¬ H:ì,;bà:èg;'m;fá;%å:ä&:ãã:é¬;.g:­k:ègˆYˆ
+œËšYOOH	Ş]ZÚ×Ø›ÜÜÉÊHÂˆYˆ
+YØ[YK™›YÜË˜Ú\\ÛX\ŠHÈİ\˜]R[›Ê	Ş]ZÚÛ[Û‰Ë	Ş]ZÚ×Ø›ÜÜÉÊNÈ™]\›ÈBˆİ\X[ÙÊÂˆ	úì&;)çNˆ»&¥;)¦;'`:å,{)à:ãá;%b:í¦{%­—¸ )»)á;)ç:éã;/':ââ:®c;&);g¢:è);c®;emˆ‰Ëˆ	úì&;)çNˆºí¢:®¯;)á:à¦:ãá:í$;)+;'¥»%a—¸ )º­î:¬£;(';'o:ì&;)ç{& ;%­ˆ‰ËˆK	úì&;)çIÊNÂˆ™]\›ÂˆBˆËÈ{'©H:ìí;"©
+:èê:ëî
+H8 %;%a;)àH;!):äç{ef;)à;%b»%f;'/:êm:éâ;'c;(l:¬ H:ì,;bà:èg;'m;fá;%å:ä&:ãã:é¬;.g:­k:ègˆYˆ
+œËšYOOH	ÚÛ[WØ›ÜÜÉÊHÂˆYˆ
+YØ[YK™›YÜË˜Ú\\PÛX\ŠHÈİ\˜]R[›Ê	ÚÛ[[[Û‰Ë	ÚÛ[WØ›ÜÜÉÊNÈ™]\›ÈBˆİ\X[ÙÊÂˆ	úèê:ëîˆ»&¥;)¦;'`;f/;'¤;!':ãá;'¦;'¢;%­:í$—¸ )º®,:âé:é«:â¥:¬ úãá:à¦; f;)à;%bºãe:çoˆ‰Ëˆ	úèê:ëîˆºá):¬ :âé:á`;&*:âé:¬è;ef:êm»'m;(':â¥8 )ˆ:­î:àéH:ëïú¬è:®,:âé:é­:¬£ˆ‰ËˆK	úèê:ëî	ÊNÂˆ™]\›ÂˆBˆËÈ;c#;'m:á$:ìí;"©
+:¬è;&¥
+H8 %;%a;)àH;!):äç{ef;)à;%b»%f;'/:êm:éâ;'c;(l:¬ H:ì,;bà:èg;'m;fá;%å:ä&:ãã:é¬;.g:­k:ègˆYˆ
+œËšYOOH	ÙÛŞ[×Ø›ÜÜÉÊHÂˆYˆ
+YØ[YK™›YÜË™ÛŞ[ĞÛX\ŠHÈİ\˜]R[›Ê	Ùš[˜[›ÜÜÉË	ÙÛŞ[×Ø›ÜÜÉÊNÈ™]\›ÈBˆİ\X[ÙÊÂˆ	ú¬è;&¥ˆ¸ )»%a;)àK;%ë:®,;'¢;%â:á)ˆ‰Ëˆ	ú¬è;&¥ˆ¸ )º­î:ç¦:ãá:ãïˆ8 )º¬è:éâ;&ãˆ‰ËˆK	ú¬è;&¥	ÊNÂˆ™]\›ÂˆBˆËÈ;c#;'m:á$8à#;/e;%­8à#{'f;& {'m8 %:éâ;'c;(l:¬ H:ì,;bàˆ;`m:é«;%­:â¥:®,;(mŒHÚ[˜]{'fY[Û™ÚH:í¡:®,:ègˆËÈ:­î:ã :èg;'m;%­;(.ÛÛ\]Q[™[™Ê;)á;%å:å*H:¬á; ¬
+{'m;'«; «;&ªzä':âé‚ˆYˆ
+œËšYOOH	ŞY[Û™ÚWØ›ÜÜÉÊHÂˆYˆ
+YØ[YK™›YÜË™Y™X]YY[Û™ÚJHÈİ\˜]R[›Ê	ŞY[Û™ÚIË	ŞY[Û™ÚWØ›ÜÜÉÊNÈ™{Ó~<¶‰ËkºwµçVØ‹˜İ\œÛÜ—NÂˆYˆ
+‹˜ÛÛ™š\›JHÈËÈ:¬ ;(.;&):®,;fe{'n;fá;"é;(';"é;e¢Bˆ‹˜ÛÛ™š\›HH˜[ÙNÂˆ[\Ü˜XÚİ\š[J
+NÂˆ™]\›ÂˆBˆYˆ
+][HOOH	Ù^ÜÛ\	ÊHÈ‹Ø\İHÛÜU^ĞÛ\›Ø\™
+Z[˜XÚİ\^
+
+JHÈŒˆLŒÈÛİ[™˜˜YÙJ
+NÈBˆ[ÙHYˆ
+][HOOH	Ù^Üš[IÊHÈ‹Ø\İHİÛ›ØY˜XÚİ\
+
+HÈŒˆLŒÈÛİ[™˜˜YÙJ
+NÈBˆ[ÙHYˆ
+][HOOH	Ú[\Üš[IÊHÈ‹˜ÛÛ™š\›HHYNÈÛİ[™˜›\
+
+NÈHËÈ:ãk»%­;$ì:®,;(!;eg:ì¢:ãe;fe{'nˆ[ÙHYˆ
+][HOOH	İ[™Ô™\İÜ™IÊHÂˆÛÛœİ™\ÈH[™Ô™\İÜ™J
+NÂˆYˆ
+™\Ë›ÚÊHÂˆØš™Xİ˜\ÜÚYÛŠØ[YKØYÙ][™ÜÊ
+JNÂˆÛİ[™œÙ]›Û[YJ“ÓSQWÓU‘SÖÙØ[YK›Û[YWHJNÂˆ‹Ø\İHŒÂˆPÒÕTÒUSTÈHPÒÕTÒUST×ĞTÑKœÛXÙJ
+NÈËÈ:ä&:ãã:é«:®,;!£;)áˆYˆ
+‹˜İ\œÛÜˆHPÒÕTÒUSTË›[™İ
+H‹˜İ\œÛÜˆHPÒÕTÒUSTË›[™İHNÂˆØ[YK›[ÙHH	İ]IÎÈØ[YK]TØÜ™Y[ˆH	ÜÛİÉÎÂˆH[ÙHÈ‹Ø\İHLŒÈBˆÛİ[™˜˜YÙJ
+NÂˆBˆ[ÙHYˆ
+][HOOH	ØÛÜÙIÊHÈÛÜÙP˜XÚİ\
+
+NÈBˆBˆBˆ[˜İ[Ûˆ˜]Ğ˜XÚİ\
+
+HÂˆÛÛœİˆHØ[YK˜˜XÚİ\Âˆİ™š[İ[HH	ÈÌ	ÎÂˆİ™š[™Xİ
+Ë
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊŒ‹YJNÂˆİ™š[^
+	ø¡á:ãl;'m;a,:ì,{%áH0­È:ìí{&ä	Ë
+NÂˆİ™š[İ[HH	ÈÎ	ÎÂˆİ™›ÛHœÊLÊNÂˆİ™š[^
+	úêª:äè;"«:èkğ­ûef{"­H:®,:ègp­û.g:­k;"&;,ªp­û!);(%{'a;eg;c#;'o:èg;( ;'©{ef:¬è	ËŠNÂˆİ™š[^
+	úâé:én:®,:®,:à¦:î#:ço;&¬;( ;%ä;!':âé;"ç:í¢:çë;&+;"&;'¢;%­;&¥‰ËŠNÂ‚ˆÛÛœİ\İHHLÌ›İÒHÂˆ›Üˆ
+]HHÈHPÒÕTÒUSTË›[™İÈJÊÊHÂˆ˜]ĞÚÚXÙS[™JPÒÕTÓP‘SÖĞPÒÕTÒUSTÖÚWWK\İH
+ÈH
+ˆ›İÒHOOH‹˜İ\œÛÜŠNÂˆB‚ˆİ™š[İ[HH	ÈÍÍÍÉÎÂˆİ™›ÛHœÊLŠNÂˆİ™š[^
+	ø .È:¬ ;(.;&):®,:éo;ef:êm;)à:®";'m:®,:®,;'f:®,:èg{'a:ãk»%­;% zââ:âé‰Ë\İH
+ÈPÒÕTÒUSTË›[™İ
+ˆ›İÒ
+È
+NÂ‚ˆYˆ
+‹˜ÛÛ™š\›JHÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[İ[HH˜YÛÛÜŠ
+NÂˆİ™›ÛHœÊMKYJNÂˆİ™š[^
+	û)à:®":®,:èg{'a:ãk»%­;$ì:¬è:ìí{&ä;eh:®c;&¥ÉËÈÈ‹LŠNÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊLÊNÂˆİ™š[^
+	Öˆ;c#;'o;!(;`ç{em;!':ìí{&ä0­Èˆ;-ê;!£	ËÈÈ‹Í
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆH[ÙHYˆ
+‹Ø\İOOH
+HÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[İ[HH‹Ø\İˆÈÚĞÛÛÜŠ
+Hˆ˜YÛÛÜŠ
+NÂˆİ™›ÛHœÊMKYJNÂˆÛÛœİ\ÙÈH‹Ø\İˆÈ	ø§$È;&a:èã;e¢;%­;&¥IÂˆˆ‹Ø\İOOHLÌÈ	û'm;c#;'o;%ä:â¥:í¢:çë;&+:®,:èg{'m;%á»%­;&¥
+:âé:én:ì,{%áH;c#;'o;'a:¬ê:ço;(ï;!.;&¥
+IÂˆˆ	û'm;ff:¬¯{%ä;!':â¥;eh;"&;%á»%­;&¥
+:î#:ço;&¬;( ;%ä;!';"ç:ãá;em;(ï;!.;&¥
+IÎÂˆİ™š[^
+\ÙËÈÈ‹Ì
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆBˆİ™š[İ[HH	ÈÍÍÍÉÎÂˆİ™›ÛHœÊLÊNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[^
+	ø¡¤x¡¤È;!(;`çH0­Èˆ;"é;e¢H0­È:âêú®,	ËÈÈ‹LLŠNÂˆİ^[YÛˆH	ÛY	ÎÂˆB‚ˆËÈKKKKKKKKKH:­d; «;&ªH:ã ;"ç:ìí:äç
+:êª:äè;ef{ çH;eg:â";%ä
+HKKKKKKKKKBˆËÈÔÕˆ;eg;.n;'a;%b;(!;ef:¬£:¬$;"ï:âé
+;"o;dg0­úå,;&-;dg0­û)!:ì%:¯â;cë;ej;"ç;`l:å,;&-;dg;,¦:é«
+K‚ˆ[˜İ[ÛˆÜİÙ[
+ŠHÂˆ]ÈHİš[™ÊˆOH[È	ÉÈˆŠNÂˆËÈÔÕˆ;"&;"çH;(ï;'¡H:ì*{%­8 %;ef{ ç{'m;(%{eg;'m:é¡û.k{f.:¬ K
+ËK;`ëKÔºèg;"ç;'¤{ef:êmˆËÈ:­d; «:¬ ;%ä{!`0­û"ç;b®:èg;%í:åc;"&;"ç{'/:èg;"é;e¢zä(;"&;'¢:âéˆ;%g»%ä	úéo:í¦{%ë:ë.;'¤:èg:¬è;(%K‚ˆYˆ
+×–ÏJ×P—KË\İ
+ÊJHÈH‰Èˆ
+ÈÎÂˆ™]\›ˆÖÈ‹——KË\İ
+ÊHÈ	È‰È
+ÈËœ™\XÙJÈ‹ÙË	Èˆ‰ÊH
+È	È‰ÈˆÎÂˆBˆËÈ;!.;ef{ çJ;"«:èkÊ{'f;ef{"­H;f!;fj{'a;"©;e!:è":äç;"ç;b®:èg;%í;"&;'¢:â¥ÔÕºèg:éã:äè:âé‚ˆ[˜İ[ÛˆZ[Û\ÜĞÜİŠ
+HÂˆÛÛœİXY\ˆHÉû"«:èkÉË	û'm:é¡	Ë	û.k{f.	Ë	û)á;e¢IË	û&a;(ï	Ë	ûdo:ë.;('	Ë	û(%zâíH;"&	Ëˆ	û(%zâízéh
+	JIË	úìí{"­H:án;b®	Ë	úãá;(!:¬ï;('	Ë	û%b;%a;) :éâ;'c	Ë	û%ì;!£H;-§;!'J;'o
+IËˆ	û «;(!
+	JIË	û «;fá
+	JIË	ûe©{ àzãá
+	\
+IËËÈKLN;"&;%áH;fª:¬ï;.({(%J; «;(!û «;fá;($:¬ 
+Bˆ	ú¬':ád:ìá;!,{-ê
+;(%zâíKû"ç:ãá
+IË	û'¤:îa;!(;`çJ;e!:èi:èg:­î0­Ì_{'©JIË	û%å:å*I×NÂˆÛÛœİ[™\ÈHÚXY\‹›X\
+ÜİÙ[
+Kš›Ú[Š	Ë	ÊWNÂˆ›Üˆ
+]HHÈHÓÕĞÓÕS•ÈJÊÊHÂˆÛÛœİİ[HHÛİİ[[X\JJNÂˆYˆ
+\İ[JHÈ[™\Ëœ\Ú
+ÜİÙ[
+H
+ÈJH
+È	Ë
+:îa;%­;'¢;'c
+IÊNÈÛÛ[YNÈBˆÛÛœİÈHZ[X\›š[™Ôİ[[X\JJNÂˆÛÛœİY]HHÙ]Y]JJNÂˆÛÛœİ]HHÙ[XİY]JJNÂˆÛÛœİØ]™YHØYÛİ
+JNÂˆÛÛœİ›YÜÈH
+Ø]™Y	‰ˆØ]™Y™›YÜÊHßNÂˆÛÛœİÛÛ˜Ù\İ]ÈH
+Ëœ›İÜÈ×JBˆ›X\
+
+ŠHOˆ	Ü‹›X™[H	Ü‹˜ÛÜœ™XİKÉÜ‹İ[X
+Bˆš›Ú[Š	ÎÈ	ÊNÂˆÛÛœİY\˜ŞT\ÈHÂˆ›YÜË™Y™X]YË˜™ZÚŞY[Û[Û‚ˆÈ
+›YÜË›Y\˜ŞPÚÚXÙOË˜™ZÚŞY[Û[ÛˆOOH	ÛY\˜ŞIÈÈ	úå,:ço»%b;%a;)#	Èˆ	úå,:çoºë-;,#:é¡	ÊBˆˆ	úå,:ço‹IËˆNÂˆ›Üˆ
+]ˆHNÈˆHNÈŠÊÊHÂˆY\˜ŞT\Ëœ\Ú
+ˆ›YÜÖÉØÚ\\‰È
+Èˆ
+È	ĞÛX\‰×BˆÈ
+›YÜÖÉØÚ\\‰È
+Èˆ
+È	ÓY\˜ŞI×HÈˆ
+È	û'©N»%b;%a;)#	Èˆˆ
+È	û'©Nºë-;,#:é¡	ÊBˆˆˆ
+È	û'©N‹IÂˆ
+NÂˆBˆÛÛœİY\˜ŞTİˆHY\˜ŞT\Ëš›Ú[Š	ÈÈ	ÊNÂˆÛÛœİ[™[™ÔİˆH›YÜËYQ[™[™ÂˆÈ	û)ä{'/:èg
+:å,:ç.ÊIÂˆˆ
+›YÜË™Y™X]YËY[Û™ÚHÈ	û&a;(ï	Èˆ	û)á;e¢H;)$IÊNÂˆËÈKLN8 %; «;(!û «;fá;($:¬ ;)äz¬á
+;'©H;(!;,­;ej{ ¬
+Kˆ;e©{ àzãáH; «;fá	H8¢$ˆ; «;(!	J:äf:âé;'¢;'a:åc:éã
+K‚ˆÛÛœİHY]Kœ™\ÜİßNÂˆ]™PÈH™SˆHÜİÈHÜİˆHÂˆ›Üˆ
+ÛÛœİÚÙˆØš™XİšÙ^\Ê
+JHÂˆYˆ
+ØÚKœ™JHÈ™PÈ
+ÏHØÚKœ™KœØÛÜ™NÈ™Sˆ
+ÏHØÚKœ™Kİ[ÈBˆYˆ
+ØÚKœÜİ
+HÈÜİÈ
+ÏHØÚKœÜİœØÛÜ™NÈÜİˆ
+ÏHØÚKœÜİİ[ÈBˆBˆÛÛœİ™TİH™SˆÈX]œ›İ[™
+™PÈÈ™Sˆ
+ˆL
+Hˆ	ÉÎÂˆÛÛœİÜİİHÜİˆÈX]œ›İ[™
+ÜİÈÈÜİˆ
+ˆL
+Hˆ	ÉÎÂˆÛÛœİ[\›İ™TİH
+™Sˆ	‰ˆÜİŠHÈ
+ÜİİH™Tİ
+Hˆ	ÉÎÂˆ[™\Ëœ\Ú
+ÂˆH
+ÈKˆİ[K›˜[YKˆ]HÈ]K›˜[YHˆ	ÉËˆİ[K™Û™HÈ	úêª;eæ;&a:èã	Èˆİ[KœİYÙKˆİ[K™Û™HÈ	ÖIÈˆ	Ó‰ËˆË˜][\YˆË˜ÛÜœ™XİˆË˜][\YÈX]œ›İ[™
+Ë›İ™\˜[˜]H
+ˆL
+Hˆ	ÉËˆZ\İZÙPÛİ[
+JKˆÛİ[XÚY]™[Y[ÊJH
+È	ËÉÈ
+ÈPÒQU‘SQS•Ë›[™İˆİ[K›Y\˜ŞKˆY]Kœİ™XZÈˆ™TİˆÜİİˆ[\›İ™TİˆÛÛ˜Ù\İ]ËˆY\˜ŞTİ‹ˆ[™[™Ôİ‹ˆK›X\
+ÜİÙ[
+Kš›Ú[Š	Ë	ÊJNÂˆBˆ™]\›ˆ[™\Ëš›Ú[Š	×—‰ÊNÂˆBˆËÈÔÕºéo;c#;'o:èg:à­:è):ì&úâ¥:âéˆ;%ä{!`;eg:® :®j;)ä:ì*{)à:éo;'!;emU‹N“Ó{'a:í¦{'n:âé‚ˆ[˜İ[ÛˆİÛ›ØYÛ\ÜĞÜİŠ
+HÂˆHÂˆÛÛœİ^H	ûîïÉÈ
+ÈZ[Û\ÜĞÜİŠ
+NÂˆÛÛœİHHØİ[Y[˜Ü™X]Q[[Y[
+	ØIÊNÂˆKš™YˆH	Ù]N^ØÜİØÚ\œÙ]]]‹N	È
+È[˜ÛÙUT’PÛÛ\Û™[
+^
+NÂˆK™İÛ›ØYH	ØZKY]XÜËXÛ\ÜËIÈ
+ÈÙ^TİŠ
+H
+È	Ë˜Üİ‰ÎÂˆØİ[Y[˜›ÙK˜\[™Ú[
+JNÂˆK˜ÛXÚÊ
+NÂˆØİ[Y[˜›ÙKœ™[[İ™PÚ[
+JNÂˆ™]\›ˆYNÂˆHØ]Ú
+JHÈ™]\›ˆ˜[ÙNÈBˆBˆ[˜İ[ÛˆÜ[‘\Ú›Ø\™
+™]
+HÂˆØ[YK™\Ú›Ø\™œ™]H™]ÂˆØ[YK™\Ú›Ø\™˜İ\œÛÜˆHÂˆØ[YK™\Ú›Ø\™Ø\İHÂˆØ[YK›[ÙHH	Ù\Ú›Ø\™	ÎÂˆÛİ[™œÙ[Xİ
+
+NÂˆBˆ[˜İ[ÛˆÛÜÙQ\Ú›Ø\™
+
+HÂˆØ[YK›[ÙHHØ[YK™\Ú›Ø\™œ™]ÂˆÛİ[™œÙ[Xİ
+
+NÂˆBˆ[˜İ[Ûˆ\]Q\Ú›Ø\™
+
+HÂˆÛÛœİHØ[YK™\Ú›Ø\™ÂˆYˆ
+Ø\İˆ
+HØ\İOHNÈ[ÙHYˆ
+Ø\İ
+HØ\İ
+ÏHNÂˆYˆ
+\İ™\ÜÙY
+	ØØ[˜Ù[	ÊH\İ™\ÜÙY
+	ÛY[IÊJHÈÛÜÙQ\Ú›Ø\™
+
+NÈ™]\›ÈBˆYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊJHÂˆËÈ;c#;'o;( ;'©{'m;%b:ä&:â¥;ff:¬¯{'m:êm;`m:é¯zìí:äç:ìí{ «:èg:ã ;"è;eg:âé‚ˆÛÛœİÚÈHİÛ›ØYÛ\ÜĞÜİŠ
+HÛÜU^ĞÛ\›Ø\™
+Z[Û\ÜĞÜİŠ
+JNÂˆØ\İHÚÈÈŒˆLŒÂˆÛİ[™˜˜YÙJ
+NÂˆBˆBˆ[˜İ[Ûˆ˜]Ñ\Ú›Ø\™
+
+HÂˆİ™š[İ[HH	ÈÌ	ÎÂˆİ™š[™Xİ
+Ë
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊŒ‹YJNÂˆİ™š[^
+	ø¥©:­d; «;&ªH:ã ;"ç:ìí:äç8 %;ef{ çH;f!;fjIËÍŠNÂˆİ™š[İ[HH	ÈÎ	ÎÂˆİ™›ÛHœÊLŠNÂˆİ™š[^
+	ûeg:®,:®,:éo:à¦:â(;$ì:â¥;!.;ef{ çJ;"«:èkÊ{'f;ef{"­H;f!;fj{'a:îa:­d;ejzââ:âé‰ËMŠNÂ‚ˆÛÛœİÛÛÈH
+ÈHÌŠHÈÓÕĞÓÕS•Âˆ›Üˆ
+]HHÈHÓÕĞÓÕS•ÈJÊÊHÂˆÛÛœİHMˆ
+ÈH
+ˆÛÛÎÂˆÛÛœİHHÍÈHÛÛÈHL‹HLÂˆ]›Ş
+KËŠNÂˆÛÛœİİ[HHÛİİ[[X\JJNÂˆİ^[YÛˆH	ÛY	ÎÂˆİ™š[İ[HH	ÈÎ	ÎÂˆİ™›ÛHœÊL‹YJNÂˆİ™š[^
+;"«:èkÈ	ÚH
+È_X
+ÈMH
+ÈŒŠNÂˆYˆ
+\İ[JHÂˆİ™š[İ[HH	ÈÍMMIÎÂˆİ™›ÛHœÊM
+NÂˆİ™š[^
+	ø %:îa;%­;'¢;'c8 %	Ë
+ÈMH
+ÈMŠNÂˆÛÛ[YNÂˆBˆÛÛœİÈHZ[X\›š[™Ôİ[[X\JJNÂˆÛÛœİY]HHÙ]Y]JJNÂˆÛÛœİ]HHÙ[XİY]JJNÂˆ]HHH
+ÈÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊMËYJNÂˆİ™š[^
+İ[K›˜[YK
+ÈMJNÈH
+ÏHŒÂˆYˆ
+]JHÂˆİ™š[İ[HH[YPXØÙ[
+
+NÂˆİ™›ÛHœÊLKYJNÂˆİ™š[^
+8à#	İ]K›˜[Y_xà#X
+ÈMJNÂˆBˆH
+ÏHŒÂˆÛÛœİ[™HH
+X™[˜[ÛÛ
+HOˆÂˆİ™š[İ[HH	ÈÎNNIÎÈİ™›ÛHœÊLŠNÂˆİ™š[^
+X™[
+ÈMJNÂˆİ™š[İ[HHÛÛ	ÈÙ™™‰ÎÈİ™›ÛHœÊLËYJNÂˆİ^[YÛˆH	ÜšYÚ	ÎÈİ™š[^
+˜[
+ÈÈHMJNÈİ^[YÛˆH	ÛY	ÎÂˆH
+ÏHÂˆNÂˆ[™J	û)á;e¢IËİ[K™Û™HÈ	úêª;eæ;&a:èã	Èˆİ[KœİYÙJNÂˆ[™J	ûdo:ë.;('	Ë	ÜË˜][\Yz¬'
+NÂˆ[™J	û(%zâízéh	ËË˜][\YÈ	ÓX]œ›İ[™
+Ë›İ™\˜[˜]H
+ˆL
+_IXˆ	ø %	ËˆË˜][\YÈ
+Ë›İ™\˜[˜]HHÈÚĞÛÛÜŠ
+HˆË›İ™\˜[˜]HHˆÈØ\›ÛÛÜŠ
+Hˆ˜YÛÛÜŠ
+JHˆ	ÈÎ	ÊNÂˆ[™J	úìí{"­H:án;b®	Ë	ÛZ\İZÙPÛİ[
+J_z¬'
+NÂˆ[™J	úãá;(!:¬ï;('	Ë	ØÛİ[XÚY]™[Y[ÊJ_KÉĞPÒQU‘SQS•Ë›[™İX
+NÂˆ[™J	û%b;%a;) :éâ;'c	Ë8¦iH	Üİ[K›Y\˜Ş_X
+NÂˆ[™J	û%ì;!£H;-§;!'IËY]Kœİ™XZÈÈ<'å)H	ÛY]Kœİ™XZß{'oˆ	ø %	ÊNÂˆËÈ;%o{($;(ï;('ˆİ™š[İ[HH	ÈÎNNIÎÈİ™›ÛHœÊLŠNÂˆİ™š[^
+	úãe; ­;c­:ìï;(ï;('	Ë
+ÈMJNÈH
+ÏHNÂˆİ™š[İ[HH˜YÛÛÜŠ
+NÈİ™›ÛHœÊLJNÂˆYˆ
+ËÙXZË›[™İ
+HÂˆ›Üˆ
+ÛÛœİÛX™[ÙˆËÙXZËœÛXÙJÊJHÈİ™š[^
+	ğ­È	È
+ÈÛX™[
+ÈM‹JNÈH
+ÏHMÈBˆH[ÙHÂˆİ™š[İ[HH	ÈÍXN	ÎÈİ™š[^
+	ğ­È;%o{($;%á»'c<'äcIË
+ÈM‹JNÂˆBˆB‚ˆÛÛœİHØ[YK™\Ú›Ø\™Âˆİ^[YÛˆH	ØÙ[\‰ÎÂˆYˆ
+Ø\İˆ
+HÂˆİ™š[İ[HHÚĞÛÛÜŠ
+NÂˆİ™›ÛHœÊMYJNÂˆİ™š[^
+	ø§$È:ì&;f!;fjHÔÕºéo;( ;'©{e¢;%­;&¥
+;%ä{!`0­ú­k:® ;"ç;b®;%ä;!';%í:®,
+IËÈÈ‹LLŠNÂˆH[ÙHYˆ
+Ø\İ
+HÂˆİ™š[İ[HH˜YÛÛÜŠ
+NÂˆİ™›ÛHœÊMYJNÂˆİ™š[^
+	û'm;ff:¬¯{%ä;!':â¥:à­:ìí:à¯;"&;%á»%­;&¥
+:î#:ço;&¬;( ;%ä;!';"ç:ãá;em;(ï;!.;&¥
+IËÈÈ‹LLŠNÂˆH[ÙHÂˆİ™š[İ[HH	ÈÍÍÍÉÎÂˆİ™›ÛHœÊLÊNÂˆİ™š[^
+	Öˆ:ì&;f!;fjHÔÕˆ:à­:ìí:à­:®,0­Èˆ:âêú®,
+; à{!.:é«;cë;b®:â¥:¬ H;ef{ çH;"&;f.;'¤;'o;)à
+IËÈÈ‹LLŠNÂˆBˆİ^[YÛˆH	ÛY	ÎÂˆB‚ˆËÈKKKKKKKKKHKLŒ:ì&;"';'!;dg
+;%ë:çë:®,:®,:ì,{%áH;ej{ ¬
+HKKKKKKKKKBˆËÈ;%ë:çë:®,:®,;'f:ãl;'m;a,:ì,{%áJšœÛÛŠ{'a;,*:è`:èg:í¢:çë;&`;ef{ çzìá;'m:é¡0­û'¤:îa0­û(%zâízéh0­Ôúäìz®"H;"&:éo;eg;dg:ègˆËÈ:êª;'`:âéˆ:èg;.ë;( ;'©{!£:â¥;(!;f :¬m:äç:é«;)à;%bº¬è
+;dg;"ç;(!;&ªJK;!':ì¡0­úá);b®;&ã;`k:ãá;$ì;)à;%bºâ¥:âé
+:¬';'n;(%zìí:ìí;f.
+K‚ˆÛÛœİPQT“ĞT‘ÒUSTÈHÉÛØY	Ë	Ù^Ü	Ë	ØÛX\‰Ë	ØÛÜÙI×NÂˆÛÛœİPQT“ĞT‘ÓP‘SÈHÂˆØYˆ	ûï"È:ì,{%áH;c#;'o:í¢:çë;&):®,
+;%ë:çë:¬':¬ :â©JIËˆ^Üˆ	ø¡êH;"';'!;dgÔÕˆ:à­:ìí:à­:®,	ËˆÛX\ˆ	ø¡®ˆ;dg:îa;&¬:®,	ËˆÛÜÙNˆ	úâêú®,	ËˆNÂˆËÈ:ì,{%áH:¬'{,­;%ä;!';"«:èkÊ;ef{ çJzìá;&¥;%oH;e¢{'a:ïdzâ¥:âé8 %ØØ[İÜ˜YÙzéo;'oz¬l:à¦;$ì;)à;%bºâ¥:âé‚ˆ[˜İ[Ûˆ˜XÚİ\Ûİ›İÜÊØšŠHÂˆÛÛœİ›İÜÈH×NÂˆÛÛœİ]HH
+Øšˆ	‰ˆØš‹™]JHßNÂˆ›Üˆ
+]HHÈHÓÕĞÓÕS•ÈJÊÊHÂˆÛÛœİÜ˜]ÈH]VÜÛİÙ^JJWNÂˆYˆ
+\Ü˜]ÊHÛÛ[YNÂˆ]ÛİÈHÈÛİH”ÓÓ‹œ\œÙJÜ˜]ÊNÈHØ]Ú
+JHÈÛÛ[YNÈBˆYˆ
+\Ûİ\Ûİ™›YÜÊHÛÛ[YNÂˆ]İ]ÈHßNÈHÈİ]ÈH”ÓÓ‹œ\œÙJ]VÜİ]ÒÙ^JJWH	ŞßIÊHßNÈHØ]Ú
+JHÈİ]ÈHßNÈBˆ]Y]HHßNÈHÈY]HH”ÓÓ‹œ\œÙJ]VÛY]RÙ^JJWH	ŞßIÊHßNÈHØ]Ú
+JHÈY]HHßNÈBˆ]İÈHİˆHÂˆ›Üˆ
+ÛÛœİÙˆØš™XİšÙ^\Êİ]ÊJHÈÛÛœİHHİ]ÖİNÈYˆ
+H	‰ˆKİ[ˆ
+HÈİÈ
+ÏHK˜ÛÜœ™XİÈİˆ
+ÏHKİ[ÈHBˆÛÛœİÔ˜[šÈHØš™Xİ˜[Y\ÊY]K˜›ÜÜÔ˜[šÈßJK™š[\Š
+ŠHOˆˆOOH	ÔÉÊK›[™İÂˆ›İÜËœ\Ú
+ÂˆËÈÙ^H8 %:¬&{'`:ì,{%áH;c#;'o
+Ø]™Y];'m:¬&{'c
+{'f:¬&{'`;"«:èkû'a:äd:ì¢:í¢:çë;&):êm;)$zìí{'/:èg:¬n:çë:à®:âé‚ˆËÈ
+:­d; «:¬ Œ:ê¡H:ì&;%ä;!':¬&{'`;`ç:î%:é¯È:ì,{%á{'a;"é;"&:èg;'«;!(;`ç{em:ãá;'m;)$H;)äz¬á:ä&;)à;%bº¬£
+BˆÙ^Nˆ
+Øš‹œØ]™Y]
+H
+È	ß	È
+ÈH
+È	ß	È
+ÈØ[š]^™S˜[YJÛİ›˜[YJKˆ˜[YNˆØ[š]^™S˜[YJÛİ›˜[YJKY\˜ŞNˆÛİ™›YÜË›Y\˜ŞHˆ][\Yˆİ‹ÛÜœ™XİˆİË˜]NˆİˆÈİÈÈİˆˆÔ˜[šËˆÛ™NˆHJÛİ™›YÜË™Y™X]Y	‰ˆÛİ™›YÜË™Y™X]YY[Û™ÚJKˆJNÂˆBˆ™]\›ˆ›İÜÎÂˆBˆËÈ:ì&:ã ;ek{(!;"';'!8 %úäìz®"H;"&8¡¤ˆ;(%zâízéh8¡¤ˆ;'¤:îa;"'‚ˆ[˜İ[ÛˆXY\˜›Ø\™ÛÜY
+
+HÂˆ™]\›ˆØ[YK›XY\˜›Ø\™œ›İÜËœÛXÙJ
+KœÛÜ
+
+KŠHO‚ˆ‹œÔ˜[šÈHKœÔ˜[šÈ‹œ˜]HHKœ˜]H‹›Y\˜ŞHHK›Y\˜ŞJNÂˆBˆ[˜İ[ÛˆZ[XY\˜›Ø\™ÜİŠ
+HÂˆÛÛœİXY\ˆHÉû"';'!	Ë	û'm:é¡	Ë	û%b;%a;) :éâ;'c	Ë	ûdo:ë.;('	Ë	û(%zâíH;"&	Ë	û(%zâízéh
+	JIË	Ôúäìz®"H;"&	Ë	û&a;(ï	×NÂˆÛÛœİ›İÜÈHXY\˜›Ø\™ÛÜY
+
+NÂˆÛÛœİ[™\ÈHÚXY\‹›X\
+ÜİÙ[
+Kš›Ú[Š	Ë	ÊWNÂˆ›İÜË™›Ü‘XXÚ
+
+‹JHOˆÂˆ[™\Ëœ\Ú
+ÚH
+ÈK‹›˜[YK‹›Y\˜ŞK‹˜][\Y‹˜ÛÜœ™Xİˆ‹˜][\YÈX]œ›İ[™
+‹œ˜]H
+ˆL
+Hˆ	ÉË‹œÔ˜[šË‹™Û™HÈ	ÖIÈˆ	Ó‰×K›X\
+ÜİÙ[
+Kš›Ú[Š	Ë	ÊJNÂˆJNÂˆ™]\›ˆ[™\Ëš›Ú[Š	×—‰ÊNÂˆBˆ[˜İ[ÛˆİÛ›ØYXY\˜›Ø\™ÜİŠ
+HÂˆHÂˆÛÛœİ^H	ûîïÉÈ
+ÈZ[XY\˜›Ø\™ÜİŠ
+NÈËÈ;%ä{!`;eg:® :®j;)ä:ì*{)à“ÓBˆÛÛœİHHØİ[Y[˜Ü™X]Q[[Y[
+	ØIÊNÂˆKš™YˆH	Ù]N^ØÜİØÚ\œÙ]]]‹N	È
+È[˜ÛÙUT’PÛÛ\Û™[
+^
+NÂˆK™İÛ›ØYH	ØZKY]XÜË[XY\˜›Ø\™IÈ
+ÈÙ^TİŠ
+H
+È	Ë˜Üİ‰ÎÂˆØİ[Y[˜›ÙK˜\[™Ú[
+JNÈK˜ÛXÚÊ
+NÈØİ[Y[˜›ÙKœ™[[İ™PÚ[
+JNÂˆ™]\›ˆYNÂˆHØ]Ú
+JHÈ™]\›ˆ˜[ÙNÈBˆBˆËÈ:ì,{%áH;c#;'o;%í:®,RH;'«; «;&ªH8 %;%ë:çë;c#;'o;'a;eg:ì¢;%ä
+:æ$:â¥:ì&:ìíH;f.;-§:èg
+H;,*:è`:èg;'o{%­;e¢{'a:â!;( {eg:âé‚ˆ[˜İ[Ûˆ[\ÜXY\˜›Ø\™š[\Ê
+HÂˆHÂˆÛÛœİ[œHØİ[Y[˜Ü™X]Q[[Y[
+	Ú[œ]	ÊNÂˆ[œ\HH	Ùš[IÎÂˆ[œ˜XØÙ\H	Ø\XØ][Û‹ÚœÛÛ‹šœÛÛ‰ÎÂˆ[œ›][\HHYNÂˆÛÛœİ[™\ˆH
+
+HOˆÂˆ[œœ™[[İ™Q]™[\İ[™\Š	ØÚ[™ÙIË[™\ŠNÂˆÛÛœİš[\ÈH[œ™š[\ÈÈ\œ˜^K™œ›ÛJ[œ™š[\ÊHˆ×NÂˆYˆ
+Yš[\Ë›[™İ
+H™]\›Âˆ]™[XZ[š[™ÈHš[\Ë›[™İYYHÚÑš[\ÈHÚÚ\YHÂˆÛÛœİÛ™HH
+
+HOˆÂˆØ[YK›XY\˜›Ø\™™š[\È
+ÏHÚÑš[\ÎÂˆØ[YK›XY\˜›Ø\™œÚÚ\YHÚÚ\YÂˆËÈ;'(;fª:ì,{%áH;%á»'/:êmLÌ;(!:í ;'m:ëî:í¢:çë;&*;)$zìí{'m:êmLÍL;'/:èg:­k:í¡;em;%b:à­ˆØ[YK›XY\˜›Ø\™Ø\İHYYˆÈŒˆ
+ÚÚ\YˆÈLÍLˆLÌ
+NÂˆÛİ[™˜˜YÙJ
+NÂˆNÂˆËÈ;'m:ëî;dg;%ä;'¢:â¥;ef{ çH;e¢JÙ^J{'`:¬m:á":æí:âé8 %:¬&{'`;c#;'o;'«;!(;`çH;"ç;'m;)$H;)äz¬á:ì*{)àˆÛÛœİÙY[ˆH™]ÈÙ]
+Ø[YK›XY\˜›Ø\™œ›İÜË›X\
+
+ŠHOˆ‹šÙ^JJNÂˆš[\Ë™›Ü‘XXÚ
+
+š[JHOˆÂˆÛÛœİ™XY\ˆH™]Èš[T™XY\Š
+NÂˆ™XY\‹›Û›ØYH
+
+HOˆÂˆ]ØšˆH[ÂˆHÈØšˆH”ÓÓ‹œ\œÙJİš[™Ê™XY\‹œ™\İ[
+JNÈHØ]Ú
+JHÈØšˆH[ÈBˆYˆ
+Øšˆ	‰ˆØš‹˜\OOH	ØZKY]XÜËXY™[\™IÊHÂˆÛÛœİ›İÜÈH˜XÚİ\Ûİ›İÜÊØšŠNÂˆÛÛœİœ™\ÚH›İÜË™š[\Š
+ŠHOˆ\ÙY[‹š\Ê‹šÙ^JJNÂˆÚÚ\Y
+ÏH›İÜË›[™İHœ™\Ú›[™İÂˆœ™\Ú™›Ü‘XXÚ
+
+ŠHOˆÙY[‹˜Y
+‹šÙ^JJNÂˆYˆ
+œ™\Ú›[™İ
+HÈØ[YK›XY\˜›Ø\™œ›İÜËœ\Ú
+‹‹™œ™\Ú
+NÈYY
+ÏHœ™\Ú›[™İÈBˆYˆ
+›İÜË›[™İ
+HÚÑš[\È
+ÏHNÂˆBˆ™[XZ[š[™ÈOHNÈYˆ
+™[XZ[š[™ÈOOH
+HÛ™J
+NÂˆNÂˆ™XY\‹›Û™\œ›ÜˆH
+
+HOˆÈ™[XZ[š[™ÈOHNÈYˆ
+™[XZ[š[™ÈOOH
+HÛ™J
+NÈNÂˆ™XY\‹œ™XY\Õ^
+š[JNÂˆJNÂˆNÂˆ[œ˜Y]™[\İ[™\Š	ØÚ[™ÙIË[™\ŠNÂˆ[œ˜ÛXÚÊ
+NÂˆ™]\›ˆYNÂˆHØ]Ú
+JHÈØ[YK›XY\˜›Ø\™Ø\İHLŒÈ™]\›ˆ˜[ÙNÈBˆBˆ[˜İ[ÛˆÜ[“XY\˜›Ø\™
+™]
+HÂˆÛÛœİˆHØ[YK›XY\˜›Ø\™Âˆ‹œ™]H™]È‹˜İ\œÛÜˆHÈ‹Ø\İHÂˆØ[YK›[ÙHH	ÛXY\˜›Ø\™	ÎÂˆÛİ[™œÙ[Xİ
+
+NÂˆBˆ[˜İ[ÛˆÛÜÙSXY\˜›Ø\™
+
+HÈØ[YK›[ÙHHØ[YK›XY\˜›Ø\™œ™]ÈÛİ[™œÙ[Xİ
+
+NÈBˆ[˜İ[Ûˆ\]SXY\˜›Ø\™
+
+HÂˆÛÛœİˆHØ[YK›XY\˜›Ø\™ÂˆYˆ
+‹Ø\İˆ
+H‹Ø\İOHNÈ[ÙHYˆ
+‹Ø\İ
+H‹Ø\İ
+ÏHNÂˆÛÛœİˆHPQT“ĞT‘ÒUSTË›[™İÂˆYˆ
+\İ™\ÜÙY
+	İ\	ÊH\İ™\ÜÙY
+	ÙİÛ‰ÊJHÂˆ‹˜İ\œÛÜˆH\İ™\ÜÙY
+	İ\	ÊHÈ
+‹˜İ\œÛÜˆ
+ÈˆHJH	Hˆˆ
+‹˜İ\œÛÜˆ
+ÈJH	HÂˆÛİ[™˜›\
+
+NÂˆYˆ
+Ø[YKÊHÜYXÚœÜXZÊPQT“ĞT‘ÓP‘SÖÓPQT“ĞT‘ÒUSTÖÛ‹˜İ\œÛÜ—WH	ÉÊNÂˆBˆYˆ
+\İ™\ÜÙY
+	ØØ[˜Ù[	ÊH\İ™\ÜÙY
+	ÛY[IÊJHÈÛÜÙSXY\˜›Ø\™
+
+NÈ™]\›ÈBˆYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊJHÂˆÛÛœİ][HHPQT“ĞT‘ÒUSTÖÛ‹˜İ\œÛÜ—NÂˆYˆ
+][HOOH	ÛØY	ÊH[\ÜXY\˜›Ø\™š[\Ê
+NÂˆ[ÙHYˆ
+][HOOH	Ù^Ü	ÊHÂˆYˆ
+[‹œ›İÜË›[™İ
+HÈ‹Ø\İHLÌÈÛİ[™˜˜YÙJ
+NÈ™]\›ÈBˆÛÛœİÚÈHİÛ›ØYXY\˜›Ø\™ÜİŠ
+HÛÜU^ĞÛ\›Ø\™
+Z[XY\˜›Ø\™ÜİŠ
+JNÂˆ‹œÚÚ\YHÈËÈ:à­:ìí:à­:®,;!,z¬íH;a¨;"©;b®;%ä:í¢:çë;&):®,;)$zìíH;%b:à­:¬ ;!'»'m;)à;%bº¬£ˆ‹Ø\İHÚÈÈŒˆLŒÈÛİ[™˜˜YÙJ
+NÂˆH[ÙHYˆ
+][HOOH	ØÛX\‰ÊHÈ‹œ›İÜÈH×NÈ‹™š[\ÈHÈ‹Ø\İHÈ‹œÚÚ\YHÈÛİ[™˜›\
+
+NÈBˆ[ÙHYˆ
+][HOOH	ØÛÜÙIÊHÛÜÙSXY\˜›Ø\™
+
+NÂˆBˆBˆ[˜İ[Ûˆ˜]ÓXY\˜›Ø\™
+
+HÂˆÛÛœİˆHØ[YK›XY\˜›Ø\™Âˆİ™š[İ[HH	ÈÌŒLXIÎÈİ™š[™Xİ
+Ë
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆİ™š[İ[HH	ÈÙ™™‰ÎÈİ™›ÛHœÊŒKYJNÂˆİ™š[^
+	ü'ãáH:ì&;"';'!;dg	ËÍŠNÂˆİ™š[İ[HH	ÈÎNLM‰ÎÈİ™›ÛHœÊLŠNÂˆİ™š[^
+	û%ë:çë:®,:®,;'f:ãl;'m;a,:ì,{%áJšœÛÛŠ{'a:í¢:çë;&`;ef{ çzìá;!,{-ê:éo;eg;dg:èg:êª;%a;&¥‰ËMŠNÂˆİ™š[İ[HH	ÈÍÌ	ÎÂˆİ™š[^
+	ø .È:á);b®;&ã;`k;%á»'m;'m:®,:®,;%ä;!':éã;dg;"ç;ef:¬è;( ;'©{ef;)à;%b»%a;&¥
+:¬';'n;(%zìí:ìí;f.
+K‰ËÍ
+NÂ‚ˆËÈ:êe:âm
+;!.:èg;ekzêªJBˆ]^HHLÂˆ›Üˆ
+]HHÈHPQT“ĞT‘ÒUSTË›[™İÈJÊÊHÂˆ˜]ĞÚÚXÙS[™JPQT“ĞT‘ÓP‘SÖÓPQT“ĞT‘ÒUSTÖÚWWK^KHOOH‹˜İ\œÛÜŠNÂˆ^H
+ÏHÂˆBˆËÈ:í¢:çë;&*;f!;fjBˆİ^[YÛˆH	ÜšYÚ	ÎÂˆİ™š[İ[HH	ÈÎNLM‰ÎÈİ™›ÛHœÊLŠNÂˆİ™š[^
+:í¢:çë;&*:ì,{%áH	Û‹™š[\ßz¬'0­È;ef{ çH	Û‹œ›İÜË›[™İzê¡XÈHLMŠNÂˆİ^[YÛˆH	ÛY	ÎÂ‚ˆËÈ;dg;eé:ãeˆÛÛœİ›İÜÈHXY\˜›Ø\™ÛÜY
+
+NÂˆÛÛœİÛÛÈHÂˆÈˆÌX™[ˆ	û"';'!	Ë[YÛˆ	ÛY	ÈKˆÈˆ‹X™[ˆ	û'm:é¡	Ë[YÛˆ	ÛY	ÈKˆÈˆÌÌX™[ˆ	û%b;%a;) :éâ;'c	Ë[YÛˆ	ÜšYÚ	ÈKˆÈˆÌX™[ˆ	û(%zâízéh	Ë[YÛˆ	ÜšYÚ	ÈKˆÈˆMŒX™[ˆ	Ôúäìz®"IË[YÛˆ	ÜšYÚ	ÈKˆÈˆX™[ˆ	û&a;(ï	Ë[YÛˆ	ÜšYÚ	ÈKˆNÂˆ]HHŒÌÂˆİ™š[İ[HH	ÈÎXXL‰ÎÈİ™›ÛHœÊL‹YJNÂˆ›Üˆ
+ÛÛœİÈÙˆÛÛÊHÈİ^[YÛˆHË˜[YÛÈİ™š[^
+Ë›X™[ËJNÈBˆİœİ›ÚÙTİ[HH	ÈÌ˜LÌL	ÎÈİ›[™UÚYHNÂˆİ˜™YÚ[”]
+
+NÈİ›[İ™UÊH
+ÈŠNÈİ›[™UÊÈHH
+ÈŠNÈİœİ›ÚÙJ
+NÂˆH
+ÏHÂ‚ˆYˆ
+\›İÜË›[™İ
+HÂˆİ^[YÛˆH	ØÙ[\‰ÎÈİ™š[İ[HH	ÈÍÌ	ÎÈİ™›ÛHœÊM
+NÂˆİ™š[^
+	û%a;)àH:í¢:çë;&*:ì,{%á{'m;%á»%­;&¥8 %8à#:ì,{%áH;c#;'o:í¢:çë;&):®,8à#zèg;"ç;'¤{ef;!.;&¥‰ËÈÈ‹Ì
+NÂˆBˆÛÛœİš\ÚX›HHX]›Z[Š›İÜË›[™İLJNÈËÈ;fe:êm;%ä:äé;%­:¬ :â¥:éã;`o:éãˆ›Üˆ
+]HHÈHš\ÚX›NÈJÊÊHÂˆÛÛœİˆH›İÜÖÚWNÂˆÛÛœİYY[HHOOHÈ	ü'éaÉÈˆHOOHHÈ	ü'éb	ÈˆHOOHˆÈ	ü'ébIÈˆİš[™ÊH
+ÈJNÂˆİ™›ÛHœÊLÊNÂˆİ^[YÛˆH	ÛY	ÎÂˆİ™š[İ[HHHÈÈ[YPXØÙ[
+
+Hˆ	ÈØÎØÙÉÎÂˆİ™š[^
+YY[ÛÛÖÌKJNÂˆİ™š[İ[HH	ÈÙ™™‰ÎÈİ™›ÛHœÊMHÊNÂˆİ™š[^
+‹›˜[YH
+È
+‹™Û™HÈ	ÉÈˆ	ÉÊKÛÛÖÌWKJNÂˆİ™›ÛHœÊLÊNÂˆİ^[YÛˆH	ÜšYÚ	ÎÂˆİ™š[İ[HH	ÈÙLLØIÎÈİ™š[^
+	ø¦iH	È
+È‹›Y\˜ŞKÛÛÖÌ—KJNÂˆİ™š[İ[HH‹˜][\YÈ
+‹œ˜]HHÈÚĞÛÛÜŠ
+Hˆ‹œ˜]HHˆÈØ\›ÛÛÜŠ
+Hˆ˜YÛÛÜŠ
+JHˆ	ÈÍÌ	ÎÂˆİ™š[^
+‹˜][\YÈX]œ›İ[™
+‹œ˜]H
+ˆL
+H
+È	ÉIÈˆ	ø %	ËÛÛÖÌ×KJNÂˆİ™š[İ[HH‹œÔ˜[šÈÈ	ÈÙ™™	Èˆ	ÈÍÌ	ÎÂˆİ™š[^
+İš[™Ê‹œÔ˜[šÊKÛÛÖÍKJNÂˆİ™š[İ[HH‹™Û™HÈÚĞÛÛÜŠ
+Hˆ	ÈÍÌ	ÎÂˆİ™š[^
+‹™Û™HÈ	û&a;(ï	Èˆ	û)á;e¢IËÛÛÖÍWKJNÂˆH
+ÏHŒÂˆBˆYˆ
+›İÜË›[™İˆš\ÚX›JHÂˆİ^[YÛˆH	ÛY	ÎÈİ™š[İ[HH	ÈÍÌ	ÎÈİ™›ÛHœÊLJNÂˆİ™š[^
+8 )»&n	Ü›İÜË›[™İHš\ÚX›_zê¡H
+ÔÕºèg;(!;,­:à­:ìí:à­:®,
+XÛÛÖÌWKH
+ÈŠNÂˆB‚ˆËÈ;a¨;"©;b®ˆİ^[YÛˆH	ØÙ[\‰ÎÂˆYˆ
+‹Ø\İˆ
+HÂˆİ™š[İ[HHÚĞÛÛÜŠ
+NÈİ™›ÛHœÊMYJNÂˆİ™š[^
+‹œÚÚ\YˆÈ8§$È;,¦:é«;e¢;%­;&¥
+;'m:ëî;'¢:ãf	Û‹œÚÚ\Yzê¡{'`;)$zìí{'m:ço:¬m:á":æì;%â;%­;&¥
+Xˆˆ	ø§$È;,¦:é«;e¢;%­;&¥
+ÔÕºâ¥;%ä{!`0­ú­k:® ;"ç;b®;%ä;!';%í:è);&¥
+IËÈÈ‹L
+NÂˆH[ÙHYˆ
+‹Ø\İOOHLÍL
+HÂˆİ™š[İ[HHØ\›ÛÛÜŠ
+NÈİ™›ÛHœÊLËYJNÂˆİ™š[^
+	û'm:ëî:í¢:çë;&*:ì,{%á{'m;%ä;&¥8 %;)$zìí{'m:ço;dg:â¥:­î:ã :èg;&";&¥‰ËÈÈ‹L
+NÂˆH[ÙHYˆ
+‹Ø\İOOHLÌ
+HÂˆİ™š[İ[HHØ\›ÛÛÜŠ
+NÈİ™›ÛHœÊLËYJNÂˆİ™š[^
+	úí¢:çë;&+;ef{ çH:®,:èg{'m;%á»%­;&¥8 %:¬£;'¡;'f:ãl;'m;a,:ì,{%áJšœÛÛŠ{'a:¬ê:ço;(ï;!.;&¥‰ËÈÈ‹L
+NÂˆH[ÙHYˆ
+‹Ø\İ
+HÂˆİ™š[İ[HH˜YÛÛÜŠ
+NÈİ™›ÛHœÊLËYJNÂˆİ™š[^
+	û'm;ff:¬¯{%ä;!':â¥;eh;"&;%á»%­;&¥
+:î#:ço;&¬;( ;%ä;!';"ç:ãá;em;(ï;!.;&¥
+IËÈÈ‹L
+NÂˆH[ÙHÂˆİ™š[İ[HH	ÈÍÌ	ÎÈİ™›ÛHœÊLŠNÂˆİ™š[^
+	ø¡¤x¡¤È;!(;`çH0­Èˆ;"é;e¢H0­È:âêú®,	ËÈÈ‹L
+NÂˆBˆİ^[YÛˆH	ÛY	ÎÂˆB‚ˆËÈKKKKKKKKKH;"&;%áH:êª:äç
+;,e{a,:ì%:èg;"ç;'¤JHKKKKKKKKKBˆËÈ;!(; çzâæ;'m;&):â¦;"&;%á{eh;,e{a,:í ;a,:ì%:èg;"ç;'¤{ef:¬£;em;) :âé‚ˆËÈ;"&;%áH:®,:ìî; à{`ç›YÜÈ8 %; â:êª;eæ
+È:ì%{ «:ã ;fe;&a:èã
+:¬ H;,e{a,;ekzêª{'mÚ\\“ÛX\ºéo;%®zâ¥:âé
+Bˆ[˜İ[ÛˆÙ]\Û\ÜĞ˜\ÙQ›YÜÊ
+HÂˆÛÛœİ›YÜÈH™]Ñ›YÜÊ
+NÂˆ›YÜË[ÙY›ÙˆHYNÂˆ›YÜË˜˜[™R›Ú[™YHYNÈËÈ;"&;%áH;($;e!:â¥;&);e!:âçJ;ejzéf;%ì;-§
+H;'m;fá; à{`çˆ›YÜË˜Û\ÜÔÙ\ÜÚ[ÛˆHYNÈËÈN;"&;%áJ;,*;"ç
+H;!.;!f8 %;"&;%áH;)á;'¡H:¬¯zèg;%ä;!':éã;/';)á:âé
+;'o:ì&;!.;'m:î#;&);%ï;%á»'c
+Bˆ™]\›ˆ›YÜÎÂˆBˆËÈ;"&;%áH:êª:äç;b®zìá;ekzêªH8à#{'©H8 %;(!:í :¬í{)ç:¬l:é«8à#H
+;"©;ac;'m;)à:ì¢;f.:¬ ;%a:âã:ì*{`â;-§;"&;%á{&ªJBˆÛÛœİPÑWÔÑSHÂˆËÈ»'©H8à#:®,;&®;%­;)á:¬l:é«8à#H;"&;%áH;b®zìá;ekzêªH
+Ù[HLJBˆÛÛœİSÔÑSHLNÂˆËÈû'©H8à#:ã :ë.;)çH;"è:ë.; «8à#H;"&;%áH;b®zìá;ekzêªH
+Ù[HLŠBˆÛÛœİ•SSÔ—ÔÑSHLÂˆËÈ;'©H8à#:ì&;)çH;%a;/ ;'m:äç8à#H;"&;%áH;b®zìá;ekzêªH
+Ù[HLÊBˆÛÛœİTĞQWÔÑSHLÎÂˆËÈ{'©H8à#;cë:­ï;eg;)äxà#H;"&;%áH;b®zìá;ekzêªH
+Ù[HM
+BˆÛÛœİÓÖ–WÔÑSHMÂˆËÈ;c#;'m:á$8à#:¬è;&¥;'f:ç,8¡¤ˆ;/e;%­8à#H;"&;%áH;b®zìá;ekzêªH
+Ù[HMJBˆÛÛœİ’SSÔÑSHMNÂˆÛÛœİRS—ÔÑSH’SSÔÑSÈËÈ;!(;`çz®,;ef;egˆËÈKLN8 %;"&;%áH;!(;`çz®,:¬$ˆ8¡¤ˆ; «;(!û «;fá;!.;b®;'©H;`©ˆ;c#;'m:á$
+’SSÔÑS
+{'`;!.;b®;%á»'c
+[
+K‚ˆ[˜İ[ÛˆÛ\ÜÔÙ[ĞÚÙ^JÙ[
+HÂˆ™]\›ˆÙ[OOHPÑWÔÑSÈ	İ˜XÙIÈˆÙ[OOHSÔÑSÈ	İ[	ÈˆÙ[OOH•SSÔ—ÔÑSÈ	Ü[[Ü‰ÂˆˆÙ[OOHTĞQWÔÑSÈ	Ø\˜ØYIÈˆÙ[OOHÓÖ–WÔÑSÈ	ØÛŞIÈˆ[ÂˆBˆËÈ;)à:®";"«:èkû'f;)á;e¢JÚ\\“ÛX\Š{%ä:éçºâ¥;b®zìá;ekzêª{'a:¬è:én:âé8 %8à#;!(; çzâæ:ì*xà#{'a;%í:åcˆËÈ;.é;!':¬ ;"é;(';)á;e¢{%ä:¬ :®c;&­;'©{%ä;!';"ç;'¤{ef:¬£;eg:âé
+ŒH;"*û'¤;"©;ac;'m;)à:â¥:ãe;'m; àH;$ì;)à;%bºâ¥:âé
+K‚ˆ[˜İ[ÛˆÛ\ÜÔÙ[›Ü‘›YÜÊ›YÜÊHÂˆYˆ
+›YÜË˜Ú\\PÛX\ŠH™]\›ˆ’SSÔÑSÂˆYˆ
+›YÜË˜Ú\\ÛX\ŠH™]\›ˆÓÖ–WÔÑSÂˆYˆ
+›YÜË˜Ú\\ŒĞÛX\ŠH™]\›ˆTĞQWÔÑSÂˆYˆ
+›YÜË˜Ú\\ŒÛX\ŠH™]\›ˆ•SSÔ—ÔÑSÂˆYˆ
+›YÜË˜Ú\\ŒPÛX\ŠH™]\›ˆSÔÑSÂˆ™]\›ˆPÑWÔÑSÂˆBˆËÈ{'©H;"ç;'¤H; à{`ç:èg:éç»-¥:¬è;(!:í :¬í{)ç:¬l:é«;'¡z­k;%ä;!';!';"ç;'¤{eg:âé‚ˆËÈY™X]Y˜™ZÚŞY[Û[ÛŠ;e!:èi:èg:­î8à#:å,:ço8à#H:¬ª{c#
+zãáYzèg:éç»-¦:âé8 %{'©H;eâ:î#;%b;%ä;'m:ëî;!'ˆËÈ;'¢:â¥; à{`ç;'n:ãl;e!:èi:èg:­î:ëî;`m:é«;%­:èg:àª:¬ª:äd:êm:êª{dg:à¦;.j:ì&
+Ù]Øš™Xİ]™U\™Ù]
+{'m;",»'fˆËÈ:å,:ço:éo:¬á;!£H:¬ :é«;`©:â¥:êª;"';'m; çz®-:âé
+;"&;%áH:êª:äç;($;e!:â¥»'m;'©zí ;a,:ì%:èg;"&;%áHˆ;(!;('
+K‚ˆ[˜İ[Ûˆ\U˜XÙT›ÛÛPÛ\ÜÊ
+HÂˆÛÛœİ›YÜÈHÙ]\Û\ÜĞ˜\ÙQ›YÜÊ
+NÂˆ›YÜË™Y™X]Y˜™ZÚŞY[Û[ÛˆHYNÂˆØ[YK™›YÜÈH›YÜÎÂˆØ[YK›X\H	Ùœ™Y\İ™Y]	ÎÂˆÛÛœİHØ[YKœ^Y\ÂˆHNÈHHŒNÈœHN
+ˆÎÈœHHŒH
+ˆÎÂˆ›[İš[™ÈH˜[ÙNÈ™\ˆH	İ\	ÎÂˆØ]™J
+NÂˆBˆËÈ»'©H;"ç;'¤H; à{`ç
+{'©H;`m:é«;%­;)à{fá
+zèg:éç»-¥:¬è:®,;&®;%­;)á:¬l:é«;'¡z­k;%ä;!';!';"ç;'¤{eg:âé‚ˆ[˜İ[Ûˆ\U[İ™Y]Û\ÜÊ
+HÂˆÛÛœİ›YÜÈHÙ]\Û\ÜĞ˜\ÙQ›YÜÊ
+NÂˆ›YÜË™Y™X]Y˜™ZÚŞY[Û[ÛˆHYNÈËÈ;e!:èi:èg:­î
+:å,:ço
+zâ¥;'m:ëî;`m:é«;%­;eg; à{`çˆ›YÜË˜Ú\\ŒPÛX\ˆHYNÈËÈ»'©{'`{'©H;`m:é«;%­;fá; à{`çˆËÈ;'©H;($;e!;"&;%á{'`:­ :ë.:ë.:âíJKM
+zãá;a­z¬ï;,¦:é«8 %;%b:ì,;&­;'©{'f;`-;)¢:èg;,*:âê:ä&;)à;%bº¬£ˆ›YÜË™Ø]T]Z^ŒHHYNÂˆØ[YK™›YÜÈH›YÜÎÂˆØ[YK›X\H	İ[İ™Y]	ÎÂˆÛÛœİHØ[YKœ^Y\ÂˆHNÈHHŒNÈœHN
+ˆÎÈœHHŒH
+ˆÎÂˆ›[İš[™ÈH˜[ÙNÈ™\ˆH	İ\	ÎÂˆØ]™J
+NÂˆBˆËÈû'©H;"ç;'¤H; à{`ç
+»'©H;`m:é«;%­;)à{fá
+zèg:éç»-¥:¬è;!£:ë.:¬l:é«;'¡z­k;%ä;!';!';"ç;'¤{eg:âé‚ˆ[˜İ[Ûˆ\T[[Ü”İ™Y]Û\ÜÊ
+HÂˆÛÛœİ›YÜÈHÙ]\Û\ÜĞ˜\ÙQ›YÜÊ
+NÂˆ›YÜË™Y™X]Y˜™ZÚŞY[Û[ÛˆHYNÈËÈ;e!:èi:èg:­î
+:å,:ço
+zâ¥;'m:ëî;`m:é«;%­;eg; à{`çˆ›YÜË˜Ú\\ŒPÛX\ˆHYNÂˆ›YÜË˜Ú\\ŒÛX\ˆHYNÈËÈû'©{'`»'©H;`m:é«;%­;fá; à{`çˆËÈ;'©H;($;e!;"&;%á{'`:­ :ë.:ë.:âíJKM
+zãá;a­z¬ï;,¦:é«8 %;%b:ì,;&­;'©{'f;`-;)¢:èg;,*:âê:ä&;)à;%bº¬£ˆ›YÜË™Ø]T]Z^ŒHHYNÈ›YÜË™Ø]T]Z^ŒˆHYNÂˆØ[YK™›YÜÈH›YÜÎÂˆØ[YK›X\H	Ü[[Üœİ™Y]	ÎÂˆÛÛœİHØ[YKœ^Y\ÂˆHNÈHHŒNÈœHN
+ˆÎÈœHHŒH
+ˆÎÂˆ›[İš[™ÈH˜[ÙNÈ™\ˆH	İ\	ÎÂˆØ]™J
+NÂˆBˆËÈ;'©H;"ç;'¤H; à{`ç
+û'©H;`m:é«;%­;)à{fá
+zèg:éç»-¥:¬è:ì&;)çH;%a;/ ;'m:äç;'¡z­k;%ä;!';!';"ç;'¤{eg:âé‚ˆ[˜İ[Ûˆ\P\˜ØYPÛ\ÜÊ
+HÂˆÛÛœİ›YÜÈHÙ]\Û\ÜĞ˜\ÙQ›YÜÊ
+NÂˆ›YÜË™Y™X]Y˜™ZÚŞY[Û[ÛˆHYNÈËÈ;e!:èi:èg:­î
+:å,:ço
+zâ¥;'m:ëî;`m:é«;%­;eg; à{`çˆ›YÜË˜Ú\\ŒPÛX\ˆHYNÂˆ›YÜË˜Ú\\ŒÛX\ˆHYNÂˆ›YÜË˜Ú\\ŒĞÛX\ˆHYNÈËÈ;'©{'`û'©H;`m:é«;%­;fá; à{`çˆËÈ;'©H;($;e!;"&;%á{'`:­ :ë.:ë.:âíJKM
+zãá;a­z¬ï;,¦:é«8 %;%b:ì,;&­;'©{'f;`-;)¢:èg;,*:âê:ä&;)à;%bº¬£ˆ›YÜË™Ø]T]Z^ŒHHYNÈ›YÜË™Ø]T]Z^ŒˆHYNÈ›YÜË™Ø]T]Z^ŒÈHYNÂˆØ[YK™›YÜÈH›YÜÎÂˆØ[YK›X\H	Ø\˜ØYIÎÂˆÛÛœİHØ[YKœ^Y\ÂˆHNÈHHŒÈœHN
+ˆÎÈœHHŒ
+ˆÎÂˆ›[İš[™ÈH˜[ÙNÈ™\ˆH	İ\	ÎÂˆØ]™J
+NÂˆBˆËÈ{'©H;"ç;'¤H; à{`ç
+;'©H;`m:é«;%­;)à{fá
+zèg:éç»-¥:¬è;cë:­ï;eg;)äH;'¡z­k;%ä;!';!';"ç;'¤{eg:âé‚ˆ[˜İ[Ûˆ\PÛŞZÛYPÛ\ÜÊ
+HÂˆÛÛœİ›YÜÈHÙ]\Û\ÜĞ˜\ÙQ›YÜÊ
+NÂˆ›YÜË™Y™X]Y˜™ZÚŞY[Û[ÛˆHYNÈËÈ;e!:èi:èg:­î
+:å,:ço
+zâ¥;'m:ëî;`m:é«;%­;eg; à{`çˆ›YÜË˜Ú\\ŒPÛX\ˆHYNÂˆ›YÜË˜Ú\\ŒÛX\ˆHYNÂˆ›YÜË˜Ú\\ŒĞÛX\ˆHYNÂˆ›YÜË˜Ú\\ÛX\ˆHYNÈËÈ{'©{'`;'©H;`m:é«;%­;fá; à{`çˆËÈ;'©H;($;e!;"&;%á{'`:­ :ë.:ë.:âíJKM
+zãá;a­z¬ï;,¦:é«8 %;%b:ì,;&­;'©{'f;`-;)¢:èg;,*:âê:ä&;)à;%bº¬£ˆ›YÜË™Ø]T]Z^ŒHHYNÈ›YÜË™Ø]T]Z^ŒˆHYNÈ›YÜË™Ø]T]Z^ŒÈHYNÈ›YÜË™Ø]T]Z^HYNÂˆØ[YK™›YÜÈH›YÜÎÂˆØ[YK›X\H	ØÛŞZÛYIÎÂˆÛÛœİHØ[YKœ^Y\ÂˆHÎÈHHLÈœHÈ
+ˆÎÈœHHL
+ˆÎÂˆ›[İš[™ÈH˜[ÙNÈ™\ˆH	ÙİÛ‰ÎÂˆØ]™J
+NÂˆBˆËÈ;c#;'m:á$;"ç;'¤H; à{`ç
+{'©H;`m:é«;%­;)à{fá
+zèg:éç»-¥:¬è;cë:­ï;eg;)äH;%b;*¯H:ë.;%g»%ä;!';!';"ç;'¤{eg:âé‚ˆ[˜İ[Ûˆ\Qš[˜[Û\ÜÊ
+HÂˆÛÛœİ›YÜÈHÙ]\Û\ÜĞ˜\ÙQ›YÜÊ
+NÂˆ›YÜË™Y™X]Y˜™ZÚŞY[Û[ÛˆHYNÈËÈ;e!:èi:èg:­î
+:å,:ço
+zâ¥;'m:ëî;`m:é«;%­;eg; à{`çˆ›YÜË˜Ú\\ŒPÛX\ˆHYNÂˆ›YÜË˜Ú\\ŒÛX\ˆHYNÂˆ›YÜË˜Ú\\ŒĞÛX\ˆHYNÂˆ›YÜË˜Ú\\ÛX\ˆHYNÂˆ›YÜË˜Ú\\PÛX\ˆHYNÈËÈ;c#;'m:á$;'`{'©H;`m:é«;%­;fá; à{`çˆËÈ;'©H;($;e!;"&;%á{'`:­ :ë.:ë.:âíJKM
+zãá;a­z¬ï;,¦:é«8 %;%b:ì,;&­;'©{'f;`-;)¢:èg;,*:âê:ä&;)à;%bº¬£ˆ›YÜË™Ø]T]Z^ŒHHYNÈ›YÜË™Ø]T]Z^ŒˆHYNÈ›YÜË™Ø]T]Z^ŒÈHYNÈ›YÜË™Ø]T]Z^HYNÈ›YÜË™Ø]T]Z^HHYNÂˆØ[YK™›YÜÈH›YÜÎÂˆØ[YK›X\H	ØÛŞZÛYIÎÂˆÛÛœİHØ[YKœ^Y\ÂˆHÌNÈHHNNÈœHÌH
+ˆÎÈœHHNH
+ˆÎÂˆ›[İš[™ÈH˜[ÙNÈ™\ˆH	ÙİÛ‰ÎÂˆØ]™J
+NÂˆBˆ[˜İ[ÛˆÜ[Û\ÜÓ[ÙJ™]
+HÂˆËÈ8à#;!(; çzâæ:ì*xà#{'`;`à;'m;bà;%ä;!';%í;"&;'¢;%­;%a;)àH;!.;!f;%ä;"«:èkû'm:èg:äç:ä&;)à;%b»%f;'a;"&;'¢:âéˆËÈ
+;'m;%­;ef:®,:éo:â!:ém:®,;(!
+Kˆ:­î:¬¯{&¬;.é;!':¬ :¬ :é«;`©:â¥;"«:èkû'a:ëî:é«:í¢:çë;&`;'m;%­;ef:®,;&`ˆËÈ:¬&{'`; à{`ç;%ä;!';"©;ac;'m;)à:éo:éç»-§;"&;'¢:¬£;eg:âé‚ˆYˆ
+YØ[YK™›YÜÊHÂˆÛÛœİÛİHXİ]™TÛİ
+
+NÂˆÛÛœİÈHØYÛİ
+Ûİ
+NÂˆØ[YK˜İ\œ™[ÛİHÛİÂˆYˆ
+ÊHÂˆØ[YKœ^Y\“˜[YHHË›˜[YH	û"&;f.;'¤	ÎÂˆØ[YK›X\H
+Ë›X\	‰ˆPTÖÜË›X\JHÈË›X\ˆ	İš[YÙIÎÂˆÛÛœİÙˆHË™›YÜÈßNÂˆØ[YK™›YÜÈHØš™Xİ˜\ÜÚYÛŠ™]Ñ›YÜÊ
+KÙŠNÂˆØ[YK™›YÜË™Y™X]YHØš™Xİ˜\ÜÚYÛŠ™]Ñ›YÜÊ
+K™Y™X]YÙ‹™Y™X]Y
+NÂˆH[ÙHÂˆØ[YKœ^Y\“˜[YHH	û"&;f.;'¤	ÎÂˆØ[YK›X\H	İš[YÙIÎÂˆØ[YK™›YÜÈH™]Ñ›YÜÊ
+NÂˆBˆÛÛœİHØ[YKœ^Y\ÂˆHLÎÈHHMÈœHLÈ
+ˆÎÈœHHMˆ
+ˆÎÈ›[İš[™ÈH˜[ÙNÈ™\ˆH	İ\	ÎÂˆBˆÛÛœİÛHHØ[YK˜Û\ÜÛ[ÙNÂˆÛKœ™]H™]ÂˆÛKœÙ[HÛ\ÜÔÙ[›Ü‘›YÜÊØ[YK™›YÜÊNÂˆÛK˜ÛÛ™š\›HH˜[ÙNÂˆÛKØ\İHÂˆØ[YK›[ÙHH	ØÛ\ÜÛ[ÙIÎÂˆÛİ[™œÙ[Xİ
+
+NÂˆBˆ[˜İ[ÛˆÛÜÙPÛ\ÜÓ[ÙJ
+HÂˆØ[YK›[ÙHHØ[YK˜Û\ÜÛ[ÙKœ™]ÂˆÛİ[™œÙ[Xİ
+
+NÂˆBˆ[˜İ[Ûˆ\]PÛ\ÜÓ[ÙJ
+HÂˆÛÛœİÛHHØ[YK˜Û\ÜÛ[ÙNÂˆYˆ
+ÛKØ\İˆ
+HÛKØ\İOHNÂˆYˆ
+ÛKØ\İˆ
+H™]\›ÈËÈ;( {&ªH;%b:à­;dg;"ç;)${%å;'¡zè)H;'¨:®"ˆYˆ
+ÛK˜ÛÛ™š\›JHÂˆYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊJHÂˆYˆ
+ÛKœÙ[OOH’SSÔÑS
+H\Qš[˜[Û\ÜÊ
+NÂˆ[ÙHYˆ
+ÛKœÙ[OOHÓÖ–WÔÑS
+H\PÛŞZÛYPÛ\ÜÊ
+NÂˆ[ÙHYˆ
+ÛKœÙ[OOHTĞQWÔÑS
+H\P\˜ØYPÛ\ÜÊ
+NÂˆ[ÙHYˆ
+ÛKœÙ[OOH•SSÔ—ÔÑS
+H\T[[Ü”İ™Y]Û\ÜÊ
+NÂˆ[ÙHYˆ
+ÛKœÙ[OOHSÔÑS
+H\U[İ™Y]Û\ÜÊ
+NÂˆ[ÙHYˆ
+ÛKœÙ[OOHPÑWÔÑS
+H\U˜XÙT›ÛÛPÛ\ÜÊ
+NÂˆÛK˜ÛÛ™š\›HH˜[ÙNÂˆËÈKLN8 %:­î;'©{%ä; «;(!û «;fá;!.;b®:¬ ;'¢;'/:êm;"&;%áH;"ç;'¤H;)à{(!;&-{b®;'n; «;(!;($:¬ ;'a;%ì:âé
+;"©;`­H:¬ :â©JK‚ˆËÈ;c#;'m:á$:äìH;!.;b®:¬ ;%áºâ¥;ekzêª{'`:®,;(m:ã :èg;( {&ªH;%b:à­
+Ø\İ
+H;fá;&å:äç:èg‚ˆÛÛœİÚÙ^HHÛ\ÜÔÙ[ĞÚÙ^JÛKœÙ[
+NÂˆYˆ
+ÚÙ^H	‰ˆ‘TÔÕĞÒØÚÙ^WJHÈÜ[”™\Üİ
+	Ü™IËÚÙ^KÛKœ™]
+NÈ™]\›ÈBˆÛKØ\İHLÂˆÛİ[™˜˜YÙJ
+NÂˆ™]\›ÂˆBˆYˆ
+\İ™\ÜÙY
+	ØØ[˜Ù[	ÊH\İ™\ÜÙY
+	ÛY[IÊJHÈÛK˜ÛÛ™š\›HH˜[ÙNÈÛİ[™˜›\
+
+NÈBˆ™]\›ÂˆBˆËÈ;b®zìá;ekzêªHº¬'
+8à#{'©H8 %;(!:í :¬í{)ç:¬l:é«8à#_¸à#;c#;'m:á$8 %:¬è;&¥;'f:ç,8¡¤ˆ;/e;%­8à#Jzéã;eg:ì%;`-:èg;"';ff;eg:âé‚ˆËÈŒH;"*û'¤;"©;ac;'m;)à
+_JH;ekzêª{'`;(':¬l:ä&;%â:âé8 %Œˆ;ekzêªzéã:àª:â¥:âé‚ˆYˆ
+\İ™\ÜÙY
+	ÛY	ÊH\İ™\ÜÙY
+	İ\	ÊJHÈÛKœÙ[HÛKœÙ[HRS—ÔÑSÈPÑWÔÑSˆÛKœÙ[HNÈÛİ[™˜›\
+
+NÈBˆYˆ
+\İ™\ÜÙY
+	ÜšYÚ	ÊH\İ™\ÜÙY
+	ÙİÛ‰ÊJHÈÛKœÙ[HÛKœÙ[HPÑWÔÑSÈRS—ÔÑSˆÛKœÙ[
+ÈNÈÛİ[™˜›\
+
+NÈBˆYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊJHÈÛK˜ÛÛ™š\›HHYNÈÛİ[™œÙ[Xİ
+
+NÈ™]\›ÈBˆYˆ
+\İ™\ÜÙY
+	ØØ[˜Ù[	ÊH\İ™\ÜÙY
+	ÛY[IÊJHÈÛÜÙPÛ\ÜÓ[ÙJ
+NÈBˆBˆ[˜İ[Ûˆ˜]ĞÛ\ÜÓ[ÙJ
+HÂˆÛÛœİÛHHØ[YK˜Û\ÜÛ[ÙNÂˆİ™š[İ[HH	ÈÌ	ÎÂˆİ™š[™Xİ
+Ë
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊŒ‹YJNÂˆİ™š[^
+	ø¥­ˆ;"&;%áH:êª:äç8 %:¬l:é«
+;,e{a,
+H:ì%:èg;"ç;'¤IË
+NÂˆİ™š[İ[HH	ÈÎ	ÎÂˆİ™›ÛHœÊLÊNÂˆİ™š[^
+	û&):â¦;"&;%á{eh:¬l:é«:éo:¬ê:ço:ì%:èg;"ç;'¤{em;&¥ˆ
+;)à:®";ef{ çH;"«:èkû%ä;( {&ªJIË
+NÂ‚ˆËÈ;b®zìá;ekzêªHº¬'
+Œˆ;ekzêªzéã;"';ff
+H8 %8à#{'©H8 %;(!:í :¬í{)ç:¬l:é«8à#zâ¥:­î;&n:êª:äè:¬$»'m;%a:âä:åc
+[ÙJzèg;,¦:é«;eg:âé‚ˆÛÛœİ\Õ[HÛKœÙ[OOHSÔÑSÂˆÛÛœİ\Ô[[ÜˆHÛKœÙ[OOH•SSÔ—ÔÑSÂˆÛÛœİ\Ğ\˜ØYHHÛKœÙ[OOHTĞQWÔÑSÂˆÛÛœİ\ĞÛŞHHÛKœÙ[OOHÓÖ–WÔÑSÂˆÛÛœİ\Ñš[˜[HÛKœÙ[OOH’SSÔÑSÂˆÛÛœİÙ[X™[H\Ñš[˜[È	ûc#;'m:á$;"ç;'¤H; à{`ç0­È;cë:­ï;eg;)äH;%b;*¯H:ë.;%g‰Âˆˆ\ĞÛŞHÈ	Í{'©H;"ç;'¤H; à{`ç0­È;cë:­ï;eg;)äH;'¡z­k	Âˆˆ\Ğ\˜ØYHÈ	Í;'©H;"ç;'¤H; à{`ç0­È:ì&;)çH;%a;/ ;'m:äç;'¡z­k	Âˆˆ\Ô[[ÜˆÈ	Ìû'©H;"ç;'¤H; à{`ç0­È:ã :ë.;)çH;"è:ë.; «;'¡z­k	Âˆˆ\Õ[È	Ì»'©H;"ç;'¤H; à{`ç0­È:®,;&®;%­;)á:¬l:é«;'¡z­k	Âˆˆ	Ì{'©H;"ç;'¤H; à{`ç0­È;(!:í :¬í{)ç:¬l:é«;'¡z­k	ÎÂ‚ˆËÈ;"©;ac;'m;)à;!(;`çz®,ˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[İ[HH[YPXØÙ[
+
+NÂˆYˆ
+\Ñš[˜[
+HÂˆİ™›ÛHœÊÌYJNÂˆİ™š[^
+	ûc#;'m:á$8 %:¬è;&¥;'f:ç,8¡¤ˆ;/e;%­	ËÈÈ‹MÍŠNÂˆH[ÙHYˆ
+\ĞÛŞJHÂˆİ™›ÛHœÊÌYJNÂˆİ™š[^
+	Í{'©H8 %;cë:­ï;eg;)äIËÈÈ‹MÍŠNÂˆH[ÙHYˆ
+\Ğ\˜ØYJHÂˆİ™›ÛHœÊÌYJNÂˆİ™š[^
+	Í;'©H8 %:ì&;)çH;%a;/ ;'m:äç	ËÈÈ‹MÍŠNÂˆH[ÙHYˆ
+\Ô[[ÜŠHÂˆİ™›ÛHœÊÌYJNÂˆİ™š[^
+	Ìû'©H8 %:ã :ë.;)çH;"è:ë.; «	ËÈÈ‹MÍŠNÂˆH[ÙHYˆ
+\Õ[
+HÂˆİ™›ÛHœÊÌYJNÂˆİ™š[^
+	Ì»'©H8 %:®,;&®;%­;)á:¬l:é«	ËÈÈ‹MÍŠNÂˆH[ÙHÂˆİ™›ÛHœÊÌYJNÂˆİ™š[^
+	Ì{'©H8 %;(!:í :¬í{)ç:¬l:é«	ËÈÈ‹MÍŠNÂˆBˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊMJNÂˆİ™š[^
+\Ñš[˜[È	ú¬è;&¥;'f:ç,
+:¬mú®,
+H8¡¤ˆ:¬è;&¥:ìí;"©8¡¤ˆ;/e;%­
+;%ë:ãgÈ;'f;'¤0­úí"{eã;co;)¤
+H8¡¤ˆ;& {'m	Âˆˆ\ĞÛŞHÈ	ĞR{&`;'f:­ :¬á0­È:¬¯z¬á;!);(%H0­È;fe{'n;ef:â¥;&ªz®,
+:­k;%ëHú¬'8¡¤ˆ:èê:ëî:ìí;"©
+IÂˆˆ\Ğ\˜ØYHÈ	úâé;`k;c*;a-0­È:­$z¬è0­Èºâê:¬á;'n;)§H
+:­k;%ëHú¬'8¡¤ˆ:ì&;)çH:ìí;"©
+IÂˆˆ\Ô[[ÜˆÈ	ú¬ ;)ç:âm;"©:í¡:ìá0­È;-§;,¦;fe{'n0­È;(%{(%H:ìí:ãá
+:­k;%ëHú¬'8¡¤ˆ:­î:çí;"î:ìí;"©
+IÂˆˆ\Õ[È	ú¬¯{,«H0­È;ea;a,:ì¡:î%0­È;"©;"©:èg:¬è:ém:®,
+:­k;%ëHú¬'8¡¤ˆ:®,;&®:ìí;"©
+IÂˆˆ	ú¬';'n;(%zìí0­È:å%;)à;a.:ì';'¤:­kH0­È:ãæ{'f
+:­k;%ëHú¬'8¡¤ˆ:âí;%a:ìí;"©
+IËÈÈ‹L
+NÂˆİ™š[İ[HH	ÈÍ‰ÎÂˆİ™›ÛHœÊLÊNÂˆİ™š[^
+	ø¥à8¥­ˆ:¬l:é«:¬è:ém:®,	ËÈÈ‹ŠNÂ‚ˆYˆ
+ÛKØ\İˆ
+HÂˆİ™š[İ[HHÚĞÛÛÜŠ
+NÂˆİ™›ÛHœÊMËYJNÂˆİ™š[^
+8§$È	ÜÙ[X™[H; à{`ç:èg:éç»-á;%­;&¥XÈÈ‹ÍŒ
+NÂˆİ™š[İ[HH	ÈØXXIÎÂˆİ™›ÛHœÊLÊNÂˆİ™š[^
+	û'¨;"ç;fá:êª;eæ;fe:êm;'/:èg:ãã;%a:¬$zââ:âé8 )‰ËÈÈ‹ÎŠNÂˆYˆ
+ÛKØ\İOOHJHÈØ[YK›[ÙHHÛKœ™]ÈBˆH[ÙHYˆ
+ÛK˜ÛÛ™š\›JHÂˆİ™š[İ[HH˜YÛÛÜŠ
+NÂˆİ™›ÛHœÊM‹YJNÂˆİ™š[^
+;)à:®";'m;"«:èkû'a	ÜÙ[X™[H; à{`ç:èg:ì%:¯à:®c;&¥ØÈÈ‹ÍŒ
+NÂˆİ™š[İ[HH	ÈÙ	ÎÂˆİ™›ÛHœÊLÊNÂˆİ™š[^
+	û'm;(!;)á;e¢{'`;&a:èã;,¦:é«:ä&:¬è:ä&:ãã:é­;"&;%á»%­;&¥‰ËÈÈ‹Î
+NÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊMYJNÂˆİ™š[^
+	Öˆ;"ç;'¤H0­Èˆ;-ê;!£	ËÈÈ‹MŠNÂˆH[ÙHÂˆİ™š[İ[HH	ÈÍÍÍÉÎÂˆİ™›ÛHœÊLÊNÂˆİ™š[^
+	Öˆ;'m:¬l:é«:èg;"ç;'¤H0­Èˆ:âêú®,	ËÈÈ‹ÍŒ
+NÂˆİ™š[İ[HH	ÈÍMMIÎÂˆİ™›ÛHœÊLŠNÂˆİ™š[^
+	ø .È:ëî:é«8à#:ãl;'m;a,:ì,{%áxà#{'a;em:äd:êm;%b;(!;em;&¥‰ËÈÈ‹Î
+NÂˆBˆİ^[YÛˆH	ÛY	ÎÂˆB‚ˆËÈKKKKKKKKKHKLN; «;(!û «;fá;($:¬ 
+;"&;%áH;fª:¬ï;.({(%JHKKKKKKKKKBˆËÈ;"&;%áH;"ç;'¤H;"ç;&-{b®;'n; «;(!;($:¬ zë.;ekJ:­î;'©H;(ï;(':¬è;(%H;!.;b®
+H8¡¤ˆ;"«:èkÈ:êe;`à;%ä;( ;'©KˆËÈ;'©H:ìí;"©;`m:é«;%­;fá:¬&{'`:ë.;ek{'/:èg; «;fá;($:¬ 8¡¤ˆ;e©{ àzãá:éoÔÕ»%ä:âí:â¥:âéˆ;(!:í :èg;.ë0­û"©;`­H:¬ :â©K‚ˆËÈ;( ;'©H;"©;`©:éâ:ìà:¬¯JY]Kœ™\Üİ
+H8 %;%áºãf;"«:èkû'`:­î:àéH:îb:¬$»'/:èg;-ê:®"J;ef;'!;f.;ff
+K‚ˆÛÛœİ‘TÔÕĞÒHÂˆ˜XÙNˆÈˆKX™[ˆ	Ì{'©H0­È:¬';'n;(%zìí0­úãæ{'f	ËÜXÜÎˆÉÜš]˜XŞIË	ØÛÛœÙ[	Ë	Ù›Ûİš[	Ë	ØÛÜ\šYÚ	Ë	ÚY[]I×HKˆ[ˆÈˆ‹X™[ˆ	Ì»'©H0­È:¬¯{,«p­ûc®;e©IËÜXÜÎˆÉÛ\İ[‰Ë	ØšX\ÉË	Ùš[\˜X˜›IË	Ø˜[[˜ÙIË	Ù[[İ[Û‰×HKˆ[[ÜˆÈˆËX™[ˆ	Ìû'©H0­È:¬ ;)ç;(%zìí:í¡:ìá	ËÜXÜÎˆÉÙ˜ZÙIË	Ü[[Ü‰Ë	ÙÙ[˜ZIË	ÙY\˜ZÙIË	İ˜[œÜ\™[˜ŞI×HKˆ\˜ØYNˆÈˆX™[ˆ	Í;'©H0­È;(";('0­úâé;`k;c*;a-	ËÜXÜÎˆÉØ˜[[˜ÙIË	Ù›Ûİš[	Ë	ÜØ]š[™ÉË	Ü\œİX\Ú[Û‰Ë	ÜØY™]I×HKˆÛŞNˆÈˆKX™[ˆ	Í{'©H0­È:­ :¬á0­û,a{'¡	ËÜXÜÎˆÉÛX[›™\œÉË	Ù[[İ[Û‰Ë	Ü™\ÜÛœÚXš[]IË	ÜØY™]IË	Ù^İ\ÙI×HKˆNÂˆÛÛœİ‘TÔÕĞÒĞ–WÓˆHÈNˆ	İ˜XÙIËˆ	İ[	ËÎˆ	Ü[[Ü‰Ëˆ	Ø\˜ØYIËNˆ	ØÛŞIÈNÂˆÛÛœİ‘TÔÕÓSˆHNÂˆËÈ:­î;'©H;(ï;(';%ä;!':¬è;(%H;"';!':ègzë.;ek{'a:ïdzâ¥:âé
+; «;(!0­û «;fá:¬ :ì&:äç;"ç:¬&{'`;!.;b®:¬ :ä&:ãá:ègH:¬¬;(%zèh;( JK‚ˆ[˜İ[Ûˆ™\Üİ]Z^™\ÊÚÙ^JHÂˆÛÛœİÜXÈH‘TÔÕĞÒØÚÙ^WNÂˆYˆ
+\ÜXÊH™]\›ˆ×NÂˆÛÛœİİ]H×NÂˆËÈ{,*8 %:¬ H;(ï;(';'f;,ªÈ:ë.;(';ef:à¦;%*Bˆ›Üˆ
+ÛÛœİÙˆÜXËÜXÜÊHÂˆÛÛœİ\œˆHURV–‘TÖİNÂˆYˆ
+\œˆ	‰ˆ\œ‹›[™İ	‰ˆİ]›[™İ‘TÔÕÓSŠHİ]œ\Ú
+Øš™Xİ˜\ÜÚYÛŠÈÜXÎˆK\œ–ÌJJNÂˆBˆËÈ»,*8 %z¬':¬ ;%b;,*:êm:¬&{'`;(ï;(';'f:âé;'c:ë.;(':èg:¬¬;(%zèh;( {'/:èg;,a;&­:âéˆ›Üˆ
+]›İ[™HNÈİ]›[™İ‘TÔÕÓSˆ	‰ˆ›İ[™È›İ[™
+ÊÊHÂˆ›Üˆ
+ÛÛœİÙˆÜXËÜXÜÊHÂˆÛÛœİ\œˆHURV–‘TÖİH×NÂˆYˆ
+\œ–Ü›İ[™H	‰ˆİ]›[™İ‘TÔÕÓSŠHİ]œ\Ú
+Øš™Xİ˜\ÜÚYÛŠÈÜXÎˆK\œ–Ü›İ[™JJNÂˆBˆBˆ™]\›ˆİ]œÛXÙJ‘TÔÕÓSŠNÂˆBˆËÈY]Kœ™\ÜİØÚHHÈ™NˆÜØÛÜ™Kİ[]KÜİˆË‹‹ŸHH8 %;"«:èkÈ:êe;`à;%ä;( ;'©J:ì,{%á{%ä;'¤:ãæH;cë;ej
+K‚ˆ[˜İ[ÛˆÙ]™\Üİ
+ÛİÚ
+HÂˆÛÛœİHHÙ]Y]JÛİ
+NÂˆ™]\›ˆ
+Kœ™\Üİ	‰ˆKœ™\ÜİØÚJHßNÂˆBˆ[˜İ[Ûˆ™XÛÜ™™\Üİ
+ÛİÚÚ[™ØÛÜ™Kİ[
+HÂˆHÂˆÛÛœİHHÙ]Y]JÛİ
+NÂˆKœ™\ÜİHKœ™\ÜİßNÂˆKœ™\ÜİØÚHHKœ™\ÜİØÚHßNÂˆKœ™\ÜİØÚVÚÚ[™HHÈØÛÜ™Kİ[]ˆ]K››İÊ
+HNÂˆØØ[İÜ˜YÙKœÙ]][JY]RÙ^JÛİ
+K”ÓÓ‹œİš[™ÚYJJJNÂˆHØ]Ú
+JHÈÊˆ;( ;'©H:í¢:¬ ;ff:¬¯{'m:êm:ë-;"ç8 %;dg;"ç:â¥:­î:ã :èg;)á;e¢H
+‹ÈBˆBˆ[˜İ[ÛˆÜ[”™\Üİ
+Ú[™Ú™]
+HÂˆÛÛœİ]Z^™\ÈH™\Üİ]Z^™\ÊÚ
+NÂˆYˆ
+\]Z^™\Ë›[™İ
+HÈØ[YK›[ÙHH™]È™]\›ÈHËÈ;!.;b®:¬ ;%á»'/:êm
+;c#;'m:á$:äìJH:­î:àéH:¬m:á":æí:âéˆØ[YKœ™\ÜİHÈ™]ÚÚ[™]Z^™\ËYˆPİ\œÛÜˆÚÚXÙSÜ™\ˆ[ØÛÜ™Nˆ\ÙNˆ	Ú[›ÉË™YY˜XÚÎˆ[NÂˆØ[YK›[ÙHH	Ü™\Üİ	ÎÂˆÛİ[™œÙ[Xİ
+
+NÂˆBˆ[˜İ[Ûˆİ\™\ÜİJ
+HÂˆÛÛœİHØ[YKœ™\ÜİÂˆÛÛœİHHœ]Z^™\ÖÜšYNÂˆ˜ÚÚXÙSÜ™\ˆHÚY™›Y
+K˜K›X\
+
+ËJHOˆJJNÂˆœPİ\œÛÜˆHÈ™™YY˜XÚÈH[Èœ\ÙHH	Ü]Y\İ[Û‰ÎÂˆÜXZÔ]Z^ŠKœK˜ÚÚXÙSÜ™\‹›X\
+
+ZJHOˆK˜VØZWJJNÂˆBˆ[˜İ[Ûˆš[š\Ú™\Üİ
+
+HÂˆÛÛœİHØ[YKœ™\ÜİÂˆœ\ÙHH	ÙÛ™IÎÂˆ™XÛÜ™™\Üİ
+Ø[YK˜İ\œ™[Ûİ˜ÚšÚ[™œØÛÜ™Kœ]Z^™\Ë›[™İ
+NÂˆÛİ[™˜˜YÙJ
+NÂˆBˆ[˜İ[Ûˆ\]T™\Üİ
+
+HÂˆÛÛœİHØ[YKœ™\ÜİÂˆYˆ
+\
+HÈØ[YK›[ÙHH	İÛÜ›	ÎÈ™]\›ÈBˆYˆ
+œ\ÙHOOH	Ú[›ÉÊHÂˆYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊJHÈİ\™\ÜİJ
+NÈÛİ[™œÙ[Xİ
+
+NÈ™]\›ÈBˆYˆ
+\İ™\ÜÙY
+	ØØ[˜Ù[	ÊH\İ™\ÜÙY
+	ÛY[IÊJHÈØ[YK›[ÙHHœ™]ÈØ[YKœ™\ÜİH[ÈÛİ[™œÙ[Xİ
+
+NÈHËÈ:¬m:á":æì:®,
+;"©;`­H:¬ :â©JBˆ™]\›ÂˆBˆYˆ
+œ\ÙHOOH	Ü]Y\İ[Û‰ÊHÂˆÛÛœİHHœ]Z^™\ÖÜšYNÂˆÛÛœİ[ˆHK˜K›[™İÂˆYˆ
+\İ™\ÜÙY
+	İ\	ÊJHÈœPİ\œÛÜˆH
+œPİ\œÛÜˆ
+È[ˆHJH	H[ÈÛİ[™˜›\
+
+NÈBˆYˆ
+\İ™\ÜÙY
+	ÙİÛ‰ÊJHÈœPİ\œÛÜˆH
+œPİ\œÛÜˆ
+ÈJH	H[ÈÛİ[™˜›\
+
+NÈBˆYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊJHÂˆÛÛœİÛÜœ™XİH˜ÚÚXÙSÜ™\–ÜœPİ\œÛÜ—HOOHK˜ÎÂˆYˆ
+ÛÜœ™Xİ
+HœØÛÜ™H
+ÏHNÂˆ™™YY˜XÚÈHÈÛÜœ™XİÚNˆKÚHNÂˆœ\ÙHH	Ù™YY˜XÚÉÎÂˆÜXZÑ™YY˜XÚÊÛÜœ™XİKÚJNÂˆÛİ[™ØÛÜœ™XİÈ	ØÛÜœ™Xİ	Èˆ	İÜ›Û™É×J
+NÂˆBˆ™]\›ÂˆBˆYˆ
+œ\ÙHOOH	Ù™YY˜XÚÉÊHÂˆYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊH\İ™\ÜÙY
+	ØØ[˜Ù[	ÊJHÂˆšY
+ÏHNÂˆYˆ
+šYHœ]Z^™\Ë›[™İ
+Hš[š\Ú™\Üİ
+
+NÂˆ[ÙHİ\™\ÜİJ
+NÂˆÛİ[™œÙ[Xİ
+
+NÂˆBˆ™]\›ÂˆBˆYˆ
+œ\ÙHOOH	ÙÛ™IÊHÂˆYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊH\İ™\ÜÙY
+	ØØ[˜Ù[	ÊH\İ™\ÜÙY
+	ÛY[IÊJHÂˆÛÛœİ™]Hœ™]ÈØ[YKœ™\ÜİH[ÈØ[YK›[ÙHH™]ÈÛİ[™œÙ[Xİ
+
+NÂˆBˆ™]\›ÂˆBˆBˆ[˜İ[Ûˆ˜]Ô™\Üİ
+
+HÂˆÛÛœİHØ[YKœ™\ÜİÂˆİ™š[İ[HH	ÈÌ	ÎÈİ™š[™Xİ
+Ë
+NÂˆYˆ
+\
+H™]\›ÂˆÛÛœİÜXÈH‘TÔÕĞÒÜ˜ÚHÈX™[ˆ	ÉÈNÂˆÛÛœİÚ[™X™[HšÚ[™OOH	Ü™IÈÈ	û «;(!;($:¬ 	Èˆ	û «;fá;($:¬ 	ÎÂˆİ^[YÛˆH	ÛY	ÎÈİ™š[İ[HH	ÈÙ™™	ÎÈİ™›ÛHœÊMKYJNÂˆİ™š[^
+	ÚÚ[™X™[H0­È	ÜÜXË›X™[XÍ
+NÂ‚ˆYˆ
+œ\ÙHOOH	Ú[›ÉÊHÂˆİ™š[İ[HH	ÈÙ™™‰ÎÈİ™›ÛHœÊNYJNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[^
+šÚ[™OOH	Ü™IÈÈ	û"&;%áH;(!zë.;ek{'/:èg;)à:®";"é:è){'a;fe{'n;em;&¥	Èˆ	û"&;%áH;fá:¬&{'`zë.;ek{'/:èg;%¯:éâ:à¦:â¦;%â:â¥;)à:í$;&¥	ËÈÈ‹Œ
+NÂˆİ™š[İ[HH	ÈØXXIÎÈİ™›ÛHœÊM
+NÂˆİ™š[^
+	û(%zâí{'a:ê¬:ço:ãá:­';,+»%a;&¥8 %;!,{( {'m;%a:ââ:ço;!,{'©H:®,:èg{'m;%ä;&¥‰ËÈÈ‹ŒÍŠNÂˆİ™š[^
+	ú¬m:á":æì;%­:ãá;"&;%áH;)á;e¢{%ä:â¥;%a:ë-;& {e©{'m;%á»%­;&¥‰ËÈÈ‹ŒŠNÂˆİ™š[İ[HH	ÈÙ™™‰ÎÈİ™›ÛHœÊMKYJNÂˆİ™š[^
+	Öˆzë.;ekH;d :®,0­Èˆ:¬m:á":æì:®,	ËÈÈ‹ÌŒ
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆ™]\›ÂˆBˆYˆ
+œ\ÙHOOH	ÙÛ™IÊHÂˆÛÛœİİ[Hœ]Z^™\Ë›[™İÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[İ[HH	ÈÙ™™‰ÎÈİ™›ÛHœÊŒYJNÂˆİ™š[^
+	ÚÚ[™X™[H:¬¬:¬ï8 %	ÜœØÛÜ™_HÈ	İİ[XÈÈ‹N
+NÂˆÛÛœİ™]ˆHÙ]™\Üİ
+Ø[YK˜İ\œ™[Ûİ˜Ú
+NÂˆYˆ
+šÚ[™OOH	ÜÜİ	È	‰ˆ™]‹œ™JHÂˆÛÛœİ™TİHX]œ›İ[™
+™]‹œ™KœØÛÜ™HÈ™]‹œ™Kİ[
+ˆL
+NÂˆÛÛœİÜİİHX]œ›İ[™
+œØÛÜ™HÈİ[
+ˆL
+NÂˆÛÛœİY™ˆHÜİİH™TİÂˆİ™š[İ[HH	ÈØXXIÎÈİ™›ÛHœÊMJNÂˆİ™š[^
+; «;(!	Ü™TİIH8¡¤ˆ; «;fá	ÜÜİİIXÈÈ‹Œ
+NÂˆİ™š[İ[HHY™ˆˆÈÚĞÛÛÜŠ
+HˆY™ˆÈØ\›ÛÛÜŠ
+Hˆ	ÈØXXIÎÂˆİ™›ÛHœÊMËYJNÂˆİ™š[^
+Y™ˆHÈ;e©{ àzãá
+ÉÙY™ŸI\<'ã,Xˆ;e©{ àzãá	ÙY™ŸI\ÈÈ‹N
+NÂˆH[ÙHYˆ
+šÚ[™OOH	Ü™IÊHÂˆİ™š[İ[HH	ÈØXXIÎÈİ™›ÛHœÊM
+NÂˆİ™š[^
+	û"&;%á{'m:àgzà¦:êm:¬&{'`:ë.;ek{'/:èg:âé;"ç;fe{'n;em;&¥‰ËÈÈ‹Œ
+NÂˆBˆİ™š[İ[HH	ÈÍÍÍÉÎÈİ™›ÛHœÊLÊNÂˆİ™š[^
+	ÖˆÈˆ:¬á;!£IËÈÈ‹ÌŒ
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆ™]\›ÂˆBˆËÈ]Y\İ[ÛˆÈ™YY˜XÚÈ8 %;)á;e¢H;dg;"ç
+È:ë.;('û!(;`ç{)à
+:ì,;bà;`-;)¢;&`:¬&{'`;f%{`ç
+BˆÛÛœİHHœ]Z^™\ÖÜšYNÂˆİ^[YÛˆH	ÜšYÚ	ÎÈİ™š[İ[HH	ÈÎ	ÎÈİ™›ÛHœÊLÊNÂˆİ™š[^
+	ÜšY
+È_HÈ	Üœ]Z^™\Ë›[™İXÈHÍ
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆÛÛœİSX^ÈHÈHHM‹ÓX^ÈHÈHHÌ‹Ø\HÂˆÛÛœİ›ŞHHÌÂˆ]›Ş
+L‹›ŞKÈHH›ŞHHM‹
+NÂˆİ™š[İ[HH	ÈÙ™™‰ÎÈİ™›ÛHœÊMŠNÂˆ]HH˜]Ô]Y\İ[Û•^
+KœKÍ›ŞH
+ÈÌSX^Ë
+
+JH
+È
+L
+NÂˆYˆ
+œ\ÙHOOH	Ü]Y\İ[Û‰ÊHÂˆ›Üˆ
+]HHÈH˜ÚÚXÙSÜ™\‹›[™İÈJÊÊHÂˆH
+ÏH˜]ĞÚÚXÙUÜ˜\Y
+	ÚH
+È_Kˆ	ÛK˜VÜ˜ÚÚXÙSÜ™\–ÚWW_XÎKHOOHœPİ\œÛÜ‹ÓX^Ë
+ŒŠJH
+ÈØ\ÂˆBˆİ™š[İ[HH	ÈÍÍÍÉÎÈİ™›ÛHœÊLŠNÈİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[^
+	ø¡¤x¡¤È:¬è:ém:®,0­Èˆ:¬¬;(%IËÈÈ‹HŠNÈİ^[YÛˆH	ÛY	ÎÂˆH[ÙHYˆ
+œ\ÙHOOH	Ù™YY˜XÚÉÊHÂˆİ™š[İ[HH™™YY˜XÚË˜ÛÜœ™XİÈÚĞÛÛÜŠ
+Hˆ˜YÛÛÜŠ
+NÂˆİ™›ÛHœÊNYJNÂˆİ™š[^
+™™YY˜XÚË˜ÛÜœ™XİÈ	ø¥âÈ;(%zâíHIÈˆ	ø§%H;%a;"k;&ã;&¥	ËÎH
+È
+ŠJNÂˆH
+ÏH
+Ì
+NÂˆİ™š[İ[HH	ÈÙ	ÎÈİ™›ÛHœÊM
+NÂˆHH˜]Ô]Y\İ[Û•^
+™™YY˜XÚËÚKÎKÓX^Ë
+ŒŠJNÂˆİ™š[İ[HH	ÈÍÍÍÉÎÈİ™›ÛHœÊLŠNÈİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[^
+	Öˆ:âé;'c	ËÈÈ‹HŠNÈİ^[YÛˆH	ÛY	ÎÂˆBˆB‚ˆËÈKKKKKKKKKH:­d; «;&ªH;ef{ çH;)á:âê:é«;cë;b®
+LÊHKKKKKKKKKBˆËÈ;(ï;(';`©8¡¤ˆ;-¥;,§;,*;"ç
+ØÜËû,*;"ç:ìá{fg:ãæ{)à›Y
+Kˆ;%o{($;(ï;(':éo:âé;'c;"&;%áz¬ï;%ì:¬¬;eg:âé‚ˆÛÛœİÔP×ÔÑTÔÒSÓˆHÂˆš]˜XŞNˆ	Ì{,*;"ç
+:¬';'n;(%zìí0­û( ;'¤z­£
+IËÛÜ\šYÚˆ	Ì{,*;"ç
+:¬';'n;(%zìí0­û( ;'¤z­£
+IËˆÛÛœÙ[ˆ	Ì{,*;"ç
+:¬';'n;(%zìí0­û( ;'¤z­£
+IËÙXİ\š]Nˆ	Ì{,*;"ç
+:¬';'n;(%zìí0­û( ;'¤z­£
+IËY[]Nˆ	Ì{,*;"ç
+:¬';'n;(%zìí0­û( ;'¤z­£
+IËˆ˜ZÙNˆ	Ì»,*;"ç
+:¬ ;)ç;(%zìí0­û ç{!,{f%HRJIËÙ[˜ZNˆ	Ì»,*;"ç
+:¬ ;)ç;(%zìí0­û ç{!,{f%HRJIËˆY\˜ZÙNˆ	Ì»,*;"ç
+:¬ ;)ç;(%zìí0­û ç{!,{f%HRJIË[[Üˆ	Ì»,*;"ç
+:¬ ;)ç;(%zìí0­û ç{!,{f%HRJIËˆšX\Îˆ	Ìû,*;"ç
+:¬í{(%{ej0­ûc®;e©JIËš[\˜X˜›Nˆ	Ìû,*;"ç
+:¬í{(%{ej0­ûc®;e©JIË\İ[ˆ	Ìû,*;"ç
+:¬í{(%{ej0­ûc®;e©JIËˆ˜[[˜ÙNˆ	Í;,*;"ç
+;(";('0­úå%;)à;a.:ì';'¤:­kJIË›Ûİš[ˆ	Í;,*;"ç
+;(";('0­úå%;)à;a.:ì';'¤:­kJIËˆØ]š[™Îˆ	Í;,*;"ç
+;(";('0­úå%;)à;a.:ì';'¤:­kJIË[š\›Û›Y[ˆ	Í;,*;"ç
+;(";('0­úå%;)à;a.:ì';'¤:­kJIË\œİX\Ú[Ûˆ	Í;,*;"ç
+;(";('0­úå%;)à;a.:ì';'¤:­kJIËˆX[›™\œÎˆ	Í{,*;"ç
+:­ :¬á0­û,a{'¡
+IË[[İ[Ûˆ	Í{,*;"ç
+:­ :¬á0­û,a{'¡
+IË™\ÜÛœÚXš[]Nˆ	Í{,*;"ç
+:­ :¬á0­û,a{'¡
+IËˆ^İ\ÙNˆ	Í{,*;"ç
+:­ :¬á0­û,a{'¡
+IËØY™]Nˆ	Í{,*;"ç
+:­ :¬á0­û,a{'¡
+IË˜[œÜ\™[˜ŞNˆ	Í{,*;"ç
+:­ :¬á0­û,a{'¡
+IËÛÜ™Nˆ	Í{,*;"ç
+:­ :¬á0­û,a{'¡
+IËˆNÂˆ[˜İ[ÛˆÜXÔÙ\ÜÚ[ÛŠ
+HÈ™]\›ˆÔP×ÔÑTÔÒSÓ–İH	û(¡{ejH:ìí{"­H
+;`-;)¢;,c:é¬;)à
+IÎÈB‚ˆËÈ;"«:èkû'f;ef{"­H:ãl;'m;a,:éo:í¡;!'{em;%o{($;(ï;('8¡¤ˆ;-¥;,§;,*;"ç:èg:éé;.k{eg;)á:âê;'a:éã:äè:âé‚ˆ[˜İ[ÛˆZ[XYÛ›ÜİXÔ™\Ü
+Ûİ
+HÂˆYˆ
+ÛİOH[
+HÛİHXİ]™TÛİ
+
+NÂˆÛÛœİİ[HHÛİİ[[X\JÛİ
+NÂˆÛÛœİÈHZ[X\›š[™Ôİ[[X\JÛİ
+NÂˆÛÛœİÙXZÔ›İÜÈHËœ›İÜË™š[\Š
+ŠHOˆ‹İ[Hˆ	‰ˆ‹œ˜]HŠNÂˆÛÛœİ™XÛÛ[Y[™][ÛœÈHÙXZÔ›İÜË›X\
+
+ŠHOˆ
+ÂˆÜXÎˆ‹ÜXËX™[ˆ‹›X™[˜]Nˆ‹œ˜]KÙ\ÜÚ[ÛˆÜXÔÙ\ÜÚ[ÛŠ‹ÜXÊKˆJJNÂˆÛÛœİÙ\ÜÚ[ÛœÈH×NÂˆ›Üˆ
+ÛÛœİˆÙˆ™XÛÛ[Y[™][ÛœÊHYˆ
+\Ù\ÜÚ[ÛœËš[˜ÛY\Ê‹œÙ\ÜÚ[ÛŠJHÙ\ÜÚ[ÛœËœ\Ú
+‹œÙ\ÜÚ[ÛŠNÂˆÛÛœİİH
+ŠHOˆX]œ›İ[™
+ˆ
+ˆL
+H
+È	ÉIÎÂˆ]]HH	ÉÎÈHÈ]HH™]È]J
+KÓØØ[Q]Tİš[™Ê	ÚÛËRÔ‰ÊNÈHØ]Ú
+JHßBˆÛÛœİ[™\ÈH×NÂˆ[™\Ëœ\Ú
+	ÖĞRH;'):é«;%­:äç:ì©;,¦8 %;ef{ çH;)á:âê:é«;cë;b®IÊNÂˆYˆ
+]JH[™\Ëœ\Ú
+	úà¨;)çˆ	È
+È]JNÂˆYˆ
+\İ[JHÂˆ[™\Ëœ\Ú
+	Ê:îb;"«:èkÈ8 %;%a;)àH;ef{"­H:®,:èg{'m;%á»%­;&¥
+IÊNÂˆ™]\›ˆÈ[\NˆYK˜[YNˆ	ÉË™XÛÛ[Y[™][ÛœÎˆ×KÙ\ÜÚ[ÛœÎˆ×K^ˆ[™\Ëš›Ú[Š	×‰ÊHNÂˆBˆ[™\Ëœ\Ú
+	û'm:é¡ˆ	È
+ÈÛİX\›“˜[YJÛİ
+JNÂˆ[™\Ëœ\Ú
+	û)á;e¢Nˆ	È
+È
+İ[K™Û™HÈ	úêª;eæ;&a:èã	Èˆİ[KœİYÙJJNÂˆ[™\Ëœ\Ú
+;do:ë.;('ˆ	ÜË˜][\Yz¬'0­È;(%zâízéh	ÜË˜][\YÈİ
+Ë›İ™\˜[˜]JHˆ	ø %	ßH0­È:ìí{"­H:án;b®	ÛZ\İZÙPÛİ[
+Ûİ
+_z¬'
+NÂˆ[™\Ëœ\Ú
+	ø¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 	ÊNÂˆYˆ
+™XÛÛ[Y[™][ÛœË›[™İOOH
+HÂˆ[™\Ëœ\Ú
+	û%o{($;(ï;(':¬ ;%á»%­;&¥<'äcH;'¦;ef:¬è;'¢;%­;&¥IÊNÂˆ[™\Ëœ\Ú
+	û"ë;feˆ;`-;)¢;,c:é¬;)à;'f8à#;(!;,­:ç§:ãi8à#{'/:èg:ìí{"­{'a:­£;ejzââ:âé‰ÊNÂˆH[ÙHÂˆ[™\Ëœ\Ú
+	úãe; ­;c­:ìï;(ï;('8¡¤ˆ;-¥;,§;,*;"ç‰ÊNÂˆ›Üˆ
+ÛÛœİˆÙˆ™XÛÛ[Y[™][ÛœÊHÂˆ[™\Ëœ\Ú
+0­È	Ü‹›X™[H
+	Üİ
+‹œ˜]J_JH8¡¤ˆ	Ü‹œÙ\ÜÚ[ÛŸX
+NÂˆBˆ[™\Ëœ\Ú
+	ÉÊNÂˆ[™\Ëœ\Ú
+	û-¥;,§;"&;%áNˆ	È
+ÈÙ\ÜÚ[ÛœËš›Ú[Š	Ë	ÊJNÂˆBˆ™]\›ˆÈ[\Nˆ˜[ÙK˜[YNˆÛİX\›“˜[YJÛİ
+K™XÛÛ[Y[™][ÛœËÙ\ÜÚ[ÛœË^ˆ[™\Ëš›Ú[Š	×‰ÊHNÂˆBˆËÈ:ì&;(!;,­
+;!.;"«:èkÊH:¬í{a­H;%o{($;'a;)äz¬á;em;&¬;!(;"&;%á{'a;(';%b;eg:âé‚ˆ[˜İ[ÛˆZ[Û\ÜÑXYÛ›ÜİXÊ
+HÂˆÛÛœİ\•ÜXÈHßNÂˆ]İY[ÈHÂˆ›Üˆ
+]HHÈHÓÕĞÓÕS•ÈJÊÊHÂˆYˆ
+\Ûİİ[[X\JJJHÛÛ[YNÂˆİY[ÊÊÎÂˆ›Üˆ
+ÛÛœİˆÙˆZ[X\›š[™Ôİ[[X\JJKœ›İÜÊHÂˆYˆ
+‹İ[Hˆ	‰ˆ‹œ˜]HŠHÂˆÛÛœİHH\•ÜXÖÜ‹ÜX×HÈÜXÎˆ‹ÜXËX™[ˆ‹›X™[Ûİ[ˆNÂˆK˜Ûİ[
+ÊÎÈ\•ÜXÖÜ‹ÜX×HHNÂˆBˆBˆBˆÛÛœİÛÛ[[ÛˆHØš™XİšÙ^\Ê\•ÜXÊK›X\
+
+ÊHOˆ\•ÜXÖÚ×JKœÛÜ
+
+KŠHOˆ‹˜Ûİ[HK˜Ûİ[
+NÂˆ]]HH	ÉÎÈHÈ]HH™]È]J
+KÓØØ[Q]Tİš[™Ê	ÚÛËRÔ‰ÊNÈHØ]Ú
+JHßBˆÛÛœİ[™\ÈHÉÖĞRH;'):é«;%­:äç:ì©;,¦8 %:ì&;(!;,­;)á:âêI×NÂˆYˆ
+]JH[™\Ëœ\Ú
+	úà¨;)çˆ	È
+È]JNÂˆ[™\Ëœ\Ú
+	ûef{"­{eg;ef{ çJ;"«:èkÊNˆ	È
+ÈİY[È
+È	úê¡IÊNÂˆ[™\Ëœ\Ú
+	ø¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 8¥ 	ÊNÂˆÛÛœİÙ\ÜÚ[ÛœÈH×NÂˆYˆ
+İY[ÈOOH
+HÂˆ[™\Ëœ\Ú
+	û%a;)àH;ef{"­{eg;ef{ ç{'m;%á»%­;&¥‰ÊNÂˆH[ÙHYˆ
+ÛÛ[[Û‹›[™İOOH
+HÂˆ[™\Ëœ\Ú
+	ú¬í{a­H;%o{($;'m;%á»%­;&¥<'äcH:ì&;(!;,­:¬ ;'¦;ef:¬è;'¢;%­;&¥IÊNÂˆH[ÙHÂˆ[™\Ëœ\Ú
+	ú¬í{a­H;%o{($
+;ef{ çH;"&:éã»'`;"'
+N‰ÊNÂˆ›Üˆ
+ÛÛœİÈÙˆÛÛ[[Û‹œÛXÙJJJHÂˆÛÛœİÙ\ÜÈHÜXÔÙ\ÜÚ[ÛŠËÜXÊNÂˆ[™\Ëœ\Ú
+0­È	ØË›X™[H8 %	ØË˜Ûİ[zê¡H8¡¤ˆ	ÜÙ\ÜßX
+NÂˆYˆ
+\Ù\ÜÚ[ÛœËš[˜ÛY\ÊÙ\ÜÊJHÙ\ÜÚ[ÛœËœ\Ú
+Ù\ÜÊNÂˆBˆ[™\Ëœ\Ú
+	ÉÊNÂˆ[™\Ëœ\Ú
+	û&¬;!(;-¥;,§;"&;%áNˆ	È
+ÈÙ\ÜÚ[ÛœËœÛXÙJÊKš›Ú[Š	Ë	ÊJNÂˆBˆ™]\›ˆÈİY[ËÛÛ[[Û‹Ù\ÜÚ[ÛœË^ˆ[™\Ëš›Ú[Š	×‰ÊHNÂˆBˆËÈ;ac{"©;b®:éo;c#;'o:èg:à­:è):ì&úâ¥:âé
+;)á:âê:é«;cë;b®;'n;!á0­úìí:­ ;&ªJK‚ˆ[˜İ[ÛˆİÛ›ØY^š[J^š[[˜[YJHÂˆHÂˆÛÛœİHHØİ[Y[˜Ü™X]Q[[Y[
+	ØIÊNÂˆKš™YˆH	Ù]N^ÜZ[ØÚ\œÙ]]]‹N	È
+È[˜ÛÙUT’PÛÛ\Û™[
+	ûîïÉÈ
+È^
+NÂˆK™İÛ›ØYHš[[˜[YNÂˆØİ[Y[˜›ÙK˜\[™Ú[
+JNÈK˜ÛXÚÊ
+NÈØİ[Y[˜›ÙKœ™[[İ™PÚ[
+JNÂˆ™]\›ˆYNÂˆHØ]Ú
+JHÈ™]\›ˆ˜[ÙNÈBˆBˆ[˜İ[ÛˆÜ[”™\Ü
+™]
+HÂˆØ[YKœ™\Üœ™]H™]ÂˆØ[YKœ™\ÜœÛİHXİ]™TÛİ
+
+NÂˆØ[YKœ™\ÜØ\İHÂˆØ[YK›[ÙHH	Ü™\Ü	ÎÂˆÛİ[™œÙ[Xİ
+
+NÂˆBˆ[˜İ[ÛˆÛÜÙT™\Ü
+
+HÈØ[YK›[ÙHHØ[YKœ™\Üœ™]ÈÛİ[™œÙ[Xİ
+
+NÈBˆËÈÛİ‹”ÓÕĞÓÕS•LHH;ef{ çzìáÛİOOHÓÕĞÓÕS•H:ì&;(!;,­ˆ[˜İ[Ûˆ™\ÜšY]ÊÛİ
+HÈ™]\›ˆÛİHÓÕĞÓÕS•ÈZ[Û\ÜÑXYÛ›ÜİXÊ
+HˆZ[XYÛ›ÜİXÔ™\Ü
+Ûİ
+NÈBˆ[˜İ[Ûˆ\]T™\Ü
+
+HÂˆÛÛœİˆHØ[YKœ™\ÜÂˆÛÛœİˆHÓÕĞÓÕS•
+ÈNÈËÈ;ef{ çHúê¡H
+È:ì&;(!;,­ˆYˆ
+‹Ø\İˆ
+H‹Ø\İOHNÈ[ÙHYˆ
+‹Ø\İ
+H‹Ø\İ
+ÏHNÂˆËÈ;(£;&¬:èg;ef{ çJ;"«:èkÊp­úì&;(!;,­;(!;ffˆYˆ
+\İ™\ÜÙY
+	ÛY	ÊJHÈ‹œÛİH
+‹œÛİ
+ÈˆHJH	HÈÛİ[™˜›\
+
+NÈBˆYˆ
+\İ™\ÜÙY
+	ÜšYÚ	ÊJHÈ‹œÛİH
+‹œÛİ
+ÈJH	HÈÛİ[™˜›\
+
+NÈBˆYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊJHÂˆÛÛœİ^H™\ÜšY]Ê‹œÛİ
+K^ÂˆÛÛœİÚÈHİÛ›ØY^š[J^	ØZKY]XÜËYXYÛ›ÜİXËIÈ
+ÈÙ^TİŠ
+H
+È	Ë	ÊHÛÜU^ĞÛ\›Ø\™
+^
+NÂˆ‹Ø\İHÚÈÈŒˆLŒÈÛİ[™˜˜YÙJ
+NÂˆBˆYˆ
+\İ™\ÜÙY
+	ØØ[˜Ù[	ÊH\İ™\ÜÙY
+	ÛY[IÊJHÛÜÙT™\Ü
+
+NÂˆBˆ[˜İ[Ûˆ˜]Ô™\Ü
+
+HÂˆÛÛœİˆHØ[YKœ™\ÜÂˆİ™š[İ[HH	ÈÌ	ÎÈİ™š[™Xİ
+Ë
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆİ™š[İ[HH	ÈÙ™™‰ÎÈİ™›ÛHœÊŒ‹YJNÂˆİ™š[^
+	ü'ênˆ;ef{ çH;)á:âê:é«;cë;b®	ËÎ
+NÂˆÛÛœİ\ĞÛ\ÜÈH‹œÛİHÓÕĞÓÕS•Âˆİ™š[İ[HH	ÈÎ	ÎÈİ™›ÛHœÊLŠNÂˆİ™š[^
+8¥à8¥­ˆ;(!;ff0­È	Ú\ĞÛ\ÜÈÈ	úì&;(!;,­	Èˆ	û"«:èkÈ	È
+È
+‹œÛİ
+ÈJ_XN
+NÂ‚ˆÛÛœİ™\H™\ÜšY]Ê‹œÛİ
+NÂˆ]HHLÂˆÛÛœİ[™\ÈH™\^œÜ]
+	×‰ÊNÂˆ›Üˆ
+ÛÛœİˆÙˆ[™\ÊHÂˆYˆ
+‹œİ\ÕÚ]
+	ÖÉÊJHÈİ™š[İ[HH[YPXØÙ[
+
+NÈİ™›ÛHœÊMKYJNÈBˆ[ÙHYˆ
+‹œİ\ÕÚ]
+	È0­È	ÊJHÈİ™š[İ[HHØ\›ÛÛÜŠ
+NÈİ™›ÛHœÊLÊNÈBˆ[ÙHYˆ
+‹œİ\ÕÚ]
+	û-¥;,§;"&;%áIÊH‹œİ\ÕÚ]
+	û&¬;!(;-¥;,§	ÊJHÈİ™š[İ[HHÚĞÛÛÜŠ
+NÈİ™›ÛHœÊLËYJNÈBˆ[ÙHYˆ
+‹œİ\ÕÚ]
+	ø¥ 8¥ 	ÊJHÈİ™š[İ[HH	ÈÍ	ÎÈİ™›ÛHœÊLÊNÈBˆ[ÙHÈİ™š[İ[HH	ÈÙ	ÎÈİ™›ÛHœÊLÊNÈBˆİ™š[^
+‹JNÂˆH
+ÏHŒÂˆB‚ˆİ^[YÛˆH	ØÙ[\‰ÎÂˆYˆ
+‹Ø\İˆ
+HÈİ™š[İ[HHÚĞÛÛÜŠ
+NÈİ™›ÛHœÊMYJNÈİ™š[^
+	ø§$È;)á:âê:é«;cë;b®:éo;( ;'©{e¢;%­;&¥
+;'n;!á0­úìí:­ ;&ªJIËÈÈ‹LLŠNÈBˆ[ÙHYˆ
+‹Ø\İ
+HÈİ™š[İ[HH˜YÛÛÜŠ
+NÈİ™›ÛHœÊMYJNÈİ™š[^
+	û'm;ff:¬¯{%ä;!':â¥:à­:ìí:à¯;"&;%á»%­;&¥
+:î#:ço;&¬;( ;%ä;!';"ç:ãá
+IËÈÈ‹LLŠNÈBˆ[ÙHÈİ™š[İ[HH	ÈÍÍÍÉÎÈİ™›ÛHœÊLÊNÈİ™š[^
+	Öˆ:é«;cë;b®:à­:ìí:à­:®,
+û`m:é¯zìí:äç
+H0­È8¥à8¥­ˆ;ef{ çH;(!;ff0­Èˆ:âêú®,	ËÈÈ‹LLŠNÈBˆİ^[YÛˆH	ÛY	ÎÂˆB‚ˆËÈKKKKKKKKKH;.é;"©;a`;`-;)¢
+;!(; çzâæ:ë.;('
+H;c®;)äp­ú¬ ;(.;&):®,KKKKKKKKKBˆÛÛœİURV‘QUÒUSTÈHÉÚ[\Üš[IË	Ú[\ÜÛ\	Ë	İ[\]IË	ØÛX\‰Ë	ØÛÜÙI×NÂˆÛÛœİURV‘QUÓP‘SÈHÂˆ[\Üš[Nˆ	ú¬ ;(.;&):®,8 %;c#;'o;%ä;!'
+šœÛÛŠIËˆ[\ÜÛ\ˆ	ú¬ ;(.;&):®,8 %;`m:é¯zìí:äç;%ä;!':í¦{%ë:á(ú®,	Ëˆ[\]Nˆ	úë.;(';%¤{"çJ;ag;e#:é¯ÊH:ìí{ «;ef:®,	ËˆÛX\ˆ	û.é;"©;a`:ë.;(':êª:äd;)à;&¬:®,	ËˆÛÜÙNˆ	úâêú®,	ËˆNÂˆ[˜İ[ÛˆÜ[”]Z^‘Y]
+™]
+HÂˆØ[YKœ]Z^™Y]œ™]H™]ÂˆØ[YKœ]Z^™Y]˜İ\œÛÜˆHÂˆØ[YKœ]Z^™Y]Ø\İHÂˆØ[YKœ]Z^™Y]˜ÛÛ™š\›HH˜[ÙNÂˆØ[YK›[ÙHH	Ü]Z^™Y]	ÎÂˆÛİ[™œÙ[Xİ
+
+NÂˆBˆ[˜İ[ÛˆÛÜÙT]Z^‘Y]
+
+HÂˆØ[YK›[ÙHHØ[YKœ]Z^™Y]œ™]ÂˆÛİ[™œÙ[Xİ
+
+NÂˆBˆ[˜İ[ÛˆÙ]]Z^•Ø\İ
+™\ÊHÂˆØ[YKœ]Z^™Y]Ø\İH™\È	‰ˆ™\Ë›ÚÈÈ
+™\Ë˜Ûİ[JHˆLNÂˆÛİ[™˜˜YÙJ
+NÂˆBˆ[˜İ[Ûˆ[\Ü]Z^‘š[J
+HÂˆHÂˆÛÛœİ[œHØİ[Y[˜Ü™X]Q[[Y[
+	Ú[œ]	ÊNÂˆ[œ\HH	Ùš[IÎÂˆ[œ˜XØÙ\H	Ø\XØ][Û‹ÚœÛÛ‹šœÛÛ‰ÎÂˆÛÛœİ[™\ˆH
+
+HOˆÂˆ[œœ™[[İ™Q]™[\İ[™\Š	ØÚ[™ÙIË[™\ŠNÂˆÛÛœİš[HH[œ™š[\È	‰ˆ[œ™š[\ÖÌNÂˆYˆ
+Yš[JH™]\›ÂˆÛÛœİ™XY\ˆH™]Èš[T™XY\Š
+NÂˆ™XY\‹›Û›ØYH
+
+HOˆÙ]]Z^•Ø\İ
+[\Üİ\İÛT]Z^™\Êİš[™Ê™XY\‹œ™\İ[
+JJNÂˆ™XY\‹›Û™\œ›ÜˆH
+
+HOˆÈØ[YKœ]Z^™Y]Ø\İHLNÈÛİ[™˜˜YÙJ
+NÈNÂˆ™XY\‹œ™XY\Õ^
+š[JNÂˆNÂˆ[œ˜Y]™[\İ[™\Š	ØÚ[™ÙIË[™\ŠNÂˆ[œ˜ÛXÚÊ
+NÂˆHØ]Ú
+JHÈØ[YKœ]Z^™Y]Ø\İHLNÈBˆBˆ[˜İ[Ûˆ[\Ü]Z^Û\
+
+HÂˆHÂˆYˆ
+Ú[™İË›˜]šYØ]Üˆ	‰ˆ˜]šYØ]Ü‹˜Û\›Ø\™	‰ˆ˜]šYØ]Ü‹˜Û\›Ø\™œ™XY^
+HÂˆ]Û™HH˜[ÙNÂˆÛÛœİ˜Z[H
+
+HOˆÈYˆ
+YÛ™JHÈÛ™HHYNÈØ[YKœ]Z^™Y]Ø\İHLNÈÛİ[™˜˜YÙJ
+NÈHNÂˆÛÛœİ[Y\ˆHÙ][Y[İ]
+˜Z[L
+NÂˆ˜]šYØ]Ü‹˜Û\›Ø\™œ™XY^
+
+Bˆ[Š
+
+HOˆÈYˆ
+Û™JH™]\›ÈÛ™HHYNÈÛX\•[Y[İ]
+[Y\ŠNÈÙ]]Z^•Ø\İ
+[\Üİ\İÛT]Z^™\Ê
+JNÈJBˆ˜Ø]Ú
+
+
+HOˆÈÛX\•[Y[İ]
+[Y\ŠNÈ˜Z[
+
+NÈJNÂˆH[ÙHÈØ[YKœ]Z^™Y]Ø\İHLNÈBˆHØ]Ú
+JHÈØ[YKœ]Z^™Y]Ø\İHLNÈBˆBˆ[˜İ[Ûˆ\]T]Z^‘Y]
+
+HÂˆÛÛœİHHØ[YKœ]Z^™Y]ÂˆËÈKØ\İˆ{%á»'c;'c;"&{"é;c*;%¤{"&{!,z¬íJL{'m:êm:äìzègH:¬';"&
+Kˆ:âé;'c;e¢zãæz®c;)à;'(;)à‚ˆÛÛœİˆHURV‘QUÒUSTË›[™İÂˆYˆ
+\İ™\ÜÙY
+	İ\	ÊJHÈK˜İ\œÛÜˆH
+K˜İ\œÛÜˆ
+ÈˆHJH	HÈK˜ÛÛ™š\›HH˜[ÙNÈÛİ[™˜›\
+
+NÈBˆYˆ
+\İ™\ÜÙY
+	ÙİÛ‰ÊJHÈK˜İ\œÛÜˆH
+K˜İ\œÛÜˆ
+ÈJH	HÈK˜ÛÛ™š\›HH˜[ÙNÈÛİ[™˜›\
+
+NÈBˆYˆ
+\İ™\ÜÙY
+	ØØ[˜Ù[	ÊH\İ™\ÜÙY
+	ÛY[IÊJHÂˆYˆ
+K˜ÛÛ™š\›JHÈK˜ÛÛ™š\›HH˜[ÙNÈÛİ[™˜›\
+
+NÈ™]\›ÈBˆÛÜÙT]Z^‘Y]
+
+NÂˆ™]\›ÂˆBˆYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊJHÂˆÛÛœİ][HHURV‘QUÒUSTÖÜK˜İ\œÛÜ—NÂˆYˆ
+K˜ÛÛ™š\›JHÈËÈ; «{(';fe{'n;fá;"é;(';"é;e¢BˆK˜ÛÛ™š\›HH˜[ÙNÂˆÛX\İ\İÛT]Z^™\Ê
+NÈKØ\İHÈÛİ[™˜˜YÙJ
+NÂˆ™]\›ÂˆBˆYˆ
+][HOOH	Ú[\Üš[IÊH[\Ü]Z^‘š[J
+NÂˆ[ÙHYˆ
+][HOOH	Ú[\ÜÛ\	ÊH[\Ü]Z^Û\
+
+NÂˆ[ÙHYˆ
+][HOOH	İ[\]IÊHÈKØ\İHÛÜU^ĞÛ\›Ø\™
+İ\İÛT]Z^•[\]J
+JHÈHˆLNÈÛİ[™˜˜YÙJ
+NÈBˆ[ÙHYˆ
+][HOOH	ØÛX\‰ÊHÂˆYˆ
+Ù]İ\İÛT]Z^™\Ê
+K›[™İOOH
+HÈKØ\İHLNÈÛİ[™˜[\
+
+NÈHËÈ;)à;&®:¬£;%á»'cˆ[ÙHÈK˜ÛÛ™š\›HHYNÈÛİ[™˜›\
+
+NÈBˆBˆ[ÙHYˆ
+][HOOH	ØÛÜÙIÊHÛÜÙT]Z^‘Y]
+
+NÂˆBˆBˆ[˜İ[Ûˆ˜]Ô]Z^‘Y]
+
+HÂˆÛÛœİHHØ[YKœ]Z^™Y]Âˆİ™š[İ[HH	ÈÌ	ÎÂˆİ™š[™Xİ
+Ë
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊŒ‹YJNÂˆİ™š[^
+	ø§#ˆ;.é;"©;a`;`-;)¢
+;!(; çzâæ:ë.;('
+IËÎ
+NÂˆÛÛœİÛHÙ]İ\İÛT]Z^™\Ê
+K›[™İÂˆİ™š[İ[HHÛÈÚĞÛÛÜŠ
+Hˆ	ÈÎ	ÎÂˆİ™›ÛHœÊMYJNÂˆİ™š[^
+;f!;'«:äìzègzä';.é;"©;a`:ë.;('ˆ	ØÛz¬'
+NÂˆİ™š[İ[HH	ÈÎ	ÎÂˆİ™›ÛHœÊLŠNÂˆİ™š[^
+	û.é;"©;a`:ë.;(':â¥;`-;)¢;,c:é¬;)à;'f8à#;.é;"©;a`0­È;!(; çzâæ:ë.;('8à#H;(ï;(';&`	ËŠNÂˆİ™š[^
+	úéç»-©0­û&):â¦;'f:ãá;(!;%ä;ej:®æ;-§;(':ä*zââ:âé‰ËL
+NÂ‚ˆÛÛœİ\İHHM‹›İÒHÂˆ›Üˆ
+]HHÈHURV‘QUÒUSTË›[™İÈJÊÊHÂˆ˜]ĞÚÚXÙS[™JURV‘QUÓP‘SÖÔURV‘QUÒUSTÖÚWWK\İH
+ÈH
+ˆ›İÒHOOHK˜İ\œÛÜŠNÂˆB‚ˆİ™š[İ[HH	ÈÍÍÍÉÎÂˆİ™›ÛHœÊLJNÂˆİ™š[^
+	ûf%{"çNˆÈÈœHˆºë.;('‹˜H–Èºìí:®,H‹ºìí:®,ˆ‹ºìí:®,È—K˜ÈŒKÚHˆ»em;!)ŸK8 )ˆIË\İH
+ÈURV‘QUÒUSTË›[™İ
+ˆ›İÒ
+ÈN
+NÂˆİ™š[^
+	úæ$:â¥Èœ]Y\İ[ÛœÈˆÈ8 )ˆHH0­Èúâ¥;(%zâíH:ì¢;f.
+ŒŠIË\İH
+ÈURV‘QUÒUSTË›[™İ
+ˆ›İÒ
+ÈÍŠNÂ‚ˆYˆ
+K˜ÛÛ™š\›JHÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[İ[HH˜YÛÛÜŠ
+NÂˆİ™›ÛHœÊMKYJNÂˆİ™š[^
+;.é;"©;a`:ë.;('	ÙÙ]İ\İÛT]Z^™\Ê
+K›[™İz¬':éo:êª:äd;)à;&®:®c;&¥ØÈÈ‹LŠNÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊLÊNÂˆİ™š[^
+	Öˆ:êª:äd;)à;&¬:®,0­Èˆ;-ê;!£	ËÈÈ‹Í
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆH[ÙHYˆ
+KØ\İOOH
+HÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆYˆ
+KØ\İ
+HÈİ™š[İ[HH˜YÛÛÜŠ
+NÈİ™›ÛHœÊMYJNÂˆİ™š[^
+	ú¬ ;(.;&+;"&;%á»%­;&¥ˆ;f%{"ç{'a;fe{'n;ef:¬l:à¦:î#:ço;&¬;( ;%ä;!';"ç:ãá;em;(ï;!.;&¥‰ËÈÈ‹ŒŠNÈBˆ[ÙHÈİ™š[İ[HHÚĞÛÛÜŠ
+NÈİ™›ÛHœÊMYJNÂˆİ™š[^
+KØ\İHHÈ8§$È;.é;"©;a`:ë.;('	ÜKØ\İz¬':éo:äìzèg{e¢;%­;&¥Xˆ	ø§$È;&a:èã;e¢;%­;&¥IËÈÈ‹ŒŠNÈBˆİ^[YÛˆH	ÛY	ÎÂˆBˆİ™š[İ[HH	ÈÍÍÍÉÎÂˆİ™›ÛHœÊLÊNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[^
+	ø¡¤x¡¤È;!(;`çH0­Èˆ;"é;e¢H0­È:âêú®,	ËÈÈ‹LLŠNÂˆİ^[YÛˆH	ÛY	ÎÂˆB‚ˆËÈ;eg:âê;%­:¬ X^úìí:âé:á$û'/:êm:® ;'¤:âê;'!:èg;*¯:¬':â¥;eë;coˆ[˜İ[ÛˆÚ\œ™XZÊÛÜ™X^ÊHÂˆÛÛœİ\ÈH×NÂˆ]İ\ˆH	ÉÎÂˆ›Üˆ
+ÛÛœİÚÙˆÛÜ™
+HÂˆÛÛœİ\İHİ\ˆ
+ÈÚÂˆYˆ
+İ\ˆ	‰ˆİ›YX\İ\™U^
+\İ
+KÚYˆX^ÊHÈ\Ëœ\Ú
+İ\ŠNÈİ\ˆHÚÈBˆ[ÙHİ\ˆH\İÂˆBˆYˆ
+İ\ŠH\Ëœ\Ú
+İ\ŠNÂˆ™]\›ˆ\ÎÂˆB‚ˆËÈ;)!:ì%:¯â:è";'m;%a;&àÈ:êe:êª;'m;)¢8 %:ã ;fe;ac{"©;b®0­ûcì;b®0­ûcë{'m;e!:è";'¡:¬!:¬è;(%{'m:ëà:ègˆËÈ;`à;'¤:®,;fª:¬ï:èg:éé;e!:è";'¡YX\İ\™U^:éo:ì&:ìí{ef:ãf:îa;&ª{'a;%á»%i:âé
+;( ; «;%¤H;`ç:î%:é¯È;,­:¬$
+K‚ˆÛÛœİİÜ˜\ØXÚHH™]ÈX\
+
+NÂˆÛÛœİÔTĞĞPÒWÓPVHÂˆ[˜İ[Ûˆ^[İ][™J^X^ÊHÂˆÛÛœİÙ^HHİ™›Û
+È	ß	È
+ÈX^È
+È	ß	È
+È^ÂˆÛÛœİ]HİÜ˜\ØXÚK™Ù]
+Ù^JNÂˆYˆ
+]
+H™]\›ˆ]ÂˆÛÛœİÛÜ™ÈH^œÜ]
+	È	ÊNÂˆÛÛœİİ]H×NÂˆ][™HH	ÉÎÂˆ›Üˆ
+ÛÛœİÈÙˆÛÜ™ÊHÂˆYˆ
+İ›YX\İ\™U^
+ÊKÚYˆX^ÊHÂˆYˆ
+[™JHÈİ]œ\Ú
+[™JNÈ[™HH	ÉÎÈBˆÛÛœİ\ÈHÚ\œ™XZÊËX^ÊNÂˆ›Üˆ
+]HHÈH\Ë›[™İÈJÊÊHÂˆYˆ
+H\Ë›[™İHJHİ]œ\Ú
+\ÖÚWJNÂˆ[ÙH[™HH\ÖÚWNÂˆBˆÛÛ[YNÂˆBˆÛÛœİ\İH[™HÈ[™H
+È	È	È
+ÈÈˆÎÂˆYˆ
+İ›YX\İ\™U^
+\İ
+KÚYˆX^È	‰ˆ[™JHÈİ]œ\Ú
+[™JNÈ[™HHÎÈBˆ[ÙH[™HH\İÂˆBˆYˆ
+[™JHİ]œ\Ú
+[™JNÂˆYˆ
+İÜ˜\ØXÚKœÚ^™HHÔTĞĞPÒWÓPV
+HİÜ˜\ØXÚK™[]JİÜ˜\ØXÚKšÙ^\Ê
+K›™^
+
+K˜[YJNÂˆİÜ˜\ØXÚKœÙ]
+Ù^Kİ]
+NÂˆ™]\›ˆİ]ÂˆB‚ˆËÈ;ac{"©;b®;)!:ì%:¯â:­î:é«:®,ˆ:­î:é¬;)!;"&:éo:ì&;ff‚ˆ[˜İ[ÛˆÜ˜\^
+^KX^Ë[™R
+HÂˆÛÛœİ[™\ÈH^[İ][™J^X^ÊNÂˆ›Üˆ
+]HHÈH[™\Ë›[™İÈJÊÊHİ™š[^
+[™\ÖÚWKH
+ÈH
+ˆ[™R
+NÂˆ™]\›ˆ[™\Ë›[™İÂˆB‚ˆËÈKLLÈ8 %;`l:® ;%*:êª:äç;&):ì¡;e#:èg;"é:è#:ãe:¬ ; «
+;ac;"©;b®;fáJK‚ˆËÈ:ãl;'m;a,;'f:ã ; «û(ï;'©Kû(l; «;e#:è";'m:ì¡:ë.;'¤;%í;'a;f!;'«;cì;b®
+œÈ:ì,;'*:ì&;& Jzèg;"é;(';)!:ì%:¯â;emˆËÈ;%­:å©;)!:ãá:ã ;fe; à{'¤;cëJX[ÙÓX^Ê{'a:á&;)à;%bºâ¥;)àYX\İ\™U^;"é:¬$»'/:èg;fe{'n;eg:âé‚ˆËÈ^[İ][™{'mÚ\œ™XZúèg:¬%{(';($z®,:åc:ë.;%ä;(%{ à{'m:êmİ™\Ûİ[L;'m;%­;%o;eg:âé‚ˆËÈ:á&;.f:â¥:ë.:­k:¬ :à¦;&):êm:­î;&ä:ë.;'a:ãã:è);)&:ãl;'m;a,;%ä;!';)!:ì%:¯â;'a;!¤:ìí:¬£;eg:âé‚ˆ[˜İ[ÛˆÚXÚÕ^İ™\™›İÊ
+HÂˆÛÛœİX[ÙÓX^ÈHÈHHÈËÈ˜]ÑX[Ùğ­Ù˜]Ô]Y\İ[Û•^:¬ ;$ì:â¥;cëBˆÛÛœİ^ÈH×NÂˆÛÛœİ\ÚH
+
+HOˆÈYˆ
+	‰ˆ\[ÙˆOOH	Üİš[™ÉÊH^Ëœ\Ú
+
+NÈNÂˆËÈ;!):äçH:ì,;bà8 %;'n:ë/;'f;(ï;'©p­ûg£;b®0­úéâ;'c:éä0­ûc*;a-;'dzâíJ;(!:í ; à{'¤;%ä:­î:è);)à:â¥:ã ; «
+Bˆ›Üˆ
+ÛÛœİÙˆØš™Xİ˜[Y\ÊT”ÕPQJJHÂˆ›Üˆ
+ÛÛœİÈÙˆ
+˜ÛZ[\È×JJHÈ\Ú
+Ë^
+NÈ\Ú
+Ëš[
+NÈ\Ú
+Ë™œ˜YÛY[
+NÈ\Ú
+Ë›Y\˜ŞT™\JNÈBˆÉÛY\˜ŞIË	ÜÚYİÔ™\IË	Ü\˜Ù[™\IË	İ[™\IË	İ[\™\IË	ÙØ^™T™\IËˆ	İ]™\IË	ÙÛÜ”™\IË	Û™X\”™\IË	Ú[šÔ™\IË	ÙXÛŞT™\I×K™›Ü‘XXÚ
+
+ÊHOˆ\Ú
+Ú×JJNÂˆBˆËÈ:éíH;(l; «;e#:è";'m:ì¡0­ú®,;%­{'f:ìá0­û!£;d¢;(l; «:ë.
+;(l; «;"ç:ã ;fe; à{'¤;%ä:ç*:â¥:ë.;'©JBˆ›Üˆ
+ÛÛœİHÙˆØš™Xİ˜[Y\ÊPTÊJHÂˆ›Üˆ
+ÛÛœİ›Ùˆ
+K™›]›ÜœÈ×JJHÈ\Ú
+›^
+NÈ\Ú
+›˜˜[™JNÈBˆYˆ
+Kœİ\ŠH\Ú
+Kœİ\‹^
+NÂˆBˆ›Üˆ
+ÛÛœİ\İÙˆØš™Xİ˜[Y\ÊPTÔ“ÔÈßJJH›Üˆ
+ÛÛœİÙˆ\İ
+H\Ú
+^
+NÂˆİ™›ÛHœÊMŠNÈËÈ˜]ÑX[ÙÈ:ìî:ë.;cì;b®
+;`l:® ;%*:êmˆ:ì,;'*;'m;"é:é¬:âé
+Bˆ]ÛÜœİH[ÛÜœİÈHÂˆÛÛœİİ™\ˆH×NÂˆ›Üˆ
+ÛÛœİÙˆ^ÊHÂˆ›Üˆ
+ÛÛœİ\Ùˆİš[™Ê
+KœÜ]
+	×‰ÊJHÂˆ›Üˆ
+ÛÛœİˆÙˆ^[İ][™J\X[ÙÓX^ÊJHÂˆÛÛœİÈHİ›YX\İ\™U^
+ŠKÚYÂˆYˆ
+ÈˆÛÜœİÊHÈÛÜœİÈHÎÈÛÜœİHÈBˆYˆ
+ÈˆX[ÙÓX^È
+ÈJHİ™\‹œ\Ú
+È[™Nˆ‹ÎˆX]œ›İ[™
+ÊHJNÂˆBˆBˆBˆ™]\›ˆÈX[ÙÓX^ÎˆX]œ›İ[™
+X[ÙÓX^ÊKÛÜœİÎˆX]œ›İ[™
+ÛÜœİÊKÛÜœİˆİ™\Ûİ[ˆİ™\‹›[™İİ™\ˆİ™\‹œÛXÙJJKØ[\Yˆ^Ë›[™İNÂˆB‚ˆËÈÜ˜\^;&`:¬&{'`:­ç;.f{'/:èg;)!;"&:éã;!/:âé
+:­î:é«;)à;%b»'c
+Kˆ:ì%{"©:á¤»'m:éo:ëî:é«;'¨{'a:åc;$í:âé‚ˆËÈ;f.;-§;(!;%äİ™›Û;'a;"é;(':­î:é­;cì;b®:èg:éç»-¬:äf:¬ Ë‚ˆ[˜İ[ÛˆYX\İ\™UÜ˜\
+^X^ÊHÂˆ]İ[HÂˆ›Üˆ
+ÛÛœİ\Ùˆİš[™Ê^OH[È	ÉÈˆ^
+KœÜ]
+	×‰ÊJHÂˆİ[
+ÏHX]›X^
+K^[İ][™J\X^ÊK›[™İ
+NÂˆBˆ™]\›ˆİ[ÂˆB‚ˆËÈKKKKKKKKKH:­î:é«:®,KKKKKKKKKBˆ[˜İ[ÛˆØ[Y\˜J
+HÂˆÛÛœİHHPTÖÙØ[YK›X\NÂˆÛÛœİ]ÈHK[\ÖÌK›[™İ
+ˆÎÂˆÛÛœİZHK[\Ë›[™İ
+ˆÎÂˆ]ŞHØ[YKœ^Y\‹œ
+ÈÈÈˆHÈÈÂˆ]ŞHHØ[YKœ^Y\‹œH
+ÈÈÈˆHÈÂˆŞHX]›X^
+X]›Z[ŠŞ]ÈHÊJNÂˆŞHHX]›X^
+X]›Z[ŠŞKZH
+JNÂˆYˆ
+]ÈÊHŞH
+]ÈHÊHÈÂˆYˆ
+Z
+HŞHH
+ZH
+HÈÂˆ™]\›ˆÈŞŞHNÂˆB‚ˆËÈ:ãæ{e¢{'¤:ì&:å%8 %;e#:è";'m;%­:¬ :ìí:â¥:ì*{e©{'f:ì&:ã ;*¯{%ä;!':äi{"é:å¨:å,:ço;&*:âé‚ˆËÈ;&!{'`:­$zég
+È:í ;'(:ì%;&­;"©ˆ;(%{,­:¬íz¬'
+˜[™T™]™X[Y
+H;fá;%ä:â¥:­î:é«;)à;%bºâ¥:âé‚ˆ[˜İ[Ûˆ˜]ĞÛÛ\[š[ÛŠŞŞJHÂˆÛÛœİˆHØ[YK™›YÜÎÂˆYˆ
+YˆY‹˜˜[™R›Ú[™Y‹˜˜[™T™]™X[Y
+H™]\›ÂˆÛÛœİHØ[YKœ^Y\ÂˆÛÛœİÙ™ˆHÈ\ˆÈˆŒNˆÌKİÛˆÈˆLNNˆLMˆKˆYˆÈˆÍNˆLLKšYÚˆÈˆLÌNˆLLHVÜ™\—HÈˆLNNˆLMˆNÂˆÛÛœİ›ØˆHX]œÚ[ŠØ[YK[YHÈMŠH
+ˆÎÂˆÛÛœİŞHX]œ›İ[™
+œHŞ
+ÈÙ™‹
+NÂˆÛÛœİŞHHX]œ›İ[™
+œHHŞH
+ÈÙ™‹H
+È›ØŠNÂˆËÈ:­$zég8 %;fj{f/;!£{'f;'¤{'`;&*:®,ˆYˆ
+YØ[YKœ™YXÙQ
+HÂˆÛÛœİ[ÙHHŒMˆ
+ÈX]œÚ[ŠØ[YK[YHÈŒŠH
+ˆŒNÂˆİ™š[İ[HH™Ø˜JMKŒŒLÌ	Ü[Ù_JXÂˆİ˜™YÚ[”]
+
+NÂˆİ˜\˜ÊŞ
+ÈM‹ŞH
+ÈMNX]”H
+ˆŠNÂˆİ™š[
+
+NÂˆBˆÛÛœİ\œ˜[YHHX]™›ÛÜŠØ[YK[YHÈL
+H	HÂˆÛÛœİ\ÙY\ÜÙ]H\[ÙˆĞSQWĞT•OOH	İ[™Yš[™Y	Âˆ	‰ˆĞSQWĞT•™˜]Ğ˜[™Jİ\œ˜[YKŞ
+ÈM‹ŞH
+ÈM
+NÂˆYˆ
+]\ÙY\ÜÙ]
+H˜]Ó[ÛŠİ	Ø˜[™IËŞŞKŠNÂˆB‚ˆ[˜İ[ÛˆÚRX•š\ÚX›SX\šÜÊ
+HÂˆÛÛœİ›ÜÈHPTÔ“ÔË™œ™Y\İ™Y]×NÂˆ™]\›ˆ›ÜË™š[\Š
+›Ü
+HOˆÉÙ\İšXİ	Ë	Ù[XWØZ[\	×Kš[˜ÛY\Ê›ÜšÚ[™
+JBˆ›X\
+
+›Ü
+HOˆ
+ÈX\ˆ	Ùœ™Y\İ™Y]	Ëˆ›ÜNˆ›ÜKÚ[™ˆ›ÜšÚ[™X™[ˆ›Ü›X™[	ÉËÛ™NˆHJ›Ü™›YÈ	‰ˆØ[YK™›YÜÖÜ›Ü™›Y×JHJJNÂˆB‚ˆ[˜İ[Ûˆ˜]ĞÚRX“X\šÜÊŞŞJHÂˆYˆ
+Ø[YK›X\OOH	Ùœ™Y\İ™Y]	ÊH™]\›ÂˆÛÛœİX\šÜÈHÚRX•š\ÚX›SX\šÜÊ
+NÂˆİœØ]™J
+NÂˆ›Üˆ
+ÛÛœİX\šÈÙˆX\šÜÊHÂˆÛÛœİŞHX]œ›İ[™
+X\šË
+ˆÈHŞ
+NÂˆÛÛœİŞHHX]œ›İ[™
+X\šËH
+ˆÈHŞHHŠNÂˆYˆ
+ŞMLŞˆÈ
+ÈLŞHMLŞHˆ
+ÈL
+HÛÛ[YNÂˆÛÛœİ\İšXİHX\šËšÚ[™OOH	Ù\İšXİ	ÎÂˆİ™ÛØ˜[[HHØ[YK›İÑÜ˜\XÜÈØ[YKœ™YXÙQÈˆˆMÂˆİ™š[İ[HH\İšXİÈ	ÈÌMÌÍÉÈˆ
+X\šË™Û™HÈ	ÈÌØÌÙŒÎ	Èˆ	ÈÍLÌÌM‰ÊNÂˆİ™š[™Xİ
+Ş
+ÈKŞH
+ÈÈHLÈHLŠNÂˆİœİ›ÚÙTİ[HH\İšXİÈ	ÈÎX™Ù™‰Èˆ	ÈÙ™™	ÎÂˆİ›[™UÚYHNÂˆİœİ›ÚÙT™Xİ
+Ş
+ÈKKŞH
+ÈKÈHLKÈHLÊNÂˆİ™š[İ[HH\İšXİÈ	ÈÎX™Ù™‰Èˆ
+X\šË™Û™HÈ	ÈÎXXLØIÈˆ	ÈÙ™™	ÊNÂˆİ™›ÛHœÊMYJNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[^
+\İšXİÈ	ø¥áÉÈˆ
+X\šË™Û™HÈ	ø§$ÉÈˆ	ø .ÉÊKŞ
+ÈÈÈ‹ŞH
+È
+NÂˆYˆ
+JØ[YK›İÑÜ˜\XÜÈØ[YKœ™YXÙQ
+JHÂˆİ™›ÛHœÊKYJNÂˆİ™š[^
+X\šË›X™[Ş
+ÈÈÈ‹ŞH
+È
+NÂˆBˆBˆİ^[YÛˆH	ÛY	ÎÂˆİœ™\İÜ™J
+NÂˆB‚ˆ[˜İ[Ûˆ˜]ĞÚTİ™Y]™\Üİ\™SØš™XİÊŞŞJHÂˆYˆ
+Ø[YK›X\OOH	Ùœ™Y\İ™Y]	ÊH™]\›ÂˆÛÛœİ›Ùš[HHÚTİ™Y]š\İX[›Ùš[Jš]˜XŞSXZÊ
+KØ[YK›İÑÜ˜\XÜÈØ[YKœ™YXÙQ
+NÂˆÛÛœİYÈHÂˆÈˆNˆ^ˆ	úë-:èã	ÈKÈˆMKNˆL‹^ˆ	û%oz­ 	ÈKÈˆNˆK^ˆ	û-¥;,§	ÈKˆÈˆÌKNˆLË^ˆ	û( ;'©IÈKÈˆNKNˆN^ˆ	û'm:é¡ÉÈKÈˆÌËNˆN^ˆ	úãæ{'fÉÈKˆÈˆLKNˆM‹^ˆ	úì';'¤:­kIÈKÈˆËNˆŒ^ˆ	ú¬í{)ç	ÈKÈˆNˆL‹^ˆ	û%í:ç£	ÈKˆÈˆÍKNˆL^ˆ	ûfe{'n	ÈKÈˆŒKNˆË^ˆ	úìí:­ 	ÈKÈˆMNˆŒK^ˆ	û-¥;( IÈKˆNÂˆÛÛœİÙ[œÛÜœÈHŞÈˆMNˆKÈˆÌNˆKÈˆŒËNˆMÈWNÂˆİœØ]™J
+NÂˆ›Üˆ
+ÛÛœİÚKYHÙˆYËœÛXÙJ›Ùš[K˜YÚYÛœÊK™[šY\Ê
+JHÂˆÛÛœİŞHX]œ›İ[™
+Y
+ˆÈHŞ
+ÈŠNÂˆÛÛœİŞHHX]œ›İ[™
+YH
+ˆÈHŞH
+È
+NÂˆYˆ
+ŞNŞˆÈ
+ÈŞHMŞHˆ
+È
+HÛÛ[YNÂˆÛÛœİ[ÙHH›Ùš[K™ÛİÈÈŒLˆ
+ˆX]œÚ[Š
+Ø[YK[YH
+ÈH
+ˆLJHÈN
+HˆÂˆİ™ÛØ˜[[HHX]›X^
+KÌˆ
+È[ÙJNÂˆİ™š[İ[HHH	HˆÈ	ÈÌMÌ™‰Èˆ	ÈÌÌÌŒŒ‰ÎÂˆİ™š[™Xİ
+ŞŞKÎMŠNÂˆİœİ›ÚÙTİ[HH›Ùš[K™ÛİÈÈ	ÈÙ™™	Èˆ	ÈÍØM˜M	ÎÂˆİ›[™UÚYHNÂˆİœİ›ÚÙT™Xİ
+Ş
+ÈKŞH
+ÈKÍËMJNÂˆİ™š[İ[HHHHÈ	ÈÙ™NIÈˆ	ÈÙ™™	ÎÂˆİ™›ÛHœÊLYJNÂˆİ™š[^
+Y^Ş
+ÈŞH
+ÈLJNÂˆBˆİ™ÛØ˜[[HHNÂˆ›Üˆ
+ÛÛœİÈÙˆÙ[œÛÜœËœÛXÙJ›Ùš[KœÙ[œÛÜœÊJHÂˆÛÛœİŞHX]œ›İ[™
+Ë
+ˆÈHŞ
+ÈÈÈŠNÂˆÛÛœİŞHHX]œ›İ[™
+ËH
+ˆÈHŞH
+ÈÈÈŠNÂˆYˆ
+ŞLŒŞˆÈ
+ÈŒŞHLŒŞHˆ
+ÈŒ
+HÛÛ[YNÂˆİœİ›ÚÙTİ[HH	ÈÎX™Ù™‰ÎÂˆİ›[™UÚYHÂˆİ˜™YÚ[”]
+
+NÂˆİ˜\˜ÊŞŞKX]”H
+ˆŠNÂˆİœİ›ÚÙJ
+NÂˆİ™š[İ[HH	ÈÙLLØIÎÂˆİ™š[™Xİ
+ŞH‹ŞHH‹
+NÂˆBˆYˆ
+›Ùš[KœØØ[“[™\ÊHÂˆİ™ÛØ˜[[HHŒÂˆİ™š[İ[HH	ÈÙ™™	ÎÂˆ›Üˆ
+]HH
+Ø[YK[YH	HN
+NÈHÈH
+ÏHN
+Hİ™š[™Xİ
+KËJNÂˆBˆİœ™\İÜ™J
+NÂˆB‚ˆ[˜İ[ÛˆÚ\\Œ’X•š\ÚX›SX\šÜÊ
+HÂˆÛÛœİ›ÜÈHPTÔ“ÔË[İ™Y]×NÂˆ™]\›ˆ›ÜË™š[\Š
+›Ü
+HOˆ›ÜšÚ[™OOH	ØÚ—Ù\İšXİ	ÊBˆ›X\
+
+›Ü
+HOˆ
+ÈX\ˆ	İ[İ™Y]	Ëˆ›ÜNˆ›ÜKÚ[™ˆ›ÜšÚ[™X™[ˆ›Ü›X™[	ÉÈJJNÂˆB‚ˆ[˜İ[Ûˆ˜]ĞÚ\\Œ’X“X\šÜÊŞŞJHÂˆYˆ
+Ø[YK›X\OOH	İ[İ™Y]	ÊH™]\›ÂˆÛÛœİ›Ùš[HHÚ\\Œ’X•š\İX[›Ùš[JÌÛX\Ûİ[
+
+KØ[YK›İÑÜ˜\XÜÈØ[YKœ™YXÙQ
+NÂˆÛÛœİX\šÜÈHÚ\\Œ’X•š\ÚX›SX\šÜÊ
+NÂˆİœØ]™J
+NÂˆ›Üˆ
+ÛÛœİÚKX\š×HÙˆX\šÜË™[šY\Ê
+JHÂˆÛÛœİŞHX]œ›İ[™
+X\šË
+ˆÈHŞ
+NÂˆÛÛœİŞHHX]œ›İ[™
+X\šËH
+ˆÈHŞHHŠNÂˆYˆ
+ŞMŒŞˆÈ
+ÈŒŞHMLŞHˆ
+ÈL
+HÛÛ[YNÂˆÛÛœİ\ÔØØ[HHX\šË›X™[OOH	ú®,;&®;%­;)á;( ;&®	ÎÂˆÛÛœİ\Ñ^]HX\šË›X™[OOH	úãæ{*¯H;!£:ç :ë.	ÎÂˆİ™ÛØ˜[[HHØ[YK›İÑÜ˜\XÜÈØ[YKœ™YXÙQÈˆˆLÂˆİ™š[İ[HH\ÔØØ[HÈ	ÈÍÍŒXÉÈˆ\Ñ^]È	ÈÌ˜ŒÍ‰Èˆ	ÈÌYŒ™Í‰ÎÂˆİ™š[™Xİ
+Ş
+È‹ŞH
+ÈÈHL‹ÈHLŠNÂˆİœİ›ÚÙTİ[HH\ÔØØ[HÈ	ÈÙ™™	Èˆ\Ñ^]È	ÈÙNXMÙ™‰Èˆ	ÈÎX™Ù™‰ÎÂˆİ›[™UÚYHNÂˆİœİ›ÚÙT™Xİ
+Ş
+È‹KŞH
+ÈKÈHLËÈHLÊNÂˆİ™š[İ[HH\ÔØØ[HÈ	ÈÙ™™	Èˆ\Ñ^]È	ÈÙNXMÙ™‰Èˆ	ÈÎX™Ù™‰ÎÂˆİ™›ÛHœÊMYJNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[^
+\ÔØØ[HÈ	ø¦¥‰Èˆ\Ñ^]È	ÈIÈˆ	ø¡¥ÉËŞ
+ÈÈÈ‹ŞH
+È
+NÂˆYˆ
+›Ùš[K›X™[ÊHÂˆİ™›ÛHœÊKYJNÂˆİ™š[^
+X\šË›X™[Ş
+ÈÈÈ‹ŞH
+È
+NÂˆBˆYˆ
+H›Ùš[K™XÚÓX\šÜÈ	‰ˆJØ[YK›İÑÜ˜\XÜÈØ[YKœ™YXÙQ
+JHÂˆİ™ÛØ˜[[HHŒÂˆİœİ›ÚÙTİ[HH	ÈÙ™™	ÎÂˆİœİ›ÚÙT™Xİ
+Ş
+ÈËKŞH
+ÈKKÈHËÈHÊNÂˆİ™ÛØ˜[[HHLÂˆBˆBˆÛÛœİ[ÈHÂˆÈˆËNˆ^ˆ	û-¥;,§	ÈKÈˆNNˆË^ˆ	û'm;*¯IÈKÈˆLKNˆL‹^ˆ	úâé;"&	ÈKˆÈˆŒKNˆM^ˆ	úìá;($	ÈKÈˆNˆK^ˆ	û'n:®,	ÈKˆNÂˆİ™›ÛHœÊLYJNÂˆ›Üˆ
+ÛÛœİ[Ùˆ[ËœÛXÙJ›Ùš[Kœ™XÛÛ[Y[™ÚYÛœÊJHÂˆÛÛœİŞHX]œ›İ[™
+[
+ˆÈHŞ
+ÈŠNÂˆÛÛœİŞHHX]œ›İ[™
+[H
+ˆÈHŞH
+È
+NÂˆYˆ
+ŞMÌŞˆÈ
+ÈŞHMŞHˆ
+È
+HÛÛ[YNÂˆİ™ÛØ˜[[HHŒÂˆİ™š[İ[HH	ÈÌ™ŒŒLL	ÎÂˆİ™š[™Xİ
+ŞŞKÍMJNÂˆİœİ›ÚÙTİ[HH	ÈÎÌÌÙ	ÎÂˆİœİ›ÚÙT™Xİ
+Ş
+ÈKŞH
+ÈKÌËM
+NÂˆİ™š[İ[HH	ÈÙ™™	ÎÂˆİ™š[^
+[^Ş
+ÈŞH
+ÈLJNÂˆBˆİ^[YÛˆH	ÛY	ÎÂˆİœ™\İÜ™J
+NÂˆB‚ˆ[˜İ[ÛˆÚ\\ŒÒX•š\ÚX›SX\šÜÊ
+HÂˆÛÛœİ›ÜÈHPTÔ“ÔËœ[[Üœİ™Y]×NÂˆ™]\›ˆ›ÜË™š[\Š
+›Ü
+HOˆ›ÜšÚ[™OOH	ØÚ×Ù\İšXİ	ÊBˆ›X\
+
+›Ü
+HOˆ
+ÈX\ˆ	Ü[[Üœİ™Y]	Ëˆ›ÜNˆ›ÜKÚ[™ˆ›ÜšÚ[™X™[ˆ›Ü›X™[	ÉÈJJNÂˆB‚ˆ[˜İ[Ûˆ˜]ĞÚ\\ŒÒX“X\šÜÊŞŞJHÂˆYˆ
+Ø[YK›X\OOH	Ü[[Üœİ™Y]	ÊH™]\›ÂˆÛÛœİİÈHØ[YK›İÑÜ˜\XÜÈØ[YKœ™YXÙQÂˆÛÛœİ›Ùš[HHÚ\\ŒÒX•š\İX[›Ùš[JÌĞÛX\Ûİ[
+
+KØ[YK™›YÜËœ[[Ü‘š^YİÊNÂˆÛÛœİX\šÜÈHÚ\\ŒÒX•š\ÚX›SX\šÜÊ
+NÂˆİœØ]™J
+NÂˆ›Üˆ
+ÛÛœİÚKX\š×HÙˆX\šÜË™[šY\Ê
+JHÂˆÛÛœİŞHX]œ›İ[™
+X\šË
+ˆÈHŞ
+NÂˆÛÛœİŞHHX]œ›İ[™
+X\šËH
+ˆÈHŞHHŠNÂˆYˆ
+ŞMŒŞˆÈ
+ÈŒŞHMLŞHˆ
+ÈL
+HÛÛ[YNÂˆÛÛœİ\Ô\\ˆHX\šË›X™[OOH	úã :ë.;)çH;eé:äç:ço;'n	ÎÂˆÛÛœİ\Ñš^HX\šË›X™[OOH	û(%{(%H:ìí:ãá:®.	ÎÂˆÛÛœİ\Ñ^]HX\šË›X™[OOH	úì&;)çH;%a;/ ;'m:äç:ë.	ÎÂˆİ™ÛØ˜[[HHİÈÈÎˆ
+Ø[YK™›YÜËœ[[Ü‘š^YÈˆˆLÊNÂˆİ™š[İ[HH\Ñ^]È	ÈÌÌŒLØIÈˆ\Ñš^È	ÈÌMÌ™Œ˜ÉÈˆ\Ô\\ˆÈ	ÈÌØLXÉÈˆ	ÈÌŒLÌ‰ÎÂˆİ™š[™Xİ
+Ş
+ÈKŞH
+ÈÈHLÈHLŠNÂˆİœİ›ÚÙTİ[HH\Ñ^]È	ÈÙNXMÙ™‰Èˆ\Ñš^È	ÈÎŒ	Èˆ\Ô\\ˆÈ	ÈÙ™˜Ù‰Èˆ	ÈÎX™Ù™‰ÎÂˆİ›[™UÚYHNÂˆİœİ›ÚÙT™Xİ
+Ş
+ÈKKŞH
+ÈKÈHLKÈHLÊNÂˆİ™š[İ[HHØ[YK™›YÜËœ[[Ü‘š^Y	‰ˆZ\Ñ^]È	ÈÎŒ	Èˆİœİ›ÚÙTİ[NÂˆİ™›ÛHœÊMYJNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[^
+\Ñ^]È	ø¥­‰Èˆ\Ñš^È	ø§$ÉÈˆ\Ô\\ˆÈ	ÈIÈˆ	ø¥¨ÉËŞ
+ÈÈÈ‹ŞH
+È
+NÂˆYˆ
+›Ùš[K›X™[ÊHÂˆİ™›ÛHœÊKYJNÂˆİ™š[^
+X\šË›X™[Ş
+ÈÈÈ‹ŞH
+È
+NÂˆBˆYˆ
+H›Ùš[K™XÚÓX\šÜÈ	‰ˆ[İÊHÂˆİ™ÛØ˜[[HHØ[YK™›YÜËœ[[Ü‘š^YÈŒNˆŒÌÂˆİœİ›ÚÙTİ[HHØ[YK™›YÜËœ[[Ü‘š^YÈ	ÈÎŒ	Èˆ	ÈÙ™˜Ù‰ÎÂˆİœİ›ÚÙT™Xİ
+Ş
+È‹KŞH
+ÈKKÈHKÈHÊNÂˆİ™ÛØ˜[[HHLÂˆBˆBˆÛÛœİXY[™\ÈHØ[YK™›YÜËœ[[Ü‘š^YˆÈŞÈˆNˆË^ˆ	û(%{(%IÈKÈˆMËNˆË^ˆ	ûfe{'n	ÈWBˆˆÂˆÈˆ‹NˆË^ˆ	û!£zìí	ÈKÈˆL‹NˆK^ˆ	úâê:ãáIÈKÈˆŒNˆË^ˆ	û-ªz¬ªIÈKˆÈˆŒ‹NˆLË^ˆ	ú¬í{'(	ÈKÈˆLNˆM^ˆ	úí¢;%b	ÈKÈˆMËNˆL‹^ˆ	ÏÏÏÉÈKˆNÂˆİ™›ÛHœÊLYJNÂˆ›Üˆ
+ÛÛœİXY[™HÙˆXY[™\ËœÛXÙJ›Ùš[KšXY[™TÚYÛœÊJHÂˆÛÛœİŞHX]œ›İ[™
+XY[™K
+ˆÈHŞ
+ÈJNÂˆÛÛœİŞHHX]œ›İ[™
+XY[™KH
+ˆÈHŞH
+ÈÊNÂˆYˆ
+ŞMÌŞˆÈ
+ÈŞHMŞHˆ
+È
+HÛÛ[YNÂˆİ™ÛØ˜[[HHØ[YK™›YÜËœ[[Ü‘š^YÈˆŒÂˆİ™š[İ[HHØ[YK™›YÜËœ[[Ü‘š^YÈ	ÈÌLÌ™ÉÈˆ	ÈÌÍLXÌN	ÎÂˆİ™š[™Xİ
+ŞŞKÍMJNÂˆİœİ›ÚÙTİ[HHØ[YK™›YÜËœ[[Ü‘š^YÈ	ÈÎŒ	Èˆ	ÈÙ™˜Ù‰ÎÂˆİœİ›ÚÙT™Xİ
+Ş
+ÈKŞH
+ÈKÌËM
+NÂˆİ™š[İ[HHØ[YK™›YÜËœ[[Ü‘š^YÈ	ÈØÍY™™ŒIÈˆ	ÈÙ™™LIÎÂˆİ™š[^
+XY[™K^Ş
+ÈŞH
+ÈLJNÂˆBˆİ^[YÛˆH	ÛY	ÎÂˆİœ™\İÜ™J
+NÂˆB‚ˆ[˜İ[ÛˆÚ\\X•š\ÚX›SX\šÜÊ
+HÂˆÛÛœİ›ÜÈHPTÔ“ÔË˜\˜ØYH×NÂˆ™]\›ˆ›ÜË™š[\Š
+›Ü
+HOˆ›ÜšÚ[™OOH	ØÚÙ\İšXİ	ÊBˆ›X\
+
+›Ü
+HOˆ
+ÈX\ˆ	Ø\˜ØYIËˆ›ÜNˆ›ÜKÚ[™ˆ›ÜšÚ[™X™[ˆ›Ü›X™[	ÉÈJJNÂˆB‚ˆ[˜İ[ÛˆÚ\\RX•š\ÚX›SX\šÜÊ
+HÂˆÛÛœİ›ÜÈHPTÔ“ÔË˜ÛŞZÛYH×NÂˆ™]\›ˆ›ÜË™š[\Š
+›Ü
+HOˆ›ÜšÚ[™OOH	ØÚWÙ\İšXİ	ÊBˆ›X\
+
+›Ü
+HOˆ
+ÈX\ˆ	ØÛŞZÛYIËˆ›ÜNˆ›ÜKÚ[™ˆ›ÜšÚ[™X™[ˆ›Ü›X™[	ÉÈJJNÂˆB‚ˆ[˜İ[Ûˆ˜]Ôİ]XÒX“X\šÜÊX\šÜËŞŞK›Ùš[K[]JHÂˆİœØ]™J
+NÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆ›Üˆ
+ÛÛœİÚKX\š×HÙˆX\šÜË™[šY\Ê
+JHÂˆÛÛœİŞHX]œ›İ[™
+X\šË
+ˆÈHŞ
+NÂˆÛÛœİŞHHX]œ›İ[™
+X\šËH
+ˆÈHŞHHŠNÂˆYˆ
+ŞMŒŞˆÈ
+ÈŒŞHMLŞHˆ
+ÈL
+HÛÛ[YNÂˆÛÛœİXÛÛˆH[]KšXÛÛŠX\šË›X™[
+NÂˆİ™ÛØ˜[[HHØ[YK›İÑÜ˜\XÜÈØ[YKœ™YXÙQÈÍˆˆLÂˆİ™š[İ[HHXÛÛ‹˜™ÎÂˆİ™š[™Xİ
+Ş
+ÈKŞH
+ÈÈHLÈHLŠNÂˆİœİ›ÚÙTİ[HHXÛÛ‹™™ÎÂˆİ›[™UÚYHNÂˆİœİ›ÚÙT™Xİ
+Ş
+ÈKKŞH
+ÈKÈHLKÈHLÊNÂˆİ™š[İ[HHXÛÛ‹™™ÎÂˆİ™›ÛHœÊMYJNÂˆİ™š[^
+XÛÛ‹^Ş
+ÈÈÈ‹ŞH
+È
+NÂˆYˆ
+›Ùš[K›X™[ÊHÂˆİ™›ÛHœÊKYJNÂˆİ™š[^
+X\šË›X™[Ş
+ÈÈÈ‹ŞH
+È
+NÂˆBˆYˆ
+H
+[]Kœš[™ÜÈ
+H	‰ˆJØ[YK›İÑÜ˜\XÜÈØ[YKœ™YXÙQ
+JHÂˆİ™ÛØ˜[[HHŒŒÂˆİœİ›ÚÙT™Xİ
+Ş
+È‹KŞH
+ÈKKÈHKÈHÊNÂˆBˆBˆİ^[YÛˆH	ÛY	ÎÂˆİœ™\İÜ™J
+NÂˆB‚ˆ[˜İ[Ûˆ˜]ÒX][ÜÜ\™T›ÜÊX\YÚ[™ŞŞK[]JHÂˆÛÛœİ›ÜÈH
+PTÔ“ÔÖÛX\YH×JK™š[\Š
+›Ü
+HOˆ›ÜšÚ[™OOHÚ[™
+NÂˆYˆ
+\›ÜË›[™İ
+H™]\›ÂˆİœØ]™J
+NÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™›ÛHœÊL‹YJNÂˆ›Üˆ
+ÛÛœİ›ÜÙˆ›ÜÊHÂˆÛÛœİŞHX]œ›İ[™
+›Ü
+ˆÈHŞ
+NÂˆÛÛœİŞHHX]œ›İ[™
+›ÜH
+ˆÈHŞJNÂˆYˆ
+ŞMŞˆÈ
+ÈŞHMŞHˆ
+È
+HÛÛ[YNÂˆÛÛœİXÛÛˆH[]KšXÛÛŠ›Ü›X™[	ÉÊNÂˆÛÛœİÈHXÛÛ‹ÈÈHÂˆÛÛœİHXÛÛ‹šÈHÂˆÛÛœİŞHXÛÛ‹›ŞÏÈX]œ›İ[™
+
+ÈHÊHÈŠNÂˆÛÛœİŞHHXÛÛ‹›ŞHÏÈMÂˆİ™ÛØ˜[[HHXÛÛ‹˜[H
+Ø[YK›İÑÜ˜\XÜÈØ[YKœ™YXÙQÈˆˆŒŠNÂˆİ™š[İ[HHXÛÛ‹˜™ÎÂˆİ™š[™Xİ
+Ş
+ÈŞŞH
+ÈŞKË
+NÂˆİœİ›ÚÙTİ[HHXÛÛ‹™™ÎÂˆİœİ›ÚÙT™Xİ
+Ş
+ÈŞ
+ÈKŞH
+ÈŞH
+ÈKÈHKHJNÂˆİ™ÛØ˜[[HHØ[YK›İÑÜ˜\XÜÈØ[YKœ™YXÙQÈÌˆˆÂˆİ™š[İ[HHXÛÛ‹™™ÎÂˆİ™š[^
+XÛÛ‹^Ş
+ÈŞ
+ÈÈÈ‹ŞH
+ÈŞH
+ÈX]›Z[ŠHM
+JNÂˆBˆİ^[YÛˆH	ÛY	ÎÂˆİœ™\İÜ™J
+NÂˆB‚ˆ[˜İ[Ûˆ˜]ĞÚ\\X“X\šÜÊŞŞJHÂˆYˆ
+Ø[YK›X\OOH	Ø\˜ØYIÊH™]\›ÂˆÛÛœİ›Ùš[HHÚ\\X•š\İX[›Ùš[JÍÙ^PÛİ[
+
+KØ[YK›İÑÜ˜\XÜÈØ[YKœ™YXÙQ
+NÂˆ˜]Ôİ]XÒX“X\šÜÊÚ\\X•š\ÚX›SX\šÜÊ
+KŞŞK›Ùš[KÂˆš[™ÜÎˆ›Ùš[K˜ÛÛ™™]KˆXÛÛˆ
+X™[
+HOˆÂˆYˆ
+X™[OOH	ûcë:­ï;eg;)äH:ë.	ÊH™]\›ˆÈ^ˆ	ø¥­‰Ë™Îˆ	ÈÌÌŒLØIË™Îˆ	ÈÙNXMÙ™‰ÈNÂˆYˆ
+X™[OOH	û'¨:®-;(%zë.	ÊH™]\›ˆÈ^ˆ	ü'å$‰Ë™Îˆ	ÈÌ™ŒŒLL	Ë™Îˆ	ÈÙ™™	ÈNÂˆYˆ
+X™[OOH	úì,{"©;ac;'m;)à;'¡z­k	ÊH™]\›ˆÈ^ˆ	ø¥¨ÉË™Îˆ	ÈÌŒLÌ‰Ë™Îˆ	ÈÎX™Ù™‰ÈNÂˆ™]\›ˆÈ^ˆ	ø¦!IË™Îˆ	ÈÌØLYŒ™	Ë™Îˆ	ÈÙ™XÍÉÈNÂˆKˆJNÂˆ˜]ÒX][ÜÜ\™T›ÜÊ	Ø\˜ØYIË	ØÚØ][ÜÜ\™IËŞŞKÂˆXÛÛˆ
+X™[
+HOˆÂˆYˆ
+ûcë;"©;a,Ë\İ
+X™[
+JH™]\›ˆÈ^ˆ	ø¥©	Ë™Îˆ	ÈÌY	Ë™Îˆ	ÈÙ™˜ŒÙ	ÈNÂˆYˆ
+úìí;%bË\İ
+X™[
+JH™]\›ˆÈ^ˆ	ø¥¨IË™Îˆ	ÈÌYŒŒÌ	Ë™Îˆ	ÈÎX™Ù™‰ÈNÂˆ™]\›ˆÈ^ˆ	ø¥«IË™Îˆ	ÈÌ™NÌ‰Ë™Îˆ	ÈÙ™™™Œ	ÈNÂˆKˆJNÂˆÛÛœİÚYÛœÈHÂˆÈˆKNˆ^ˆ	úë-:èã	ÈKÈˆKNˆ^ˆ	úãæ{'f	ÈKÈˆLËNˆMK^ˆ	úâî{,ª	ÈKˆÈˆÌKNˆM^ˆ	û&):â¦	ÈKÈˆNˆMË^ˆ	ûem;)à	ÈKÈˆŒNˆNK^ˆ	úìí;%b	ÈKˆNÂˆİœØ]™J
+NÈİ™›ÛHœÊLYJNÂˆ›Üˆ
+ÛÛœİÈÙˆÚYÛœËœÛXÙJ›Ùš[K›™[Û”ÚYÛœÊJHÂˆÛÛœİŞHX]œ›İ[™
+Ë
+ˆÈHŞ
+ÈJKŞHHX]œ›İ[™
+ËH
+ˆÈHŞH
+ÈÊNÂˆYˆ
+ŞMÌŞˆÈ
+ÈŞHMŞHˆ
+È
+HÛÛ[YNÂˆİ™ÛØ˜[[HHØ[YK›İÑÜ˜\XÜÈØ[YKœ™YXÙQÈŒÎˆNÂˆİ™š[İ[HH	ÈÌ™NÌ‰ÎÈİ™š[™Xİ
+ŞŞKÍMJNÂˆİœİ›ÚÙTİ[HH	ÈÙ™XÍÉÎÈİœİ›ÚÙT™Xİ
+Ş
+ÈKŞH
+ÈKÌËM
+NÂˆİ™š[İ[HH	ÈÙ™™™Œ	ÎÈİ™š[^
+Ë^Ş
+ÈŞH
+ÈLJNÂˆBˆİœ™\İÜ™J
+NÂˆB‚ˆ[˜İ[Ûˆ˜]ĞÚ\\RX“X\šÜÊŞŞJHÂˆYˆ
+Ø[YK›X\OOH	ØÛŞZÛYIÊH™]\›ÂˆÛÛœİ›Ùš[HHÚ\\RX•š\İX[›Ùš[JÍPÛX\Ûİ[
+
+KØ[YK›İÑÜ˜\XÜÈØ[YKœ™YXÙQ
+NÂˆ˜]Ôİ]XÒX“X\šÜÊÚ\\RX•š\ÚX›SX\šÜÊ
+KŞŞK›Ùš[KÂˆš[™ÜÎˆ›Ùš[K›ÚXÙTš\\ËˆXÛÛˆ
+X™[
+HOˆÂˆYˆ
+X™[OOH	ú¬è;&¥;'f:ç,:ë.	ÊH™]\›ˆÈ^ˆ	ø¥­‰Ë™Îˆ	ÈÌŒŒÌ˜‰Ë™Îˆ	ÈÎ™LÌ	ÈNÂˆYˆ
+X™[OOH	ûf!:­ ;%b;*¯H:ë.	ÊH™]\›ˆÈ^ˆ	ø¥áÉË™Îˆ	ÈÌØŒ˜LYIË™Îˆ	ÈÙ™™IÈNÂˆYˆ
+X™[OOH	û'¨:®-:ìízãá;'¡z­k	ÊH™]\›ˆÈ^ˆ	ø )‰Ë™Îˆ	ÈÌLÌØIË™Îˆ	ÈÎX™Ù™‰ÈNÂˆ™]\›ˆÈ^ˆ	ø£ ‰Ë™Îˆ	ÈÌØL˜LŒ	Ë™Îˆ	ÈÙ™™IÈNÂˆKˆJNÂˆ˜]ÒX][ÜÜ\™T›ÜÊ	ØÛŞZÛYIË	ØÚWØ][ÜÜ\™IËŞŞKÂˆXÛÛˆ
+X™[
+HOˆÂˆYˆ
+ûfe:í¡Ë\İ
+X™[
+JH™]\›ˆÈ^ˆ	ø¦iÉË™Îˆ	ÈÌŒLÌIË™Îˆ	ÈÎY™LL	ÈNÂˆYˆ
+û)${%fH:çë:­îË\İ
+X™[
+JH™]\›ˆÈ^ˆ	ø¥©	Ë™Îˆ	ÈÍXLÍ	Ë™Îˆ	ÈÙ™™IËÎˆM‹ˆŒ‹ŞˆLL‹ŞNˆŒ‹[NˆNNÂˆYˆ
+úçë:­îË\İ
+X™[
+JH™]\›ˆÈ^ˆ	ø¥©	Ë™Îˆ	ÈÌØLY	Ë™Îˆ	ÈÙ™™IÈNÂˆYˆ
+û`à{'¤Ë\İ
+X™[
+JH™]\›ˆÈ^ˆ	ø¥¨ÉË™Îˆ	ÈÍLÌÌ	Ë™Îˆ	ÈÙ™™˜N	ËÎˆˆŒ‹Şˆ‹ŞNˆMK[NˆMˆNÂˆYˆ
+úì%:­k:ââË\İ
+X™[
+JH™]\›ˆÈ^ˆ	ø¥èIË™Îˆ	ÈÌÙ™	Ë™Îˆ	ÈÙ™™LŒ	ËÎˆˆŒ‹Şˆ‹ŞNˆMK[NˆMNÂˆYˆ
+û%h{'¤Ë\İ
+X™[
+JH™]\›ˆÈ^ˆ	ø¥¨‰Ë™Îˆ	ÈÌ™Y‰Ë™Îˆ	ÈÙ™™L	ÈNÂˆYˆ
+û,a{'©KË\İ
+X™[
+JH™]\›ˆÈ^ˆ	ø¥©IË™Îˆ	ÈÌ˜ÌXIË™Îˆ	ÈÙŒÎ	ÈNÂˆ™]\›ˆÈ^ˆ	ø¥ª‰Ë™Îˆ	ÈÌØL˜LŒ	Ë™Îˆ	ÈÙ™™LN	ÈNÂˆKˆJNÂˆÛÛœİ[\ÈHÂˆÈˆNˆHKÈˆNNˆLKÈˆNˆHKÈˆL‹NˆMÈKÈˆÌKNˆMˆKˆNÂˆİœØ]™J
+NÂˆ›Üˆ
+ÛÛœİ[\Ùˆ[\ËœÛXÙJ›Ùš[KØ\›S[\ÊJHÂˆÛÛœİŞHX]œ›İ[™
+[\
+ˆÈHŞ
+ÈÈÈŠKŞHHX]œ›İ[™
+[\H
+ˆÈHŞH
+ÈÈÈŠNÂˆYˆ
+ŞMLŞˆÈ
+ÈLŞHMLŞHˆ
+ÈL
+HÛÛ[YNÂˆİ™ÛØ˜[[HHØ[YK›İÑÜ˜\XÜÈØ[YKœ™YXÙQÈŒNˆŒÌÂˆİ™š[İ[HH	ÈÙ™™IÎÈİ˜™YÚ[”]
+
+NÈİ˜\˜ÊŞŞKM‹X]”H
+ˆŠNÈİ™š[
+
+NÂˆİ™ÛØ˜[[HHÌÈİ™š[™Xİ
+ŞH‹ŞHH‹
+NÂˆBˆİœ™\İÜ™J
+NÂˆB‚ˆ[˜İ[Ûˆ˜]Õš[YÙP\ÜÙ]]Z[ÊŞŞJHÂˆYˆ
+Ø[YK›X\OOH	İš[YÙIÈ\[ÙˆĞSQWĞT•OOH	İ[™Yš[™Y	ÊH™]\›ÂˆÛÛœİ›ØÚÜÈHÂˆÈˆ‹NˆKˆKÈˆLNˆKˆˆKÈˆËNˆKˆHKˆÈˆ‹NˆMËˆÈKÈˆNKNˆMËˆKÈˆ‹NˆM‹ˆˆKˆNÂˆ›Üˆ
+ÛÛœİ›ØÚÈÙˆ›ØÚÜÊHÂˆÛÛœİHX]œ›İ[™
+›ØÚË
+ˆÈHŞ
+NÂˆÛÛœİHHX]œ›İ[™
+›ØÚËH
+ˆÈHŞH
+È
+NÂˆYˆ
+UÈˆÈ
+ÈÈHUÈHˆ
+ÈÊHÛÛ[YNÂˆĞSQWĞT•™˜]Õš[YÙT›ØÚÊİ›ØÚË‹
+ÈKH
+ÈKÎ
+NÂˆB‚ˆËÈ:®,;(m;)äH:­k;(l;'!;%ä:àª:¬ª;)á;,/zë.:í¢:îfû'a;%®{%­;cä;eâ;'n:ãl:ãá:â!:­l:¬ :®,:âé:é«:â¥:éâ;'a:èg;'o{g¢:¬£;eg:âé‚ˆÛÛœİÚ[™İÜÈHŞÈˆNˆKÈˆËNˆKÈˆMËNˆKÈˆŒNˆKˆÈˆNˆLKÈˆËNˆLKÈˆŒËNˆMWNÂˆİœØ]™J
+NÂˆ›Üˆ
+ÛÛœİÚ[ˆÙˆÚ[™İÜÊHÂˆÛÛœİŞHX]œ›İ[™
+Ú[‹
+ˆÈHŞ
+ÈMJNÂˆÛÛœİŞHHX]œ›İ[™
+Ú[‹H
+ˆÈHŞH
+ÈMŠNÂˆYˆ
+ŞLŒŞˆÈ
+ÈŒŞHLŒŞHˆ
+ÈŒ
+HÛÛ[YNÂˆİ™š[İ[HH	Ü™Ø˜JMKNL‹Í
+IÎÂˆİ™š[™Xİ
+ŞŞKNMJNÂˆİ™š[İ[HH	Ü™Ø˜JMKŒÍ‹MŒ‹ÊIÎÂˆİ™š[™Xİ
+Ş
+ÈËŞH
+È‹L
+NÂˆİ™š[İ[HH	ÈÍÌÎÉÎÂˆİ™š[™Xİ
+Ş
+ÈŞK‹MJNÂˆİ™š[™Xİ
+ŞŞH
+ÈËNŠNÂˆBˆİœ™\İÜ™J
+NÂˆB‚ˆ[˜İ[Ûˆ˜]Õš[YÙSYÚÊŞŞJHÂˆYˆ
+Ø[YK›X\OOH	İš[YÙIÊH™]\›ÂˆÛÛœİ[\ÈHŞÈˆKNˆÈKÈˆNKNˆÈKÈˆLNˆMÈKˆÈˆŒKNˆMÈKÈˆ‹NˆLHWNÂˆİœØ]™J
+NÂˆ›Üˆ
+ÛÛœİ[\Ùˆ[\ÊHÂˆÛÛœİHX]œ›İ[™
+[\
+ˆÈHŞ
+ÈÈÈŠNÂˆÛÛœİHHX]œ›İ[™
+[\H
+ˆÈHŞH
+ÈÈÈŠNÂˆYˆ
+MÌˆÈ
+ÈÌHMÌHˆ
+ÈÌ
+HÛÛ[YNÂˆYˆ
+YØ[YKœ™YXÙQ
+HÂˆÛÛœİÛİÈHİ˜Ü™X]T˜YX[Ü˜YY[
+HHKËHHKŠNÂˆYˆ
+ÛİÈ	‰ˆÛİË˜YÛÛÜ”İÜ
+HÂˆÛİË˜YÛÛÜ”İÜ
+	Ü™Ø˜JMKŒŒKLÌ‹ŒÍ
+IÊNÂˆÛİË˜YÛÛÜ”İÜ
+K	Ü™Ø˜JMKN‹Ì
+IÊNÂˆİ™š[İ[HHÛİÎÂˆH[ÙHÂˆİ™š[İ[HH	Ü™Ø˜JMKŒKL‹ŒLŠIÎÂˆBˆİ™š[™Xİ
+H‹HHLK
+NÂˆBˆİ™š[İ[HH	ÈÌMÌXL	ÎÂˆİ™š[™Xİ
+HËHHK‹
+NÂˆİ™š[™Xİ
+HH
+ÈŒKM‹
+NÂˆİ™š[İ[HH	ÈÌÙÌÌIÎÂˆİ™š[™Xİ
+HHHM‹M‹MÊNÂˆİ™š[İ[HH	ÈÙ™˜ÎXIÎÂˆİ™š[™Xİ
+HKHHLËLLJNÂˆİ™š[İ[HH	ÈÙ™™ŒXIÎÂˆİ™š[™Xİ
+HËHHLKËÊNÂˆBˆİœ™\İÜ™J
+NÂˆB‚ˆ[˜İ[Ûˆ˜]ÕÛÜ›
+
+HÂˆÛÛœİHHPTÖÙØ[YK›X\NÂˆÛÛœİÈŞŞHHHØ[Y\˜J
+NÂˆÛÛœİœ˜[YHHX]™›ÛÜŠØ[YK[YHÈÌ
+H	HÂ‚ˆİ™š[İ[HH	ÈÌ	ÎÂˆİ™š[™Xİ
+Ë
+NÂ‚ˆÛÛœİHX]™›ÛÜŠŞÈÊKLHX]™›ÛÜŠŞHÈÊNÂˆ›Üˆ
+]HHLÈHHL
+È’QU×Ò
+ÈNÈJÊÊHÂˆ›Üˆ
+]HÈH
+È’QU×ÕÈ
+ÈNÈ
+ÊÊHÂˆYˆ
+HHHK[\Ë›[™İHK[\ÖÌK›[™İ
+HÛÛ[YNÂˆÛÛœİÚHK[\ÖŞWVŞNÂˆÛÛœİHX]œ›İ[™
+
+ˆÈHŞ
+NÂˆÛÛœİHHX]œ›İ[™
+H
+ˆÈHŞJNÂˆÛÛœİ\ÙY\ÜÙ]HØ[YK›X\OOH	İš[YÙIÈ	‰ˆ\[ÙˆĞSQWĞT•OOH	İ[™Yš[™Y	Âˆ	‰ˆĞSQWĞT•™˜]Õš[YÙQÜ›İ[™
+İÚKKÊNÂˆYˆ
+]\ÙY\ÜÙ]
+Hİ™˜]Ò[XYÙJ[PØ[˜\ÊÚœ˜[YJKJNÂˆBˆB‚ˆËÈ:¬¯z¬á:éâ;'a;(!;&ªH;c#;'o;%ä;!bÈ:å%;ac;'o:¬ï:å,:ç.ûeg:¬ :èg:äìKˆ;-ªzãã:éí{'`:­î:ã :èg:äd:¬èˆËÈ;'©{"çzéã;%®{'/:ëà:èg:®,;(m;(l; «0­û'm:ãæH:ãæ{!(;'`:ìà;ef;)à;%bºâ¥:âé‚ˆ˜]Õš[YÙP\ÜÙ]]Z[ÊŞŞJNÂ‚ˆËÈKLH;"*;'`;&ã;e!:éâ;.é8 %:ë.;bà0­û!£;&ªzãã;'m:éo;`à;'o;'!;%å;bì;bì;%a:ç¦;%ä:­î:é¬:âé
+;(!:éíH;'o:­!
+K‚ˆ˜]ÕØ\œX\šÙ\œÊŞŞJNÂ‚ˆËÈ:ì*{`â;-§:ë/;,­
+:âê:éä0­ú¬£;"ç;c$0­û)à;&¬:¬'0­û-§:­k
+H8 %;`à;'o;'!;%å;bì;bì;%a:ç¦ˆYˆ
+Ø[YKœ^›T[ŠH˜]Ô^›SØš™XİÊŞŞJNÂˆËÈ;e!:èi:èg:­î;"é;eæ;"é8 %;em{"ë:âê;!'úìí;(l;(l; «:ë/û-§:­k:éo:â";%ä:ìí;'m:¬£:ì,;.f;eg:âé‚ˆ˜]Ò[›ÓX“Øš™XİÊŞŞJNÂˆËÈ;e!:èi:èg:­î;",ˆ8 %;-§:­k;)à{fá:å,:ço;'f;,ªÈ;ge;( {'a;"é;(';(l; «:ë/:èg:ìí;%ë;) :âé‚ˆ˜]Ñ›Ü™\İ›ÛÙİYSØš™XİÊŞŞJNÂˆËÈ{'©H;eâ:î#8 %:­k;%ëH:ç§:äç:éâ;`kúâí;%a:îc:äç;%áH;(l; «:ë/;'a;(%{( H;dg;"ç{'/:èg:ìí;%ë;) :âé‚ˆ˜]ĞÚRX“X\šÜÊŞŞJNÂˆËÈ{'©H;eâ:î#8 %:án;-§:ãá:¬ ;&):éo;"&:ègH:­$z¬èú¬$;"ç;dg;"ç{'m:â¦;%­:à¦:ä&;( ; «;%¤H:êª:äç;%ä;!':â¥;"&:éo;)!;'n:âé‚ˆ˜]ĞÚTİ™Y]™\Üİ\™SØš™XİÊŞŞJNÂˆËÈ»'©H;eâ:î#8 %; â”È;%á»'m:­k;%ëH;'¡z­kû( ;&®úâé;'c:ë.;'a;(%{( H;dg;"ç{'/:èg:ìí;%ë;) :âé‚ˆ˜]ĞÚ\\Œ’X“X\šÜÊŞŞJNÂˆËÈû'©H;eâ:î#8 %;!£:ë.:¬l:é«;'f;"è:ë.; «û à{($ûeé:äç:ço;'núâé;'c:ë.;'a;(%{( H;dg;"ç{'/:èg:ìí;%ë;) :âé‚ˆ˜]ĞÚ\\ŒÒX“X\šÜÊŞŞJNÂˆËÈ0­Í{'©H;eâ:î#8 %; â”úéo:â¦:é«;)à;%bº¬è:á$û'`:¬íz¬!;'f:êª{( {)à;dg;"çzéã:ça;&­:âé‚ˆ˜]ĞÚ\\X“X\šÜÊŞŞJNÂˆ˜]ĞÚ\\RX“X\šÜÊŞŞJNÂˆËÈ»'©H;eâ:î#8 %;)${%f{'f:¬l:ã ;eg;( ;&®
+:­k;%ëH;`m:é«;%­:éâ:âé:®,;&®:®,:¬ ;) :âé
+BˆYˆ
+Ø[YK›X\OOH	İ[İ™Y]	ÊH˜]Õ[ØØ[JŞŞJNÂ‚ˆËÈ”Âˆ›Üˆ
+ÛÛœİœÈÙˆK›œÜÊHÂˆYˆ
+[œÕš\ÚX›JœÊJHÛÛ[YNÂˆÛÛœİHX]œ›İ[™
+œË
+ˆÈHŞ
+NÂˆÛÛœİHHX]œ›İ[™
+œËH
+ˆÈHŞHHŠNÂˆYˆ
+œË›[Û”Üš]JHÂˆÛÛœİ›ØˆHX]œ›İ[™
+X]œÚ[ŠØ[YK[YHÈŒŠH
+ˆŠNÂˆ˜]Ó[ÛŠİœË›[Û”Üš]KH
+È›Ø‹ĞĞSJNÂˆH[ÙHÂˆ˜]ÔÜš]Jİ”×ÔÔ’UTË™İÛ–Ùœ˜[YWKKĞĞSK”×ÔSUTÖÛœËœ[JNÂˆBˆËÈºéä;'a:¬n;"&;'¢;%­;&¥ˆ:éä;d£{!(
+:ã ;fe:¬ :â©{eg”È:ê.:é«;'!
+Bˆ˜]Õ[ĞX˜›J
+ÈÈÈ‹HHM
+NÂˆB‚ˆËÈ;'n:ë/
+:äi{"é:äi{"é
+H8 %:ä&:ãã:è);.g:­k:¬ :ä';'n:ë/;'`8¦i{&`;ej:®æ:àª:¬èˆËÈ:àâ{(%p­û)$zé¯{'/:èg:å¨:à¦:ìí:à®;'n:ë/;'`;'¤:é«;%ä;%áºâé
+;!(;`ç{'m;!.:¬á;%ä:àª:â¥:âé
+Bˆ›Üˆ
+ÛÛœİ[ÈÙˆK›[Ûœİ\œÊHÂˆÛÛœİXYHØ[YK™›YÜË™Y™X]YÛ[ËšYNÂˆÛÛœİœšY[™H\ÑœšY[™
+[ËšY
+NÂˆYˆ
+XY	‰ˆYœšY[™
+HÛÛ[YNÂˆÛÛœİ›ØˆHX]œ›İ[™
+X]œÚ[ŠØ[YK[YHÈN
+H
+ˆ
+NÂˆÛÛœİHX]œ›İ[™
+[Ë
+ˆÈHŞ
+KLHX]œ›İ[™
+[ËH
+ˆÈHŞHHˆ
+È›ØŠNÂˆ˜]Ó[ÛŠİ[ËšYLĞĞSJNÂˆYˆ
+œšY[™
+HÂˆËÈ;.g:­k:¬ :ä';'n:ë/ˆ:ê.:é«;'!8¦iH
+:éä;'a:¬n;"&;'¢;%­;&¥
+Bˆİ™š[İ[HH	ÈÙLLØIÎÂˆİ™›ÛHœÊM‹YJNÂˆİ™š[^
+	ø¦iIËX]œ›İ[™
+[Ë
+ˆÈHŞ
+H
+ÈÈÈˆHKX]œ›İ[™
+[ËH
+ˆÈHŞJHHL
+È›ØŠNÂˆİœİ›ÚÙTİ[HH	ÈÙ™™‰ÎÈİ›[™UÚYHNÂˆİœİ›ÚÙU^
+	ø¦iIËX]œ›İ[™
+[Ë
+ˆÈHŞ
+H
+ÈÈÈˆHKX]œ›İ[™
+[ËH
+ˆÈHŞJHHL
+È›ØŠNÂˆH[ÙHÂˆËÈ:â¤:à£;dg
+;%a;)àH;eíú¬":é«:â¥;'n:ë/
+Bˆİ™š[İ[HH	ÈÙ™™	ÎÂˆİ™›ÛHœÊNYJNÂˆİ™š[^
+	ÈIËX]œ›İ[™
+[Ë
+ˆÈHŞ
+H
+ÈÈÈˆHËX]œ›İ[™
+[ËH
+ˆÈHŞJHHL
+È›ØŠNÂˆBˆB‚ˆËÈ:®,;%­{'f:ìá
+‹M
+H8 %:ì&;)ç{'m:â¥;( ;'©H;'f;"çH;)à;($ˆYˆ
+Kœİ\ŠHÂˆÛÛœİŞHX]œ›İ[™
+Kœİ\‹
+ˆÈHŞ
+H
+ÈÈÈÂˆÛÛœİŞHHX]œ›İ[™
+Kœİ\‹H
+ˆÈHŞJH
+ÈÈÈÂˆÛÛœİÈHH
+ÈH
+ˆX]œÚ[ŠØ[YK[YHÈM
+NÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆYˆ
+YØ[YKœ™YXÙQ
+HÂˆİ™š[İ[HH™Ø˜JMKN	ÊŒ
+ˆÊKÑš^Y
+Š_JXÂˆİ™›ÛHœÊÌYJNÂˆİ™š[^
+	ø§)‰ËŞŞH
+ÈJNÂˆBˆİ™š[İ[HH™Ø˜JMKŒM	Êˆ
+È
+ˆÊKÑš^Y
+Š_JXÂˆİ™›ÛHœÊŒYJNÂˆİ™š[^
+	ø§)‰ËŞŞH
+ÈÊNÂˆİ^[YÛˆH	ÛY	ÎÂˆB‚ˆËÈ;e#:è";'m;%­ˆÛÛœİHØ[YKœ^Y\ÂˆÛÛœİØ[Ú[™ÈHœOOH
+ˆÈœHOOHH
+ˆÎÂˆÛÛœİœ˜[YHHØ[Ú[™ÈÈX]™›ÛÜŠœİ\ÈŠH	HˆˆÂˆÛÛœİ\’Ù^HH™\ˆOOH	ÜšYÚ	ÈÈ	ÛY	Èˆ™\ÂˆÛÛœİ^Y\\ÜÙ]H\[ÙˆĞSQWĞT•OOH	İ[™Yš[™Y	Âˆ	‰ˆĞSQWĞT•™˜]Ô^Y\Šİ™\‹œ˜[YKX]œ›İ[™
+œHŞ
+KX]œ›İ[™
+œHHŞJJNÂˆYˆ
+\^Y\\ÜÙ]
+HÂˆ˜]ÔÜš]JİVQT—ÔÔ’UTÖÙ\’Ù^WVÜœ˜[YWKˆX]œ›İ[™
+œHŞ
+KX]œ›İ[™
+œHHŞHHŠKĞĞSK[™\ˆOOH	ÜšYÚ	ÊNÂˆB‚ˆYˆ
+Ø[YKœ^›T[ŠH˜]Ôİ[Ù\œÊŞŞJNÂˆËÈ;/e;%­8 %;%ë:ãgÈ:¬';'f;'f;'¤
+;%b;%a;) ;(l:¬ H;"&:éã;`o;,a;&ã;)ä
+BˆYˆ
+Ø[YK›X\OOH	ØÛÜ™\›ÛÛIÊH˜]ĞÛÜ™PÚZ\œÊŞŞJNÂ‚ˆËÈ»'©H:­k;%ëH;%ì;-§8 %;%­:äh
+:®¯;)á:¬l:é«
+p­úîa:á);b®
+:êe;%a:é«:¬ê:êªJKˆQ;%a:ç¦;%ä:®e:é¬:âé‚ˆYˆ
+Ø[YKœ^›T[ˆ	‰ˆØ[YKœ^›T[‹œ^›K\HOOH	Û[\ÉÊH˜]Ñ\šÛ™\ÜÊŞŞJNÂˆYˆ
+Ø[YKœ^›T[ˆ	‰ˆØ[YKœ^›T[‹œ^›K\HOOH	İ›ÚXÙ\ÉÊH˜]ÑXÚÕšYÛ™]J
+NÂˆËÈ;fj{f/;%l:îa;%®;b®
+:éâ;'a0­û",ŠH8 %;&*:®,:¬ ;#$û'o;"&:ègH;&!{%­;)á:âéˆ˜]Ñ\ÚĞ[XšY[
+
+NÂˆËÈ;%­;"©:é¡;'!;%ä;!';/';)à:â¥:í¢:îfû'`;.¤:é«{a,;&`:¬®{.f;)à;%bºãá:ègH:ì&:å%:ìí:âé:ê/;( :­î:é¬:âé‚ˆ˜]Õš[YÙSYÚÊŞŞJNÂˆËÈ;c#;'m:á$8à#:¬è;&¥;'f:ç,8à#H8 %:­k;%ë{'a;)à:à¨:åc:éâ:âé;fe:êm;'m;eg:âê:¬á;%*H;%­:äd;&ã;)á:âé
+:îa:á);b®;'«; «;&ªJBˆ˜]Ô]ZY]šYÛ™]J
+NÂˆËÈ:ãæ{e¢{'¤:ì&:å%8 %;%­;"©:é¡;'!;%ä:­î:è);fj{f/;!£{%ä;!';f`:èg:îfúà¦:â¥:­${&ä;'m:ä':âéˆ˜]ĞÛÛ\[š[ÛŠŞŞJNÂ‚ˆ˜]ÒY
+
+NÂˆYˆ
+YØ[YKœ^›T[ŠH˜]ÓØš™Xİ]™P\œ›İÊ
+NÂˆ˜]ĞÛÛ›Û[
+
+NÂˆ˜]Ó›İXÙJ
+NÂˆYˆ
+Ø[YKœ^›T[ŠHÂˆ˜]Ô^›RY
+
+NÂˆËÈ;(${-"H;fe:êm;e#:ç¦;"ç
+:êª;!f:ëï:¬$:ì,:è):èg™YXÙQ:êm; çzç­JBˆYˆ
+Ø[YKœ^›T[‹™›\Úˆ	‰ˆYØ[YKœ™YXÙQ
+HÂˆİ™š[İ[HH	Ü™Ø˜JŒKNŒÌŠIÎÂˆİ™š[™Xİ
+Ë
+NÂˆBˆBˆ˜]ĞYİXÚÙ\œÊ
+NÂˆ˜]ÔÛÙ˜UØ\›]
+
+NÂˆ˜]Ò[›Ñ[J
+NÂˆ˜]Õ[›ØÚÑ›\Ú
+
+NÂˆB‚ˆËÈ‹LH;f£zäçH;"':¬!;fe:êm;%ì;-§8 %;ac:éâ:¬%{(l; â{'m;fe:êm:¬ ;'©{'¤:é«;%ä;!';)éú¬£:ì¢;(.; «:ço;)á:âé‚ˆËÈ™YXÙQ:êm[›ØÚÑ›\Ú:¬ ;%h;-";%ä;'m:ço;%a:ë-:¬ úãá:­î:é«;)à;%bºâ¥:âé
+:­$z¬ï:ëï;!,H:ì,:è)
+K‚ˆ[˜İ[Ûˆ˜]Õ[›ØÚÑ›\Ú
+
+HÂˆYˆ
+YØ[YK[›ØÚÑ›\ÚØ[YK[›ØÚÑ›\ÚH
+H™]\›ÂˆØ[YK[›ØÚÑ›\ÚOHNÂˆÛÛœİHØ[YK[›ØÚÑ›\ÚÈÂˆİœØ]™J
+NÂˆİ™ÛØ˜[[HHŒ
+ˆÂˆİ™š[İ[HH[YPXØÙ[
+
+NÂˆİ™š[™Xİ
+Ë
+NÂˆİœ™\İÜ™J
+NÂˆB‚ˆËÈKLH;"*;'`;&ã;e!;"ç:¬ {fe8 %:ãl;'m;a,;"&;(%H;%á»'m:ë.0­û!£;&ªzãã;'m:éâ;.é:éo;&ã;e!;.n;'!;%ä:­î:é¬:âé‚ˆËÈ™YXÙQ:êm:®g:îh{'¡;%á»'m:¬è;(%Kˆ; â{'`;ac:éâ:¬%{(l; âJ[YPXØÙ[
+H:¬á;%í:èg;'`;'`;ef:¬£‚ˆ[˜İ[Ûˆ˜]ÕØ\œX\šÙ\œÊŞŞJHÂˆÛÛœİX\šÙ\œÈHY[•Ø\œÓÙŠØ[YK›X\
+NÂˆYˆ
+[X\šÙ\œË›[™İ
+H™]\›ÂˆÛÛœİ›[šÈHØ[YKœ™YXÙQÈHˆ
+X]™›ÛÜŠØ[YK[YHÈŒ
+H	HˆÈHˆMJNÈËÈ»e!:è";'¡:®g:îh{'¡ˆÛÛœİÛÛH[YPXØÙ[
+
+NÂˆİœØ]™J
+NÂˆ›Üˆ
+ÛÛœİZÈÙˆX\šÙ\œÊHÂˆÛÛœİHX]œ›İ[™
+ZË
+ˆÈHŞ
+KHHX]œ›İ[™
+ZËH
+ˆÈHŞJNÂˆÛÛœİZYH
+ÈÈÈ‹ZYHHH
+ÈÈÈÂˆYˆ
+ZËšÚ[™OOH	ÜİÚ\›	ÊHÂˆËÈ:¬&{'`:éíH:à­:í ;"':¬!;'m:ãæH8 %;!£;&ªzãã;'m
+8¥ã
+H:éàH:äd:¬®Bˆİ™ÛØ˜[[HHH
+ˆ›[šÎÂˆİœİ›ÚÙTİ[HHÛÛÈİ›[™UÚYHÂˆ›Üˆ
+]ˆHÈˆHMÈˆ
+ÏHJHÂˆÛÛœİLHØ[YKœ™YXÙQÈˆØ[YK[YHÈNÂˆİ˜™YÚ[”]
+
+NÂˆİ˜\˜ÊZYZYK‹LL
+ÈX]”H
+ˆKJNÂˆİœİ›ÚÙJ
+NÂˆBˆİ™ÛØ˜[[HHH
+ˆ›[šÎÂˆİ™š[İ[HHÛÛÈİ™›ÛHœÊMKYJNÈİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[^
+	ø¥ã	ËZYZYH
+ÈJNÂˆİ^[YÛˆH	ÛY	ÎÂˆH[ÙHÂˆËÈ:âé:én:éí{'/:èg:¬ :â¥:ë.8 %:ì':­$H;%a;.fúë.;bà
+;e/{!`;d£JBˆİ™ÛØ˜[[HHŒŒˆ
+ˆ›[šÎÂˆİ™š[İ[HHÛÛÂˆİ™š[™Xİ
+
+È‹H
+È‹ÈHL‹ÈHŠNÈËÈ:ë.:ì':­$Bˆİ™ÛØ˜[[HHH
+ˆ›[šÎÂˆİœİ›ÚÙTİ[HHÛÛÈİ›[™UÚYHÂˆËÈ:ë.;bàˆ;'!:¬ :èg
+È;%¤H;!.:èg
+:ì%:âé{'`;%í;%­:äk	úäç:à¦:äç:â¥:ë.	È:â¤:à£
+Bˆİ˜™YÚ[”]
+
+NÂˆİ›[İ™UÊ
+ÈËH
+ÈÈH
+NÂˆİ›[™UÊ
+ÈËH
+È
+NÂˆİ›[™UÊ
+ÈÈHËH
+È
+NÂˆİ›[™UÊ
+ÈÈHËH
+ÈÈH
+NÂˆİœİ›ÚÙJ
+NÂˆİ™ÛØ˜[[HHMH
+ˆ›[šÎÂˆİ™š[İ[HHÛÛÈİ™›ÛHœÊL‹YJNÈİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[^
+	ø¥¬‰ËZYZYH
+È
+NÈËÈ:äé;%­:¬ :â¥:ì*{e©H;g£;b®ˆİ^[YÛˆH	ÛY	ÎÂˆBˆBˆİœ™\İÜ™J
+NÂˆB‚ˆËÈ; â:¬£;'¡;'n;b®:èg;%e;(!8 %;.í;dê;a,;"é;'©zêm
+:ã ;fe;,ªÈû)!
+H:ãæ{%b;fe:êm;'a:¬l;'f:¬ :é«:¬èˆËÈ:ì¢;)î;)!:í ;a,LŒ;e!:è";'¡;%ä:¬n;,ä;!';!';g¢:¬múâ¥:âéˆ:ã ;fe:ì%{"©
+˜]ÑX[ÙÊzâ¥;'m;ej;"&ˆËÈ:ä©;%ä:­î:è);)à:ëà:èg;'m;&):ì¡:è";'m;'!:èg;&*;(!;g¢:ìí;'n:âéˆ™YXÙQ:êm;c¦;'m:äç;%á»'m;)¢{"ç:¬mûg£:âé‚ˆ[˜İ[Ûˆ˜]Ò[›Ñ[J
+HÂˆYˆ
+YØ[YKš[›Ñ[JH™]\›ÂˆÛÛœİYHØ[YK™X[ÙÈÈØ[YK™X[ÙËšYˆÈËÈ:ã ;fe:¬ ;'m:ëî:àgzà«;'/:êm:âé:¬mûg£:¬ û'/:èg;-ê:®"BˆYˆ
+YÊHÂˆİ™š[İ[HH	Ü™Ø˜JLŠIÎÂˆİ™š[™Xİ
+Ë
+NÂˆ™]\›ÂˆBˆYˆ
+Ø[YKœ™YXÙQ
+HÈØ[YKš[›Ñ[HH[È™]\›ÈHËÈ;c¦;'m:äç;%á»'m;)¢{"ç;(!;ffˆØ[YKš[›Ñ[K™˜YQœ˜[YHHX]›X^
+Ø[YKš[›Ñ[K™˜YQœ˜[YJH
+ÈNÂˆÛÛœİHX]›Z[ŠKØ[YKš[›Ñ[K™˜YQœ˜[YHÈLŒ
+NÂˆÛÛœİ[HHLˆ
+ˆ
+HH
+NÂˆYˆ
+[HHŒÊHÈØ[YKš[›Ñ[HH[È™]\›ÈBˆİ™š[İ[HH™Ø˜J	Ø[_JXÂˆİ™š[™Xİ
+Ë
+NÂˆB‚ˆËÈ{'©H:­k;%ëx¤hˆ8à#;!£;c#;/e:á"8à#H8 %;%b{%a;'¢:â¥:ãæ{%b;fe:êm;%ä:å,:ç.ûeg; âH;&):ì¡:è";'m:¬ ;($;($;)æ{%­;)á:âé‚ˆËÈ™YXÙQ:êm;($;($;)æ{%­;)à:â¥;%h:ââ:êe;'m;!f;%á»'m:¬è;(%H;a©;'/:èg:éã;dg;"ç;eg:âé
+:êª;!f:ëï:¬$:ì,:è)
+K‚ˆ[˜İ[Ûˆ˜]ÔÛÙ˜UØ\›]
+
+HÂˆYˆ
+JØ[YKœ^›T[ˆ	‰ˆØ[YKœ^›T[‹œ^›K\HOOH	ÜÛÙ˜IÈ	‰ˆØ[YKœ^›T[‹œÚ][™ÊJH™]\›ÂˆÛÛœİ[ˆHØ[YKœ^›T[ÂˆÛÛœİÙ]HHX]›Z[ŠK
+[‹œÚ]œ˜[Y\È
+HÈN
+NÈËÈ;%b{'`:ä©;($;($;)æ{%­;)á:âé
+û-";(%zãá
+BˆÛÛœİ[HHØ[YKœ™YXÙQÈŒMˆˆŒ
+ÈŒM
+ˆÙ]NÂˆİ™š[İ[HH™Ø˜JŒLÎKN	Ø[_JXÂˆİ™š[™Xİ
+Ë
+NÂˆB‚ˆËÈ;'©H8à#:ì&;)çH;%a;/ ;'m:äç8à#H8 %:­$z¬è:å,{)àQ;&);%ïˆ;fe:êm:¬ ;'©{'¤:é«;%ä:ì&;b+:ê¡H;"©;bì;.é:¬ ˆËÈ:â!;( J:¬'
+zä&;%­;"ç;%o:éo:ì*{em;eg:âéˆ;em;)à:âê:éä
+:­k;%ëx¤h:èì:è&È:­${'©Jzèg:éã;(!:í ; «:ço;)á:âé‚ˆËÈ™YXÙQ:êm:®g:îh{'¡
+;c¡;"©
+H;%á»'m:¬è;(%H;dg;"ç;eg:âé
+:­$z¬ï:ëï;!,p­úêª;!f:ëï:¬$:ì,:è)
+K‚ˆÛÛœİQÔÕPÒÑT”ÈHÂˆÈ^ˆ	úë-:èãIËÛÛÜˆ	ÈÙ™™	ÈKˆÈ^ˆ	úâî{,ªIËÛÛÜˆ	ÈÙ™™	ÈKˆÈ^ˆ	û&):â¦:éãIËÛÛÜˆ	ÈÍLIÈKˆÈ^ˆ	ûejúå'IËÛÛÜˆ	ÈØN˜YL	ÈKˆNÂˆ[˜İ[Ûˆ˜]ĞYİXÚÙ\œÊ
+HÂˆÛÛœİˆHØ[YK™›YÜË˜YİXÚÙ\œÈÂˆYˆ
+ˆH
+H™]\›ÂˆÛÛœİÈHNHÂˆËÈ; à{"çQ
+;(£; àzâê:êª{dg; à{'¤HŒ;&¬; àzâê;'¤:îa
+8¦iJH;dg;"ç
+{&`:¬®{.f;)à;%bºãá:ègH; àzâêˆËÈ:å,{)à:â¥ONMŠQ0­ûco;)¤Q;%a:ç¦
+{'/:èg:à­:é¬:âéˆ;fe:êm:êª;!':é«:éo;%­;)à:çï{g¢:â¥;%ì;-§;'f:ãá:â¥;'(;)à‚ˆÛÛœİÜİÈHÂˆÈˆNˆMˆKËÈ;(£; àzâê
+Q;%a:ç¦
+BˆÈˆÈHÈHNˆMˆKËÈ;&¬; àzâê
+Q0­ûef;b®;dg;"ç;%a:ç¦
+BˆÈˆNˆHHKËÈ;(£;ef:âêˆÈˆÈHÈHNˆHHKËÈ;&¬;ef:âêˆNÂˆ›Üˆ
+]HHÈHÈJÊÊHÂˆÛÛœİÈHÜİÖÚWKXÛÈHQÔÕPÒÑT”ÖÚWNÂˆÛÛœİ[ÙHHØ[YKœ™YXÙQÈHˆÍH
+ÈŒH
+ˆX]œÚ[ŠØ[YK[YHÈM
+ÈH
+ˆŠNÂˆİœØ]™J
+NÂˆİ™ÛØ˜[[HHH
+ˆ[ÙNÂˆİ™š[İ[HHXÛË˜ÛÛÜÂˆİ™š[™Xİ
+ËËKË
+NÂˆİœİ›ÚÙTİ[HH	ÈÙ™™‰ÎÂˆİ›[™UÚYHNÂˆİœİ›ÚÙT™Xİ
+Ë
+ÈKËH
+ÈKË
+NÂˆİ™š[İ[HH	ÈÌ	ÎÂˆİ™›ÛHœÊL‹YJNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[^
+XÛË^Ë
+ÈÈÈ‹ËH
+ÈÈˆ
+È
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆİœ™\İÜ™J
+NÂˆBˆB‚ˆËÈ;&å:äç; àzâê;%b:à­;a¨;"©;b®
+;em:®";%c:é¯:äìJH8 %;'¨:®d:å­:âé; «:ço;)á:âéˆ[˜İ[Ûˆ˜]Ó›İXÙJ
+HÂˆYˆ
+YØ[YK››İXÙHØ[YK››İXÙKH
+H™]\›ÂˆÛÛœİHØ[YK››İXÙK^Âˆİ™›ÛHœÊLËYJNÂˆÛÛœİÈHİ›YX\İ\™U^
+
+KÚYÂˆÛÛœİÈHÈ
+ÈšHØ[YK›\™ÙU^ÈÌˆˆÂˆËÈ;co;)¤Q
+˜]Ô^›RYON»-g:ã Í:á¤»'m
+{&`;!.:èg:èg:¬®{.f;)à;%bºãá:ègKˆËÈ:ì*{`â;-§;)${%ä:â¥:­î;%a:ç¦:èg:à­:è);!':­î:é¬:âé‚ˆÛÛœİHX]œ›İ[™
+ÈÈˆHÈÈŠKHHØ[YKœ^›T[ˆÈˆˆÌÂˆÛÛœİ˜YHHX]›Z[ŠKØ[YK››İXÙKÈ
+NÂˆİ™ÛØ˜[[HH˜YNÂˆ]›Ş
+KËšŠNÂˆİ™š[İ[HH[YPXØÙ[
+
+NÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[^
+ÈÈ‹H
+ÈšÈˆ
+È
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆİ™ÛØ˜[[HHNÂˆB‚ˆËÈ”È:ê.:é«;'!;'¤{'`:éä;d£{!(8 %»%ë:®,:éä:¬n;"&;'¢;%­;&¥‚ˆ[˜İ[Ûˆ˜]Õ[ĞX˜›JŞÜJHÂˆÛÛœİ›ØˆHX]œ›İ[™
+X]œÚ[ŠØ[YK[YHÈMŠH
+ˆŠNÂˆÛÛœİÈHM‹HLÂˆÛÛœİHX]œ›İ[™
+ŞHÈÈŠKHHX]œ›İ[™
+ÜH
+È›ØŠNÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™š[™Xİ
+KË
+NÂˆİœİ›ÚÙTİ[HH	ÈÌ	ÎÂˆİ›[™UÚYHNÂˆİœİ›ÚÙT™Xİ
+
+ÈKH
+ÈKË
+NÂˆËÈ:¯+:é«ˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ˜™YÚ[”]
+
+NÂˆİ›[İ™UÊŞHËH
+È
+NÂˆİ›[™UÊŞ
+ÈËH
+È
+NÂˆİ›[™UÊŞH
+È
+È
+NÂˆİ˜ÛÜÙT]
+
+NÂˆİ™š[
+
+NÂˆİœİ›ÚÙJ
+NÂˆËÈ:éä;)!;'¡
+8 )ŠBˆİ™š[İ[HH	ÈÌ	ÎÂˆ›Üˆ
+]HHÈHÎÈJÊÊHİ™š[™Xİ
+
+È
+ÈH
+ˆH
+ÈK‹ŠNÂˆB‚ˆËÈ:¬£;'¡;'a;,¦;'c;"ç;'¤{e¢;'a:åc
+:ì%{ «:âæ:¬ï:ã ;fe;(!
+zéã:ìí;'m:â¥;(l;'¤H;%b:à­ˆ[˜İ[Ûˆ˜]ĞÛÛ›Û[
+
+HÂˆYˆ
+Ø[YK™›YÜË[ÙY›ÙŠH™]\›ÂˆÛÛœİH\ÕİXÚ]šXÙHÈ	û"©;bì{'/:èg;'m:ãæH0­È8¤­ˆ:ì¡;b¯;'/:èg:éä:¬n:®,	Èˆ	úì*{e©{`©:èg;'m:ãæH0­ÈŠ:æ$:â¥H:ì¡;b¯
+zèg:éä:¬n:®,	ÎÂˆİ™›ÛHœÊL‹YJNÂˆÛÛœİÈHİ›YX\İ\™U^
+
+KÚYÂˆÛÛœİÈHÈ
+ÈšHØ[YK›\™ÙU^ÈÌˆÂˆÛÛœİHX]œ›İ[™
+ÈÈˆHÈÈŠNÂˆÛÛœİHHHšH
+Ø[YK›\™ÙU^ÈNˆLŠNÂˆ]›Ş
+KËšŠNÂˆİ™š[İ[HH	ÈÎY™™‰ÎÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[^
+ÈÈ‹H
+ÈšÈˆ
+È
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆB‚ˆËÈ;f!;'«:éí{%ä;!':âé;'c:êª{dg:éo;e©{em;eg:¬n;'c:ãe:¬ ;%o;eh;`à;'o;'a;,/ºâ¥:âé‚ˆËÈ:êª{dg:¬ :âé:én:éí{%ä;'¢;'/:êm:­î:¬ìû'/:èg:¬ :â¥:¬¯zèg; à{'f:âé;'c;&ã;e!;`à;'o;'a:¬ :é«;`ª:âé‚ˆ[˜İ[Ûˆ™^Ø^\Ú[
+›YÜËİ\“X\
+HÂˆÛÛœİ\™Ù]HÙ]Øš™Xİ]™U\™Ù]
+›YÜËİ\“X\
+NÂˆYˆ
+]\™Ù]
+H™]\›ˆ[ÂˆYˆ
+\™Ù]›X\OOHİ\“X\
+H™]\›ˆÈˆ\™Ù]Nˆ\™Ù]HNÂˆÛÛœİ™]ˆHÈØİ\“X\Nˆ[NÂˆÛÛœİ^][HHßNÂˆÛÛœİ]Y]YHHØİ\“X\NÂˆÚ[H
+]Y]YK›[™İ
+HÂˆÛÛœİİ\ˆH]Y]YKœÚY
+
+NÂˆYˆ
+İ\ˆOOH\™Ù]›X\
+Hœ™XZÎÂˆ›Üˆ
+ÛÛœİÈÙˆPTÖØİ\—KØ\œÊHÂˆYˆ
+JËÈ[ˆ™]ŠJHÂˆ™]–İË×HHİ\Âˆ^][VİË×HHÈˆËNˆËHNÂˆ]Y]YKœ\Ú
+ËÊNÂˆBˆBˆBˆYˆ
+J\™Ù]›X\[ˆ™]ŠJH™]\›ˆ[Âˆ]HH\™Ù]›X\ÂˆÚ[H
+™]–ÛWHOOHİ\“X\
+HÂˆHH™]–ÛWNÂˆYˆ
+HOOH[
+H™]\›ˆ[ÂˆBˆ™]\›ˆ^][VÛWNÂˆB‚ˆËÈ;fe:êm;%a:ç¦;%ä:âé;'c:êª{dg;'f:ì*{e©H
+È:êª{( {)à;'m:é¡;'a;%c:è);(ï:â¥;%b:à­:ì,:á":éo:­î:é¬:âé‚ˆËÈ:âé;'c:êª{dg:éo;)àz­ ;( {'/:èg;%b:à­;eg:âé‚ˆËÈ0­È:êª{dg:¬ :¬&{'`:éíp­ûfe:êm;%bˆ:­î;.n;'!;%ä;a­{a­H;b :â¥8¥¯:éâ;.é:èg»%ë:®,Hˆ;dg;"çˆËÈ0­È:­î;&nˆ;e#:è";'m;%­:éo:ãá:â¥;`l:ì*{e©H;fe; ­;dg
+È;ef:âê;%ä:êª{( {)à;'m:é¡ˆ[˜İ[Ûˆ˜]ÓØš™Xİ]™P\œ›İÊ
+HÂˆÛÛœİ\™Ù]HÙ]Øš™Xİ]™U\™Ù]
+Ø[YK™›YÜËØ[YK›X\
+NÂˆYˆ
+]\™Ù]
+H™]\›ÂˆÛÛœİÜH™^Ø^\Ú[
+Ø[YK™›YÜËØ[YK›X\
+NÂˆYˆ
+]Ü
+H™]\›ÂˆÛÛœİHØ[YKœ^Y\ÂˆÛÛœİÛ•\™Ù]X\H\™Ù]›X\OOHØ[YK›X\ÂˆËÈ:¬n;%­:¬":êª{dg;.nˆ:¬&{'`:éí{'m:êm:êª{dg;'¤;,­;%a:ââ:êm:âé;'c;&ã;e!;.nˆÛÛœİZ[HHÛ•\™Ù]X\ÈÈˆ\™Ù]Nˆ\™Ù]HHˆÜÂˆÛÛœİHZ[KHHHZ[KHHNÂˆÛÛœİ\İHX]˜XœÊ
+H
+ÈX]˜XœÊJNÂˆYˆ
+Û•\™Ù]X\	‰ˆ\İOOH
+H™]\›ÈËÈ;'m:ëî:ãá;,*BˆÛÛœİÈŞŞHHHØ[Y\˜J
+NÂˆÛÛœİ[™ÛHHX]˜][ŒŠK
+NÂˆÛÛœİ›ØˆHØ[YKœ™YXÙQÈˆX]˜XœÊX]œÚ[ŠØ[YK[YHÈLŠJNÂ‚ˆËÈ:êª{dg;.n;'m;fe:êm;%b;'m:¬è:¬ :®c;&¬:êmˆ:­î;.n:ì%:èg;'!;%ä:éâ;.é:éo:ça;&­:âéˆÛÛœİŞHX]œ›İ[™
+Z[K
+ˆÈHŞ
+ÈÈÈŠNÂˆÛÛœİŞHHX]œ›İ[™
+Z[KH
+ˆÈHŞJNÂˆÛÛœİÛ”ØÜ™Y[ˆHŞˆ	‰ˆŞÈH	‰ˆŞHˆ	‰ˆŞHHÂˆYˆ
+Û•\™Ù]X\	‰ˆÛ”ØÜ™Y[ˆ	‰ˆ\İH
+HÂˆÛÛœİ^HHŞHHMH›Øˆ
+ˆÎÂˆËÈ:îfÈ:¬è:é«ˆİœØ]™J
+NÂˆİ™ÛØ˜[[HHŒÍNÂˆİ™š[İ[HH	ÈÙ™™	ÎÂˆİ˜™YÚ[”]
+
+NÂˆİ™[\ÙJŞŞH
+ÈÈÈ‹M‹ËX]”H
+ˆŠNÂˆİ™š[
+
+NÂˆİœ™\İÜ™J
+NÂˆËÈ;a­{a­H;b :â¥8¥¯:éâ;.éˆİœØ]™J
+NÂˆİ™š[İ[HH	ÈÙ™™	ÎÂˆİœİ›ÚÙTİ[HH	ÈÌ	ÎÂˆİ›[™UÚYHÂˆİ˜™YÚ[”]
+
+NÂˆİ›[İ™UÊŞ^H
+ÈM
+NÂˆİ›[™UÊŞHK^JNÂˆİ›[™UÊŞ
+ÈK^JNÂˆİ˜ÛÜÙT]
+
+NÂˆİ™š[
+
+NÂˆİœİ›ÚÙJ
+NÂˆİœ™\İÜ™J
+NÂˆ™]\›ÂˆB‚ˆËÈ:­î;&nˆ;e#:è";'m;%­;(ï;'!:éo:ãá:â¥;`l:ì*{e©H;fe; ­;dgˆÛÛœİHX]œ›İ[™
+œHŞ
+ÈÈÈŠNÂˆÛÛœİHHX]œ›İ[™
+œHHŞH
+ÈÈÈŠNÂˆÛÛœİˆH
+È›Øˆ
+ˆÂˆÛÛœİ^H
+ÈX]˜ÛÜÊ[™ÛJH
+ˆÂˆÛÛœİ^HHH
+ÈX]œÚ[Š[™ÛJH
+ˆÂˆİœØ]™J
+NÂˆİ˜[œÛ]J^^JNÂˆİœ›İ]J[™ÛJNÂˆİ™š[İ[HH	ÈÙ™™	ÎÂˆİœİ›ÚÙTİ[HH	ÈÌ	ÎÂˆİ›[™UÚYHÂˆİ˜™YÚ[”]
+
+NÂˆİ›[İ™UÊMË
+NÂˆİ›[™UÊNKLLŠNÂˆİ›[™UÊLË
+NÂˆİ›[™UÊNKLŠNÂˆİ˜ÛÜÙT]
+
+NÂˆİ™š[
+
+NÂˆİœİ›ÚÙJ
+NÂˆİœ™\İÜ™J
+NÂ‚ˆËÈ;ef:âê:êª{( {)à:ço:ìªˆÛÛœİ\İ˜[YHHÛ•\™Ù]X\È
+\™Ù]›X™[	û'm;)à;%ëIÊHˆ
+
+PTÖİ\™Ù]›X\H	‰ˆPTÖİ\™Ù]›X\K›˜[YJH	úêª{dg	ÊNÂˆËÈKLˆ:à¦;.j:ì&;'m	û"*;'`;&ã;e!	Ê:ë.;bà0­û!£;&ªzãã;'m:éâ;.é:éã;'¢:â¥;.n
+zéo:¬ :é«;`«:åc:­î;.n;'mˆËÈ:ë.;'¡;'a;eg:éâ:å%:èg;%c:è);) :âé8 %;&";(!;%å:îb;`à;'o;'a:¬ :é«;/';%a;'m:¬ ;eé:éé:ãf:ë.;(':éo;%á»%i:âé‚ˆ]X™[HÛ•\™Ù]X\È	Ù\İ˜[Y_H;*¯{'/:ègXˆ	Ù\İ˜[Y_J;'/
+zèg:¬ :®,ÂˆYˆ
+[Û•\™Ù]X\	‰ˆ\ÒY[•Ø\œ
+Ø[YK›X\ÜÜJJHÂˆX™[HY[•Ø\œÓÙŠØ[YK›X\
+KœÛÛYJ
+ZÊHOˆZËOOHÜ	‰ˆZËHOOHÜH	‰ˆZËšÚ[™OOH	ÜİÚ\›	ÊBˆÈ	Ù\İ˜[Y_J;'/
+zèg8 %;!£;&ªzãã;'m:èg:äé;%­:¬ ;'¤ˆˆ	Ù\İ˜[Y_J;'/
+zèg8 %:îfúà¦:â¥:ë.;'/:ègÂˆBˆİ™›ÛHœÊLËYJNÂˆÛÛœİÈHİ›YX\İ\™U^
+X™[
+KÚYÂˆÛÛœİšHØ[YK›\™ÙU^ÈÍˆÂˆÛÛœİÈHÈ
+ÈÂˆÛÛœİHX]œ›İ[™
+ÈÈˆHÈÈŠNÂˆÛÛœİHHHšHLÂˆ]›Ş
+KËšŠNÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[^
+X™[ÈÈ‹H
+ÈšÈˆ
+ÈJNÂˆİ^[YÛˆH	ÛY	ÎÂˆB‚ˆËÈŒˆ;"è:­ç;"©;ac;'m;)à:éíJ;(!:í :¬í{)ç:¬l:é«»/e;%­
+H8¡¤ˆ;'©H:ì¢;f.:éo:éíH;'¤;,­;%ä:¬è;(%{eg:âé‚ˆËÈQ:¬ ;)á;e¢H;e#:ç¦:­î:èg:âé;"ç:¬á; ¬;ef;)à;%bº¬è:­î;"©;ac;'m;)à;'f;'©{'a;&¬;!(:ìí;%ë;(ï:®,;'!;ej‚ˆÛÛœİPTĞÒTTˆHÂˆ[›ÛXˆËÈ;e!:èi:èg:­îˆœ™Y\İ™Y]ˆK˜XÙ\›ÛÛNˆK›Ø\™^˜NˆKØ\™Zİ\ÙNˆKİÛ™\œ›ÛÛNˆKˆ[İ™Y]ˆ‹XÚØ[^Nˆ‹Ø[\Zİ\ÙNˆ‹[\İ™Y]ˆ‹Ø]ZÙY\\ˆ‹ˆ[[Üœİ™Y]ˆË\Ü›ÛÛNˆËY]›ÛÛNˆËİÙ\œ›ÛÛNˆËİÙ\œ›ÛÙˆËˆ\˜ØYNˆ›İ[]\Ü]X\™NˆÚYÛ\[^Nˆ˜XÚÜİYÙNˆ]ZÚÜİYÙNˆˆÛŞZÛYNˆKØ[›ÛÛNˆKÛÜœšYÜˆKÛÙ˜\›ÛÛNˆK[Z\›ÛÛNˆKˆ]ZY]X\™ˆ	Ùš[˜[	ËÛŞ[ÜİYÙNˆ	Ùš[˜[	ËÛÜ™\›ÛÛNˆ	Ùš[˜[	ËˆNÂˆËÈ;,e{a,;e#:ç¦:­î:®,:ì&Q;dg:®,ˆ;e!:èi:èg:­îŒ{'©H;`m:é«;%­;(!HŒ{'©H‹Ú\\“ÛX\ˆ;'m;fáBˆËÈŠŠÌJ{'©H‹Ú\\PÛX\ˆ;'m;fáH»c#;'m:á$‹ˆ;"è:­ç;"©;ac;'m;)à:éí{'`:­î:éíH;'¤;"è;'f;'©{'a;&¬;!(;eg:âé‚ˆ[˜İ[ÛˆÚ\\˜YÙSX™[
+X\Y›YÜÊHÂˆÛÛœİš^YHPTĞÒTT–ÛX\YNÂˆYˆ
+š^YOOH
+H™]\›ˆ	ûe!:èi:èg:­î	ÎÂˆYˆ
+š^YOOH	Ùš[˜[	ÊH™]\›ˆ	ûc#;'m:á$	ÎÂˆYˆ
+š^Y
+H™]\›ˆ	Ùš^Y{'©XÂˆYˆ
+›YÜË˜Ú\\PÛX\ŠH™]\›ˆ	ûc#;'m:á$	ÎÂˆYˆ
+›YÜË˜Ú\\ÛX\ŠH™]\›ˆ	Í{'©IÎÂˆYˆ
+›YÜË˜Ú\\ŒĞÛX\ŠH™]\›ˆ	Í;'©IÎÂˆYˆ
+›YÜË˜Ú\\ŒÛX\ŠH™]\›ˆ	Ìû'©IÎÂˆYˆ
+›YÜË˜Ú\\ŒPÛX\ŠH™]\›ˆ	Ì»'©IÎÂˆËÈ:å,:ço
+;e!:èi:èg:­î
+zéo:ä&:ãã:é«:®,;(!;%ä:â¥;%a;)àH{'©{'m;%a:ââ:âéˆ™]\›ˆ
+›YÜË™Y™X]Y	‰ˆ›YÜË™Y™X]Y˜™ZÚŞY[Û[ÛŠHÈ	Ì{'©IÈˆ	ûe!:èi:èg:­î	ÎÂˆB‚ˆËÈQ;(£; àzâê;,e{a,;ac{"©;b®ˆ[˜İ[ÛˆY˜YÙU^
+X\Y›YÜÊHÂˆ™]\›ˆÚ\\˜YÙSX™[
+X\Y›YÜÊNÂˆB‚ˆËÈN:êª{dg:ì,:á";($zäd8 %;"&;%áJ;,*;"ç
+H;!.;!f;'m:êm»'m:ì¢;"ç:¬!:êª{dgˆ‹;%a:ââ:êmºêª{dgˆ‹‚ˆ[˜İ[ÛˆØš™Xİ]™P˜[›™\”™Yš^
+
+HÈ™]\›ˆØ[YK™›YÜË˜Û\ÜÔÙ\ÜÚ[ÛˆÈ	û'm:ì¢;"ç:¬!:êª{dgˆ	Èˆ	úêª{dgˆ	ÎÈBˆ[˜İ[Ûˆ˜]ÒY
+
+HÂˆËÈ;"©;ac;'m;)à
+È;)à;%ëH;'m:é¡
+È:êª{dgˆÛÛœİHHPTÖÙØ[YK›X\NÂˆİ™›ÛHœÊMYJNÂˆÛÛœİ]HH	ÚY˜YÙU^
+Ø[YK›X\Ø[YK™›YÜÊ_H0­È	ÛK›˜[Y_XÂˆËÈ:ì*{`â;-§;)${%ä:â¥:ìî;c®;`&;"©;b®:ã ;"è:ì*H:éézçoH:êª{dg:éo:ìí;%ë;) :âé
+;`m:é«;%­;fá;%å:ìí;"©:ì*H;%b:à­
+Bˆ]Øš•^ÂˆYˆ
+Ø[YKœ^›T[ŠHÂˆÛÛœİ^ˆHØ[YKœ^›T[‹œ^›NÂˆØš•^HØ[YK™›YÜËœš]˜XŞT™XÛİ™\PXİ]™BˆÈ:án;-§:ãáPV8 %;(%zìí;(l:¬ H;f£;"&	ÙØ[YK™›YÜËœš]˜XŞT™XÛİ™\HKÉÔ’UPÖWÔ‘PÓÕ‘T–WÓ‘QQXˆˆ
+\Ô^›PÛX\™Y
+Ø[YKœ^›T[‹šY
+H	‰ˆ^‹›Øš™Xİ]™PÛX\™Y
+HÈ^‹›Øš™Xİ]™PÛX\™Yˆˆ
+^‹›Øš™Xİ]™H	úì*{'a:îh;(.:à¦:¬ ;'¤	ÊNÂˆH[ÙHYˆ
+Ø[YK›X\OOH	Ùœ™Y\İ™Y]	ÊHÂˆËÈ;eâ:î#Q8 %:®":¬è;'¨:®";)á;e¢{'a; à{"ç:¬ ;"ç;feˆÛÛœİˆHÌSØÚĞÛİ[
+
+NÂˆØš•^HØ[YK™›YÜË˜Ú\\ŒPÛX\ˆÈ	ú¬l:é«:éo:äf:çë:ìí;'¤	ÂˆˆˆHÈÈ	ú®":¬è:¬ ;%í:è.:âé8 %;(ï;'n;'f:ì*{'/:èg	Âˆˆ:®":¬è;'¨:®"	ÛŸKÌÈ;em;('8 %:­k;%ë{'a:ãã;'¤ÂˆH[ÙHYˆ
+Ø[YK›X\OOH	İ[İ™Y]	ÊHÂˆËÈ»'©H;eâ:î#Q8 %;( ;&®:®,;&®:®,:éo; à{"ç:¬ ;"ç;feˆÛÛœİ[HÈHÌÛX\Ûİ[
+
+NÂˆØš•^HØ[YK™›YÜË˜Ú\\ŒÛX\ˆÈ	ú¬l:é«:éo:äf:çë:ìí;'¤	Âˆˆ[HÈ	û( ;&®;'m;"&;câ{'m:âé8 %:ë.;)à:®,;'f:ì*{'/:èg	Âˆˆ;( ;&®:®,;&®:®,	İ[KÌÈ8 %:¬ê:êª{'a; ­;c­:ìí;'¤ÂˆH[ÙHYˆ
+Ø[YK›X\OOH	Ü[[Üœİ™Y]	ÊHÂˆËÈû'©H;eâ:î#Q8 %;"è:ë.; «;.-zìá;)á;e¢{'a; à{"ç:¬ ;"ç;feˆÛÛœİˆHÌĞÛX\Ûİ[
+
+NÂˆØš•^HØ[YK™›YÜË˜Ú\\ŒĞÛX\ˆÈ	ú¬l:é«:éo:äf:çë:ìí;'¤	ÂˆˆˆHÈÈ	û"è:ë.; «;&){ àH8 %:­î:çí;"î:éo:éã:à¦;'¤	Âˆˆ;!£:ë.;'f;-§;,¦:éo;,/»'¤8 %;"è:ë.; «	ÛŸKÌû.-XÂˆH[ÙHYˆ
+Ø[YK›X\OOH	Ø\˜ØYIÊHÂˆËÈ;'©H;eâ:î#Q8 %;%í;!è
+:îa:ì ;(l:¬ p­úìî;'n;dg
+H;)á;e¢{'a; à{"ç:¬ ;"ç;feˆÛÛœİˆHÍÙ^PÛİ[
+
+NÂˆØš•^HØ[YK™›YÜË˜Ú\\ÛX\ˆÈ	û%a;/ ;'m:äç:éo:äf:çë:ìí;'¤	ÂˆˆˆHˆÈ	û(%zë.;'m;%í:è.:âé8 %:ì&;)ç{'f:ë-:ã :èg	Âˆˆ;%í;!è	ÛŸKÌˆ;fezìí8 %:­k;%ë{'a:ãã;'¤ÂˆH[ÙHYˆ
+Ø[YK›X\OOH	ØÛŞZÛYIÊHÂˆËÈ{'©H;eâ:î#Q8 %;fe{'n;ef:â¥;&ªz®,
+:­k;%ëHú¬'
+H;)á;e¢{'a; à{"ç:¬ ;"ç;feˆÛÛœİˆHÍPÛX\Ûİ[
+
+NÂˆØš•^HØ[YK™›YÜË˜Ú\\PÛX\ˆÈ	û)ä{'a:äf:çë:ìí;'¤	ÂˆˆˆHÈÈ	ûf!:­ ;'m;%í:è.:âé8 %:èê:ëî;'f:ì*{'/:èg	Âˆˆ;fe{'n;eg;&ªz®,	ÛŸKÌÈ8 %:ì*{'a:äf:çë:ìí;'¤ÂˆH[ÙHÂˆØš•^HÙ]Øš™Xİ]™JØ[YK™›YÜËØ[YK›X\
+NÂˆBˆËÈN;"&;%áH:êª:äç8 %:êª{dg:ì,:á";%ä»'m:ì¢;"ç:¬!ˆ;($zäd:éo:í¦{%ë;,*;"ç:êª{dg;'¡;'a:ìí;%ë;) :âé‚ˆÛÛœİØšˆHØš™Xİ]™P˜[›™\”™Yš^
+
+H
+ÈØš•^ÂˆÛÛœİÈHX]›X^
+İ›YX\İ\™U^
+ØšŠKÚYİ›YX\İ\™U^
+]JKÚY
+H
+ÈŒÂˆ]›Ş
+ËL‹
+NÂˆİ™š[İ[HH	ÈÙ™™	ÎÂˆİ™š[^
+]KN
+NÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™š[^
+Øš‹NL
+NÂ‚ˆËÈ;%b;%a;) :éâ;'c
+;'¤:îa
+BˆYˆ
+Ø[YK™›YÜË›Y\˜ŞHˆ
+HÂˆ]›Ş
+ÈHNM‹L‹
+NÂˆİ™š[İ[HH	ÈÙLLØIÎÂˆİ™›ÛHœÊMYJNÂˆİ™š[^
+8¦iH	ÙØ[YK™›YÜË›Y\˜Ş_XÈHNÌJNÂˆB‚ˆYˆ
+
+Ø[YK™›YÜËœš]˜XŞSXZÈ
+HˆØ[YK™›YÜËœš]˜XŞT™XÛİ™\PXİ]™JHÂˆÛÛœİXZÈHš]˜XŞSXZÊ
+NÂˆÛÛœİ›ŞÈHŒÂˆ]›Ş
+ÈH›ŞÈHLØ[YK™›YÜË›Y\˜ŞHˆÈˆˆL‹›ŞËÌ
+NÂˆİ™š[İ[HHXZÈHHÈ	ÈÙLLØIÈˆXZÈHÈÈ	ÈÙ™™	Èˆ	ÈÎX™Ù™‰ÎÂˆİ™›ÛHœÊLËYJNÂˆİ™š[^
+:án;-§:ãá	ÛXZßKÍH0­È	Üš]˜XŞS]™[X™[
+XZÊ_XÈH›ŞËØ[YK™›YÜË›Y\˜ŞHˆÈˆˆÌŠNÂˆB‚ˆYˆ
+Ûİ[™›]]Y
+HÂˆİ™š[İ[HH	ÈØXXIÎÂˆİ™›ÛHœÊLŠNÂˆİ™š[^
+	ø¦jˆ:®¯;)ä
+JIËÈHLLMŠNÂˆBˆB‚ˆËÈ;%®:ãe;ac;'o;d£H8 %:êª;!':é«:¬ ; ­;)çH:®c»'n;e/{!`; à{'¤
+»'`:êª;!':é«;.íÈ;`k:®,:èg; «;&ªJBˆ[˜İ[Ûˆ›İ[™™Xİ
+KËŠHÂˆÛÛœİÈHX]›Z[Š‹ÈÈ‹ÈŠNÂˆİ˜™YÚ[”]
+
+NÂˆİ›[İ™UÊ
+ÈËJNÂˆİ›[™UÊ
+ÈÈHËJNÂˆİ›[™UÊ
+ÈËH
+ÈÊNÂˆİ›[™UÊ
+ÈËH
+ÈHÊNÂˆİ›[™UÊ
+ÈÈHËH
+È
+NÂˆİ›[™UÊ
+ÈËH
+È
+NÂˆİ›[™UÊH
+ÈHÊNÂˆİ›[™UÊH
+ÈÊNÂˆİ˜ÛÜÙT]
+
+NÂˆB‚ˆËÈ:ì%{"©;%b;%ä:äd;)!;gl;ac:äd:é«:éo:­î:è);%®:ãe;ac;'o;d£H;'":ãá;&¬:éo:éã:äè:âéˆ[˜İ[Ûˆ]›Ş
+KËÊHÂˆİ™š[İ[HH	ÈÌ	ÎÂˆ›İ[™™Xİ
+KËÈŠNÂˆİ™š[
+
+NÂˆİœİ›ÚÙTİ[HH	ÈÙ™™‰ÎÂˆİ›[™UÚYHÎÂˆ›İ[™™Xİ
+KËÈŠNÂˆİœİ›ÚÙJ
+NÂˆB‚ˆ[˜İ[Ûˆ˜]ÑX[ÙÊ
+HÂˆÛÛœİHØ[YK™X[ÙÎÂˆÛÛœİ[™HH›[™\ÖÙšYNÂˆÛÛœİÚİÛˆH[™KœÛXÙJX]™›ÛÜŠ˜Ú\œÊJNÂˆÛÛœİX[ÙÓX^ÈHÈHHÂ‚ˆİ™›ÛHœÊMŠNÂˆÛÛœİÜ˜\Y[™\ÈHYX\İ\™UÜ˜\
+[™KX[ÙÓX^ÊH
+È
+œÜXZÙ\ˆÈHˆ
+NÂˆÛÛœİ›ŞHX]›X^
+LŒˆ
+ÈÜ˜\Y[™\È
+ˆ
+
+JNÂˆÛÛœİHHH›ŞHLÂ‚ˆ]›Ş
+L‹KÈH›Ş
+NÂ‚ˆ]HHH
+ÈÌÂˆYˆ
+œÜXZÙ\ŠHÂˆİ™š[İ[HH	ÈÙ™™	ÎÂˆİ™›ÛHœÊM‹YJNÂˆİ™š[^
+
+ˆ	ÙœÜXZÙ\ŸXÌJNÂˆH
+ÏH
+ŠNÂˆBˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊMŠNÂˆ˜]Ô]Y\İ[Û•^
+ÚİÛ‹ÌKX[ÙÓX^Ë
+
+JNÂˆYˆ
+˜Ú\œÈH[™K›[™İ	‰ˆX]™›ÛÜŠØ[YK[YHÈŒ
+H	HˆOOH
+HÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™š[^
+	ø¥¯	ËÈHLH
+È›ŞHMŠNÂˆBˆB‚ˆËÈ;!(;`ç{)à;eg;)!;'a:­î:é¬:âé8 %;!(;`çzä';)!;%g»%ä:îj:¬!;ef;b®:¬ :å¨;'¢:âé
+;%®:ãe;ac;'o;.é;!'
+Bˆ[˜İ[Ûˆ˜]ĞÚÚXÙS[™J^KÙ[XİY
+HÂˆYˆ
+Ù[XİY
+HÂˆİ™š[İ[HH	ÈÙLLØIÎÂˆİ™›ÛHœÊMJNÂˆİ™š[^
+	ø¦iIËJNÂˆBˆİ™š[İ[HHÙ[XİYÈ	ÈÙ™™‰Èˆ	ÈÎ	ÎÂˆİ™›ÛHœÊMŠNÂˆİ™š[^
+^
+ÈJNÂˆB‚ˆËÈ:ë.;('ûem;!);ac{"©;b®:éo:ì%{"©;cë{%ä:éç»-¬:­î:é¬:âé8 %:®,;(mˆ;)!:ì%:¯â;'a;(m;)${ef:¬èˆËÈ;)!;'m:®.:êm
+;b®{g¢;!(; çzâæ;'m:éã:äè;.é;"©;a`:ë.;('
+H;'¤:ãæ{'/:èg:ãe;(${%­;fe:êm:ì%»'/:èg:á&;.f;)à;%bº¬£;eg:âé‚ˆËÈ:éâ;)à:éâ{'/:èg:­î:é¬;)!;'f:âé;'czéo:ì&;ff‚ˆ[˜İ[Ûˆ˜]Ô]Y\İ[Û•^
+^KX^Ë[™R
+HÂˆ]HHNÂˆ›Üˆ
+ÛÛœİ\Ùˆİš[™Ê^OH[È	ÉÈˆ^
+KœÜ]
+	×‰ÊJHÂˆÛÛœİˆHX]›X^
+KÜ˜\^
+\KX^Ë[™R
+JNÂˆH
+ÏHˆ
+ˆ[™RÂˆBˆ™]\›ˆNÂˆBˆËÈ;!(;`ç{)à;eg;)!
+;'¤:ãæH;)!:ì%:¯â
+H8 %; «;&ª{eg;!.:èg:á¤»'m:éo:ì&;ff‚ˆ[˜İ[Ûˆ˜]ĞÚÚXÙUÜ˜\Y
+^KÙ[XİYX^Ë[™R
+HÂˆYˆ
+Ù[XİY
+HÂˆİ™š[İ[HH	ÈÙLLØIÎÂˆİ™›ÛHœÊMJNÂˆİ™š[^
+	ø¦iIËJNÂˆBˆİ™š[İ[HHÙ[XİYÈ	ÈÙ™™‰Èˆ	ÈÎ	ÎÂˆİ™›ÛHœÊMŠNÂˆÛÛœİˆHX]›X^
+KÜ˜\^
+^
+ÈKX^Ë[™R
+JNÂˆ™]\›ˆˆ
+ˆ[™RÂˆB‚ˆ[˜İ[Ûˆ˜]Ğ˜]J
+HÂˆÛÛœİˆHØ[YK˜˜]NÂˆËÈ;e/:¬ªH;)à{fá;fe:êm;ge:äé:é¯
+KLÊH8 %;"ç:¬ H;(!;&ªK;fe:êm;fª:¬ï;)!;'m:®,;%ä;!(:àeˆÛÛœİ›ÛH
+YØ[YKœ™YXÙQ	‰ˆ
+‹™›\Úˆ‹š]İÜˆ
+JNÂˆİœØ]™J
+NÂˆYˆ
+›Û
+Hİ˜[œÛ]JX]œ›İ[™
+X]œ˜[™ÛJ
+H
+ˆHŠKX]œ›İ[™
+X]œ˜[™ÛJ
+H
+ˆHŠJNÂˆİ™š[İ[HH	ÈÌ	ÎÂˆİ™š[™Xİ
+MMÈ
+È
+È
+NÂˆËÈ:ì%:âéH:¬¯z¬á;!(ˆİœİ›ÚÙTİ[HH	ÈÌŒŒ‰ÎÂˆİ›[™UÚYHNÂˆ›Üˆ
+]HHNÈHÈJÊÊHÂˆİ˜™YÚ[”]
+
+NÂˆİ›[İ™UÊH
+ˆÌ
+NÂˆİ›[™UÊËH
+ˆÌ
+NÂˆİœİ›ÚÙJ
+NÂˆB‚ˆËÈ;'n:ë/
+;&):én;*¯H;'!;`k:¬£
+BˆÛÛœİÚZÙVH‹œÚZÙHˆÈX]œÚ[Š‹œÚZÙH
+ˆŠH
+ˆ
+Ø[YKœ™YXÙQÈˆˆŠHˆÂˆÛÛœİ›ØˆHX]œÚ[ŠØ[YK[YHÈŒ
+H
+ˆNÂˆÛÛœİ[Û”ØØ[HHNÂˆÛÛœİ^HX]œ›İ[™
+ÈHMˆ
+ˆ[Û”ØØ[HHŒ
+ÈÚZÙV
+NÂˆÛÛœİ^HHX]œ›İ[™
+Mˆ
+È›ØŠNÂˆÛÛœİXŞH^
+ÈMˆ
+ˆ[Û”ØØ[HÈÂˆËÈ;,ªÈ:ìí;"©;'f;dg;(%{'m:¬ ;'`;fe:êm;%ä;!':ì%:èg;'o{g¢:ãá:ègH;%a;(ï;&!{'`;-":ègzîfÈ:ë-:ã :éo:éã:äè:âé‚ˆYˆ
+‹›[Û’YOOH	Ø™ZÚŞY[Û[Û‰È	‰ˆYØ[YKœ™YXÙQ
+HÂˆÛÛœİ]\˜HHİ˜Ü™X]T˜YX[Ü˜YY[
+XŞLÌ‹Œ‹XŞLÌ‹MM
+NÂˆYˆ
+]\˜H	‰ˆ]\˜K˜YÛÛÜ”İÜ
+HÂˆ]\˜K˜YÛÛÜ”İÜ
+	Ü™Ø˜JLL‹NÎŒMÊIÊNÂˆ]\˜K˜YÛÛÜ”İÜ
+K	Ü™Ø˜JŒLÍ‹
+IÊNÂˆİ™š[İ[HH]\˜NÂˆH[ÙHÂˆİ™š[İ[HH	Ü™Ø˜JÎLŒŒ
+IÎÂˆBˆİ™š[™Xİ
+XŞHMŒNÌŒŠNÂˆBˆËÈ:­î:é¯;'¤8 %;'n:ë/;'m:åa{%ä:å¨;'¢:â¥:â¤:à£;'a;)&;fe:êm;'m:ãg;g${ef:¬£ˆİ™š[İ[HH	Ü™Ø˜JŒÌŠIÎÂˆİ˜™YÚ[”]
+
+NÂˆİ™[\ÙJXŞŒŒ‹MˆH›Ø‹L‹X]”H
+ˆŠNÂˆİ™š[
+
+NÂˆËÈ;dg;(%J‹LJNˆ;(%zâíH;)à{fá;gh;.jÊ›[˜Ú
+Hˆ;'¤:îa:­kzêm:â":ë/ˆ:éâ;'c; à{`ç
+:å`ûfc{(l
+BˆÛÛœİ[ÛÙH‹š\Ô\œİXYBˆÈ
+‹™›[˜ÚˆÈ	Ù›[˜Ú	Âˆˆ
+‹œ\ÙHOOH	ÛY\˜ŞIÈ‹œ\ÙHOOH	ÛY\˜ŞT™\IÊHÈ	ÛY\˜ŞIÈˆ‹œİ]JBˆˆ[Âˆ˜]Ó[ÛŠİ‹›[Û’Y^^K[Û”ØØ[K˜[ÙK[ÛÙØ[YK[YJNÂˆËÈ;'n:ë/;'m:é¡
+È:éâ;'c:¬£;'m;)à0­û à{`ç8 %:éâ;'c;'m;fg;)çH;%í:é«:êm;'m:é¡;'m:án:ç¦;)á:âé
+;%b;%a;)!;"&;'¢:âé:â¥;"è;f.
+Bˆ]›Ş
+ŠNÂˆİ™š[İ[HH‹œÜ\™T™XYHÈ	ÈÙ™™	Èˆ	ÈÙ™™‰ÎÂˆİ™›ÛHœÊMËYJNÂˆİ™š[^
+‹›[Û‹›˜[YKL
+NÂˆYˆ
+‹š\Ô\œİXYJHÂˆÛÛœİİ]PÛÛÜˆH‹œİ]HOOH	ÛÜ[‰ÈÈÚĞÛÛÜŠ
+Hˆ‹œİ]HOOH	ÜÚZÙ[‰ÈÈØ\›ÛÛÜŠ
+Hˆ˜YÛÛÜŠ
+NÂˆİ™š[İ[HHİ]PÛÛÜÂˆİ™›ÛHœÊL‹YJNÂˆİ™š[^
+ÔÕUWÓP‘SØ‹œİ]WKÌ
+NÂˆİ™š[İ[HH	ÈÌÌÌÉÎÂˆİ™š[™Xİ
+Ì‹Œ‹MLŠNÂˆİ™š[İ[HH	ÈÙ™™	ÎÂˆİ™š[™Xİ
+Ì‹Œ‹M
+ˆÛ[\
+‹™Ø]YÙHÈ‹™Ø]YÙSX^JKLŠNÂˆİ™š[İ[HH	ÈÎ	ÎÂˆİ™›ÛHœÊLJNÂˆİ™š[^
+	úéâ;'c	ËHL
+NÂˆB‚ˆËÈ;e#:è";'m;%­;ef;b®ˆ]›Ş
+LÌ
+È‹›X^X\È
+ˆÌ‹ŠNÂˆİ™›ÛHœÊŒŠNÂˆ›Üˆ
+]HHÈH‹›X^X\ÎÈJÊÊHÂˆİ™š[İ[HHH‹œ^Y\’È	ÈÙLLØIÈˆ	ÈÌÌÌÉÎÂˆİ™š[^
+	ø¦iIË
+ÈH
+ˆÌ‹LÌŠNÂˆB‚ˆËÈ:îj:¬!;e#:ç¦;"ç
+;bà:è.;'a:åcúéç»%f;'a:åc
+H8 %;fe:êm;fª:¬ï;)!;'m:®,;%ä;!(;fê;%+;&!z¬£
+:­$z¬ï:ëï;!,H:ì,:è)
+BˆYˆ
+‹™›\Úˆ
+HÂˆİ™š[İ[HH™Ø˜JŒKN	Ø‹™›\ÚÈ
+Ø[YKœ™YXÙQÈMˆ
+_JXÂˆİ™š[™Xİ
+Ë
+NÂˆB‚ˆËÈKMÈ;/i:ìí;"ç:¬ {fe8 %;&¬; àzâê0åÓˆ;.m;&­;a,
+¸¢iLŠKˆ;/i:ìí:¬ ;`m;"&:ègH:ì'{%a;)à:¬è:® ;'¤:¬ ;.é;)á:âé‚ˆËÈ™YXÙQ:êm;%ì;-§;%á»'m;ac{"©;b®:éã
+:­$z¬ï:ëï;!,H:ì,:è)
+Kˆ;&):âíH;"ç‹˜ÛÛX›ú¬ ;'m:ä&;%­; «:ço;)á:âé‚ˆYˆ
+‹˜ÛÛX›ÈHŠHÂˆÛÛœİˆH‹˜ÛÛX›ÎÂˆİ^[YÛˆH	ÜšYÚ	ÎÂˆYˆ
+Ø[YKœ™YXÙQ
+HÂˆİ™š[İ[HH	ÈÙ™™	ÎÂˆİ™›ÛHœÊŒYJNÂˆİ™š[^
+	ğåÉÈ
+È‹ÈHŒŠNÂˆH[ÙHÂˆÛÛœİÈHX]œ›İ[™
+ML
+ÈX]›Z[ŠKˆ
+ˆŒM
+H
+ˆLJNÈËÈ;/i:ìí:¬ ;`m;"&:ègH:ì'z¬£ˆİ™š[İ[HH™ØŠMK	ÙßK
+XÂˆİ™›ÛHœÊN
+ÈX]›Z[Š‹ŠH
+ˆËYJNÂˆİ™š[^
+	ğåÉÈ
+È‹ÈHŒ
+NÂˆBˆİ^[YÛˆH	ÛY	ÎÂˆB‚ˆËÈ:éâ;'c;(l:¬ H:ì,;bà8 %;`á:éâH;a-
+:¬íz¬!;e¢zãæJBˆYˆ
+‹š\Ô\œİXYH	‰ˆ‹œ\ÙHOOH	İØ]™IÊHÈ˜]Ô\œİXYP\™[˜JŠNÈİœ™\İÜ™J
+NÈ™]\›ÈB‚ˆİ™›ÛHœÊMŠNÂˆ]›ŞHØ[YK›\™ÙU^ÈˆŒÎÂˆYˆ
+‹š\Ô\œİXYJH›ŞHØ[YK›\™ÙU^ÈÌLˆˆÈËÈ;'¤:îa;!(;`çH;ac{"©;b®:¬ :á"zá"{g¢:äé;%­:¬ :¬£ˆÛÛœİ›ŞHHH›ŞHLÂˆÛÛœİ[HH›ŞH
+È›ŞHNÂˆ]›Ş
+L‹›ŞKÈH›Ş
+NÂ‚ˆYˆ
+‹œ\ÙHOOH	ÛY[IÊHÂˆËÈ:à­;a-8 %:­ ;,,;eg;)!
+
+ŠH
+È;e¢zãæH:êe:âm°åÌ‚ˆİ™š[İ[HH	ÈØØØÉÎÂˆİ™›ÛHœÊMŠNÂˆÛÛœİØœÓ[™\ÈH˜]SØœÙ\™JŠKœÜ]
+	×‰ÊNÂˆ]ŞHH›ŞH
+ÈÍÂˆ›Üˆ
+ÛÛœİ\ÙˆØœÓ[™\ÊHÈİ™š[^
+\ÍŞJNÈŞH
+ÏH
+
+NÈBˆÛÛœİÛÛÈHX]™›ÛÜŠ
+ÈH
+HÈŠNÂˆÛÛœİ›İÖLH›ŞH
+È›ŞH
+Ø[YK›\™ÙU^ÈMLˆL
+NÂˆÛÛœİ›İÒHØ[YK›\™ÙU^ÈŒˆˆLÂˆ›Üˆ
+]HHÈHÓQS•K›[™İÈJÊÊHÂˆÛÛœİŞHÎ
+È
+H	HŠH
+ˆÛÛÎÂˆÛÛœİŞHH›İÖL
+ÈX]™›ÛÜŠHÈŠH
+ˆ›İÒÂˆÛÛœİ\ÔÜ\™HHHOOHÎÂˆ]X™[HÓQS•VÚWNÂˆÛÛœİÙ[XİYHHOOH‹›Y[RYÂˆİ™›ÛHœÊMËÙ[XİY
+NÂˆYˆ
+Ù[XİY
+HÂˆİ™š[İ[HH	ÈÙ™™	ÎÂˆİ™š[^
+	ø¦iIËŞHŞJNÂˆBˆİ™š[İ[HH\ÔÜ\™H	‰ˆ
+‹œÜ\™T™XYH‹œİ]HOOH	ÛÜ[‰ÊBˆÈ	ÈÙ™™	ÈˆÙ[XİYÈ	ÈÙ™™‰Èˆ	ÈØXXIÎÂˆİ™š[^
+X™[Ş
+ÈŒ‹ŞJNÂˆBˆYˆ
+‹œÜ\™T™XYH	‰ˆX]™›ÛÜŠØ[YK[YHÈŒ
+H	HˆOOH
+HÂˆİ™š[İ[HH	ÈÙ™™	ÎÂˆİ™›ÛHœÊLÊNÂˆİ™š[^
+	úéâ;'c;'m;fg;)çH;%í:è.:âé8 %;%b;%a;(ï;'¤IËÍ›ŞH
+È›ŞHMŠNÂˆBˆH[ÙHYˆ
+‹œ\ÙHOOH	ÜİX‰ÊHÂˆËÈ;ef;'!;!(;`çH8 %:éä:¬n:®,
+;'dzâíH:¬è:ém:®,
+HÈ;)§z¬l;.m:äç:¬è:ém:®,‚ˆËÈ;)§z¬l;.m:äç:â¥;fá:ì&;%äL;'©{'a:á&;'/:ëà:èg;.é;!':éo:å,:ço:¬ :â¥;"©;`k:èi;,/{'/:èg:­î:é¬:âé‚ˆİ™š[İ[HH	ÈØØØÉÎÂˆİ™›ÛHœÊMŠNÂˆİ™š[^
+‹œİX‹šÚ[™OOH	Ùš[˜[Ø]IÈÈ	Êˆ8 )»& {'m:¬ ;(%zéä:ì%:ç :¬m:ëd;& ;'a:®cÉÂˆˆ‹œİX‹šÚ[™OOH	ØXİ	ÈÈ	Êˆ:ë-;"ª:éä;'a:¬m:á+:®cÉÈˆ	Êˆ;%­:å©;)§z¬l:éo:ìí;%ë;)!:®cÉËÍ›ŞH
+ÈÍ
+NÂˆÛÛœİÜÈH‹œİX‹›Ü[ÛœÎÂˆÛÛœİİ\ÈHØ[YK›\™ÙU^ÈˆÍÂˆÛÛœİX^›İÜÈHØ[YK›\™ÙU^ÈˆNÂˆÛÛœİİ\HÛ[\
+‹œİX’YHX]™›ÛÜŠX^›İÜÈÈŠKX]›X^
+ÜË›[™İHX^›İÜÊJNÂˆÛÛœİ[™HX]›Z[ŠÜË›[™İİ\
+ÈX^›İÜÊNÂˆ]HH›ŞH
+ÈÌÂˆYˆ
+İ\ˆ
+HÈİ™š[İ[HH	ÈÎ	ÎÈİ™›ÛHœÊLÊNÈİ™š[^
+	ø¥¬ˆ;'!;%ä:ãe;'¢;'c	ËÎHHM
+NÈBˆ›Üˆ
+]HHİ\ÈH[™ÈJÊÊHÂˆÛÛœİÜHÜÖÚWNÂˆÛÛœİX™[HÜ›ØÚÙYÈ	ÛÜ›X™[H<'å$˜ˆÜ›X™[Âˆ˜]ĞÚÚXÙS[™JX™[ÎKHOOH‹œİX’Y
+NÂˆH
+ÏHİ\ÎÂˆBˆYˆ
+[™ÜË›[™İ
+HÈİ™š[İ[HH	ÈÎ	ÎÈİ™›ÛHœÊLÊNÈİ™š[^
+	ø¥¯;%a:ç¦;%ä:ãe;'¢;'c	ËÎHH
+NÈBˆİ™š[İ[HH	ÈÍ‰ÎÂˆİ™›ÛHœÊLÊNÂˆİ™š[^
+\ÕİXÚ]šXÙHÈ	Ğˆ:ä©:èg	Èˆ	Öˆ:ä©:èg	ËÈHLL›ŞH
+È›ŞHMŠNÂˆH[ÙHYˆ
+‹œ\ÙHOOH	Ü™XXİ	ÊHÂˆËÈ; àzã :ì&;'dH:ã ; «8 %;`à;'¤:®,;fª:¬ï:èg;gd:ém:¬èºèg;)á;e¢{ef:êm; àzã ;a-
+;`á:éâJ{'/:ègˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊMŠNÂˆÛÛœİÚİÛˆH‹œ™XXİ^œÛXÙJX]™›ÛÜŠ‹œ™XXİ˜Ú\œÊJNÂˆ]HH›ŞH
+ÈÂˆ›Üˆ
+ÛÛœİ\ÙˆÚİÛ‹œÜ]
+	×‰ÊJHÂˆİ™š[^
+\ÍJNÂˆH
+ÏH
+
+NÂˆBˆYˆ
+‹œ™XXİ˜Ú\œÈH‹œ™XXİ^›[™İ	‰ˆX]™›ÛÜŠØ[YK[YHÈŒ
+H	HˆOOH
+HÂˆİ™š[İ[HH	ÈÙ™™	ÎÂˆİ™›ÛHœÊMŠNÂˆİ™š[^
+	ø¥¯
+‹û"©;c¦;'m;"©
+IËÈHML[JNÂˆBˆH[ÙHYˆ
+‹œ\ÙHOOH	ÛY\˜ŞIÊHÂˆËÈ:éâ;'c;'f;!(;`çBˆİ™š[İ[HH	ÈÙLLØIÎÂˆİ™›ÛHœÊNYJNÂˆİ™š[^
+	ø¦iH:éâ;'c;'f;!(;`çIËÍ›ŞH
+ÈÌŠNÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊMŠNÂˆÛÛœİ›Û\[™\ÈH‹›[Û‹›Y\˜ŞKœ›Û\œÜ]
+	×‰ÊNÂˆ]HH›ŞH
+ÈŒÂˆ›Üˆ
+ÛÛœİ\Ùˆ›Û\[™\ÊHÂˆİ™š[^
+\ÍJNÂˆH
+ÏH
+ŒŠNÂˆBˆHH›ŞH
+ÈŒˆ
+È›Û\[™\Ë›[™İ
+ˆ
+ŒŠH
+È
+M
+NÂˆÛÛœİİ\HHØ[YK›\™ÙU^ÈˆÍÂˆÛÛœİÜÈH‹›[Û‹›Y\˜ŞK›Ü[ÛœÎÂˆ›Üˆ
+]HHÈHÜË›[™İÈJÊÊHÂˆ˜]ĞÚÚXÙS[™JÜÖÚWK›X™[ÎKHOOH‹˜İ\œÛÜŠNÂˆH
+ÏHİ\NÂˆBˆH[ÙHYˆ
+‹œ\ÙHOOH	ÛY\˜ŞT™\IÊHÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊMŠNÂˆ]HH›ŞH
+ÈÂˆ›Üˆ
+ÛÛœİ\Ùˆ‹›Y\˜ŞT™\KœÜ]
+	×‰ÊJHÂˆİ™š[^
+\ÍJNÂˆH
+ÏH
+
+NÂˆBˆYˆ
+X]™›ÛÜŠØ[YK[YHÈŒ
+H	HˆOOH
+HÂˆİ™š[İ[HH	ÈÙ™™	ÎÂˆİ™›ÛHœÊMŠNÂˆİ™š[^
+	ø¥¯
+‹û"©;c¦;'m;"©
+IËÈHML[JNÂˆBˆBˆİœ™\İÜ™J
+NÈËÈ;ge:äé:é¯˜[œÛ]H:ìí{&ä
+˜]Ğ˜]H;"ç;'¤{'fØ]™{&`;)çJBˆB‚ˆËÈ; à{'¤;cë{'a:á&:â¥:® ;'¤:â¥:éä;)!;'¡
+8 )Š{'/:èg;'¤:én:âé8 %;f.;-§;(!;%äİ™›Û:éo:éç»-¬:äf:¬ ÂˆËÈ
+;.({(%{'m;cì;b®;%ä:å,:ço:âë:ço;)á:âé
+K‚ˆ[˜İ[Ûˆ[\Ú^™UÕÚY
+^X^ÊHÂˆYˆ
+İ›YX\İ\™U^
+^
+KÚYHX^ÊH™]\›ˆ^Âˆ]H^ÂˆÚ[H
+›[™İˆH	‰ˆİ›YX\İ\™U^
+
+È	ø )‰ÊKÚYˆX^ÊHHœÛXÙJLJNÂˆ™]\›ˆ
+È	ø )‰ÎÂˆB‚ˆËÈ:éâ;'c;(l:¬ H:ì,;bà
+;c#:ãá0­úë.
+p­ûf£;e/; à{'¤;'!;%b:à­:ë.:­k8 %; à{'¤;cëH;'m:à­:èg:éä;)!;'¡;ef:¬èˆËÈ; à{'¤:¬ ;ef;b®Qû'n:ë/;'¤:é«;%ä;!';-ªzí¡;g¢:åª;%­;(.;'¢:â¥J›ŞKLËLL
+{%ä:­î:é¬:âé‚ˆ[˜İ[Ûˆ˜]Ğ\™[˜QİZYJ›Ş][İZYJHÂˆÛÛœİX^ÈH›ŞÈHMÂˆÛÛœİŞH›Ş
+È›ŞÈÈÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆYˆ
+][
+HÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊNYJNÂˆİ™š[^
+[\Ú^™UÕÚY
+][X^ÊKŞ›ŞHH
+NÂˆBˆİ™š[İ[HH	ÈÎ	ÎÂˆİ™›ÛHœÊLÊNÂˆİ™š[^
+[\Ú^™UÕÚY
+İZYKX^ÊKŞ›ŞHHL
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆB‚ˆ[˜İ[Ûˆ˜]Ñ\šĞ\™[˜UšYÛ™]JŠHÂˆÛÛœİÛİ[H‹˜\™[˜KœÛİ[ÂˆYˆ
+Ø[YKœ™YXÙQ
+HÂˆËÈ;( ;"ç:è)p­ú­$z¬ï:ëï;!,H;&a;fe
+;fe:êm;fª:¬ï;)!;'m:®,
+H8 %;ef;b®;(ï:ìà:éã:ìí;'m:â¥:ì*{ «;f%H:îa:á);b®:ã ;"èˆËÈ:­è;'o;ef:¬£; ­;)çzéã;%­:äh{f ;"ç;%o:éo:á$ú¬£;fezìí;eg:âé
+:¬ ;'©H;%­:äd;&­:¬ ;'©{'¤:é«:ìí:âé;fê;%+;&!{'`MJK‚ˆİ™š[İ[HH	Ü™Ø˜JMJIÎÂˆİ™š[™Xİ
+Ë
+NÂˆ™]\›ÂˆBˆÛÛœİÜ˜YHİ˜Ü™X]T˜YX[Ü˜YY[
+Ûİ[Ûİ[KNÛİ[Ûİ[KL
+NÂˆYˆ
+Ü˜Y	‰ˆÜ˜Y˜YÛÛÜ”İÜ
+HÂˆÜ˜Y˜YÛÛÜ”İÜ
+	Ü™Ø˜J
+IÊNÂˆÜ˜Y˜YÛÛÜ”İÜ
+Ë	Ü™Ø˜JMJIÊNÂˆÜ˜Y˜YÛÛÜ”İÜ
+K	Ü™Ø˜J
+IÊNÂˆİ™š[İ[HHÜ˜YÂˆH[ÙHÂˆİ™š[İ[HH	Ü™Ø˜J
+IÎÂˆBˆİ™š[™Xİ
+Ë
+NÂˆB‚ˆËÈ:éâ;'c;(l:¬ H:ì,;bà8 %; àzã ;a-
+;`á:éâH;f£;e/
+È:äèú®,;a-;'f;(l:¬ H;)#z®,
+{'a;eg; à{'¤;%b;%ä;!':­î:é¬:âé‚ˆËÈºço;&­:äç8 %;c*;a-:ìá;(l;'¤H;%b:à­;eg;)!
+;%ì;"­H;c#:ãá;%ä:â¥;($zäd;%­:¬ :í¦zâ¥:âé
+BˆËÈ8¥ 8¥ KLMÖKLMH;c*;a-:è";)à;"©;b®:é«8¥ 8¥ ˆËÈºço;&­:äç;e¢zãæH:ì,;bà;'f[š]
+;c#:ãá;-":®,; à{`ç
+p­İ\]J:èg;)àJp­Ù˜]Ê;(ï;&):î#;('{b®
+p­ÂˆËÈ˜]Ôİ]\Ê;c#:ãá;"ç:¬!:ì%;%a:ç¦;dg;"ç
+p­ÙİZYJ;(l;'¤H;%b:à­
+zéo;c*;a-:ìá:èg;eg:¬ìû%ä:êª;'`:âé‚ˆËÈ[\•Ø]™p­İ\]UØ]™p­Ù˜]Ô\œİXYP\™[˜{'f:í¡:®,:¬ ;(!:í ;'m;dg:éo;,.;(l;ef:¬£;emˆËÈ; â;c*;a-;-¥:¬ û"&;(%{'m;eg;ekzêª{'/:èg:àgzà¦:¬è;&);`à:èg;'n;eg:í¡:®,:â!:ço{'m; çz®,;)à;%bº¬£;eg:âé‚ˆËÈ
+\]KÙ˜]È:èg;)àH;'¤;,­:â¥:®,;(m;ej;"&:éo:­î:ã :èg;'«; «;&ªH8 %:ãæ{'¤H;&a;(!:ãæ{'oŠB‚ˆËÈ[š]
+‹›Ş
+Nˆ;c#:ãá:¬ ;"ç;'¤zä(:åc;'f;c*;a-:ìá;ef;'!; à{`çˆ:â!;( H;.m;&­;a,
+‹œ\˜Ù[[]™\šY\È:äìJzâ¥ˆËÈ;c#:ãá:éo:á&;%­;'m;%­;)à:ëà:èg;%ë:®,;!';"®z¬á;eg:âéˆ:ëî:àoûej;(%H;"«:èkúãá;ej:®æ;-":®,;fe;eg:âé‚ˆ[˜İ[Ûˆ[š]ÚYİÊŠHÂˆ™]\›ˆÈ˜Z[ˆ×K\™Yˆ‹œÚYİÕ\™YÚXÚÕˆŒ™Y–ˆ‹˜\™[˜KœÛİ[™Y–Nˆ‹˜\™[˜KœÛİ[HNÂˆBˆ[˜İ[Ûˆ[š]\˜Ù[
+‹›Ş
+HÂˆ™]\›ˆÈØšˆ[[]™\šY\Îˆ‹œ\˜Ù[[]™\šY\ÈÜ]Û•[Y\ˆLˆÛNˆÈˆ›Ş
+È›ŞÈHNNˆ›ŞH
+È›ŞšÈˆKXÛŞNˆ[XÛŞU[Y\ˆŒNÂˆBˆ[˜İ[Ûˆ[š][
+‹›Ş
+HÂˆ™]\›ˆÈÜ˜ˆ[[]™\šY\Îˆ‹[[]™\šY\ÈÜ]Û•[Y\ˆLˆšYˆÌK‹ŒËVÓX]›Z[Š‹[[]™\šY\ÈÊWKˆ]NˆÈˆ›Ş
+È›ŞÈHNNˆ›ŞH
+È›ŞšÈˆK[šÎˆ[[šÕ[Y\ˆMŒNÂˆBˆ[˜İ[Ûˆ[š][\
+ŠHÈ™]\›ˆÈØšˆ[™\Ú\İYˆ‹[\™\Ú\İYÜ]Û•[Y\ˆŒNÈBˆ[˜İ[Ûˆ[š]™\šYJŠHÈ™]\›ˆÈØšˆ[Ü]Û•[Y\ˆÌYˆ‹™\šYRYYÙYˆ‹™\šYRYÙYÛİÕˆİÜÙˆNÈBˆ[˜İ[Ûˆ[š]ÛŞJŠHÈ™]\›ˆÈÛÜ•ˆMLÛÜˆ[ÛÜ“Ü[•ˆ˜Z[•ˆ^]Îˆ‹˜ÛŞQ^]ÈNÈBˆ[˜İ[Ûˆ[š]]ZY]
+‹›Ş
+HÈ™]\›ˆÈÜİˆÈˆ›Ş
+È›ŞÈÈ‹Nˆ›ŞH
+ÈLK™X\•ˆØ\›Nˆ‹œ]ZY]Ø\›HNÈB‚ˆËÈ˜]Ê‹›Ş
+Nˆ;(ï;&):î#;('{b®:­î:é«:®,8 %;f.;-§:í ;%ä;!'^[YÛIØÙ[\‰ú¬ :¬n:é¬; à{`ç:èg;)á;'¡{eg:âé‚ˆ[˜İ[Ûˆ˜]Ô\˜Ù[
+‹›Ş
+HÂˆÛÛœİ\™[˜HH‹˜\™[˜NÂˆÛÛœİÈH‹Ø]™Kœ\˜Ù[Âˆİ™š[İ[HH	ÈÍØ™YŒ	ÎÂˆİ™š[™Xİ
+ËšÛKHKËšÛKHHKNN
+NÂˆİ™š[İ[HH	ÈÌ	ÎÈİ™›ÛHœÊLJNÂˆİ™š[^
+	ø¡ªIËËšÛKËšÛKH
+È
+NÂˆYˆ
+Ë›ØšŠHÈİ™š[İ[HH	ÈÙŒÌŒ	ÎÈİ™›ÛHœÊMŠNÈİ™š[^
+	ø¥¨ÉËË›Øš‹Ë›Øš‹H
+ÈJNÈBˆYˆ
+\™[˜K˜Ø\œZ[™ÊHÈİ™š[İ[HH	ÈÙŒÌŒ	ÎÈİ™›ÛHœÊLÊNÈİ™š[^
+	ø¥¨ÉË\™[˜KœÛİ[
+ÈL\™[˜KœÛİ[HH
+NÈBˆYˆ
+Ë™XÛŞJHÂˆÛÛœİÈHYØ[YKœ™YXÙQ	‰ˆX]™›ÛÜŠØ[YK[YHÈ
+H	HˆOOHÂˆİ™š[İ[HHÈÈ	ÈÙ™™Œ˜N	Èˆ	ÈÙ™™	ÎÈİ™›ÛHœÊMŠNÂˆİ™š[^
+	ü'ã IËË™XÛŞKË™XÛŞKH
+ÈJNÂˆİ™›ÛHœÊL
+NÈİ™š[^
+	ú¬í{)çIËË™XÛŞKË™XÛŞKHHLŠNÂˆBˆBˆ[˜İ[Ûˆ˜]Õ[
+‹›Ş
+HÂˆÛÛœİ\™[˜HH‹˜\™[˜NÂˆÛÛœİH‹Ø]™K[Âˆİ™š[İ[HH	ÈÙLMLØIÎÂˆİ™š[™Xİ
+œ]KHKœ]KHHKNN
+NÂˆİ™š[İ[HH	ÈÌ	ÎÈİ™›ÛHœÊLJNÂˆİ™š[^
+	ø¦¥‰Ëœ]Kœ]KH
+È
+NÂˆİ™š[İ[HH	ÈÙLMLØIÎÈİ™›ÛHœÊL
+NÂˆİ™š[^
+	û( ;&®;(${"ç	Ëœ]Kœ]KHHMŠNÂˆYˆ
+›Ü˜ŠHÂˆİ™š[İ[HH	ÈÎXØ™™‰ÎÈİ™›ÛHœÊMŠNÈİ™š[^
+	ø¥ãIË›Ü˜‹›Ü˜‹H
+ÈJNÂˆİ™›ÛHœÊL
+NÈİ™š[^
+	úì&:è`	Ë›Ü˜‹›Ü˜‹HHLŠNÂˆBˆYˆ
+\™[˜K˜Ø\œZ[™ÊHÈİ™š[İ[HH	ÈÎXØ™™‰ÎÈİ™›ÛHœÊLÊNÈİ™š[^
+	ø¥ãIË\™[˜KœÛİ[
+ÈL\™[˜KœÛİ[HH
+NÈBˆYˆ
+š[šÊHÈËÈ:ì&:è`
+8¥ãJ{&`:âé:én:® :é«;e!
+8¥¯
+H8 %; âzéã;'/:èg:­k:í¡;ef;)à;%bºâ¥:âéˆİ™š[İ[HH	ÈÍ˜XN‰ÎÈİ™›ÛHœÊMJNÈİ™š[^
+	ø¥¯	Ëš[šËš[šËH
+ÈJNÂˆİ™›ÛHœÊLKYJNÈİ™š[^
+	ûc®;"çIËš[šËš[šËHHLŠNÂˆBˆBˆ[˜İ[Ûˆ˜]Õ[\
+‹›Ş
+HÂˆÛÛœİH‹Ø]™K[\ÂˆYˆ
+›ØšŠHÂˆÛÛœİ™X\ˆHYØ[YKœ™YXÙQ	‰ˆ›Øš‹˜YÙHˆN	‰ˆX]™›ÛÜŠØ[YK[YHÈŠH	HˆOOHÂˆİ™š[İ[HH™X\ˆÈ	ÈÙ™™Œ˜N	Èˆ	ÈÙ™™	ÎÂˆİ™›ÛHœÊN
+NÂˆİ™š[^
+	ø§)ÉË›Øš‹›Øš‹H
+ÈŠNÂˆİ™›ÛHœÊJNÂˆİ™š[İ[HH	ÈÎXNLØŒ	ÎÂˆİ™š[^
+	úè";(!:äçKIIË›Øš‹›Øš‹H
+ÈŒ
+NÂˆİ™š[İ[HH™X\ˆÈ	ÈÙ™™Œ˜N	Èˆ	ÈÙ™™	ÎÂˆİ™›ÛHœÊL
+NÂˆİ™š[^
+	û)à:®":â!:ém:êm:ã :ì%HIË›Øš‹›Øš‹HHLŠNÂˆYˆ
+›Øš‹™Ø^™Uˆ
+HÈËÈ;'d{"ç;)á;e¢H:éàBˆİœİ›ÚÙTİ[HH	ÈÎXØ™™‰ÎÈİ›[™UÚYHÂˆİ˜™YÚ[”]
+
+NÂˆİ˜\˜Ê›Øš‹›Øš‹K‹SX]”HÈ‹SX]”HÈˆ
+ÈX]”H
+ˆˆ
+ˆ
+›Øš‹™Ø^™UÈ]X\ÙJ
+K™Ø^™JJNÂˆİœİ›ÚÙJ
+NÂˆBˆBˆBˆ[˜İ[Ûˆ˜]Õ™\šYJ‹›Ş
+HÂˆÛÛœİ\™[˜HH‹˜\™[˜NÂˆÛÛœİ™ˆH‹Ø]™K™\šYNÂˆËÈ;&ä:ìî;.m:äç
+; à{'¤;'!
+Bˆİ™š[İ[HH	Ü™Ø˜JLŒËŒKŒM
+IÎÂˆİ™š[™Xİ
+›Ş
+È›ŞÈÈˆHLŒ›ŞHHÌŒ
+NÂˆİ™š[İ[HH	ÈÍØ™YŒ	ÎÈİ™›ÛHœÊLËYJNÂˆİ™š[^
+‹œ™\šYPØ\™	û&ä:ìî:®,:ègIË›Ş
+È›ŞÈÈ‹›ŞHHMJNÂˆËÈ;c$;(%H:­k:êcBˆİ™š[İ[HHÚĞÛÛÜŠ
+NÂˆİ™š[™Xİ
+›Ş
+ÈË›ŞH
+È›ŞšÈˆHKNN
+NÂˆİ™š[İ[HH	ÈÌ	ÎÈİ™›ÛHœÊLYJNÈİ™š[^
+	û,.	Ë›Ş
+ÈM‹›ŞH
+È›ŞšÈˆ
+È
+NÂˆİ™š[İ[HH˜YÛÛÜŠ
+NÂˆİ™š[™Xİ
+›Ş
+È›ŞÈHK›ŞH
+È›ŞšÈˆHKNN
+NÂˆİ™š[İ[HH	ÈÌ	ÎÈİ™š[^
+	ú¬l;)äÉË›Ş
+È›ŞÈHM‹›ŞH
+È›ŞšÈˆ
+È
+NÂˆËÈ:êb;-©;(m
+;ef:âê;)${%fJH8 %;/ê:âé;&­;'`;)!;%­:äç:â¥:éàH
+È	û"k:â¥;)$IÈ;dg;"ç:èg;%c:é¬:âéˆÛÛœİŞH›Ş
+È›ŞÈÈ‹ŞHH›ŞH
+È›ŞšHMNÂˆİ™š[İ[HH™‹œİÜÙˆÈ	ÈÍ	Èˆ	ÈÙLLØIÎÂˆİ™›ÛHœÊLÊNÂˆİ™š[^
+	ü'æäIËŞŞH
+ÈÊNÂˆYˆ
+™‹œİÜÙˆ
+HÂˆİœİ›ÚÙTİ[HH	ÈÍ‰ÎÈİ›[™UÚYHÂˆİ˜™YÚ[”]
+
+NÂˆİ˜\˜ÊŞŞKLËSX]”HÈ‹SX]”HÈˆ
+ÈX]”H
+ˆˆ
+ˆ
+™‹œİÜÙÈ
+JNÂˆİœİ›ÚÙJ
+NÂˆİ™š[İ[HH	ÈÎ	ÎÈİ™›ÛHœÊJNÂˆİ™š[^
+	û"k:â¥;)$x )‰ËŞŞHHN
+NÂˆBˆYˆ
+™‹œÛİÕˆ
+HÂˆİ™š[İ[HH	Ü™Ø˜JM‹ŒËMKÊIÎÈİ™›ÛHœÊLJNÂˆİ™š[^
+	ø )»!.; à{'m:â¤:è);(c:âé	ËŞŞHHN
+NÂˆBˆËÈ;(l:¬ J:å,{)à;cë;ej
+H8 %:äé:¬è;'¢;'/:êm;ef;b®;&!»%äˆYˆ
+™‹›ØšŠHÂˆİ™š[İ[HH	ÈÙ™™‰ÎÈİ™›ÛHœÊL‹YJNÂˆİ™š[^
+	Öû!£zìíIË™‹›Øš‹™‹›Øš‹HHL
+NÂˆİ™›ÛHœÊLËYJNÈİ™š[İ[HH	ÈÙ™™	ÎÂˆİ™š[^
+™‹›Øš‹œYXÙK›X™[™‹›Øš‹™‹›Øš‹H
+ÈÊNÂˆBˆYˆ
+\™[˜K˜Ø\œZ[™È	‰ˆ™‹˜Ø\œJHÂˆİ™š[İ[HH	ÈÙ™™	ÎÈİ™›ÛHœÊLËYJNÂˆİ™š[^
+™‹˜Ø\œK›X™[\™[˜KœÛİ[\™[˜KœÛİ[HHMJNÂˆBˆBˆ[˜İ[Ûˆ˜]ÔÚYİÊ‹›Ş
+HÂˆÛÛœİÚH‹Ø]™KœÚYİÎÂˆÛÛœİÚÜİHÚ˜Z[›[™İH]X\ÙJ
+KœÚYİÑ[^HÈÚ˜Z[ÌHˆ[ÂˆYˆ
+ÚÜİ
+HÂˆİ™š[İ[HH	Ü™Ø˜JMŒMŒNMJIÎÂˆİ™›ÛHœÊMÊNÂˆİ™š[^
+	ø¦iIËÚÜİÚÜİH
+ÈŠNÂˆİ™›ÛHœÊJNÈİ™š[İ[HH	ÈÎXNLØŒ	ÎÂˆİ™š[^
+	ú­î:é¯;'¤	ËÚÜİÚÜİHHLŠNÂˆBˆİ™›ÛHœÊM
+NÂˆ›Üˆ
+]HHÈHÎÈJÊÊHÂˆİ™š[İ[HHH
+Ú\™Y
+HÈ	ÈÎXØ™™‰Èˆ	ÈÍMMIÎÂˆİ™š[^
+	ø¥ãÉË›Ş
+È›ŞÈHŒ
+ÈH
+ˆŒ›ŞH
+È›Şš
+ÈÍ
+NÂˆBˆBˆ[˜İ[Ûˆ˜]ĞÛŞJ‹›Ş
+HÂˆÛÛœİ\™[˜HH‹˜\™[˜NÂˆÛÛœİŞˆH‹Ø]™K˜ÛŞNÂˆİ™š[İ[HH	Ü™Ø˜JŒMKLÌKŒMŠIÎÂˆİ˜™YÚ[”]
+
+NÈİ˜\˜Ê›Ş
+È›ŞÈÈ‹›ŞH
+È›ŞšÈ‹‹X]”H
+ˆŠNÈİ™š[
+
+NÂˆİ™š[İ[HH	ÈÙLMNÉÎÈİ™›ÛHœÊL
+NÂˆİ™š[^
+	úâí;&¥	Ë›Ş
+È›ŞÈÈ‹›ŞH
+È›ŞšÈˆ
+ÈÊNÂˆYˆ
+Ş‹™ÛÜŠHÂˆÛÛœİ›[šÈHYØ[YKœ™YXÙQ	‰ˆŞ‹™ÛÜ“Ü[•Ì	‰ˆX]™›ÛÜŠØ[YK[YHÈJH	HˆOOHÂˆİ™š[İ[HH›[šÈÈ	ÈÙ™™‰Èˆ	ÈÎXØ™™‰ÎÈİ™›ÛHœÊMKYJNÂˆİ™š[^
+	ü'æª‰ËŞ‹™ÛÜ‹Ş‹™ÛÜ‹H
+ÈJNÂˆİ™›ÛHœÊJNÈİ™š[^
+	û%í:é¯IËŞ‹™ÛÜ‹Ş‹™ÛÜ‹HHLŠNÂˆBˆËÈ:ì¯{"ç:¬á8 %:âí;&¥;%b;'m:êm:ì%:â¦;'m:îj:é«:ãâ:âéˆÛÛœİŞÈH›Ş
+È›ŞÈ
+È‹ŞZÈH›ŞH
+ÈMÂˆİœİ›ÚÙTİ[HH	ÈÙLMNÉÎÈİ›[™UÚYHKNÂˆİ˜™YÚ[”]
+
+NÈİ˜\˜ÊŞËŞZËLX]”H
+ˆŠNÈİœİ›ÚÙJ
+NÂˆÛÛœİÜHŞ‹š[›[šÙ]ÈˆˆŒÂˆÛÛœİ[™ÈH
+Ø[YK[YHÈÜ
+H	H
+X]”H
+ˆŠNÂˆİ˜™YÚ[”]
+
+NÈİ›[İ™UÊŞËŞZÊNÂˆİ›[™UÊŞÈ
+ÈX]œÚ[Š[™ÊH
+ˆŞZÈHX]˜ÛÜÊ[™ÊH
+ˆ
+NÈİœİ›ÚÙJ
+NÂˆİ™›ÛHœÊM
+NÂˆ›Üˆ
+]HHÈHÎÈJÊÊHÂˆİ™š[İ[HHH
+Ş‹™^]È
+HÈ	ÈÎXØ™™‰Èˆ	ÈÍMMIÎÂˆİ™š[^
+	ø¥ãÉË›Ş
+È›ŞÈHŒ
+ÈH
+ˆŒ›ŞH
+È›Şš
+ÈÍ
+NÂˆBˆBˆ[˜İ[Ûˆ˜]Ô]ZY]
+‹›Ş
+HÂˆÛÛœİHH‹Ø]™Kœ]ZY]ÂˆÛÛœİÛİÈHK›™X\ˆÈH
+ÈX]œÚ[ŠØ[YK[YHÈL
+H
+ˆŒMHˆŒŒÂˆİ™š[İ[HH™Ø˜JŒŒLMK	ÙÛİßJXÂˆİ™›ÛHœÊMJNÂˆİ™š[^
+	ø¥ã	ËKœÜİKœÜİH
+ÈJNÂˆYˆ
+K›™X\ŠHÈİ™›ÛHœÊJNÈİ™š[İ[HH	ÈÎXØ™™‰ÎÈİ™š[^
+	ø )º¬àIËKœÜİKœÜİHHLŠNÈBˆİ™›ÛHœÊM
+NÂˆ›Üˆ
+]HHÈHNÈJÊÊHÂˆİ™š[İ[HHH
+KØ\›H
+HÈ	ÈÎXØ™™‰Èˆ	ÈÍMMIÎÂˆİ™š[^
+	ø¥ãÉË›Ş
+È›ŞÈHMˆ
+ÈH
+ˆN›ŞH
+È›Şš
+ÈÍ
+NÂˆBˆB‚ˆËÈ˜]Ôİ]\Ê‹›Ş
+Nˆ;c#:ãá;"ç:¬!:ì%;%a:ç¦;'f;)á;e¢H;dg;"ç8 %;f.;-§:í ;%ä;!'^[YÛIÛY	û'n; à{`ç:èg;)á;'¡{eg:âé‚ˆ[˜İ[Ûˆ˜]Õ[İ]\Ê‹›Ş
+HÂˆÛÛœİ[œ˜XÈH‹Ø]™K[™šYÈNÂˆİ™š[İ[HH	ÈÌÌÌÉÎÈİ™š[™Xİ
+›Ş›ŞH
+È›Şš
+ÈŒ‹›ŞË
+NÂˆİ™š[İ[HH	ÈÙLMLØIÎÈİ™š[™Xİ
+›Ş›ŞH
+È›Şš
+ÈŒ‹›ŞÈ
+ˆH
+ˆ[œ˜XË
+NÂˆBˆ[˜İ[Ûˆ˜]Õ[\İ]\Ê‹›Ş
+HÂˆÛÛœİ™\Ú\İYH‹Ø]™K[\œ™\Ú\İYÂˆİ™›ÛHœÊM
+NÂˆ›Üˆ
+]HHÈHÎÈJÊÊHÂˆİ™š[İ[HHH™\Ú\İYÈ	ÈÌÌÌÉÈˆ	ÈÙ™™	ÎÂˆİ™š[^
+	ø¥ãÉË›Ş
+È›ŞÈHŒ
+ÈH
+ˆŒ›ŞH
+È›Şš
+ÈÍ
+NÂˆBˆBˆËÈ;c*;a-:è";)à;"©;b®:é«8 %;`©:â¥]Kšœû'f—ÔUT“—ÒÑVTÊ;fe;'m;b®:é«;"©;b®
+{&`:¬í{'(:ä&:â¥:âê;'o;-§;,¦‚ˆËÈ	Ü›İ]IÊ;& {'m:êe;`à
+zâ¥;"é;(';c*;a-;'m;%a:ââ:ço;'m:äé;'a;"';ff;eh:ïä;'m:ço;%ë:®,;%áºâé‚ˆÛÛœİUT“”ÈHÂˆÚYİÎˆÈ[š]ˆ[š]ÚYİË\]Nˆ\]TÚYİË˜]Îˆ˜]ÔÚYİËˆİZYNˆ	ú­î:é¯;'¤:¬ :à­:®.;'a:å,:ço;&*:âé8 %:¬&{'`:®.;'a:ãã;)à:éä;'¤IÈKˆ\˜Ù[ˆÈ[š]ˆ[š]\˜Ù[\]Nˆ\]T\˜Ù[˜]Îˆ˜]Ô\˜Ù[ˆİZYNˆ	úà­;(%zìí:¯®:çë:ëî:éo8¡ª{%ä:ãã:è);(ï;'¤0­È:¬í{)ç<'ã zâ¥:ëî:àoIÈKˆ[ˆÈ[š]ˆ[š][\]Nˆ\]U[˜]Îˆ˜]Õ[˜]Ôİ]\Îˆ˜]Õ[İ]\ËˆİZYNˆ	úì'{'`:ì&:è`:­k;"«:éã8¦¥ˆ;(${"ç:èg8 %;%­:äd;&­;c®;"çH:­k;"«;'`;ej;(%IÈKˆ™\šYNˆÈ[š]ˆ[š]™\šYK\]Nˆ\]U™\šYK˜]Îˆ˜]Õ™\šYKˆİZYNˆ	ü'æä{%ä:êb;-¬;&ä:ìî:¬ï:ã ;(l8¡¤ˆ;(l:¬ {'a;,.ú¬l;)äÈ:­k:êc{%äIÈKˆ[\ˆÈ[š]ˆ[š][\\]Nˆ\]U[\˜]Îˆ˜]Õ[\˜]Ôİ]\Îˆ˜]Õ[\İ]\ËˆİZYNˆ	ú¬à{%ä;!';fezéh;dg:éo;'o{'¤8 %:ê`:é«;!':ì¡;aj:ãá:ãïIÈKˆÛŞNˆÈ[š]ˆ[š]ÛŞK\]Nˆ\]PÛŞK˜]Îˆ˜]ĞÛŞKˆİZYNˆ	úâí;&¥:â¥;cë:­ï;ef;)à:éã;"ç:¬!;'m; ã:âé8 %:ë.;'m;%í:é«:êm:à¦:¬ ;'¤IÈKˆ]ZY]ˆÈ[š]ˆ[š]]ZY]\]Nˆ\]T]ZY]˜]Îˆ˜]Ô]ZY]ˆİZYNˆ	ø )º¬à{%ä;'¢;%­;(ï;'¤ˆ;%­:äh;'m;(l:®";%*H:¬mûg£:âé‰ÈKˆËÈ:­kû)áKÖúà¦—J]
+H:®,:ëî{'`™\šYzèg;&a;(!:ã ;,­:ä&;%­; «{('8 %;%­:å©;e!:èg;ea:ãá;$î;"&;%á»%â:âéˆËÈ
+—ÔUT“—ÒÑVTÈ;fe;'m;b®:é«;"©;b®;%ä;%á»%­˜[Y]z¬ ;'¤zê¡H;'¤;,­:éo:éâzâ¥:âé
+K‚ˆNÂˆËÈ;(l;'¤H;%b:à­:â¥:è";)à;"©;b®:é«;%ä;!';c#; çH8 %İZYH:ë.:­k;'f:âê;'o;-§;,¦‚ˆÛÛœİUT“—ÑÕRQTÈHØš™Xİ™œ›ÛQ[šY\ÊØš™XİšÙ^\ÊUT“”ÊK›X\
+
+ÊHOˆÚËUT“”ÖÚ×K™İZYWJJNÂˆ[˜İ[Ûˆ˜]Ô\œİXYP\™[˜JŠHÂˆÛÛœİ\™[˜HH‹˜\™[˜K›ŞH\™[˜K˜›ŞÂˆËÈ;'n:ë/;'f;&n;.j
+È;(l;'¤H;%b:à­8 %;c*;a-;'m;'¢;'/:êm;c*;a-;%b:à­:¬ ;&¬;!(ˆÛÛœİ]ÈH‹œ\ÙHOOH	İØ]™IÈÈXİ]™T]\›ŠŠHˆ[Âˆ]İZYHH
+]È	‰ˆUT“—ÑÕRQTÖÜ]×JHˆ
+‹œ›ÛÙİYU]ÜšX[È	úéâ;'c;'f;c#:ãáˆ;`á:éâ{'a;e/;ef:êl:ì¡;aj;&¥8 %:¬éÈ:à­;,*:è`IÈˆ	û`á:éâ{'a;e/;ef:êl:ì¡;aj;&¥8 %:¬éÈ:à­;,*:è`:¬ ;&*:âéIÊNÂˆYˆ
+‹œ\ÙHOOH	İØ]™IÈ	‰ˆ‹Ø]™Kœ˜XİXÙJHİZYHH	û%ì;"­H;c#:ãá
+:âé;.f;)à;%b»%a;&¥
+H8 %	È
+ÈİZYNÂˆ˜]Ğ\™[˜QİZYJ›Ş‹˜]XÚÈÈ‹˜]XÚË][ˆ[İZYJNÂ‚ˆYˆ
+‹œ›ÛÙİYU]ÜšX[
+HÂˆİ^[YÛˆH	ÛY	ÎÂˆİ™š[İ[HH	Ü™Ø˜JMKŒMŒLŠIÎÂˆİ™š[™Xİ
+MMŒLŠNÂˆİœİ›ÚÙTİ[HH	Ü™Ø˜JMKŒMJIÎÂˆİ›[™UÚYHNÂˆİœİ›ÚÙT™Xİ
+KMMKŒLŠNÂˆİ™š[İ[HH	ÈÙ™™	ÎÂˆİ™›ÛHœÊLËYJNÂˆİ™š[^
+	ûe!:èi:èg:­î0­È:å,:ço;'f:éâ;'c;%b;*¯IËÍ‹MÍŠNÂˆİ™š[İ[HH	ÈØ˜˜‰ÎÂˆİ™›ÛHœÊLJNÂˆİ™š[^
+	û`-;)¢:¬ ;%a:ââ:ço:äèú¬è;e/;ef:¬è:âé:¬ :¬ :®,	ËÍ‹NLŠNÂˆB‚ˆËÈ; à{'¤;`k:®,;(!;ff;%h:ââ:êe;'m;!f
+KLÊH8 %;c$;(%H; à{'¤
+›Ş
+zâ¥;)¢{"ç:ì%:à#:¬èˆËÈ;ac:äd:é«:â¥:ê¡È;e!:è";'¡;%ä:¬n;,ä:å,:ço;&*:âé
+:èê:ëî;'f;-¥{!£ûf£:ìí{'m:í :äç:çïz¬£:ìí;'n:âé
+BˆYˆ
+X‹˜›ŞØ[YKœ™YXÙQ
+H‹˜›ŞHÈˆ›ŞNˆ›ŞKÎˆ›ŞËˆ›ŞšNÂˆ[ÙHÂˆ‹˜›Ş
+ÏH
+›ŞH‹˜›Ş
+H
+ˆŒNÂˆ‹˜›ŞH
+ÏH
+›ŞHH‹˜›ŞJH
+ˆŒNÂˆ‹˜›ŞÈ
+ÏH
+›ŞÈH‹˜›ŞÊH
+ˆŒNÂˆ‹˜›Şš
+ÏH
+›ŞšH‹˜›Şš
+H
+ˆŒNÂˆBˆËÈ:ì%{"©8 %:èê:ëî
+:ìí;"©
+zâ¥;cë:­ï;eg; âH;ac:äd:é«:èg;dg;"ç:ä':âé
+;-¥{!£:®,:ëîH;)á;e¢H;)$H;%b:à­
+Bˆİœİ›ÚÙTİ[HH‹œ›Ü[“YXÚ[šXÈOOH	ÜÚš[šÉÈÈ	ÈÙLMNÉÈˆ	ÈÙ™™‰ÎÂˆİ›[™UÚYHÂˆİœİ›ÚÙT™Xİ
+‹˜›Ş
+ÈK‹˜›ŞH
+ÈK‹˜›ŞË‹˜›Şš
+NÂ‚ˆËÈ;`á:éâBˆYˆ
+‹˜]XÚÊHÂˆİ™š[İ[HH‹˜]XÚË˜ÛÛÜÂˆ›Üˆ
+ÛÛœİHÙˆ\™[˜K˜[]ÊHÂˆİ˜™YÚ[”]
+
+NÂˆİ˜\˜ÊKKKKœ‹X]”H
+ˆŠNÂˆİ™š[
+
+NÂˆBˆB‚ˆËÈ:¬è;&¥
+:ìí;"©
+H8 %;%­:äh;!£{%ä;!';ef;b®;(ï:ìà:éã:ìí;'n:âé
+;`á:éâ{'`;%­:äh:ì%»%ä;!':à¨;%a:äè:âé
+BˆÛÛœİ]˜]ÈH‹œ\ÙHOOH	İØ]™IÈÈXİ]™T]\›ŠŠHˆ[ÂˆÛÛœİXİ]™QH]˜]È	‰ˆUT“”ÖÜ]˜]×NÈËÈKLM;c*;a-:ìá:­î:é«:®,:å%;"©;c*;.fˆYˆ
+
+]˜]ÈOOH	Ü]ZY]	È
+‹œ›Ü[“YXÚ[šXÈOOH	Ù\šÉÈ	‰ˆ‹œİ]HOOH	ÛÜ[‰ÊJH	‰ˆ‹œ\ÙHOOH	İØ]™IÊH˜]Ñ\šĞ\™[˜UšYÛ™]JŠNÂ‚ˆYˆ
+‹œ\ÙHOOH	İØ]™IÊHÂˆËÈ:¬è;&¥
+:ìí;"©
+H8 %;`á:éâ{'m:à¦;&):®,;(!;"©;cì;'a;eg:ì¢:®g:îh{%ë;&":¬è;eg:âéˆYˆ
+‹œ›Ü[“YXÚ[šXÈOOH	Ù\šÉÈ	‰ˆ
+‹Ø]™K™\šÕØ\›•
+Hˆ
+HÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[İ[HH
+Ø[YKœ™YXÙQX]™›ÛÜŠØ[YK[YHÈ
+H	HˆOOH
+HÈ	ÈÙ™™‰Èˆ	ÈÙLØMY‰ÎÂˆİ™›ÛHœÊMKYJNÂˆİ™š[^
+	ø )ˆIË›Ş
+È›ŞÈÈ‹›ŞHHLŠNÂˆİ^[YÛˆH	ÛY	ÎÂˆBˆİ^[YÛˆH	ØÙ[\‰ÎÂˆËÈ;c*;a-:ìá;(ï;&):î#;('{b®:­î:é«:®,8 %:è";)à;"©;b®:é«:å%;"©;c*;.f
+KLM
+Kˆ^[YÛIØÙ[\‰È; à{`ç‚ˆYˆ
+Xİ]™Q	‰ˆXİ]™Q™˜]ÊHXİ]™Q™˜]Ê‹›Ş
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆËÈ:àª;'`;c#:ãá;"ç:¬!:ì%ˆÛÛœİœ˜XÈHX]›X^
+HH‹Ø]™KÈ‹Ø]™K™\ŠNÂˆİ™š[İ[HH	ÈÌÌÌÉÎÈİ™š[™Xİ
+›Ş›ŞH
+È›Şš
+ÈL‹›ŞËŠNÂˆİ™š[İ[HH	ÈÙ™™	ÎÈİ™š[™Xİ
+›Ş›ŞH
+È›Şš
+ÈL‹›ŞÈ
+ˆœ˜XËŠNÂˆËÈ;c#:ãá;"ç:¬!:ì%;%a:ç¦;)á;e¢H;dg;"ç8 %;c*;a-:ìá˜]Ôİ]\È:å%;"©;c*;.f
+KLM
+Kˆ^[YÛIÛY	È; à{`ç‚ˆËÈ
+:®,;&®:®,:ì%0­úì&;)çH;(l:ê¡p­Öû)áH;( {)$H;dg;"ç:¬ :¬ H;c*;a-˜]Ôİ]\úèg;&+º¬ª;(c:âéŠBˆYˆ
+Xİ]™Q	‰ˆXİ]™Q™˜]Ôİ]\ÊHXİ]™Q™˜]Ôİ]\Ê‹›Ş
+NÂˆËÈ:èê:ëî
+:ìí;"©
+H;-¥{!£:âê:¬á;dg;"ç8 %; à{'¤:¬ ;( {%a;)á:âê:¬á:éã;`o;,a;&ã;)à:â¥:¬£;'m;)à
+;cë:­ï;eg; âJBˆËÈ;'m;dg;"ç:â¥;b®{(%H;c*;a-;'m;%a:ââ:çoÚš[šÈ:®,:ëîJ:èê:ëî
+H;(!:ì&;%ä:¬n:é¬:âé8 %:è";)à;"©;b®:é«:ì%»%ä:äe:âé‚ˆYˆ
+]˜]ÈOOH	ØÛŞIÈ
+‹œ›Ü[“YXÚ[šXÈOOH	ÜÚš[šÉÈ	‰ˆ‹œİ]HOOH	ÛÜ[‰ÊJHÂˆÛÛœİ›H‹œÚš[šÓ]™[Âˆİ™š[İ[HH	ÈÌÌÌÉÎÈİ™š[™Xİ
+›Ş›ŞH
+È›Şš
+ÈŒ‹›ŞË
+NÂˆİ™š[İ[HH	ÈÙLMNÉÎÈİ™š[™Xİ
+›Ş›ŞH
+È›Şš
+ÈŒ‹›ŞÈ
+ˆ
+›ÈÒ’S’×ÓPVÓU‘S
+K
+NÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[İ[HH	ÈÙLMNÉÎÈİ™›ÛHœÊL
+NÂˆİ™š[^
+;cë:­ï;ej	Û›KÉÔÒ’S’×ÓPVÓU‘SX›Ş
+È›ŞÈÈ‹›ŞH
+È›Şš
+ÈÍ
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆBˆB‚ˆËÈ;ef;b®
+;!£;&®
+H8 %:ë-;( H;"ç:¬!:ãæ{%b:®g:îh{'¡ˆYˆ
+J\™[˜Kš[ˆˆ	‰ˆX]™›ÛÜŠØ[YK[YHÈ
+H	HˆOOH
+JHÂˆİ™š[İ[HH	ÈÙLLØIÎÂˆİ™›ÛHœÊMÊNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[^
+	ø¦iIË\™[˜KœÛİ[\™[˜KœÛİ[H
+ÈŠNÂˆİ^[YÛˆH	ÛY	ÎÂˆB‚ˆËÈ:îa;,*:âê;e#:èg;c!H;ac{"©;b®
+; à{'¤;'!:éo;,§;,§;g¢:å¨;&):én:âé
+BˆYˆ
+‹™›Ø]Xİ]™JHÂˆÛÛœİ˜HH‹™›Ø]Xİ]™NÂˆÛÛœİ[HH˜KŒÈ˜KÈŒˆ˜Kˆ˜K™\ˆHÌÈ
+˜K™\ˆH˜K
+HÈÌˆNÂˆÛÛœİHH›ŞHHÌH˜K
+ˆŒLÈËÈ;&n;.j
+L
+p­û%b:à­
+LL
+{&`:¬®{.f;)à;%bº¬£:­î;'!;%ä;!';"ç;'¤Bˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™›ÛHœÊMYJNÂˆÛÛœİ\ÈHİš[™Ê˜K^
+KœÜ]
+	×‰ÊNÂˆ›Üˆ
+]HHÈH\Ë›[™İÈJÊÊHÂˆİ™š[İ[HH™Ø˜JMKMKMK	ÓX]›X^
+[J_JXÂˆİ™š[^
+\ÖÚWKÈÈ‹H
+ÈH
+ˆN
+NÂˆBˆİ^[YÛˆH	ÛY	ÎÂˆBˆB‚ˆ[˜İ[Ûˆ˜]Õ]J
+HÂˆİ™š[İ[HH	ÈÌ	ÎÂˆİ™š[™Xİ
+Ë
+NÂ‚ˆËÈ:ì,:¬¯H:ìáˆ›Üˆ
+]HHÈHÈJÊÊHÂˆÛÛœİŞH
+H
+ˆMÌÊH	HÎÂˆÛÛœİŞHH
+H
+ˆMÊH	H
+ÈŠNÂˆÛÛœİÈHX]œÚ[ŠØ[YK[YHÈÌ
+ÈJHˆŒÈÈHˆÂˆİ™š[İ[HH™Ø˜JMKMKMK	İÈ
+ˆßJXÂˆİ™š[™Xİ
+ŞŞK‹ŠNÂˆB‚ˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊYJNÂˆİ™š[^
+	úéâ;'c;'f:ë.	ËÈÈ‹ŠNÂˆİ™š[İ[HH	ÈÎ	ÎÂˆİ™›ÛHœÊMJNÂˆİ™š[^
+	ûfe:êm;!£{%ä;!':â!:­l:¬ :®,:âé:é«:¬è;'¢:âé	ËÈÈ‹LM
+NÂ‚ˆËÈ;'n:ë/:äé:äi{"é:äi{"é
+;eg;)!
+BˆÛÛœİ\˜YHHÉØ™ZÚŞY[Û[Û‰Ë	ÜİZš\[Û‰Ë	ÜY[ÛšX[™Û[Û‰Ë	ÚØ[™ØZÛ[Û‰Ë	Ş]ZÚÛ[Û‰Ë	ÚÛ[[[Û‰Ë	Ùš[˜[›ÜÜÉË	ŞY[Û™ÚI×NÂˆ›Üˆ
+]HHÈH\˜YK›[™İÈJÊÊHÂˆÛÛœİHÈÈˆH\˜YK›[™İ
+ˆ
+ÈH
+ˆÂˆ˜]Ó[ÛŠİ\˜YVÚWKLÍ
+ÈX]œÚ[ŠØ[YK[YHÈŒ
+ÈH
+ˆKŒJH
+ˆKÊNÂˆB‚ˆËÈ;!.;'m:î#;"«:èkÈú¬'ˆÛÛœİ›ŞÈHŒ›ŞHÈÈˆH›ŞÈÈÂˆ›Üˆ
+]HHÈHÓÕĞÓÕS•ÈJÊÊHÂˆÛÛœİHHŒLˆ
+ÈH
+ˆÍHÂˆÛÛœİÙ[HHOOHØ[YKœÛİİ\œÛÜˆ	‰ˆØ[YK]TØÜ™Y[ˆOOH	ÜÛİÉÎÂˆ]›Ş
+›ŞK›ŞË
+NÂˆYˆ
+Ù[
+HÂˆİ™š[İ[HH	ÈÙLLØIÎÂˆİ™›ÛHœÊMŠNÂˆİ^[YÛˆH	ÛY	ÎÂˆİ™š[^
+	ø¦iIË›ŞHŒ‹H
+ÈÎ
+NÂˆB‚ˆÛÛœİİ[HHÛİİ[[X\JJNÂˆİ^[YÛˆH	ÛY	ÎÂˆİ™š[İ[HH	ÈÎ	ÎÂˆËÈ;"«:èkÈ;!(;`ç{'`:¬£;'¡;'f;,ªÈ:­ :ë.8 %;`l:® ;%*:êª:äç
+œÊzéo;%ë:®,;%ä:ãá;( {&ª{eg:âéˆİ™›ÛHœÊLËYJNÂˆİ™š[^
+;"«:èkÈ	ÚH
+È_X›Ş
+ÈNH
+ÈŒŠNÂˆYˆ
+İ[JHÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊNKYJNÂˆİ™š[^
+İ[K›˜[YK›Ş
+ÈNH
+ÈŠNÂˆİ™š[İ[HH	ÈÎ	ÎÂˆİ™›ÛHœÊLÊNÂˆÛÛœİ›ÙÈHİ[K™Û™HÈ	úêª;eæ;&a:èã	Èˆİ[KœİYÙNÂˆÛÛœİİ™XZÈHÙ]Y]JJKœİ™XZÈÂˆİ^[YÛˆH	ÜšYÚ	ÎÂˆİ™š[^
+	Ü›ÙßH8¦iH	Üİ[K›Y\˜Ş_IÜİ™XZÈÈ	È<'å)IÈ
+Èİ™XZÈˆ	ÉßX›Ş
+È›ŞÈHNH
+È
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆËÈ‹LÈ;&):â¦;'f:ãá;(!:ëî;&a:èã:ì,;)à8 %;"«:èkÈ;fe:êm;%ä;!';'`;'`;g¢;%c:è);) :âé
+:ì£;($0­û!£:ên;%á»'c
+BˆYˆ
+YZ[QÛ™UÙ^JJJHÂˆİ™š[İ[HH[YPXØÙ[
+
+NÂˆİ™›ÛHœÊL‹YJNÂˆİ™š[^
+	ø¥íÈ;&):â¦;'f:ãá;(!	Ë›Ş
+ÈNH
+ÈŒŠNÂˆBˆH[ÙHÂˆËÈ;"è:­ç;ef{ ç{'m:¬ ;'©H:ê/;( :¬ê:ço;%o;ef:â¥;%b:à­:ço:ã :îa:éo;-ªzí¡;g¢;) :âé
+:®,;(mÍMMzâ¥‹ŒzègPH:ëî:âë
+Bˆİ™š[İ[HH	ÈØØŒ˜Î	ÎÂˆİ™›ÛHœÊMÊNÂˆİ™š[^
+	ø %:îa;%­;'¢;'c
+; â:êª;eæ
+H8 %	Ë›Ş
+ÈNH
+ÈŠNÂˆBˆB‚ˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[İ[HH	ÈÍÍÍÉÎÂˆËÈ:âê;-¥{`©:â¥;em{"ë:éã8 %:à¦:ê.;)à:â¥H:ãá;&à:éä
+:æ$:â¥:êe:âm
+Kˆ:ì¯H:¬&{'`;`©:à¦;%í;'`;-":äìH;,ªû'n; à{'a;em;.g:âé‚ˆYˆ
+\ÕİXÚ]šXÙJHÂˆİ™›ÛHœÊM
+NÂˆİ™š[^
+	û"©;bì{'/:èg;"«:èkÈ;!(;`çH0­È8¤­ºèg;"ç;'¤IËÈÈ‹MŠNÂˆİ™š[İ[HH	ÈÎXXNÎ	ÎÂˆİ™›ÛHœÊLÊNÂˆİ™š[^
+	û.g:­k;"&;,ªp­úì,{%áH:äìH8¡¤ˆúêe:âmH0­È;!(; çzâæ8¡¤ˆ;&):én;*¯H;%a:ç¦	ËÈÈ‹ÍŠNÂˆH[ÙHÂˆİ™›ÛHœÊLÊNÂˆİ™š[^
+	ø¡¤x¡¤È;!(;`çH0­Èˆ;"ç;'¤H0­È; «{('0­ÈH:ãá;&à:éä	ËÈÈ‹MŠNÂˆİ™š[İ[HH	ÈÍ‰ÎÂˆİ™›ÛHœÊLŠNÂˆİ™š[^
+	Õ;!(; çzâæ:ì*IÈ
+È
+\Ñ[]YÛİ
+
+HÈ	È0­Èˆ;)à;&­;!.;'m:î#:ä&; ­:é«:®,	Èˆ	ÉÊH
+È	È0­ÈH;'c;%aIËÈÈ‹ÍŠNÂˆBˆËÈ:îc:äç:ì¡;(!8 %ÕÈ;.¤;"ç:èg;&&È:îc:äç:¬ :àª;%f:â¥;)à:­k:í¡;&ªBˆİ™š[İ[HH	ÈÍ	ÎÂˆİ™›ÛHœÊLJNÂˆİ™š[^
+‰ÑĞSQWÕ‘T”ÒSÓŸXÈHÍ‹N
+NÂ‚ˆËÈ:ì':¬«;eg;%å:å*H
+:¬£;'¡;'a:âé;"ç;"ç;'¤{em:ãá:àª:â¥:âé
+BˆÛÛœİÙY[ˆHÙ][™[™ÜÔÙY[Š
+NÂˆÛÛœİÙY[Ûİ[HÉÚÛYIË	Ù]Û‰Ë	Ù˜\™]Ù[	Ë	ÜÚ[[	×K™š[\Š
+ÊHOˆÙY[–Ú×JK›[™İÂˆÛÛœİ˜[Y\ÈHÈÛYNˆ	û)ä{'/:èg	Ë]Ûˆ	û â:ì¯IË˜\™]Ù[ˆ	û'¤zìá	ËÚ[[ˆ	û.j:ë-IÈNÂˆÛÛœİ›İ[™HÉÚÛYIË	Ù]Û‰Ë	Ù˜\™]Ù[	Ë	ÜÚ[[	×Bˆ›X\
+
+ÊHOˆ
+ÙY[–Ú×HÈ˜[Y\ÖÚ×Hˆ	ÏÏÏÉÊJKš›Ú[Š	È0­È	ÊNÂˆİ™š[İ[HH	ÈÙLLØIÎÂˆİ™›ÛHœÊLÊNÂˆİ™š[^
+8¦iH:ì':¬«;eg;%å:å*H	ÜÙY[Ûİ[KÍ8 %	Ù›İ[™H0­È;.g:­k	Ù^ÙY[Ûİ[
+
+_KÉÑVÓÔ‘T‹›[™İXÈÈ‹N
+NÂ‚ˆËÈ;( ;'©H:í¢:¬ ;ff:¬¯H:¬¯z¬è
+:îa:¬íz¬':êª:äç0­û( ;'©z¬íz¬!:¬ :äçH:äìJBˆYˆ
+\İÜ˜YÙSÚÊHÂˆİ™š[İ[HH˜YÛÛÜŠ
+NÂˆİ™›ÛHœÊL‹YJNÂˆİ™š[^
+	ø¦¨;)á;e¢{'m;( ;'©zä&;)à;%bºâ¥;ff:¬¯{'m;%ä;&¥8 %:êe:âm;'f:ãl;'m;a,:ì,{%á{'a;'m;&ª{ef;!.;&¥	ËÈÈ‹LŒ
+NÂˆB‚ˆËÈ; «{(';fe{'nˆYˆ
+Ø[YK]TØÜ™Y[ˆOOH	Ù[]IÊHÂˆİ™š[İ[HH	Ü™Ø˜J
+IÎÂˆİ™š[™Xİ
+Ë
+NÂˆÛÛœİİ[HHÛİİ[[X\JØ[YKœÛİİ\œÛÜŠNÂˆ]›Ş
+ÈÈˆHŒŒLÌŠNÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊNYJNÂˆİ™š[^
+;"«:èkÈ	ÙØ[YKœÛİİ\œÛÜˆ
+È_H‰Üİ[HÈİ[K›˜[YHˆ	ÉßH˜ÈÈ‹
+NÂˆİ™›ÛHœÊMJNÂˆİ™š[İ[HH	ÈÙLLØIÎÂˆİ™š[^
+	û(%zéä; «{(';eh:®c;&¥ÉËÈÈ‹Ì
+NÂˆİ™š[İ[HH	ÈÎ	ÎÂˆİ™›ÛHœÊLÊNÂˆİ™š[^
+	û"é;"&:èg;)à;&è:âé:êm;"«:èkÈ;fe:êm;%ä;!'ºèg;eg:ì¢:ä&; ­:é­;"&;'¢;%­;&¥‰ËÈÈ‹LŠNÂˆİ™›ÛHœÊM
+NÂˆİ™š[^
+	Öˆ; «{('0­Èˆ;-ê;!£	ËÈÈ‹ÌMŠNÂˆB‚ˆËÈKMH:äd:ì¢;)î:êª;eæ;!(;`çH;&):ì¡:è";'m8 %;`m:é«;%­;"«:èkû%ä;!'ºéo:â#:è ;'a:åcˆYˆ
+Ø[YK]TØÜ™Y[ˆOOH	Û™ØÚÚXÙIÊHÂˆİ™š[İ[HH	Ü™Ø˜J
+IÎÂˆİ™š[™Xİ
+Ë
+NÂˆÛÛœİİ[HHÛİİ[[X\JØ[YKœÛİİ\œÛÜŠNÂˆ]›Ş
+ÈÈˆHŒŒNLMŒŠNÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊNYJNÂˆİ™š[^
+;"«:èkÈ	ÙØ[YKœÛİİ\œÛÜˆ
+È_H‰Üİ[HÈİ[K›˜[YHˆ	ÉßHˆ8 %:êª;eæ;&a:èãÈÈ‹Œ
+NÂˆİ™›ÛHœÊLÊNÂˆİ™š[İ[HH	ÈÎ	ÎÂˆİ™š[^
+	û'm;'m;%o:®,:éo;%­:å®ú¬£;'m;%­:¬":®c;&¥ÉËÈÈ‹L
+NÂˆÛÛœİÜÈHÉû'm;%­;!':ìï:ç¦
+;fá;'o:âí
+IË	ø¦!H:äd:ì¢;)î:êª;eæ
+;,¦;'c:í ;a,
+I×NÂˆ›Üˆ
+]HHÈHÜË›[™İÈJÊÊHÂˆÛÛœİŞHH
+ÈH
+ˆÌÂˆÛÛœİÛˆHØ[YK›™Ğİ\œÛÜˆOOHNÂˆİ™š[İ[HHÛˆÈ[YPXØÙ[
+
+Hˆ	ÈØØŒ˜Î	ÎÂˆİ™›ÛHœÊMKÛŠNÂˆİ™š[^
+
+ÛˆÈ	ø¥®	Èˆ	È	ÊH
+ÈÜÖÚWKÈÈ‹ŞJNÂˆBˆİ™š[İ[HH	ÈÍÍÍÉÎÂˆİ™›ÛHœÊLŠNÂˆİ™š[^
+	ø¡¤x¡¤È;!(;`çH0­Èˆ:¬¬;(%H0­È;-ê;!£	ËÈÈ‹Í
+NÂˆBˆİ^[YÛˆH	ÛY	ÎÂˆB‚ˆ[˜İ[Ûˆİ\™]ÑØ[YJÛİ˜[YK™ÊHÂˆØ[YK˜İ\œ™[ÛİHÛİÂˆØ[YKœ^Y\“˜[YHH˜[YH	û"&;f.;'¤	ÎÂˆØ[YK›X\H	Ú[›ÛX‰ÎÂˆØ[YKœ^Y\‹HMÈØ[YKœ^Y\‹HHMÂˆØ[YKœ^Y\‹œHM
+ˆÎÈØ[YKœ^Y\‹œHHMˆ
+ˆÎÂˆØ[YKœ^Y\‹™\ˆH	İ\	ÎÂˆØ[YK™›YÜÈH™]Ñ›YÜÊ
+NÂˆYˆ
+™ÊHØ[YK™›YÜË›™ÈHYNÈËÈKMH:äd:ì¢;)î:êª;eæ
+‘ÊÊH8 %;!.;'m:î#;"©;`©:éâ;& {e©H;%á»'m›YÜû%ä:éãˆØ[YK›[ÙHH	İÛÜ›	ÎÂˆØ]™J
+NÂˆ™XÛÜ™^Q^JÛİ
+NÂˆÚXÚĞÛÜÛY]XÕ[›ØÚÜÊÛİ
+NÂˆËÈ;'n;b®:èg;%e;(!8 %;,ªÈû)!
+;.í;dê;a,;"é;'©zêm
+H:ãæ{%b;fe:êm;'a:¬l;'f:¬ :¬£:ãkºâ¥:âé‚ˆËÈ:ì¢;)î;)!:í ;a,:¬mûg¢:®,;"ç;'¤{eg:âé
+˜]ÕÛÜ›;%ä;!';,¦:é«
+K‚ˆËÈ;'n;b®:èg:ãæ{%b;'`;%a:ë-;'c;%azãá;gd:ém;)à;%bºâ¥:âé8 %;.j:ë-{'/:èg;"ç;'¤{em:â";'a:ç+:ä©;%ä;%oˆËÈ;'c;%a{'m;%a;(ï:à«º¬£;gf:çë:äè:âé
+:âé;`k;a©;&);e!:âçH;%ì;-§
+K‚ˆØ[YKš[›Ñ[HHÈ˜YQœ˜[YNˆLHNÂˆËÈ;,ªÈ:ì,;bà:®c;)à;'oz®,:í :âí;'a;)!;'m:®,;'!;em;&);e!:âçH; à{'¤:éo;%e{-¥{eg:âé‚ˆİ\X[ÙÊÂˆ	úâ";'a:ç*:ââ;( {'`:ì*K—ºà¨{'`:®,:¬á:äé:­î:é«:¬èºì&;)ç{'m;)à;%bºâ¥:ë.;ef:à¦‰Ëˆ	úà¦:¬ :è):êm:ì*H;%b;'f:án:ç :âê;!':éo;,/»'¤—Š:êª{dg0­ûfe; ­;dg:â¥;&o;*¯H;'!0­Èºèg;(l; «
+IËˆK[
+
+HOˆÂˆËÈ:ãæ{e¢{'¤;ejzéf8 %:ë-;'c;'f;'n;b®:èg:àg{%ä;'¤{'`:îfû'm:à¨;%a:äè:âéˆ;'c;%a{'`:­î:ä©;%ä;%o;gf:çë:äè:âé‚ˆİ\X[ÙÊÂˆ	Ê;'¤{'`:îfÈ;ef:à¦:¬ ;cë:ém:ém:à¨;%a;&`»%­:®j;&!»%ä:êb;-¦:âéŠWºì&:å%ˆ;%b:áeHH:®.;' û'`;%a;'m×¸ )»&!»%ä;'¢;%­;)!:¬£ˆ;%­:å%:äè‰ËˆK	úì&:å%	Ë
+
+HOˆÂˆØ[YK™›YÜË˜˜[™R›Ú[™YHYNÂˆØ]™J
+NÂˆÛİ[™œ^SX\™ÛJPTÖÙØ[YK›X\KœÛÛ™ÊNÂˆJNÂˆJNÂˆB‚ˆËÈ;( ;'©zä';'!;.f:¬ 
+:éíH;"&;(%p­û!¤; àH:äì{'/:èg
+H:éâ{g£;.n;'m:êm:¬ :®c;&­;%b;(!;eg;.n;'a;,/»%a:¬!ûg¦;'a:éâzâ¥:âé‚ˆ[˜İ[Ûˆš[™ØY™TÜ]ÛŠX\YJHÂˆÛÛœİHHPTÖÛX\YNÂˆYˆ
+[JH™]\›ˆ[ÂˆÛÛœİHK[\Ë›[™İÈHK[\ÖÌK›[™İÂˆÛÛœİÚÕ[HH
+JHOˆH	‰ˆHH	‰ˆÈ	‰ˆH	‰‚ˆTÓÓQ
+[P]
+X\YJJH	‰ˆ[œĞ]
+X\YJH	‰ˆ[[Ûœİ\]
+X\YJNÂˆYˆ
+ÚÕ[JJJH™]\›ˆÈHNÂˆ›Üˆ
+]ˆHNÈˆX]›X^
+Ë
+NÈŠÊÊHÂˆ›Üˆ
+]HH\ÈHHÈJÊÊHÂˆ›Üˆ
+]H\ÈHÈ
+ÊÊHÂˆYˆ
+X]˜XœÊ
+HOOHˆ	‰ˆX]˜XœÊJHOOHŠHÛÛ[YNÈËÈ;ac:äd:é«:éãˆYˆ
+ÚÕ[J
+ÈH
+ÈJJH™]\›ˆÈˆ
+ÈNˆH
+ÈHNÂˆBˆBˆBˆ™]\›ˆ[ÂˆB‚ˆ[˜İ[ÛˆÛÛ[YQØ[YJÛİ
+HÂˆÛÛœİÈHØYÛİ
+Ûİ
+NÂˆYˆ
+\ÊH™]\›ÂˆØ[YK˜İ\œ™[ÛİHÛİÂˆØ[YKœ^Y\“˜[YHHË›˜[YH	û"&;f.;'¤	ÎÂˆØ[YK›X\H
+Ë›X\	‰ˆPTÖÜË›X\JHÈË›X\ˆ	İš[YÙIÎÂˆ]ŞH
+\[ÙˆËOOH	Û[X™\‰ÊHÈËˆLÎÂˆ]ŞHH
+\[ÙˆËHOOH	Û[X™\‰ÊHÈËHˆMÂˆËÈ:éâ{g£;.n;'m:êm:ìí;(%K:­î:ç¦:ãá;%á»'/:êm:éâ;'a:®,:ìî;'!;.f:èg:ìíz­àˆYˆ
+ÓÓQ
+[P]
+Ø[YK›X\ŞŞJJJHÂˆÛÛœİØY™HHš[™ØY™TÜ]ÛŠØ[YK›X\ŞŞJNÂˆYˆ
+ØY™JHÈŞHØY™KÈŞHHØY™KNÈBˆ[ÙHÈØ[YK›X\H	İš[YÙIÎÈŞHLÎÈŞHHMÈBˆBˆØ[YKœ^Y\‹HŞÈØ[YKœ^Y\‹HHŞNÂˆØ[YKœ^Y\‹œHŞ
+ˆÎÈØ[YKœ^Y\‹œHHŞH
+ˆÎÂˆØ[YKœ^Y\‹™\ˆH	İ\	ÎÂˆËÈ:®j;)á;!.;'m:î#
+;e#:ç¦:­î;%á»'c
+zãá; â;e#:ç¦:­î:èg;"®z¬á;em:èg:äç:¬ ;(ï{)à;%bº¬£;eg:âéˆÛÛœİÙˆHË™›YÜÈßNÂˆØ[YK™›YÜÈHØš™Xİ˜\ÜÚYÛŠ™]Ñ›YÜÊ
+KÙŠNÂˆØ[YK™›YÜË™Y™X]YHØš™Xİ˜\ÜÚYÛŠ™]Ñ›YÜÊ
+K™Y™X]YÙ‹™Y™X]Y
+NÂˆËÈ;'m;"¢ˆ;'o:ì&;'m;%­;ef:®,:â¥;"&;%áJ;,*;"ç
+H;!.;!f;'m;%a:ââ:âé8 %;&&È;!.;'m:î#;%ä:àª;'`Û\ÜÔÙ\ÜÚ[Û»'a:à­:è)ˆËÈ	û'm:ì¢;"ç:¬!:êª{dg	È:ì,:á"ĞÓTÔ×ÑS‘ÓS‘{'m;'¦:ê®È:í¦zâ¥:¬ û'a:éâzâ¥:âé‚ˆØ[YK™›YÜË˜Û\ÜÔÙ\ÜÚ[ÛˆH˜[ÙNÂˆØ[YK›[ÙHH	İÛÜ›	ÎÂˆŞ[˜Ô^›T[Š
+NÈËÈ:ì*{`â;-§:ì*H;%b;%ä;!';( ;'©zä';!.;'m:î#:êm;co;)¤;'a; â:èg;"ç;'¤BˆÛÛœİY]HH™XÛÜ™^Q^JÛİ
+NÂˆÚXÚÕ[›ØÚÜÊÛİ
+NÂˆİ\™˜XÙQZ[P[™İ™XZÊÛİY]JNÈËÈ‹LÈ;&):â¦;'f:ãá;(!0­û"©;b®:é«H;dg:êm;fe
+ÚXÚÕ[›ØÚÜÈ:ä©8 %;%c:é¯;&¬;!(
+BˆÛİ[™œ^SX\™ÛJPTÖÙØ[YK›X\KœÛÛ™ÊNÂˆB‚ˆËÈ‹LÈ;'o;'o:ãá;(!;dg:êm;fe8 %;&å:äç;)á;'¡H;"ç;"©;b®:é«H:éâ;'o;"©;a©
+ğ­Íğ­ÌM;'o
+H;-¥{ef:¬ ;'¢;'/:êm:ê/;( ˆËÈ;%áº¬è;&):â¦;'f:ãá;(!;'m:ëî;&a:èã:êm:ãá;(!:­î{'©{'/:èg;'m:àa:â¥;%c:é¯;'a{f£:ça;&­:âéˆ:ì£;($0­û!£:ên;%á»'c‚ˆ[˜İ[Ûˆİ\™˜XÙQZ[P[™İ™XZÊÛİY]JHÂˆÛÛœİİH
+Y]H	‰ˆY]Kœİ™XZÊHÂˆYˆ
+ÌËËMKš[˜ÛY\Êİ
+H	‰ˆY]K›\İZ[\İÛ™HOOHİ
+HÂˆY]K›\İZ[\İÛ™HHİÂˆHÈØØ[İÜ˜YÙKœÙ]][JY]RÙ^JÛİ
+K”ÓÓ‹œİš[™ÚYJY]JJNÈHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆ˜[™˜\™J<'å)H;%ì;!£H;-§;!'H	Üİ{'oH:ã :âê;em;&¥˜
+NÂˆ™]\›ÂˆBˆYˆ
+YZ[QÛ™UÙ^JÛİ
+JHÂˆØ[YK››İXÙHHÈ^ˆ	ø¥íÈ;&):â¦;'f:ãá;(!;'m:®,:âé:è);&¥8 %:ãá;(!:­î{'©IËˆŒNÂˆBˆB‚ˆËÈ;'o{%­;(ï:®,;($z­ï;!,H8 %;"«:èkÈ;fe:êm;%ä;!';f!;'«;.é;!';'!;.f:éo:éä:èg;%c:è);) :âéˆ[˜İ[ÛˆÜXZÔÛİİ\œÛÜŠ
+HÂˆYˆ
+YØ[YKÊH™]\›ÂˆÛÛœİİ[HHÛİİ[[X\JØ[YKœÛİİ\œÛÜŠNÂˆÜYXÚœÜXZÊ;"«:èkÈ	ÙØ[YKœÛİİ\œÛÜˆ
+È_K
+È
+İ[HÈ	Üİ[K›˜[Y_K;'m;%­;ef:®,ˆ	úîa;%­;'¢;'c; â:êª;eæ	ÊJNÂˆB‚ˆ[˜İ[Ûˆ\]U]J
+HÂˆYˆ
+Ø[YK]TØÜ™Y[ˆOOH	Û˜[YIÊHÂˆYˆ
+Ø[YK›˜[YPÛÛ™š\›JHÂˆØ[YK›˜[YPÛÛ™š\›HH˜[ÙNÂˆÛÛœİ›HHİ\œ™[˜[YU˜[YJ
+NÂˆYS˜[YQ[J
+NÂˆØ[YK]TØÜ™Y[ˆH	ÜÛİÉÎÂˆÛİ[™œÙ[Xİ
+
+NÂˆİ\™]ÑØ[YJØ[YKœÛİİ\œÛÜ‹›JNÂˆH[ÙHYˆ
+Ø[YK›˜[YPØ[˜Ù[\İ™\ÜÙY
+	ØØ[˜Ù[	ÊJHÂˆØ[YK›˜[YPØ[˜Ù[H˜[ÙNÂˆYS˜[YQ[J
+NÂˆØ[YK]TØÜ™Y[ˆH	ÜÛİÉÎÂˆÛİ[™˜›\
+
+NÂˆH[ÙHYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊJHÂˆËÈ;a,;.fH:ì¡;b¯:äì{'/:èg;fe{(%BˆÛÛœİ›HHİ\œ™[˜[YU˜[YJ
+NÂˆYS˜[YQ[J
+NÂˆØ[YK]TØÜ™Y[ˆH	ÜÛİÉÎÂˆÛİ[™œÙ[Xİ
+
+NÂˆİ\™]ÑØ[YJØ[YKœÛİİ\œÛÜ‹›JNÂˆBˆ™]\›ÂˆB‚ˆYˆ
+Ø[YK]TØÜ™Y[ˆOOH	Ù[]IÊHÂˆYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊJHÂˆ[]TÛİ
+Ø[YKœÛİİ\œÛÜŠNÂˆØ[YK]TØÜ™Y[ˆH	ÜÛİÉÎÂˆÛİ[™Ü›Û™Ê
+NÂˆH[ÙHYˆ
+\İ™\ÜÙY
+	ØØ[˜Ù[	ÊH\İ™\ÜÙY
+	ÛY[IÊJHÂˆØ[YK]TØÜ™Y[ˆH	ÜÛİÉÎÂˆÛİ[™˜›\
+
+NÂˆBˆ™]\›ÂˆB‚ˆËÈKMH:äd:ì¢;)î:êª;eæ;!(;`çH8 %;`m:é«;%­
+[™[™ÒY;(m;'«
+H;"«:èkû%ä;!'ºéo:â!:ém:êm:ç+:âé‚ˆËÈˆ;'m;%­;!':ìî:âé
+;fá;'o:âí
+HÈNˆ;,¦;'c:í ;a,
+»f£;,*‘ÊÈ8 %:ã ; «;"©;&dzéã;)á;e¢H;-":®,;fe
+BˆYˆ
+Ø[YK]TØÜ™Y[ˆOOH	Û™ØÚÚXÙIÊHÂˆYˆ
+\İ™\ÜÙY
+	İ\	ÊH\İ™\ÜÙY
+	ÙİÛ‰ÊJHÂˆØ[YK›™Ğİ\œÛÜˆHØ[YK›™Ğİ\œÛÜˆÈˆNÂˆÛİ[™˜›\
+
+NÂˆH[ÙHYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊJHÂˆÛÛœİÛİHØ[YKœÛİİ\œÛÜÂˆYˆ
+Ø[YK›™Ğİ\œÛÜˆOOHJHÂˆÛÛœİİ[HHÛİİ[[X\JÛİ
+NÈËÈ;'m:é¡;'`;'m;%­:ì&û%a‘Êúèg; â:èg;"ç;'¤BˆØ[YK]TØÜ™Y[ˆH	ÜÛİÉÎÂˆÛİ[™œÙ[Xİ
+
+NÂˆİ\™]ÑØ[YJÛİİ[HÈİ[K›˜[YHˆ	û"&;f.;'¤	ËYJNÂˆH[ÙHÂˆØ[YK]TØÜ™Y[ˆH	ÜÛİÉÎÂˆÛİ[™œÙ[Xİ
+
+NÂˆÛÛ[YQØ[YJÛİ
+NÂˆBˆH[ÙHYˆ
+\İ™\ÜÙY
+	ØØ[˜Ù[	ÊH\İ™\ÜÙY
+	ÛY[IÊJHÂˆØ[YK]TØÜ™Y[ˆH	ÜÛİÉÎÂˆÛİ[™˜›\
+
+NÂˆBˆ™]\›ÂˆB‚ˆËÈÛİÈ;fe:êmˆYˆ
+\İ™\ÜÙY
+	ÛY[IÊJHÈÜ[‘^
+	İ]IÊNÈ™]\›ÈBˆYˆ
+\İ™\ÜÙY
+	İ\	ÊH\İ™\ÜÙY
+	ÙİÛ‰ÊJHÂˆØ[YKœÛİİ\œÛÜˆH\İ™\ÜÙY
+	İ\	ÊBˆÈ
+Ø[YKœÛİİ\œÛÜˆ
+ÈÓÕĞÓÕS•HJH	HÓÕĞÓÕS•ˆˆ
+Ø[YKœÛİİ\œÛÜˆ
+ÈJH	HÓÕĞÓÕS•ÂˆÛİ[™˜›\
+
+NÂˆÜXZÔÛİİ\œÛÜŠ
+NÈËÈ;'o{%­;(ï:®,8 %;%­:å©;"«:èkû'm;!(;`çzä$:â¥;)à:­à:èg;%c;"&;'¢:¬£ˆBˆYˆ
+\İ™\ÜÙY
+	ØØ[˜Ù[	ÊJHÂˆYˆ
+Ûİİ[[X\JØ[YKœÛİİ\œÛÜŠJHÈØ[YK]TØÜ™Y[ˆH	Ù[]IÎÈÛİ[™˜›\
+
+NÈBˆ™]\›ÂˆBˆYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊJHÂˆÛÛœİİ[HHÛİİ[[X\JØ[YKœÛİİ\œÛÜŠNÂˆËÈKMH;`m:é«;%­
+[™[™ÒY;(m;'«
+H;"«:èkû'm:êm»'m;%­;!':ìï:ç¦ÈÈ;,¦;'c:í ;a,
+»f£;,*
+Hˆ;!(;`ç{'a:ê/;( ;%ì:âéˆYˆ
+İ[H	‰ˆİ[K™[™[™ÒY
+HÂˆØ[YK]TØÜ™Y[ˆH	Û™ØÚÚXÙIÎÂˆØ[YK›™Ğİ\œÛÜˆHÂˆÛİ[™œÙ[Xİ
+
+NÂˆ™]\›ÂˆBˆÛİ[™œÙ[Xİ
+
+NÂˆYˆ
+İ[JHÛÛ[YQØ[YJØ[YKœÛİİ\œÛÜŠNÂˆ[ÙHÚİÓ˜[YQ[J
+NÂˆBˆB‚ˆ[˜İ[Ûˆ\]Q[™[™Ê
+HÂˆØ[YK™[™[™Õ
+ÏHNÂˆYˆ
+Ø[YK™[™[™Õ\HOOH	İYIÊHÂˆYˆ
+Ø[YK™[™[™ÕˆML	‰ˆ\İ™\ÜÙY
+	ØXİ[Û‰ÊJHÂˆØ[YK›[ÙHH	İÛÜ›	ÎÂˆØ[YK›X\H	İš[YÙIÎÂˆØ[YKœ^Y\‹HLÎÈØ[YKœ^Y\‹HHMÂˆØ[YKœ^Y\‹œHLÈ
+ˆÎÈØ[YKœ^Y\‹œHHMˆ
+ˆÎÂˆØ]™J
+NÂˆÛİ[™œ^SX\™ÛJPTËš[YÙKœÛÛ™ÊNÂˆËÈ;fá;'o:âí;'(:ãá8 %;%å:å*H:í¡:®,:ìá:éâ;'a:ã ; «
+:ì%{ «:âæ0­ûeh:ê.:ââ
+z¬ :®,:âé:é¬:âé‚ˆËÈ;.j:ë-H;%å:å*{'`:éâ;'a;%ä;%a:ë-:ãá;'m; «;&);)à;%b»%f;'/:ëà:èg:ë.:­k:ãá;(l;&ª{ef:¬£‚ˆØ[YK››İXÙHHÂˆ^ˆØ[YK™›YÜË™[™[™ÒYOOH	ÜÚ[[	ÂˆÈ	ø )ºéâ;'a;'m;(l;&ª{ef:âé‰Âˆˆ	úéâ;'a; «:ç£:äé;'m:á":éo:®,:âé:é¬:âé8 %:éä;'a:¬n;%­:ìí;'¤‰ËˆˆÌŒˆNÂˆBˆH[ÙHÂˆYˆ
+Ø[YK™[™[™ÕˆLŒ	‰ˆ\İ™\ÜÙY
+	ØXİ[Û‰ÊJHÂˆØ[YK›[ÙHH	İÛÜ›	ÎÂˆÛİ[™œ^SX\™ÛJPTÖÙØ[YK›X\KœÛÛ™ÊNÂˆBˆBˆB‚ˆËÈ;/e;%­;'m;fá;'f;%å:å*H
+;)á;%å:å*H;(¡JH8 %˜]Ñ[™[™û%ä;!';,.;(l8 %;%ë;(%H;(!;,­;'f;'¤:îa;&`:éâ;)à:éâH;!(;`ç{%ä:å,:ço:¬":é¬:âéˆÛÛœİ•QWÑS‘S‘ÔÈHÂˆÛYNˆÂˆ]Nˆ	û)á;%å:å*H8 %;)ä{'/:èg	ËˆÛÛÜˆ	ÈÙ™™	Ëˆ[™\ÎˆÂˆ	úá":â¥;& {'m;'f;!¤;'a;'¨z¬è;/e;%­:éo:¬n;%­:à¦;&e:âé‰Ëˆ	ûe¡û ­;%a:ç¦;%ä;!':ì%{ «:âæ;'`;%a;(ï;&):ç¦;&®;%â:âé‰Ëˆ	Èºëî;%b;ef:âéºâ¥:éä:¬ïº¬è:éæzâéºâ¥:éä;'m	Ëˆ	úê¡È:ì¢;'m:¬è:ä©;!'»& :âé‰Ëˆ	ÉËˆ	û)à;&ã;)á:¬ û'`; «:ço;)á:¬ û'm;%a:ââ;%â:âé‰Ëˆ	úâ!:­l:¬ :®,;%­{ef:â¥;eg:âé;"ç:éã:à¨;"&;'¢;%â:âé‰Ëˆ	ÉËˆ	ø %:êª:äd;'f:éâ;'c;'a;%b;%a;) ;)á;(%{eg;"&;f.;'¤;%ä:¬£8 %	Ëˆ	ÉËˆ	û`ç:î%:é¯È;fe:êm:ì%‹;%a;.j;em‰Ëˆ	ø )»&!»%ä:ì%{ «:âæ;'m;!';'¢:âé‰Ëˆ	ÉËˆ	ø )»,a{ àH;'!;`ç:î%:é¯È;fe:êm;eg:­k;!'K	Ëˆ	û'¤{'`:îfû'm:ì&;)çH8 %;ef:¬è;'n; «;e¢:âé‰ËˆKˆY[Û™ÚNˆYKˆ˜[™NˆYKˆKˆ]ÛˆÂˆ]Nˆ	û%å:å*H8 %; â:ì¯IËˆÛÛÜˆ	ÈÍØ™YŒ	Ëˆ[™\ÎˆÂˆ	È¸ )ºà­:¬ :¬¬;(%{eh:¬£ˆ‰Ëˆ	û& {'m:â¥:á);!¤:ã ;"è;/e;%­;'f:ë.;'a;%í;%â:âé‰Ëˆ	ÉËˆ	Èºá):¬ :®j;&ã;) ;.g:­k:äé;'a:éã:à¦:çë:¬":ç¦‰Ëˆ	û",»'f;f.;"&;'f; «:éâ{'f;(%{&ä;'f;.g:­k:äé‰Ëˆ	ø )ºà¦;f/;'¤;g¦;'/:ègˆ:à­:ì':ègˆ‰Ëˆ	ÉËˆ	úêl;.h:ä©:éâ;'a;%ä;)éû'`;"è;f.:¬ :âïû%f:âé‰Ëˆ	ø %; â:ì¯H:¬íz®,:â¥;,¦;'c;'n:ãl:¯i;(¢û%aˆ;& {'m:¬ ˆ8 %	Ëˆ	ø )»!':ê¡H;&!»%ä;'¤{'`:îfÈ;'m:êª;bì;/f;'m:í¦{%­;'¢;%â:âé‰ËˆKˆY[Û™ÚNˆ˜[ÙKˆKˆ˜\™]Ù[ˆÂˆ]Nˆ	û%å:å*H8 %;'¤zìá	ËˆÛÛÜˆ	ÈÎXXNÎ	Ëˆ[™\ÎˆÂˆ	û& {'m:â¥;&!{'`:îfû'm:ä&;%­;gj{%­;(c:âé‰Ëˆ	È¸ )º¬è:éâ;&ãˆ:éâ;)à:éâ{'/:èg:â!:­l:¬ ;&`	Ëˆ	û'm;%o:®,;eh;"&;'¢;%­;!';(¢û%f;%­ˆ‰Ëˆ	ÉËˆ	û/e;%­:éo:à¦;!':â¥:á";'f:äìH:ä©:èg	Ëˆ	ú®¯;)á;fe:êm:éã;'m;(l;&ª{g¢:àª;%a;'¢;%â:âé‰Ëˆ	ÉËˆ	ø )»%­;*c:êm:âé:én:¬¬:éä:ãá;'¢;%â;'a;)à:êª:én:âé‰Ëˆ	û%a;'m:äé;'f:éâ;'c;'a:ãe:éã»'m;%b;%a;(ï;%â:âé:êm‰Ëˆ	ÉËˆ	ø )»%­:®j;&!»'¤:é«:¬ ;'(:à§;g¢;eâ;(!;e¢:âé‰ËˆKˆY[Û™ÚNˆ˜[ÙKˆKˆÚ[[ˆÂˆ]Nˆ	û%å:å*H8 %;.j:ë-IËˆÛÛÜˆ	ÈÍÍÍÍÎ	Ëˆ[™\ÎˆÂˆ	úá":â¥:êª:äè:ë.;(';%ä;&,û'`:âí{'a:éä;e¢:âé‰Ëˆ	ú­î:é«:¬è;%a:ë-;'f:éâ;'c;%ä:ãá:ê.:ë/;)à;%b»%f:âé‰Ëˆ	ÉËˆ	û%a;'m:äé;'`:®.;'a:îa;/,;)à:éã	Ëˆ	û%a:ë-:ãá:á";'f;'m:é¡;'a:í :ém;)à;%b»%f:âé‰Ëˆ	û& {'m:â¥:àgz®c;)à:á):â";'a:ìí;)à;%b»'`;,a	Ëˆ	û(l;&ª{g¢;fe:êm;'a:®ä:âé‰Ëˆ	ÉËˆ	ø )»(%zâízéã;'/:èg:â¥:âïû)à;%bºâ¥:éâ;'c;'m;'¢:âé‰Ëˆ	ø )º®.;'a;'o:çë;(ï:ãf:êª{!£:é«:ãá	Ëˆ	úãe:â¥:äé:é«;)à;%b»%f:âé‰ËˆKˆY[Û™ÚNˆ˜[ÙKˆKˆNÂ‚ˆ[˜İ[Ûˆ˜]Ñ[™[™Ê
+HÂˆİ™š[İ[HH	ÈÌ	ÎÂˆİ™š[™Xİ
+Ë
+NÂ‚ˆËÈ:ìáˆ›Üˆ
+]HHÈHŒÈJÊÊHÂˆÛÛœİŞH
+H
+ˆLÌJH	HÎÂˆÛÛœİŞHH
+H
+ˆÌJH	HÂˆİ™š[İ[HH™Ø˜JMKMKMK	ÓX]œÚ[ŠØ[YK[YHÈH
+ÈJHˆÈˆˆŒŸJXÂˆİ™š[™Xİ
+ŞŞK‹ŠNÂˆB‚ˆİ^[YÛˆH	ØÙ[\‰ÎÂ‚ˆYˆ
+Ø[YK™[™[™Õ\HOOH	İYIÊHÂˆÛÛœİHH•QWÑS‘S‘ÔÖÙØ[YK™›YÜË™[™[™ÒYH•QWÑS‘S‘ÔË™˜\™]Ù[Âˆİ™š[İ[HHK˜ÛÛÜÂˆİ™›ÛHœÊÍYJNÂˆİ™š[^
+K]KÈÈ‹LL
+NÂˆİ™›ÛHœÊMŠNÂˆİ™š[İ[HH	ÈØØØÉÎÂˆ]HHMŒÂˆ›Üˆ
+ÛÛœİÙˆK›[™\ÊHÈİ™š[^
+ÈÈ‹JNÈH
+ÏHÈBˆİ™š[İ[HH	ÈÎNMÎ	ÎÂˆİ™š[^
+:éç»g£:ë.;('	ÙØ[YK™›YÜË˜ÛÜœ™XİÛİ[z¬'0­È;%b;%a;) :éâ;'c8¦iIÙØ[YK™›YÜË›Y\˜Ş_XÈÈ‹H
+ÈL
+NÂˆËÈ:âé;f£;,*:ãæz®,8 %:ì':¬«;eg:¬¬:éä;"&
+;`à;'m;bà;%ä:ãá:®,:èg{'m:àª:â¥:âé
+BˆÛÛœİÙY[Ûİ[HØš™XİšÙ^\ÊÙ][™[™ÜÔÙY[Š
+JK™š[\Š
+ÊHOˆ•QWÑS‘S‘ÔÖÚ×JK›[™İÂˆİ™š[İ[HH	ÈÍ˜NÉÎÂˆİ™›ÛHœÊLÊNÂˆİ™š[^
+:ì':¬«;eg:¬¬:éä	ÜÙY[Ûİ[KÉÓØš™XİšÙ^\Ê•QWÑS‘S‘ÔÊK›[™İX
+Âˆ
+ÙY[Ûİ[Øš™XİšÙ^\Ê•QWÑS‘S‘ÔÊK›[™İÈ	È8 %:âé:én;'¤zìá:ãá;'¢;%â;'a;)à:êª:én:âé	Èˆ	È8 %:êª:äè;'¤zìá;'a:éã:à«:âé	ÊKÈÈ‹H
+ÈÌŠNÂˆYˆ
+KY[Û™ÚJHÂˆÛÛœİ›ØˆHX]œÚ[ŠØ[YK[YHÈN
+H
+ˆÂˆ˜]Ó[ÛŠİ	ŞY[Û™ÚIËÈÈˆHÌ‹Œ
+È›Ø‹
+NÂˆBˆYˆ
+K˜˜[™JHÂˆËÈ;& {'m:¬à{'f;'¤{'`:îfÈ8 %;%ë;(%H:à­:à­;ej:®æ:¬múãf:ì&:å%;'f:éâ;)à:éâH;'n; «ˆÛÛœİ›ØŒˆHX]œÚ[ŠØ[YK[YHÈM
+ÈKJH
+ˆNÂˆ˜]Ó[ÛŠİ	Ø˜[™IËÈÈˆ
+ÈÍ
+È›ØŒ‹ŠNÂˆBˆYˆ
+Ø[YK™[™[™ÕˆML
+HÂˆİ™š[İ[HHX]™›ÛÜŠØ[YK[YHÈJH	HˆOOHÈ	ÈÙ™™	Èˆ	ÈÎNNŒ‰ÎÂˆİ™›ÛHœÊMJNÂˆİ™š[^
+	Ö°­û"©;c¦;'m;"©:éo:â!:ém:êm:éâ;'a:èg:ãã;%a:¬$zââ:âé	ËÈÈ‹LL
+NÂˆBˆİ^[YÛˆH	ÛY	ÎÂˆ™]\›ÂˆB‚ˆËÈ{,*;%å:å*H
+;"©;ac;'m;)àH;`m:é«;%­
+Bˆİ™š[İ[HH	ÈÙ™™	ÎÂˆİ™›ÛHœÊÍ‹YJNÂˆİ™š[^
+	û-¥{ef;ejzââ:âéIËÈÈ‹L
+NÂ‚ˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊŒ‹YJNÂˆİ™š[^
+	ü'ãáˆ:éâ;'c;'f;"&;f.;'¤;'n;)§{!'<'ãá‰ËÈÈ‹MMJNÂ‚ˆİ™›ÛHœÊMŠNÂˆİ™š[İ[HH	ÈØØØÉÎÂˆÛÛœİ[™\ÈHÂˆ	û'!;%­:é¬;'m:â¥:âé;!+È:¬l:é«:éo:êª:äd;)à:à¦:êl	Ëˆ	ú¬';'n;(%zìí:ìí;f.;( ;'¤z­£;)á;"é:í¡:ìá:¬í{(%{ej;(";('	Ëˆ	úì%:én:éä;%b;(!;ff:¬¯K;b+:ê¡{ej;,a{'¡;,/{'f;!,K	Ëˆ	ûf$zè)K:­î:é«:¬è; «:ç£;'a;%a:ào:â¥:éâ;'c;'a:ìí;%ë;) 	Ëˆ	ûfã:ék{eg:éâ;'c;'f;"&;f.;'¤;'¡;'a;'n;)§{ejzââ:âé‰Ëˆ	ÉËˆ:éç»g£:ë.;('ˆ	ÙØ[YK™›YÜË˜ÛÜœ™XİÛİ[z¬'ˆNÂˆ]HHNMNÂˆ›Üˆ
+ÛÛœİÙˆ[™\ÊHÂˆİ™š[^
+ÈÈ‹JNÂˆH
+ÏHNÂˆBˆİ™š[İ[HH	ÈÎNMÎ	ÎÂˆİ™š[^
+	ø )º­î:çì:ãl;&e{(£:ä©;'f:ì¯{%ä;!'	ËÈÈ‹H
+È
+NÂˆİ™š[^
+	úà¨{'`;"è;f.:¬ ;%a;)àzãá:®g:îh{'m:¬è;'¢:âé‰ËÈÈ‹H
+ÈÌŠNÂ‚ˆËÈ;.g:­k:¬ :ä';'n:ë/:äé
+:äd;)!;co:è";'m:äç
+BˆÛÛœİYÈHØš™XİšÙ^\ÊSÓ”ÕT—ÔÔ’UTÊNÂˆ›Üˆ
+]HHÈHYË›[™İÈJÊÊHÂˆÛÛœİ›İÈHHMÈˆNÂˆÛÛœİÛÛH›İÈOOHÈHˆHHMÂˆÛÛœİ\”›İÈH›İÈOOHÈMˆYË›[™İHMÂˆÛÛœİHÈÈˆH\”›İÈ
+ˆŒ
+ÈÛÛ
+ˆÂˆÛÛœİHH
+È›İÈ
+ˆÎ
+ÈX]œÚ[ŠØ[YK[YHÈMH
+ÈJH
+ˆÂˆ˜]Ó[ÛŠİYÖÚWKKŠNÂˆB‚ˆYˆ
+Ø[YK™[™[™ÕˆLŒ
+HÂˆİ™š[İ[HHX]™›ÛÜŠØ[YK[YHÈJH	HˆOOHÈ	ÈÙ™™	Èˆ	ÈÎNNŒ‰ÎÂˆİ™›ÛHœÊMJNÈËÈ;%å:å*{%ä;!':âé;'c;e¢zãæH;%b:à­8 %;`l:® ;%*:êª:äç;( {&ªBˆİ™š[^
+	Ö°­û"©;c¦;'m;"©:éo:â!:ém:êm:êª;eæ;'m:¬á;!£zä*zââ:âé	ËÈÈ‹LMŠNÂˆBˆİ^[YÛˆH	ÛY	ÎÂˆB‚ˆËÈKKKKKKKKKH:êe;'n:èê;e!KKKKKKKKKBˆËÈ;%­:å©;&";&n:¬ :à¦:ãá:èê;e!:¬ ;(ï{)à;%bºãá:ègJ:¬ ;'`;fe:êm:ãæz¬¬:ì*{)à
+H;eg;e!:è";'¡;'a:¬$;"ï:âé‚ˆ]Ü˜\ÚYH˜[ÙNÂˆ[˜İ[Ûˆ˜]ĞÜ˜\Ú
+
+HÂˆHÂˆİ™š[İ[HH	ÈÌLŒLXÉÎÂˆİ™š[™Xİ
+Ë
+NÂˆİ^[YÛˆH	ØÙ[\‰ÎÂˆİ™š[İ[HH	ÈÙ™™‰ÎÂˆİ™›ÛHœÊŒ‹YJNÂˆİ™š[^
+	û'm:çìH;'¨:®d:ë.;(':¬ ; çz¬¯;%­;&¥	ËÈÈ‹ŒL
+NÂˆİ™š[İ[HH	ÈØÙ˜ÎL	ÎÂˆİ™›ÛHœÊM
+NÂˆİ™š[^
+	ú­î:ãæ{%b;'f;)á;e¢H; à{fj{'`;%b;(!;ef:¬£;( ;'©zä&;%­;'¢;%­;&¥‰ËÈÈ‹
+NÂˆİ™š[İ[HH	ÈÎXNLØŒ	ÎÂˆİ™›ÛHœÊM
+NÂˆİ™š[^
+	Öˆ
+:æ$:â¥JNˆ:éâ;'a:èg:ãã;%a:¬ :®,
+:æ$:â¥:êe:âm
+Nˆ;`à;'m;bà:èg	ËÈÈ‹L
+NÂˆİ^[YÛˆH	ÛY	ÎÂˆHØ]Ú
+JHÈÊˆ:­î:é«:®,:éâ;( ;"é;c*;ef:êm;(l;&ª{g¢:á&;%­:¬!:âé
+‹ÈBˆBˆËÈ;fe:êm:à«zãáz®,:ëî:çë8 %;.¥:ì¡;"©;%b;ac{"©;b®:â¥:à«zãáz®,:¬ ;'o{)à:ê®ûef:ëà:èg:¬£;'¡;%c:é¯
+›İXÙJz¬ïˆËÈ:ã ; «;eg;)!;'a;"*:®`\šXK[]™H;& {%ëJÜÜ‹[]™J{%ä:ìí{ «;eg:âéˆ;'o{%­;(ï:®,
+ÊH;!);(%z¬ï:ìá:¬':ègˆËÈ;ef{ ç{'m;$ì:â¥:à«zãáz®,
+;a¨zì,p­úìí;'m;"©;&):ì¡:äìJz¬ ;ek{ àH;%c:é¯;'a;(!:âë:ì&ú¬£;ef:â¥;%b;(!:éç{'m:âé‚ˆÛÛœİÜ“]™Q[H
+\[ÙˆØİ[Y[OOH	İ[™Yš[™Y	È	‰ˆØİ[Y[™Ù][[Y[RY
+BˆÈØİ[Y[™Ù][[Y[RY
+	ÜÜ‹[]™IÊHˆ[Âˆ]Ü“\İ^H	ÉÎÂˆ[˜İ[ÛˆŞ[˜ÔÜ“]™J
+HÂˆYˆ
+\Ü“]™Q[
+H™]\›Âˆ]H	ÉÎÂˆYˆ
+Ø[YK™X[ÙÈ	‰ˆØ[YK™X[ÙË›[™\È	‰ˆ\[ÙˆØ[YK™X[ÙË›[™\ÖÙØ[YK™X[ÙËšYHOOH	Üİš[™ÉÊHÂˆHØ[YK™X[ÙË›[™\ÖÙØ[YK™X[ÙËšYNÂˆH[ÙHYˆ
+Ø[YK››İXÙH	‰ˆØ[YK››İXÙKˆ	‰ˆØ[YK››İXÙK^
+HÂˆHØ[YK››İXÙK^ÂˆBˆYˆ
+OOHÜ“\İ^
+HÂˆÜ“\İ^HÂˆHÈÜ“]™Q[^ÛÛ[HÈHØ]Ú
+JHÈÊˆ;ac;"©;b®:êªH:äì{%ä;!':â¥:ë-;"ç
+‹ÈBˆBˆBˆËÈ;e!:è";'¡;!£zãá;(';egˆL0­ÌLŒ0­ÌMˆ:äìH:¬è;(ï; «;'*;fe:êm;%ä;!':¬£;'¡:èg;)àJ;`à;'m:ê.0­û%ì;-§
+{'mˆËÈºì,:îh:ém:¬£:ãá:â¥:¬ û'a:éâ{%a;%­:å©:®,:®,;%ä;!':ãá:îa;"­ûeg;!£zãá:èg;)á;e¢zä&:¬£;eg:âé‚ˆËÈ
+;ac;"©;b®;ff:¬¯{%å\™›Ü›X[˜Ùz¬ ;%á»%­:éé;e!:è";'¡:­î:ã :èg;,¦:é«:ä':âé
+BˆÛÛœİ\™“›İÈH
+\[Ùˆ\™›Ü›X[˜ÙHOOH	İ[™Yš[™Y	È	‰ˆ\™›Ü›X[˜ÙK››İÊBˆÈ
+
+HOˆ\™›Ü›X[˜ÙK››İÊ
+Hˆ[Âˆ]\İœ˜[YP]HLYNNÂˆÛÛœİRS—Ñ”SQWÓTÈHLÈŒNÈËÈ;%oHŒœÈ; à{egˆ[˜İ[Ûˆœ˜[YJ
+HÂˆ™\]Y\İ[š[X][Û‘œ˜[YJœ˜[YJNÂˆYˆ
+\™“›İÊHÂˆÛÛœİ›İÈH\™“›İÊ
+NÂˆYˆ
+›İÈH\İœ˜[YP]RS—Ñ”SQWÓTÊH™]\›Âˆ\İœ˜[YP]H›İÎÂˆBˆHÂˆYˆ
+Ü˜\ÚY
+HÂˆYˆ
+\İ™\ÜÙY
+	ØXİ[Û‰ÊJHÂˆÜ˜\ÚYH˜[ÙNÂˆØ[YK˜˜]HH[ÈØ[YK™X[ÙÈH[ÂˆØ[YK›[ÙHHØ[YK™›YÜÈÈ	İÛÜ›	Èˆ	İ]IÎÂˆYˆ
+Ø[YK›[ÙHOOH	İ]IÊHØ[YK]TØÜ™Y[ˆH	ÜÛİÉÎÂˆ[ÙHÈHÈÛİ[™œ^SX\™ÛJPTÖÙØ[YK›X\HÈPTÖÙØ[YK›X\KœÛÛ™Èˆ	İš[YÙIÊNÈHØ]Ú
+JHßHBˆH[ÙHYˆ
+\İ™\ÜÙY
+	ØØ[˜Ù[	ÊJHÂˆÜ˜\ÚYH˜[ÙNÂˆØ[YK›[ÙHH	İ]IÎÈØ[YK]TØÜ™Y[ˆH	ÜÛİÉÎÂˆHÈÛİ[™œ^SX\™ÛJ	İ]IÊNÈHØ]Ú
+JHßBˆBˆBˆYˆ
+Ü˜\ÚY
+HÈ˜]ĞÜ˜\Ú
+
+NÈ™]\›ÈB‚ˆÚXÚÑŠ
+NÂˆØ[YK[YHH
+Ø[YK[YH
+ÈJH	ˆÑ‘‘‘‘‘‘Â‚ˆËÈ:¬ ; àH;"©;bì{'a;eg:ì*{e©{'/:èg:â!:én;,a:äd:êm:êe:âm;%ä;!';`©:é«;e/;b®;,¦:çï;'¤:ãæH:ì&:ìí{"ç;`ª:âé‚ˆËÈ
+;&å:äç;'m:ãæ{'`[:èg;,¦:é«:ä&:ëà:èg;& {e©H;%á»'cŠBˆYˆ
+İXÚÑ\ŠHÂˆİXÚÔ™\X]œ˜[Y\ÊÊÎÂˆYˆ
+İXÚÔ™\X]œ˜[Y\ÈˆMˆ	‰ˆ
+İXÚÔ™\X]œ˜[Y\ÈHMŠH	HÈOOH
+H™\ÜÙY˜Y
+İXÚÑ\ŠNÂˆH[ÙHÂˆİXÚÔ™\X]œ˜[Y\ÈHÂˆB‚ˆİÚ]Ú
+Ø[YK›[ÙJHÂˆØ\ÙH	İ]IÎ‚ˆ\]U]J
+NÂˆ˜]Õ]J
+NÂˆœ™XZÎÂˆØ\ÙH	İÛÜ›	Î‚ˆ\]UÛÜ›
+
+NÂˆ˜]ÕÛÜ›
+
+NÂˆœ™XZÎÂˆØ\ÙH	ÙX[ÙÉÎ‚ˆ\]QX[ÙÊ
+NÂˆ˜]ÕÛÜ›
+
+NÂˆYˆ
+Ø[YK™X[ÙÊH˜]ÑX[ÙÊ
+NÂˆœ™XZÎÂˆØ\ÙH	Ü™]™X[™X]	ÎˆËÈKLˆ:ì&:å%:é«:îc;(%{)à:îa;b®8 %:ë-;'¡zè)H:ã :®,
+È:ì&:å%;!£:ên;%ì;-§ˆ\]T™]™X[™X]
+
+NÂˆYˆ
+Ø[YK›[ÙHOOH	Ü™]™X[™X]	ÊH˜]Ô™]™X[™X]
+
+NÂˆ[ÙHÈ˜]ÕÛÜ›
+
+NÈYˆ
+Ø[YK™X[ÙÊH˜]ÑX[ÙÊ
+NÈBˆœ™XZÎÂˆØ\ÙH	Ø˜]IÎ‚ˆ\]P˜]J
+NÂˆËÈ;`m:é«;%­ûc*:ì,;,¦:é«;)$H:êª:äç:¬ :ì%:à#;%â;'a;"&;'¢;'cˆYˆ
+Ø[YK›[ÙHOOH	Ø˜]IÊHÂˆ˜]Ğ˜]J
+NÂˆH[ÙHÂˆ˜]ÕÛÜ›
+
+NÂˆYˆ
+Ø[YK™X[ÙÊH˜]ÑX[ÙÊ
+NÂˆBˆœ™XZÎÂˆØ\ÙH	Ù[™[™ÉÎ‚ˆ\]Q[™[™Ê
+NÂˆ˜]Ñ[™[™Ê
+NÂˆœ™XZÎÂˆØ\ÙH	Ù^	Î‚ˆ\]Q^
+
+NÂˆ˜]Ñ^
+
+NÂˆœ™XZÎÂˆØ\ÙH	Ü™]šY]ÉÎ‚ˆ\]T™]šY]Ê
+NÂˆ˜]Ô™]šY]Ê
+NÂˆœ™XZÎÂˆØ\ÙH	Ü]\ÙIÎ‚ˆ\]T]\ÙJ
+NÂˆ˜]Ô]\ÙJ
+NÂˆœ™XZÎÂˆØ\ÙH	ÛY[[Ü\›ÛÛIÎˆËÈKN:®,;%­{'f:ì*H:¬):çë:é«;eâ:î#ˆ\]SY[[ÜT›ÛÛJ
+NÂˆ˜]ÓY[[ÜT›ÛÛJ
+NÂˆœ™XZÎÂˆØ\ÙH	İXXÚ\‰Î‚ˆ\]UXXÚ\”›ÛÛJ
+NÂˆ˜]ÕXXÚ\”›ÛÛJ
+NÂˆœ™XZÎÂˆØ\ÙH	ØÚÚXÙIÎ‚ˆ\]PÚÚXÙJ
+NÂˆ˜]ÕÛÜ›
+
+NÂˆYˆ
+Ø[YK˜ÚÚXÙJH˜]ĞÚÚXÙJ
+NÂˆœ™XZÎÂˆØ\ÙH	Ú[	Î‚ˆ\]R[
+
+NÂˆ˜]Ò[
+
+NÂˆœ™XZÎÂˆØ\ÙH	Ú›İ\›˜[	Î‚ˆ\]R›İ\›˜[
+
+NÂˆ˜]Ò›İ\›˜[
+
+NÂˆœ™XZÎÂˆØ\ÙH	Ø]Ø\™ÉÎ‚ˆ\]P]Ø\™Ê
+NÂˆ˜]Ğ]Ø\™Ê
+NÂˆœ™XZÎÂˆØ\ÙH	Ú[	Î‚ˆ\]R[
+
+NÂˆ˜]Ò[
+
+NÂˆœ™XZÎÂˆØ\ÙH	ØÚ[[™ÙIÎ‚ˆ\]PÚ[[™ÙJ
+NÂˆ˜]ĞÚ[[™ÙJ
+NÂˆœ™XZÎÂˆØ\ÙH	ØÛÜÛY]XÜÉÎ‚ˆ\]PÛÜÛY]XÜÊ
+NÂˆ˜]ĞÛÜÛY]XÜÊ
+NÂˆœ™XZÎÂˆØ\ÙH	Ø˜XÚİ\	Î‚ˆ\]P˜XÚİ\
+
+NÂˆ˜]Ğ˜XÚİ\
+
+NÂˆœ™XZÎÂˆØ\ÙH	Ù\Ú›Ø\™	Î‚ˆ\]Q\Ú›Ø\™
+
+NÂˆ˜]Ñ\Ú›Ø\™
+
+NÂˆœ™XZÎÂˆØ\ÙH	ÛXY\˜›Ø\™	Î‚ˆ\]SXY\˜›Ø\™
+
+NÂˆ˜]ÓXY\˜›Ø\™
+
+NÂˆœ™XZÎÂˆØ\ÙH	ØÛ\ÜÛ[ÙIÎ‚ˆ\]PÛ\ÜÓ[ÙJ
+NÂˆ˜]ĞÛ\ÜÓ[ÙJ
+NÂˆœ™XZÎÂˆØ\ÙH	Ü™\Üİ	Î‚ˆ\]T™\Üİ
+
+NÂˆ˜]Ô™\Üİ
+
+NÂˆœ™XZÎÂˆØ\ÙH	Ü™\Ü	Î‚ˆ\]T™\Ü
+
+NÂˆ˜]Ô™\Ü
+
+NÂˆœ™XZÎÂˆØ\ÙH	Ü]Z^™Y]	Î‚ˆ\]T]Z^‘Y]
+
+NÂˆ˜]Ô]Z^‘Y]
+
+NÂˆœ™XZÎÂˆØ\ÙH	ØØ\™ÉÎ‚ˆ\]PØ\™Ê
+NÂˆ˜]ĞØ\™Ê
+NÂˆœ™XZÎÂˆØ\ÙH	ÙX\IÎ‚ˆ\]QX\J
+NÂˆ˜]ÑX\J
+NÂˆœ™XZÎÂˆØ\ÙH	ØÙ\	Î‚ˆ\]PÙ\
+
+NÂˆ˜]ĞÙ\
+
+NÂˆœ™XZÎÂˆØ\ÙH	ÚÙ‰Î‚ˆ\]RÙŠ
+NÂˆ˜]ÒÙŠ
+NÂˆœ™XZÎÂˆB‚ˆŞ[˜ÔÜ“]™J
+NÈËÈ:à«zãáz®,:ëî:çë8 %;'m:ì¢;e!:è";'¡;'f;%c:é¯0­úã ; «:éo:ì&;& B‚ˆËÈ:ì*{`â;-§;)${%ä:â¥;a,;.f:®,:®,;%ä:ãá;g£;b®:ì¡;b¯;'a:ìí;%ë;) :âé
+;`©;'f;a,;.f:ã ;'dJK‚ˆËÈ
+:ì,;bà;)$HLL;g£;b®:â¥Œû%ä;!';`-;)¢:ì,;bà:¬ï;ej:®æ;cä;)à:ä*
+BˆÛÛœİÚİÒ[ˆH
+Ø[YK›[ÙHOOH	İÛÜ›	È	‰ˆHYØ[YKœ^›T[ŠHˆ
+Ø[YK›[ÙHOOH	Ø˜]IÈ	‰ˆHYØ[YK˜˜]H	‰ˆØ[YK˜˜]Kœ\ÙHOOH	ÛY[IÊNÂˆØİ[Y[˜›ÙK˜Û\ÜÓ\İÙÙÛJ	Ø˜]KZ[	ËÚİÒ[ŠNÂˆËÈ;a,;.f:®,:®,:â¥;`©:ìí:äç:¬ ;%á»%­8à#;!(; çzâæ:ì*xà#{%ä:ê®È:äé;%­:¬!:âé8 %;`à;'m;bà
+;"«:èkÈ;fe:êm
+{'o:åc:éãˆËÈ;'¤{'`ÓH:ì¡;b¯;'a:ìí;%ë;) :âé
+˜]KZ[;&`:¬&{'`›ÙHÛ\ÜÈ;a¨:® ;c*;a-
+K‚ˆØİ[Y[˜›ÙK˜Û\ÜÓ\İÙÙÛJ	İ]K\ÛİÉËØ[YK›[ÙHOOH	İ]IÈ	‰ˆØ[YK]TØÜ™Y[ˆOOH	ÜÛİÉÊNÂˆHØ]Ú
+\œŠHÂˆÜ˜\ÚYHYNÂˆHÈÛÛœÛÛK™\œ›ÜŠ	ÖĞR{'):é«;%­:äç:ì©;,¦H;e!:è";'¡;&):éf‰Ë\œŠNÈHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆ˜]ĞÜ˜\Ú
+
+NÂˆHš[˜[HÂˆ™\ÜÙY˜ÛX\Š
+NÂˆBˆB‚ˆËÈ;`à;'m;bà‘Ó{'`;,ªÈ;'¡zè)H;fá;"ç;'¤H
+:î#:ço;&¬;( ;'¤:ãæ{'«; çH;(%{,aJBˆÛÛœİİ\]S]\ÚXÈH
+
+HOˆÂˆÛİ[™œ™\İ[YJ
+NÂˆYˆ
+Ø[YK›[ÙHOOH	İ]IÊHÛİ[™œ^SX\™ÛJ	İ]IÊNÂˆÚ[™İËœ™[[İ™Q]™[\İ[™\Š	ÚÙ^YİÛ‰Ëİ\]S]\ÚXÊNÂˆÚ[™İËœ™[[İ™Q]™[\İ[™\Š	İİXÚİ\	Ëİ\]S]\ÚXÊNÂˆÚ[™İËœ™[[İ™Q]™[\İ[™\Š	Û[İ\ÙYİÛ‰Ëİ\]S]\ÚXÊNÂˆNÂˆÚ[™İË˜Y]™[\İ[™\Š	ÚÙ^YİÛ‰Ëİ\]S]\ÚXÊNÂˆÚ[™İË˜Y]™[\İ[™\Š	İİXÚİ\	Ëİ\]S]\ÚXÊNÂˆÚ[™İË˜Y]™[\İ[™\Š	Û[İ\ÙYİÛ‰Ëİ\]S]\ÚXÊNÂ‚ˆËÈ;(!;%ëH;&):éf;%b;(!:éçH8 %;e!:è";'¡:èê;e!:ì%Š;'¡zè)H;en:äé:çë0­û!':îa;"©;&ã;.é;/g:ì,H:äìJ{%ä;!':ãf;(.;)áˆËÈ;&";&n:â¥œ˜[YJ
+{'fKØØ]Ú:¬ :ê®È;'¨{%a:¬£;'¡;'m;(l;&ª{g¢:êb;-§;"&;'¢:âéˆ;%ë:®,;!':ì&û%aˆËÈ:ìíz­k;fe:êm
+˜]ĞÜ˜\Ú
+{'/:èg;'(:ãá;eg:âéˆ;)á;e¢{'`;'m:ëîØ]™J
+zèg:å%;"©;`k;%ä;'¢;'/:ëà:èg;%b;(!‚ˆYˆ
+\[ÙˆÚ[™İË˜Y]™[\İ[™\ˆOOH	Ù[˜İ[Û‰ÊHÂˆÛÛœİĞÜ˜\ÚH
+X™[]Z[
+HOˆÂˆYˆ
+Ü˜\ÚY
+H™]\›ÂˆÜ˜\ÚYHYNÂˆHÈÛÛœÛÛK™\œ›ÜŠ	ÖĞR{'):é«;%­:äç:ì©;,¦H	È
+ÈX™[
+È	Î‰Ë]Z[
+NÈHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆNÂˆÚ[™İË˜Y]™[\İ[™\Š	Ù\œ›Ü‰Ë
+JHOˆĞÜ˜\Ú
+	û(!;%ëH;&):éf	ËH	‰ˆK™\œ›ÜŠJNÂˆÚ[™İË˜Y]™[\İ[™\Š	İ[š[™Y™Z™Xİ[Û‰Ë
+JHOˆĞÜ˜\Ú
+	û,¦:é«:ä&;)à;%b»'`:¬l:í 	ËH	‰ˆKœ™X\ÛÛŠJNÂˆB‚ˆËÈ;`ëKû%l{'a:ì,z­î:ço;&­:äç:èg:ìí:à­:êm‘Óp­û'o{%­;(ï:®,:éo:êb;-¬:ì,;a,:é«;&`;&):å%;&):äç:é«;e!;b®:éo:éâz¬èˆËÈ:âé;"ç:ãã;%a;&):êm;&):å%;&):éo;'«:¬';eg:ä©;)à{(!:¬è{'a:ìí{&ä;eg:âé‚ˆ]™ÛP™Y›Ü™RYHH[ÂˆYˆ
+\[ÙˆØİ[Y[OOH	İ[™Yš[™Y	È	‰ˆØİ[Y[˜Y]™[\İ[™\ŠHÂˆØİ[Y[˜Y]™[\İ[™\Š	İš\ÚXš[]XÚ[™ÙIË
+
+HOˆÂˆHÂˆYˆ
+Øİ[Y[šY[ŠHÂˆ™ÛP™Y›Ü™RYHHÛİ[™œÛÛ™Ó˜[YNÂˆÛİ[™œİÜÛÛ™Ê
+NÂˆÜYXÚœİÜ
+
+NÂˆH[ÙHÂˆÛİ[™œ™\İ[YJ
+NÂˆYˆ
+™ÛP™Y›Ü™RYJHÈÛİ[™œ^SX\™ÛJ™ÛP™Y›Ü™RYJNÈ™ÛP™Y›Ü™RYHH[ÈBˆBˆHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆJNÂˆB‚ˆËÈ:êª:ì%;'o;%ä;!';!.:èg:èg:ãã:é«:êmº¬ :èg:èg:ãã:è);(ï;!.;&¥ˆ;%b:à­:¬ ;fe:êm;'a:ãkºâ¥:âé‚ˆËÈ;'m:åc:ìí;'m;)à;%bºâ¥‘Ó{'m:¬á;!£H;gd:ém;)à;%bºãá:ègH:êb;-¥:¬è:¬ :èg:èg:ãã;%a;&):êm:ìí{&ä;eg:âé‚ˆHÂˆYˆ
+\[ÙˆÚ[™İÈOOH	İ[™Yš[™Y	È	‰ˆÚ[™İË›X]ÚYYXJHÂˆÛÛœİÜ˜Z]THHÚ[™İË›X]ÚYYXJ	ÊÜšY[][ÛˆÜ˜Z]
+H[™
+Ú[\ˆÛØ\œÙJIÊNÂˆ]™ÛP™Y›Ü™T›İ]HH[ÂˆÛÛœİÛ”›İ]HH
+\JHOˆÂˆHÂˆYˆ
+\K›X]Ú\ÊHÂˆYˆ
+Ûİ[™œÛÛ™Ó˜[YJHÈ™ÛP™Y›Ü™T›İ]HHÛİ[™œÛÛ™Ó˜[YNÈÛİ[™œİÜÛÛ™Ê
+NÈBˆÜYXÚœİÜ
+
+NÂˆH[ÙHYˆ
+™ÛP™Y›Ü™T›İ]JHÂˆÛİ[™œ™\İ[YJ
+NÂˆÛİ[™œ^SX\™ÛJ™ÛP™Y›Ü™T›İ]JNÂˆ™ÛP™Y›Ü™T›İ]HH[ÂˆBˆHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆNÂˆYˆ
+Ü˜Z]TK˜Y]™[\İ[™\ŠHÜ˜Z]TK˜Y]™[\İ[™\Š	ØÚ[™ÙIËÛ”›İ]JNÂˆ[ÙHYˆ
+Ü˜Z]TK˜Y\İ[™\ŠHÜ˜Z]TK˜Y\İ[™\ŠÛ”›İ]JNÈËÈ:­k;f%H; «;c#:é«ˆBˆHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈB‚ˆ›Ø™TİÜ˜YÙJ
+NÈËÈ;( ;'©H:¬ :â©H;%ë:í ;fe{'n
+:í¢:¬ ;ef:êm;`à;'m;bà;%ä:¬¯z¬è;dg;"ç
+BˆÛX[”İ[U[™ÔÛ˜\ÚİÊ
+NÈËÈKLMØˆ;&):ç¦:ä'
+Ì;'o
+ÊH:ä&:ãã:é«:®,;"©:àá{ íÈ;'¤:ãæH;(%zé«ˆËÈ; â:ì¡;(!;) :îa;%c:é¯
+[™^š[;!':îa;"©;&ã;.é:¬$;"ç:¬ ;f.;-§
+H8 %:âé;'c;%ä;&å:äç:èg:à¦;&+:åc;%b:à­ˆÚ[™İË—×ÛÛ“™]Õ™\œÚ[ÛˆH
+
+HOˆÂˆHÂˆØ[YK›™]Õ™\œÚ[Û”™XYHHYNÂˆØ[YK››İXÙHHÈ^ˆ	ø§ìÈ; â:ì¡;(!;'m;) :îa:ä$;%­;&¥8 %; â:èg:¬è;.j;eg:ì¢;'m:êm;( {&ªzãï;&¥‰ËˆNÂˆHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆNÂˆYˆ
+Ú[™İË—×Û™]Õ™\œÚ[Û”™XYJHÚ[™İË—×ÛÛ“™]Õ™\œÚ[ÛŠ
+NÂˆËÈ;'o{%­;(ï:®,;eg:­k{%­;'c;!,H;) :îa
+:êªzèg{'m:îa:ãæz®,:èg;,a;&ã;)à:êm:âé;"ç:¬è:én:âé
+BˆHÂˆYˆ
+ÜYXÚœİ\ÜY
+
+JHÂˆÜYXÚœXÚÕ›ÚXÙJ
+NÂˆYˆ
+Ú[™İËœÜYXÚŞ[\Ú\Ë˜Y]™[\İ[™\ŠHÂˆÚ[™İËœÜYXÚŞ[\Ú\Ë˜Y]™[\İ[™\Š	İ›ÚXÙ\ØÚ[™ÙY	Ë
+
+HOˆÜYXÚœXÚÕ›ÚXÙJ
+JNÂˆBˆBˆHØ]Ú
+JHÈÊˆ:ë-;"ç
+‹ÈBˆZYÜ˜]SÛØ]™J
+NÂˆZYÜ˜]SX\›š[™Ñ]J
+NÈËÈ;'m;(!:ì¡;(!;'f;(!;%ëH;ef{"­H:ãl;'m;a,:éo;"«:èkÈ;'/:èg;'m;(!ˆØš™Xİ˜\ÜÚYÛŠØ[YKØYÙ][™ÜÊ
+JNÈËÈ;( ;'©zä';!);(%J;'¤:éâH;!£zãá0­û`l:® ;%*0­û â{%oJH:ìí{&äˆÛİ[™œÙ]›Û[YJ“ÓSQWÓU‘SÖÙØ[YK›Û[YWHJNÈËÈ;'c:çâHúâê:¬á:ìí{&äˆØ[YK™›YÜÈH™]Ñ›YÜÊ
+NÂˆÚ[™İË—×ÙØ[YHHØ[YNÈËÈ:å%:ì¡:­îûac;"©;b®;&ªBˆÚ[™İË—×İ\İHÈËÈ;ac;"©;b®;&ªH;fáBˆZ[™\Ü^Z[X\›š[™Ôİ[[X\K™XÛÜ™ÜXÔ™\İ[Ûİ[XÚY]™[Y[ËˆZYÜ˜]TÛİ‹ZYÜ˜]TÛİËZYÜ˜]TÛİˆØYÛİÜš]TÛİÛİİ[[X\KËÈËLH:¬ê:äè;!.;'m:î#;e/{"©;,¦0­Ü›İ[™š\:¬ ;)§{&ªBˆZ[˜XÚİ\^\P˜XÚİ\[™Ô™\İÜ™K\Ô™\İÜ™U[™ËˆÛX[”İ[U[™ÔÛ˜\ÚİË›İTİÜ˜YÙQ˜Z[S‘×ÕÓTËËÈKLMÈ;/ï;a,0­û"©:àá{ íÈ;(%zé«:¬ ;)§{&ªBˆÚXÚÕ^İ™\™›İËËÈKLLÈ;`l:® ;%*;&):ì¡;e#:èg;"é:è#:ãe:¬ ; «;&ªBˆ[]TÛİ[™Ñ[]TÛİ\Ñ[]YÛİZ[Y\]™TÛÛZ[Z[TÛÛˆ™XÛÜ™^Q^K™XÛÜ™Z[QÛ™KÙ]Y]KÙ^Tİ‹ˆ[›ØÚÙYÛİ[Ù]ÛÜÛY]XËÙ]ÛÜÛY]XËXÚY]™[Y[İˆÙ]İ\İÛT]Z^™\Ë[\Üİ\İÛT]Z^™\ËÛX\İ\İÛT]Z^™\Ëİ\İÛT]Z^•[\]KÚ[[™ÙUÜXÜËˆÛÛXİYØ\™ËØ\™[›ØÚÙYZ[Ù\^PT“—ĞĞT‘ËÑ—ĞĞUËˆØ[š]^™S˜[YK›Ø™TİÜ˜YÙKÙ]İÜ˜YÙSÚÎˆ
+
+HOˆİÜ˜YÙSÚËˆZ[Û\ÜĞÜİ‹ÜİÙ[Ù]\Û\ÜĞ˜\ÙQ›YÜËÛ\ÜÔÙ[›Ü‘›YÜËˆ˜XÚİ\Ûİ›İÜËZ[XY\˜›Ø\™Üİ‹Ü[“XY\˜›Ø\™ËÈKLŒ:ì&;"';'!;dg:¬ ;)§{&ªBˆ™\Üİ]Z^™\ËÜ[”™\Üİ™XÛÜ™™\ÜİÙ]™\ÜİÛ\ÜÔÙ[ĞÚÙ^K‘TÔÕĞÒËÈKLN; «;(!û «;fá;($:¬ ˆ\U˜XÙT›ÛÛPÛ\ÜË\U[İ™Y]Û\ÜË\T[[Ü”İ™Y]Û\ÜËˆ\P\˜ØYPÛ\ÜË\PÛŞZÛYPÛ\ÜË\Qš[˜[Û\ÜËˆÙ]^›SÙËÜš]T^›SÙË™^Ø^\Ú[İ\œ™[Øš™Xİ]™Nˆ
+
+HOˆÙ]Øš™Xİ]™JØ[YK™›YÜËØ[YK›X\
+KËÈ:à¦;.j:ì&ÒQ:¬¯zèg8 %L‘z¬ 	ûfe; ­;dg:å,:ço:¬ :®,	úéo;'«;f!;eh:åc; «;&ªBˆš]˜XŞSXZËš]˜XŞT™\Üİ\™T›Ùš[KYš]˜XŞSXZË›İTš]˜XŞT™XÛİ™\TYXÙKˆÙÙÛSİÑÜ˜\XÜËY™™Xİ]™QØ\›ÛÙİYUš\ÚX›SX\šÜËÚTİ™Y]š\İX[›Ùš[KÚRX•š\ÚX›SX\šÜËˆÚ\\Œ’X•š\İX[›Ùš[KÚ\\Œ’X•š\ÚX›SX\šÜËÚ\\ŒÒX•š\İX[›Ùš[KÚ\\ŒÒX•š\ÚX›SX\šÜËˆÚ\\X•š\İX[›Ùš[KÚ\\X•š\ÚX›SX\šÜËÚ\\RX•š\İX[›Ùš[KÚ\\RX•š\ÚX›SX\šÜËˆİXÚÑ\™Xİ[Û‹Z[XYÛ›ÜİXÔ™\ÜZ[Û\ÜÑXYÛ›ÜİXËÜXÔÙ\ÜÚ[Û‹ˆ[Ù^\Îˆ
+
+HOˆ\œ˜^K™œ›ÛJ[
+KËÈL‘H:ê`;bì;a,;.f:¬ ;)§{&ªH8 %;f!;'«:â#:é¬:áo:é«;`©ˆÜ“]™U^ˆ
+
+HOˆ
+Ü“]™Q[ÈÜ“]™Q[^ÛÛ[ˆ[
+KËÈ\šXK[]™H:ëî:çë:¬ ;)§{&ªBˆÚ\\˜YÙSX™[Y˜YÙU^UTÑWÒUSTËPPÒT—ÒUSTËUTÑWÓP‘SËˆ]\ÙR][\ËX\PÛİ[ËÈ:à¨{'`;'o:®,
+KLŠH8 %:ãæ{( H:êe:âm:¬ ;)§{&ªBˆËÈzço;&­:äç;"è:­ç8 %:®,;%­{'f:ì*H;eâ:î#0­úà­;'o;bì;( 0­úìá:îfÈ;`m:é«;%­:¬ ;)§{&ªBˆY[[ÜR][\ËÜ[“Y[[ÜT›ÛÛKÛ[Üœ›İÕÜXÓX™[İ\›]ÛX\Ûİ[UTËˆËÈ;!):äçH:ì,;bà;"';ff;d ;fe{'n;&ªH
+[›ØÚĞ]:¬ ;)§JH8 %;f!;'«:ì,;bà;'f:äì{'©H:¬ :â©{eg;(ï;'©H;ac{"©;b®:êªzègBˆ\œİXYP]˜Z[ˆ
+
+HOˆ
+Ø[YK˜˜]HÈ]˜Z[X›PÛZ[\ÊØ[YK˜˜]JK›X\
+
+ÊHOˆË^
+Hˆ×JKˆXİ]™T]\›ˆ
+
+HOˆ
+Ø[YK˜˜]HÈXİ]™T]\›ŠØ[YK˜˜]JHˆ[
+KËÈºço;&­:äç:¬ ;)§{&ªBˆ]\›’Ù^\Îˆ
+
+HOˆØš™XİšÙ^\ÊUT“”ÊKËÈKLM:è";)à;"©;b®:é«;`©
+;fe;'m;b®:é«;"©;b®;(%{ej{!,H:¬ ;)§{&ªJBˆ]\›‘İZYNˆ
+ÊHOˆUT“—ÑÕRQTÖÚ×KËÈKLM;c#; çHİZYH;fe{'n;&ªBˆ˜]SØœÙ\™Nˆ
+
+HOˆ
+Ø[YK˜˜]HÈ˜]SØœÙ\™JØ[YK˜˜]JHˆ	ÉÊKˆËÈ;c#;'m:á$8à#:¬è;&¥;'f:ç,8à#H8 %:éízìá;%­:äh:âê:¬á;fe{'n;&ªBˆURQUÑSWÓU‘SˆËÈ:ço;&­:äç;"è:­ç8 %;"*;'`;&ã;e!:éâ;.é0­úì,;bà:äìz®"p­ûf£zäçH;c({c#:ém:¬ ;)§{&ªBˆ\ÒY[•Ø\œY[•Ø\œÓÙ‹ÚXÚÕ[›ØÚÜËˆ˜]T˜[šÎˆ
+
+HOˆ
+Ø[YK˜˜]HÈ˜]T˜[šÊØ[YK˜˜]JHˆ[
+KˆZ[QÛ™UÙ^Kİ\™˜XÙQZ[P[™İ™XZËˆËÈ:ço;&­:äç;"è:­ç8 %;'«:ã :¬¬
+:®,;%­{'f:ì*Jp­û"&;%áH:ì,:á"0­úì&;'dH;!(;`çH:¬ ;)§{&ªBˆ™]Ñ›YÜËÜ[‘^Ù]^ÙY[‹™XÛÜ™^ÙY[‹VÔ‘SPUÒÓTÔ×ÑS‘ÓS‘KˆØš™Xİ]™P˜[›™\”™Yš^›ÜÜÕØ\ÔÜ\™Y›ÜÜĞÛX\™Y[”ÛİˆNÂˆœ˜[YJ
+NÂŸJJ
+NÂ

@@ -639,6 +639,15 @@ function drawMonMood(ctx, id, x, y, scale, mood, t) {
 // 인물 스프라이트 그리기 — 스프라이트별 팔레트(MONSTER_PAL)를 자동 적용.
 // mood(선택)를 주면 배틀 표정 오버레이를 함께 그린다 (t = 애니메이션용 시간).
 function drawMon(ctx, id, x, y, scale, flip, mood, t) {
+  // 첫 보스 「따라」는 월드·수첩·배틀에서 같은 고해상도 표정 시트를 공유한다.
+  // PNG 로딩 전이나 Node 검증 환경에서는 아래의 16×16 원본으로 즉시 폴백한다.
+  if (id === 'bekkyeomon' && typeof GAME_ART !== 'undefined') {
+    const anchor = 16 * scale;
+    const size = scale >= 6 ? Math.round(scale * 23) : Math.max(56, Math.round(scale * 20));
+    const dx = Math.round(x + anchor / 2 - size / 2);
+    const dy = Math.round(y + anchor - size * 0.9);
+    if (GAME_ART.drawTtara(ctx, mood || 'closed', dx, dy, size)) return;
+  }
   drawSprite(ctx, MONSTER_SPRITES[id], x, y, scale, MONSTER_PAL[id] || null, flip);
   if (mood && mood !== 'closed') drawMonMood(ctx, id, x, y, scale, mood, t || 0);
 }

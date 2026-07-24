@@ -1,14 +1,20 @@
 // AI 윤리 어드벤처 — 오프라인 서비스워커
 // 모든 정적 자원을 처음 방문 때 캐시해, 이후 네트워크 없이도 실행되게 한다.
 // 게임 코드/콘텐츠가 바뀌면 CACHE 버전을 올리면 된다.
-const CACHE = 'ai-ethics-adventure-0ff4116a';
+const CACHE = 'ai-ethics-adventure-5d65b041';
 const ASSETS = [
   './',
   './index.html',
+  './src/art.js',
   './src/sprites.js',
   './src/audio.js',
   './src/data.js',
   './src/game.js',
+  './assets/art/player-sheet.png',
+  './assets/art/bandi-sheet.png',
+  './assets/art/ttara-expression-sheet.png',
+  './assets/cc0/ninja-adventure/tileset_floor.png',
+  './assets/cc0/ninja-adventure/tileset_village_abandoned.png',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',

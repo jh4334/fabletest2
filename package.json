@@ -12,7 +12,7 @@
     "shots": "node tools/shots.js",
     "icons": "node tools/icons.js",
     "docs": "node tools/quizlist.js",
-    "pack": "rm -f ai-ethics-adventure-offline.zip && zip -rq ai-ethics-adventure-offline.zip index.html sw.js manifest.webmanifest .nojekyll src icons docs README.md -x '*/.*' && echo '✔ ai-ethics-adventure-offline.zip 생성'"
+    "pack": "rm -f ai-ethics-adventure-offline.zip && zip -rq ai-ethics-adventure-offline.zip index.html sw.js manifest.webmanifest .nojekyll src assets icons docs README.md -x '*/.*' && echo '✔ ai-ethics-adventure-offline.zip 생성'"
   },
   "devDependencies": {
     "canvas": "^3.2.3",
