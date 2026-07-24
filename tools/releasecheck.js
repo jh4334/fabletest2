@@ -100,10 +100,22 @@ console.log('[문서·출시]');
 const pkg = JSON.parse(read('package.json'));
 const lock = JSON.parse(read('package-lock.json'));
 const gameVersion = (game.match(/const GAME_VERSION = '([^']+)'/) || [])[1];
+const sw = read('sw.js');
+const html = read('index.html');
 check('앱·패키지·잠금파일 버전 일치',
   pkg.version === gameVersion && lock.version === pkg.version &&
   lock.packages && lock.packages[''] && lock.packages[''].version === pkg.version,
   `${gameVersion} / ${pkg.version} / ${lock.version}`);
+check('Pages 핵심 HTML·JS 네트워크 우선 갱신',
+  sw.includes('const isCore =') && sw.includes("fetch(e.request, { cache: 'no-store' })")
+  && sw.includes("caches.match(e.request, { ignoreSearch: true })"));
+check('서비스워커 등록이 HTTP 캐시를 우회해 매 접속 갱신',
+  html.includes("register('sw.js', { updateViaCache: 'none' })")
+  && html.includes('reg.update().catch(() => {})')
+  && html.includes('hadServiceWorkerController && Date.now() - registrationStartedAt'));
+check('v3 핵심 스크립트 캐시 식별자',
+  ['art', 'sprites', 'audio', 'data', 'game']
+    .every((name) => html.includes(`src="${`src/${name}.js?v=3.0.0-artpass`}"`)));
 for (const p of [
   'docs/스토리-전면개편안-v3.md',
   'docs/개발-및-현장적용-계획안-v3.md',
