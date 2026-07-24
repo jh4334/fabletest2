@@ -2,7 +2,7 @@
 // 모든 정적 자원을 처음 방문 때 캐시해, 이후 네트워크 없이도 실행되게 한다.
 // 핵심 HTML/JS는 온라인일 때 네트워크를 먼저 확인해 배포 직후 구버전이 남지 않게 한다.
 // 게임 코드/콘텐츠가 바뀌면 CACHE 버전을 올리면 된다.
-const CACHE = 'ai-ethics-adventure-cf436dc4';
+const CACHE = 'ai-ethics-adventure-d3020812';
 const ASSETS = [
   './',
   './index.html',
@@ -28,6 +28,7 @@ const ASSETS = [
   './assets/art/maps/ch4-sparkle-arcade.png',
   './assets/art/maps/ch5-cozy-loop.png',
   './assets/art/maps/finale-memory-core.png',
+  './assets/art/maps/v5-project-zero-archive.png',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',

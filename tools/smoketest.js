@@ -128,7 +128,7 @@ setPos(12, 5, 'up'); tap('z');
 check('보조 조사물 발견', g.mode === 'dialog');
 advanceDialog();
 check('보조 조사물 조사 후 문 아직 닫힘', g.flags.introDoorOpen === false);
-check('보조 조사물 조사 후 다음 단서 안내 유지', windowObj.__test.currentObjective() === '단서 0/3 — 왼쪽 위 태블릿을 조사하자');
+check('보조 조사물 조사 후 다음 봉인 안내 유지', windowObj.__test.currentObjective() === '봉인 0/3 — 왼쪽 위 「경계」 기록을 복구하자');
 let introHintTarget = windowObj.__test.nextWaypoint(g.flags, 'introlab');
 check('나침반은 첫 단서 태블릿을 가리킴', introHintTarget && introHintTarget.x === 4 && introHintTarget.y === 3);
 
@@ -154,7 +154,7 @@ check('단서③ 포스트잇 발견', g.mode === 'dialog');
 advanceDialog();
 check('포스트잇 플래그 설정', g.flags.introClue3 === true);
 check('모든 단서 수집 → 문 개방', g.flags.introDoorOpen === true);
-check('문 개방 후 목표는 박사님이 아니라 출구', windowObj.__test.currentObjective() === '출구가 열렸다 — 문으로 나가자');
+check('게이트 개방 후 목표는 박사님이 아니라 첫 삭제 구역', windowObj.__test.currentObjective() === '게이트 01 개방 — 첫 삭제 구역으로 가자');
 const introExitTarget = windowObj.__test.nextWaypoint(g.flags, 'introlab');
 check('문 개방 후 나침반은 열린 출구를 가리킴', introExitTarget && introExitTarget.x === 14 && introExitTarget.y === 17);
 // 실험실 아래 출구 → 숲 북쪽 입구. 아래를 누르고 나가도 다음 맵 12시 쪽에서 자연스럽게 내려온다.
@@ -3072,7 +3072,7 @@ console.log('[108] 마음의 온도 — 마을의 반응(이사 온 친구들)')
     const flagKey = chapterFlagKeys[i];
     const npc = byId(id);
     check(`${id} NPC 정의 존재`, !!npc);
-    check(`${id}: 자비로 되돌리면 마을에 이사 옴`, npc.show({ [flagKey]: true }) === true);
+    check(`${id}: 자비로 되돌리면 복구 허브에 돌아옴`, npc.show({ [flagKey]: true }) === true);
     check(`${id}: 차갑게 대했으면 그 자리는 비어 있음`, !npc.show({ [flagKey]: false }));
     const lines = getNpcDialogT(id, g.flags);
     check(`${id}: 후일담 대사 1~2줄`, Array.isArray(lines) && lines.length >= 1 && lines.length <= 2 &&
@@ -3081,7 +3081,7 @@ console.log('[108] 마음의 온도 — 마을의 반응(이사 온 친구들)')
 
   const ttara = byId('friend_ttara');
   check('friend_ttara(따라) NPC 정의 존재', !!ttara);
-  check('따라: 자비로 되돌리면 마을에 이사 옴', ttara.show({ mercyChoice: { bekkyeomon: 'mercy' } }) === true);
+  check('따라: 자비로 되돌리면 복구 허브에 돌아옴', ttara.show({ mercyChoice: { bekkyeomon: 'mercy' } }) === true);
   check('따라: 차갑게 대했으면 부재', !ttara.show({ mercyChoice: { bekkyeomon: 'harsh' } }));
   check('따라: 아직 만나지 않았으면 부재', !ttara.show({}));
   const ttaraLines = getNpcDialogT('friend_ttara', g.flags);
@@ -3097,12 +3097,12 @@ console.log('[108] 마음의 온도 — 마을의 반응(이사 온 친구들)')
   allMercy.defeated.bekkyeomon = true;
   allMercy.mercyChoice = Object.assign({}, allMercy.mercyChoice, { bekkyeomon: 'mercy' });
   const warmLines = getNpcDialogT('grandma', allMercy);
-  check('할머니: 전부 자비로 되돌렸으면 빈자리 언급 없음', !warmLines.some((l) => l.includes('평상')));
+  check('기록지기: 전부 자비로 되돌렸으면 빈 복구석 언급 없음', !warmLines.some((l) => l.includes('빈 복구석')));
 
   const oneHarsh = JSON.parse(JSON.stringify(allMercy));
   oneHarsh.chapter3Mercy = false;
   const harshLines = getNpcDialogT('grandma', oneHarsh);
-  check('할머니: 차갑게 대한 자리가 있으면 빈자리 언급(분기)', harshLines.some((l) => l.includes('평상')));
+  check('기록지기: 차갑게 대한 자리가 있으면 빈 복구석 언급(분기)', harshLines.some((l) => l.includes('빈 복구석')));
 }
 
 console.log('[109] 목표 나침반(getObjectiveTarget) — v2 사다리 — v1 잔재 회귀 방지');
@@ -3135,12 +3135,12 @@ console.log('[109] 목표 나침반(getObjectiveTarget) — v2 사다리 — v1 
   check('나침반 — 이미 1장 보스방 안 → 담아(5,2)', !!t2c && t2c.map === 'ownerroom' && t2c.x === 5 && t2c.y === 2);
 }
 
-console.log('[110] 박사 첫 대화 — v2 흐름(숲의 따라 → 마을 오른쪽 반짝이는 문)으로 교체');
+console.log('[110] 박사 첫 대화 — v5 흐름(게이트 01 → 전부 공짜 거리)으로 교체');
 {
   const introLines = getNpcDialogT('prof', { talkedProf: false, badges: { forest: false, lake: false, cave: false } });
   const joined = introLines.join(' ');
-  check('첫 대화 — 숲의 따라 언급', /따라/.test(joined) && /정적의 숲/.test(joined));
-  check('첫 대화 — 마을 오른쪽 반짝이는 문(전부 공짜 거리) 안내', /전부 공짜 거리/.test(joined));
+  check('첫 대화 — 프로젝트 0호와 삭제된 안전 약속 고백', /프로젝트 0호/.test(joined) && /안전 약속/.test(joined));
+  check('첫 대화 — 게이트 01(전부 공짜 거리) 안내', /전부 공짜 거리/.test(joined));
   check('첫 대화 — v1 증표 안내 문구는 제거됨', !/증표 셋이 모이면/.test(joined));
 }
 
@@ -3262,16 +3262,16 @@ console.log('[116] N-3 조사 플레이버 — 모든 것을 조사할 수 있�
   const total = ['village', 'freestreet', 'tiltstreet', 'rumorstreet', 'arcade', 'cozyhome']
     .reduce((s, m) => s + (MAPS[m].flavors || []).length, 0);
   check('플레이버 총 40개 이상', total >= 40);
-  // 마을 연못 (6,14) — 서쪽에서 바라보고 조사
+  // 복구 허브의 청록 회로 (6,14) — 서쪽에서 바라보고 조사
   setPos(5, 14, 'right'); g.player.x = 5; g.player.y = 14; g.player.dir = 'right';
   tap('z');
-  check('연못 조사 — * 플레이버 대화', g.mode === 'dialog' && /^\* 연못/.test(g.dialog.lines[0]));
+  check('복구 회로 조사 — * 플레이버 대화', g.mode === 'dialog' && /^\* 바닥의 청록 회로/.test(g.dialog.lines[0]));
   advanceDialog();
-  check('반디 한마디(말풍선) — 물속엔 내가 안 비치네', !!g.notice && /안 비치네/.test(g.notice.text));
+  check('반디 한마디(말풍선) — 약속이 이어지는 선', !!g.notice && /약속이 이어지는 선/.test(g.notice.text));
   // 정체 공개 후에는 반디가 얹지 않는다
   g.flags.bandiRevealed = true; g.notice = { text: '', t: 0 };
   tap('z'); advanceDialog();
-  check('정체 공개 후 — 반디 한마디 없음', !g.notice.text || !/안 비치네/.test(g.notice.text));
+  check('정체 공개 후 — 반디 한마디 없음', !g.notice.text || !/약속이 이어지는 선/.test(g.notice.text));
   g.flags.bandiRevealed = false;
 }
 
@@ -3325,7 +3325,7 @@ console.log('[117] N-4 기억의 별 — 조사하면 저장 + 결심 플레이�
   check('마을 기억의 별 존재', !!st && typeof st.text === 'string');
   setPos(st.x, st.y + 1, 'up');
   tap('z');
-  check('별 조사 — 결심 플레이버 대화', g.mode === 'dialog' && /단단하게 한다/.test(g.dialog.lines[0]));
+  check('중앙 코어 조사 — 복구 허브 플레이버 대화', g.mode === 'dialog' && /되찾은 약속/.test(g.dialog.lines[0]));
   check('별 조사 — 저장 말풍선', !!g.notice && /저장되었다/.test(g.notice.text));
   advanceDialog();
   check('허브 6곳 + 파이널 2곳 모두 별 보유', ['village','freestreet','tiltstreet','rumorstreet','arcade',
@@ -3510,8 +3510,8 @@ console.log('[U-2] 반디 리빌 정지 비트 — 소스 보증 (BGM 정지·re
 console.log('[U-3] 반디 인물 순간 4개 — 데이터·소스');
 {
   const { MAPS: M3 } = vm.runInContext('({ MAPS })', sandbox);
-  const benchFlavor = (M3.village.flavors || []).find((f) => f.bandi && /벤치/.test(f.text));
-  check('U-3① 마을 벤치 반디 잡담(교훈 0)', !!benchFlavor && /아무것도 안 해도/.test(benchFlavor.bandi));
+  const restFlavor = (M3.village.flavors || []).find((f) => f.bandi && /따뜻한 원/.test(f.text));
+  check('U-3① 복구 허브 휴식 원 반디 잡담(교훈 0)', !!restFlavor && /잠깐 쉬는 건 삭제 대상이 아니지/.test(restFlavor.bandi));
   const askFlavor = (M3.tiltstreet.flavors || []).find((f) => f.ask);
   check('U-3② 반디 질문 플레이버 — 선택지 2개 + flags 저장', !!askFlavor &&
     askFlavor.ask.options.length === 2 && askFlavor.ask.flag === 'bandiAnswer' &&
@@ -3761,9 +3761,9 @@ console.log('[Y-1~Y-12] Y라운드 — 스토리·플레이 심화 (상실 비�
   check('Y-5 일기 7조각 전부 ngNote', DS.length === 7 && DS.every((s) => typeof s.ngNote === 'string' && s.ngNote.length > 2));
   check('Y-5 drawDiary가 flags.ng에서 ngNote를 그린다', /flags\.ng && s\.ngNote/.test(gsrc));
 
-  // Y-6 프롤로그 캐비닛 청각 복선 — blip 1320(반디 음정)
-  const cab = (MP.introlab || []).find((p) => p.label === '잠긴 캐비닛');
-  check('Y-6 캐비닛 blip 1320(반디 음정 복선)', !!cab && cab.blip === 1320);
+  // Y-6 프로젝트 0호 음성 로그 청각 복선 — blip 1320(반디 음정)
+  const cab = (MP.introlab || []).find((p) => p.label === '0호 음성 로그');
+  check('Y-6 음성 로그 blip 1320(반디 음정 복선)', !!cab && cab.blip === 1320);
   check('Y-6 prop.blip을 조사 시 재생', /if \(prop\.blip\) Sound\.blip\(prop\.blip\)/.test(gsrc));
 
   // Y-7 콤보 시각화 — ×N 카운터는 b.combo를 직접 읽는다(리뷰 반영: comboFx 잉여 상태 제거)

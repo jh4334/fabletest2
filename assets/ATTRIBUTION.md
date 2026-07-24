@@ -12,6 +12,15 @@
 These two files remain in the repository for provenance and comparison, but v4 no longer
 loads them at runtime.
 
+## Project-original v5 archive environment
+
+`art/maps/v5-project-zero-archive.png` was generated specifically for the VERSION 5.0
+world rebuild. It is an environment-only, top-down 16-bit pixel-art background for the
+radial Project Zero recovery archive: central cracked core, cyan data channels, archive
+pillars, and six gate approaches. Player characters, UI, and text are drawn by the game
+at runtime. The image is stored locally and no external image service is called at
+runtime.
+
 ## Project-original chapter map art
 
 The seven textures in `art/maps/` were generated specifically for this project from the

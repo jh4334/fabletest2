@@ -1,6 +1,6 @@
 {
   "name": "ai-ethics-adventure",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "description": "한국 초등학생을 위한 AI 윤리 교육 게임 (순수 HTML5 Canvas, 런타임 의존성 없음)",
   "private": true,
   "scripts": {
