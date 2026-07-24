@@ -1,4 +1,4 @@
-// v3 출시 후보 정합성 점검 — 코드·에셋·오프라인 캐시·16차시 문서가
+// v4 출시 후보 정합성 점검 — 코드·에셋·오프라인 캐시·16차시 문서가
 // 서로 어긋나는 회귀를 한 번에 잡는다. 외부 패키지 없이 Node.js만 사용한다.
 const fs = require('fs');
 const path = require('path');
@@ -40,7 +40,8 @@ for (const f of ['src/art.js', 'src/sprites.js', 'src/audio.js', 'src/data.js'])
 const { SONGS, QUIZZES } = vm.runInContext('({ SONGS, QUIZZES })', ctx);
 
 console.log('[에셋]');
-const artSrc = Array.from(read('src/art.js').matchAll(/load\('[^']+', '([^']+)'\)/g), (m) => m[1]);
+const artCode = read('src/art.js');
+const artSrc = Array.from(artCode.matchAll(/load\('[^']+', '([^']+)'\)/g), (m) => m[1]);
 const swAssets = vm.runInNewContext(
   read('sw.js').match(/const ASSETS = (\[[\s\S]*?\]);/)[1],
 );
@@ -53,6 +54,10 @@ check('서비스워커 캐시 경로가 모두 존재',
 const bossSheets = [
   'ttara', 'dama', 'giul', 'geureol', 'banjjak', 'lumi', 'goyo', 'yeongi',
 ].map((id) => `assets/art/${id}-expression-sheet.png`);
+const mapTextures = [
+  'prologue-boundary', 'ch1-free-street', 'ch2-tilted-street', 'ch3-rumor-news',
+  'ch4-sparkle-arcade', 'ch5-cozy-loop', 'finale-memory-core',
+].map((id) => `assets/art/maps/${id}.png`);
 const bossInfo = bossSheets.map(pngInfo);
 check('보스 표정 시트 8개', bossInfo.length === 8 && bossInfo.every(Boolean));
 check('보스 표정 시트 크기 통일',
@@ -60,6 +65,11 @@ check('보스 표정 시트 크기 통일',
   bossInfo.map((p) => p && `${p.width}x${p.height}`).join(', '));
 check('보스 표정 시트 RGBA·고해상도',
   bossInfo.every((p) => p.colorType === 6 && p.width >= 512 && p.height >= 512));
+check('v4 챕터 전용 맵 원화 7개',
+  mapTextures.every((p) => fs.existsSync(path.join(ROOT, p)) && artSrc.includes(p))
+  && mapTextures.every((p) => swAssets.includes('./' + p)));
+check('v4 맵 렌더러가 구 CC0 타일을 로드하지 않음',
+  artCode.includes('drawMapGround') && !artCode.includes("load('floor'") && !artCode.includes("load('village'"));
 const artBytes = artSrc.reduce((n, p) => n + fs.statSync(path.join(ROOT, p)).size, 0);
 check('프리캐시 이미지 총량 5MB 이하', artBytes <= 5 * 1024 * 1024,
   `${(artBytes / 1024 / 1024).toFixed(2)}MB`);
@@ -95,6 +105,11 @@ check('수업 모드 프롤로그~파이널 7개 시작 함수',
     .every((fn) => game.includes(`function ${fn}(`)));
 check('프롤로그 사전·사후 점검 5문항 연결',
   game.includes("prologue: { n: 0") && game.includes("openPrepost('post', 'prologue'"));
+check('v4 삭제된 여섯 약속 스토리 축',
+  game.includes('【프로젝트 0호 삭제 보관소】')
+  && game.includes('【삭제 기록 06 — 거절】')
+  && game.includes('삭제 명령에서 도망친')
+  && game.includes('그다음 선택은 영이에게 돌려주마'));
 
 console.log('[문서·출시]');
 const pkg = JSON.parse(read('package.json'));
@@ -113,9 +128,9 @@ check('서비스워커 등록이 HTTP 캐시를 우회해 매 접속 갱신',
   html.includes("register('sw.js', { updateViaCache: 'none' })")
   && html.includes('reg.update().catch(() => {})')
   && html.includes('hadServiceWorkerController && Date.now() - registrationStartedAt'));
-check('v3 핵심 스크립트 캐시 식별자',
+check('v4 핵심 스크립트 캐시 식별자',
   ['art', 'sprites', 'audio', 'data', 'game']
-    .every((name) => html.includes(`src="${`src/${name}.js?v=3.0.0-artpass`}"`)));
+    .every((name) => html.includes(`src="${`src/${name}.js?v=4.0.0-storymap`}"`)));
 for (const p of [
   'docs/스토리-전면개편안-v3.md',
   'docs/개발-및-현장적용-계획안-v3.md',

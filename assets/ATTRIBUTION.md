@@ -1,6 +1,6 @@
 # Visual asset sources
 
-## Ninja Adventure
+## Legacy CC0 archive (not used by the v4 map renderer)
 
 - Source: https://pixel-boy.itch.io/ninja-adventure-asset-pack
 - Repository: https://github.com/pixel-boy/NinjaAdventure
@@ -8,6 +8,23 @@
 - Files used:
   - `cc0/ninja-adventure/tileset_floor.png`
   - `cc0/ninja-adventure/tileset_village_abandoned.png`
+
+These two files remain in the repository for provenance and comparison, but v4 no longer
+loads them at runtime.
+
+## Project-original chapter map art
+
+The seven textures in `art/maps/` were generated specifically for this project from the
+approved top-down 16-bit pixel-art direction, then resized and palette-optimized locally.
+They do not call an external image service at runtime.
+
+- `prologue-boundary.png`
+- `ch1-free-street.png`
+- `ch2-tilted-street.png`
+- `ch3-rumor-news.png`
+- `ch4-sparkle-arcade.png`
+- `ch5-cozy-loop.png`
+- `finale-memory-core.png`
 
 ## Project-original character art
 

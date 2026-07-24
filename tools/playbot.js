@@ -1,4 +1,4 @@
-// 플레이테스트 봇 (v3) — 실제 아이의 최속 플레이를 흉내 내 초반 체감을 계측한다.
+// 플레이테스트 봇 (v4) — 실제 아이의 최속 플레이를 흉내 내 초반 체감을 계측한다.
 // 사용법: node tools/playbot.js
 //
 // 무엇을 재나 (디벨롭안-실사용자-플레이테스트.md의 v1 계측과 비교 가능):
@@ -421,7 +421,7 @@ if (!g.flags.defeated.yeongi) throw new Error('영이 되돌리기 실패');
 mark('파이널 — 영이 설득 배틀 + 엔딩');
 
 // ---- 리포트 ----
-console.log('\n===== 플레이테스트 봇 리포트 (v3 최속 주행) =====');
+console.log('\n===== 플레이테스트 봇 리포트 (v4 최속 주행) =====');
 console.table(report);
 console.log(`첫 배틀 시작까지 대화 탭: ${firstBattleTaps}탭 (상자당 2탭 ≈ ${Math.round(firstBattleTaps / 2)}상자)`);
 console.log(`누계: ${frames}프레임 ≈ ${(frames / 60).toFixed(1)}초(최속 하한) · 대화 탭 ${dialogTaps}회`);
