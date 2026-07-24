@@ -111,7 +111,8 @@ check('Pages 핵심 HTML·JS 네트워크 우선 갱신',
   && sw.includes("caches.match(e.request, { ignoreSearch: true })"));
 check('서비스워커 등록이 HTTP 캐시를 우회해 매 접속 갱신',
   html.includes("register('sw.js', { updateViaCache: 'none' })")
-  && html.includes('reg.update().catch(() => {})'));
+  && html.includes('reg.update().catch(() => {})')
+  && html.includes('hadServiceWorkerController && Date.now() - registrationStartedAt'));
 check('v3 핵심 스크립트 캐시 식별자',
   ['art', 'sprites', 'audio', 'data', 'game']
     .every((name) => html.includes(`src="${`src/${name}.js?v=3.0.0-artpass`}"`)));

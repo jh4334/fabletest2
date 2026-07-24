@@ -348,13 +348,14 @@
 
   // 오프라인 설치(PWA) — file:// 로 직접 열었을 때는 등록하지 않는다
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    const hadServiceWorkerController = !!navigator.serviceWorker.controller;
     let reloadingForUpdate = false;
     const registrationStartedAt = Date.now();
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (reloadingForUpdate) return;
-      // 첫 진입 중 새 워커가 제어권을 얻으면 한 번만 다시 열어, 구 캐시 화면을
-      // 최신 HTML/JS로 즉시 교체한다. 오래 플레이 중인 탭은 강제 갱신하지 않는다.
-      if (Date.now() - registrationStartedAt < 60 * 1000) {
+      // 이미 구버전 워커가 제어하던 첫 진입에서만 한 번 다시 열어, 구 캐시 화면을
+      // 최신 HTML/JS로 교체한다. 최초 설치·오래 플레이 중인 탭은 강제 갱신하지 않는다.
+      if (hadServiceWorkerController && Date.now() - registrationStartedAt < 60 * 1000) {
         reloadingForUpdate = true;
         location.reload();
         return;
