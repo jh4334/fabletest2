@@ -16,6 +16,13 @@ const GAME_ART = (() => {
   load('player', 'assets/art/player-sheet.png');
   load('bandi', 'assets/art/bandi-sheet.png');
   load('ttara', 'assets/art/ttara-expression-sheet.png');
+  load('dama', 'assets/art/dama-expression-sheet.png');
+  load('giul', 'assets/art/giul-expression-sheet.png');
+  load('geureol', 'assets/art/geureol-expression-sheet.png');
+  load('banjjak', 'assets/art/banjjak-expression-sheet.png');
+  load('lumi', 'assets/art/lumi-expression-sheet.png');
+  load('goyo', 'assets/art/goyo-expression-sheet.png');
+  load('yeongi', 'assets/art/yeongi-expression-sheet.png');
   load('floor', 'assets/cc0/ninja-adventure/tileset_floor.png');
   load('village', 'assets/cc0/ninja-adventure/tileset_village_abandoned.png');
 
@@ -45,7 +52,20 @@ const GAME_ART = (() => {
       Math.round(centerX - 32), Math.round(centerY - 32), 64, 64);
   }
 
-  function drawTtara(ctx, mood, x, y, size) {
+  const BOSS_ART = {
+    bekkyeomon: 'ttara',
+    sujipmon: 'dama',
+    pyeonhyangmon: 'giul',
+    hwangakmon: 'geureol',
+    yuhokmon: 'banjjak',
+    hollimmon: 'lumi',
+    finalboss: 'goyo',
+    yeongi: 'yeongi',
+  };
+
+  function drawBoss(ctx, id, mood, x, y, size) {
+    const artId = BOSS_ART[id];
+    if (!artId) return false;
     const frame = {
       closed: [0, 0],
       shaken: [1, 0],
@@ -53,7 +73,7 @@ const GAME_ART = (() => {
       open: [0, 1],
       mercy: [1, 1],
     }[mood] || [0, 0];
-    return drawSheet(ctx, 'ttara', 2, 2, frame[0], frame[1], x, y, size, size);
+    return drawSheet(ctx, artId, 2, 2, frame[0], frame[1], x, y, size, size);
   }
 
   function hash2(x, y) {
@@ -92,5 +112,45 @@ const GAME_ART = (() => {
     return true;
   }
 
-  return { ready, drawPlayer, drawBandi, drawTtara, drawVillageGround, drawVillageRock };
+  // 챕터 전역의 보행 바닥을 같은 CC0 아틀라스에서 꺼내고, 각 장의 이야기 색으로
+  // 얇게 덧입힌다. 충돌/타일 문자는 그대로라서 퍼즐 동선에는 영향을 주지 않는다.
+  const CHAPTER_GROUND = {
+    1: { base: '#563d55', tint: 'rgba(86,32,78,0.58)', accent: 'rgba(255,112,194,0.12)' },
+    2: { base: '#303344', tint: 'rgba(38,48,88,0.62)', accent: 'rgba(241,181,74,0.12)' },
+    3: { base: '#253646', tint: 'rgba(21,60,82,0.58)', accent: 'rgba(239,222,174,0.10)' },
+    4: { base: '#321f3c', tint: 'rgba(89,20,101,0.60)', accent: 'rgba(255,74,179,0.14)' },
+    5: { base: '#4a3428', tint: 'rgba(112,62,30,0.46)', accent: 'rgba(255,195,116,0.12)' },
+    final: { base: '#17182b', tint: 'rgba(10,12,40,0.72)', accent: 'rgba(165,188,255,0.09)' },
+  };
+
+  function drawChapterGround(ctx, chapter, ch, x, y, dx, dy, size) {
+    const style = CHAPTER_GROUND[chapter];
+    const groundChars = chapter === 1 ? 'GPFEI' : chapter === 2 ? '8E'
+      : chapter === 3 ? 'GPMI' : chapter === 4 ? 'I'
+        : chapter === 5 ? 'I' : chapter === 'final' ? 'IA' : '';
+    if (!style || !groundChars.includes(ch) || !ready('floor')) return false;
+    const image = images.floor;
+    // 같은 지형 안에서는 완결된 중앙 셀을 반복한다. 오토타일 가장자리 셀을 섞으면
+    // 한 칸마다 잔디/흙 경계가 생겨 체크무늬처럼 보이므로, 차이는 맵 데이터의 G/P와
+    // 아래의 작은 결정적 하이라이트만으로 만든다.
+    const cellPool = (ch === 'G' || ch === 'F')
+      ? [[12, 12], [13, 12], [14, 12], [15, 12]]
+      : [[16, 11], [17, 11], [18, 11], [19, 11]];
+    const cell = cellPool[hash2(x, y) % cellPool.length];
+    // 아틀라스의 오토타일 셀에는 가장자리용 투명 픽셀이 있다. 먼저 장별 베이스를
+    // 채워 두면 서로 다른 가장자리 조각을 섞어도 검은 체커가 비치지 않는다.
+    ctx.fillStyle = style.base;
+    ctx.fillRect(dx, dy, size, size);
+    ctx.drawImage(image, cell[0] * 16, cell[1] * 16, 16, 16, dx, dy, size, size);
+    ctx.fillStyle = style.tint;
+    ctx.fillRect(dx, dy, size, size);
+    if (hash2(x + 5, y + 9) % 7 === 0) {
+      ctx.fillStyle = style.accent;
+      ctx.fillRect(dx + size * 0.16, dy + size * 0.18, size * 0.68, Math.max(2, size * 0.08));
+    }
+    return true;
+  }
+
+  return { ready, drawPlayer, drawBandi, drawBoss, drawVillageGround, drawVillageRock,
+    drawChapterGround };
 })();

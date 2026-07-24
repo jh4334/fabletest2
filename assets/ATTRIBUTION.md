@@ -9,5 +9,6 @@
   - `cc0/ninja-adventure/tileset_floor.png`
   - `cc0/ninja-adventure/tileset_village_abandoned.png`
 
-The player, Bandi, and Ttara expression sheets in `art/` were created specifically
-for this project from the approved visual direction.
+The player, Bandi, and eight boss expression sheets in `art/` were created specifically
+for this project from the approved visual direction. The boss sheets cover Ttara,
+Dama, Giul, Geureolssa, Banjjak, Lumi, Goyo, and Yeongi.

@@ -1693,6 +1693,7 @@ tap('z'); // 자비 선택 → 응답
 check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z'); // 응답 닫기 → 승리 처리
 check('승리 대화 시작', g.mode === 'dialog');
+check('1→2장 연결 단서 — 기울어진 저울 문양', g.dialog.lines.some((l) => /기운 저울 문양/.test(l)));
 check('이슈6 수업 세션 보스 클리어 대화에 마무리 안내(CLASS_END_LINE) 포함',
   g.dialog.lines.some((l) => /다음 시간에 이어서/.test(l)));
 advanceDialog();
@@ -1942,6 +1943,7 @@ while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z');
 check('승리 대화 시작', g.mode === 'dialog');
+check('2→3장 연결 단서 — 프로젝트 0호 미송출 기사', g.dialog.lines.some((l) => /프로젝트 0호 — 미송출/.test(l)));
 advanceDialog();
 check('2장 클리어 플래그', g.flags.chapter2Clear === true);
 check('보스 승리 후 저울 앞(허브) 복귀', g.map === 'tiltstreet' && g.player.x === 14 && g.player.y === 10);
@@ -2185,6 +2187,7 @@ while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z');
 check('승리 대화 시작', g.mode === 'dialog');
+check('3→4장 연결 단서 — 계속 보게 만드는 무대', g.dialog.lines.some((l) => /계속 보게 만드는 무대/.test(l)));
 advanceDialog();
 check('3장 클리어 플래그', g.flags.chapter3Clear === true);
 check('보스 승리 후 신문사 입구(허브) 복귀', g.map === 'rumorstreet' && g.player.x === 17 && g.player.y === 5);
@@ -2204,6 +2207,8 @@ check('고백 대사 — 프로젝트 0호', g.dialog.lines.some((l) => /프로�
 check('복선 반영 — seenPhoto1 있음', g.dialog.lines.some((l) => /주인의 방에서 본 사진/.test(l)));
 check('복선 미반영 — seenPhoto2 없으면 해당 줄 없음', !g.dialog.lines.some((l) => /×표 사진들도/.test(l)));
 check('복선 반영 — seenArticle 있음', g.dialog.lines.some((l) => /송출되지 못한 그 기사/.test(l)));
+check('박사 고백 — 방치한 어른의 책임을 직접 인정', g.dialog.lines.some((l) => /내 책임은 외면했어/.test(l)));
+check('박사 고백 — 영이에게 선택권을 돌려주기로 약속', g.dialog.lines.some((l) => /선택은 영이에게 돌려주마/.test(l)));
 check('profConfession 즉시 기록(재진입 방지)', g.flags.profConfession === true);
 advanceDialog();
 // X-1② 박사 고백 끝 반응 선택(정답 없음)이 자동 처리되어 playerVoice.prof에 남는다.
@@ -2472,6 +2477,7 @@ while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z');
 check('승리 대화 시작', g.mode === 'dialog');
+check('4→5장 연결 단서 — 영원히 함께 있어 줄 집', g.dialog.lines.some((l) => /영원히 함께 있어 줄게/.test(l)));
 advanceDialog();
 check('4장 클리어 플래그', g.flags.chapter4Clear === true);
 check('4장 자비 플래그(다음 장 콜백용)', g.flags.chapter4Mercy === true);
@@ -2680,6 +2686,7 @@ while (g.battle.cursor !== 0) tap('ArrowDown');
 tap('z'); check('자비 응답 단계', g.battle.phase === 'mercyReply');
 tap('z');
 check('승리 대화 시작', g.mode === 'dialog');
+check('5→파이널 연결 단서 — 대답을 기다린 고요한 뜰', g.dialog.lines.some((l) => /대답을 기다린 듯/.test(l)));
 advanceDialog();
 check('5장 클리어 플래그', g.flags.chapter5Clear === true);
 check('5장 자비 플래그(다음 장 콜백용)', g.flags.chapter5Mercy === true);
@@ -2841,14 +2848,14 @@ check('보스는 도감 순서에 없음', !DEX_ORDER.includes('goyo_boss'));
 
 console.log('[103] 코어 — 여덟 의자(coreMercyCount = 자비 수) + 봉헌 퍼즐(정답·오답 기록)');
 check('영이는 아직 안 보임(shrineDone 전)', !g.flags.shrineDone);
-check('의자 수 = 자비 수(0)', coreMercyCount(g.flags) === 0);
+check('고요를 안아 준 자리 1석', coreMercyCount(g.flags) === 1);
 g.flags.mercyChoice = g.flags.mercyChoice || {};
 g.flags.mercyChoice.bekkyeomon = 'mercy';
 g.flags.chapter1Mercy = true;
 g.flags.chapter3Mercy = true;
-check('의자 수 = 자비 수(3)', coreMercyCount(g.flags) === 3);
+check('고요 포함 의자 수 = 자비 수(4)', coreMercyCount(g.flags) === 4);
 g.flags.chapter2Mercy = true; g.flags.chapter4Mercy = true; g.flags.chapter5Mercy = true;
-check('의자 수 = 자비 수(6, 여덟 석 중 최대)', coreMercyCount(g.flags) === 6);
+check('영이 전 의자 수 = 7/8(마지막 자리는 영이)', coreMercyCount(g.flags) === 7);
 
 setPos(7, 2, 'up'); tap('z');
 check('제단 조사 — 봉헌 안내 대화', g.mode === 'dialog');

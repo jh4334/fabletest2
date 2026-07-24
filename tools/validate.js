@@ -19,11 +19,29 @@ for (const f of ['src/sprites.js', 'src/audio.js', 'src/data.js']) {
 }
 
 const { MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL,
-  MONSTER_PAL, MONSTER_DEX, DEX_ORDER, MAP_PROPS, TOPIC_LABEL, getObjectiveTarget } =
-  vm.runInContext('({ MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL, MONSTER_PAL, MONSTER_DEX, DEX_ORDER, MAP_PROPS, TOPIC_LABEL, getObjectiveTarget })', ctx);
+  MONSTER_PAL, MONSTER_DEX, DEX_ORDER, MAP_PROPS, TOPIC_LABEL, getObjectiveTarget,
+  DIARY_SHARDS, coreMercyCount } =
+  vm.runInContext('({ MAPS, MONSTERS, QUIZZES, WALKABLE, SONGS, MONSTER_SPRITES, PLAYER_SPRITES, BASE_PAL, MONSTER_PAL, MONSTER_DEX, DEX_ORDER, MAP_PROPS, TOPIC_LABEL, getObjectiveTarget, DIARY_SHARDS, coreMercyCount })', ctx);
 
 let errors = 0;
 const err = (msg) => { console.error('ERROR: ' + msg); errors++; };
+
+// 스토리 숫자 정합성 — 영이 전까지 일기 7조각/의자 최대 7석, 마지막 8번째는 영이의 자리.
+if (DIARY_SHARDS.length !== 7) err(`일기 조각 ${DIARY_SHARDS.length}개 — 영이 전까지 정확히 7개여야 함`);
+const allMercyFlags = {
+  mercyChoice: { bekkyeomon: 'mercy' },
+  chapter1Mercy: true, chapter2Mercy: true, chapter3Mercy: true,
+  chapter4Mercy: true, chapter5Mercy: true, goyoMercy: true,
+};
+if (coreMercyCount(allMercyFlags) !== 7) {
+  err(`코어 의자 최대 ${coreMercyCount(allMercyFlags)}/8 — 영이 전에는 7/8이어야 함`);
+}
+if (!/영이가 .*남겨 둔 침묵/.test(MONSTERS.finalboss.win.replace(/\n/g, ' '))) {
+  err('고요의 정체가 영이가 남긴 침묵으로 연결되지 않음');
+}
+if (/세이브 파일/.test(MONSTERS.yeongi.intro)) {
+  err('영이 인트로에 몰입을 깨는 세이브 파일 메타 표현이 남아 있음');
+}
 
 // 1. 맵 행 너비
 for (const [id, m] of Object.entries(MAPS)) {
