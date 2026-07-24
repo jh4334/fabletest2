@@ -302,11 +302,11 @@
   <small>인터넷 연결을 확인한 뒤 다시 시도해 주세요.<br>처음 한 번만 연결되면, 이후에는 오프라인에서도 실행됩니다.</small>
   <button onclick="location.reload()">다시 시도</button>
 </div>
-<script src="src/art.js"></script>
-<script src="src/sprites.js"></script>
-<script src="src/audio.js"></script>
-<script src="src/data.js"></script>
-<script src="src/game.js"></script>
+<script src="src/art.js?v=3.0.0-artpass"></script>
+<script src="src/sprites.js?v=3.0.0-artpass"></script>
+<script src="src/audio.js?v=3.0.0-artpass"></script>
+<script src="src/data.js?v=3.0.0-artpass"></script>
+<script src="src/game.js?v=3.0.0-artpass"></script>
 <script>
   // 첫 로딩 감시: 게임이 일정 시간 안에 시작되지 않으면(스크립트 누락·네트워크 실패)
   // 검은 화면 대신 안내와 '다시 시도' 버튼을 보여 준다.
@@ -348,10 +348,23 @@
 
   // 오프라인 설치(PWA) — file:// 로 직접 열었을 때는 등록하지 않는다
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    let reloadingForUpdate = false;
+    const registrationStartedAt = Date.now();
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloadingForUpdate) return;
+      // 첫 진입 중 새 워커가 제어권을 얻으면 한 번만 다시 열어, 구 캐시 화면을
+      // 최신 HTML/JS로 즉시 교체한다. 오래 플레이 중인 탭은 강제 갱신하지 않는다.
+      if (Date.now() - registrationStartedAt < 60 * 1000) {
+        reloadingForUpdate = true;
+        location.reload();
+        return;
+      }
+      window.__newVersionReady = true;
+      if (window.__onNewVersion) window.__onNewVersion();
+    });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').then((reg) => {
-        // 새 버전 감지 — cache-first라 배포해도 기존 사용자는 옛 화면을 본다.
-        // 새 워커 설치가 끝나면 게임에 알려 '새로고침 한 번' 안내를 띄운다.
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+        // 새 버전 감지 — 오래 플레이 중인 탭은 강제로 끊지 않고 안내만 띄운다.
         const watch = (worker) => {
           if (!worker) return;
           worker.addEventListener('statechange', () => {
@@ -363,6 +376,8 @@
         };
         watch(reg.installing);
         reg.addEventListener('updatefound', () => watch(reg.installing));
+        // 접속할 때마다 서버의 sw.js를 확인한다.
+        reg.update().catch(() => {});
         // 교실에서 탭을 오래 열어 두는 환경 — 30분마다 업데이트 확인
         setInterval(() => { reg.update().catch(() => {}); }, 30 * 60 * 1000);
       }).catch(() => {});

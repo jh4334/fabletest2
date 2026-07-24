@@ -1,7 +1,8 @@
 // AI 윤리 어드벤처 — 오프라인 서비스워커
 // 모든 정적 자원을 처음 방문 때 캐시해, 이후 네트워크 없이도 실행되게 한다.
+// 핵심 HTML/JS는 온라인일 때 네트워크를 먼저 확인해 배포 직후 구버전이 남지 않게 한다.
 // 게임 코드/콘텐츠가 바뀌면 CACHE 버전을 올리면 된다.
-const CACHE = 'ai-ethics-adventure-6690345f';
+const CACHE = 'ai-ethics-adventure-71a8d49a';
 const ASSETS = [
   './',
   './index.html',
@@ -45,27 +46,42 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// 캐시 우선(cache-first): 빠르고 오프라인에서도 동작. 없으면 네트워크에서 받아 캐시.
+function remember(request, response) {
+  if (!response || response.status !== 200 || response.type !== 'basic') return response;
+  const copy = response.clone();
+  caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => {});
+  return response;
+}
+
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
-  // 페이지 진입(navigate)은 ?utm=… 같은 쿼리가 붙어도 같은 문서다 — 쿼리 무시 매치.
   const isNav = e.request.mode === 'navigate';
+  const url = new URL(e.request.url);
+  const isLocal = url.origin === self.location.origin;
+  const isCore = isLocal && (
+    isNav
+    || url.pathname.endsWith('/index.html')
+    || /\/src\/[^/]+\.js$/.test(url.pathname)
+    || url.pathname.endsWith('/manifest.webmanifest')
+  );
+
+  // HTML·게임 코드: 네트워크 우선. 배포 직후에는 최신 버전을, 오프라인에서는
+  // 프리캐시를 돌려준다. 쿼리 버전이 붙어도 같은 오프라인 파일을 찾는다.
+  if (isCore) {
+    e.respondWith(
+      fetch(e.request, { cache: 'no-store' })
+        .then((res) => remember(e.request, res))
+        .catch(() => caches.match(e.request, { ignoreSearch: true })
+          .then((hit) => hit || (isNav ? caches.match('./index.html') : undefined)))
+    );
+    return;
+  }
+
+  // 이미지·아이콘: 캐시 우선. 없으면 네트워크에서 받아 캐시한다.
   e.respondWith(
-    caches.match(e.request, { ignoreSearch: isNav }).then((hit) => {
+    caches.match(e.request).then((hit) => {
       if (hit) return hit;
-      return fetch(e.request).then((res) => {
-        if (res && res.status === 200 && res.type === 'basic') {
-          const copy = res.clone();
-          // 캐시 실패(쿼터 초과 등)는 응답과 무관 — 조용히 무시
-          caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
-        }
-        return res;
-      }).catch(() => {
-        // 오프라인 + 캐시 미스: 진입 요청이면 프리캐시된 본문으로라도 연다.
-        // (여기서 undefined를 돌려주면 전체 캐시가 있어도 네트워크 오류 화면이 뜬다)
-        if (isNav) return caches.match('./index.html');
-        return undefined;
-      });
+      return fetch(e.request).then((res) => remember(e.request, res)).catch(() => undefined);
     })
   );
 });
