@@ -3,7 +3,7 @@
   'use strict';
 
   // 타이틀에 표시 · SW 캐시로 옛 빌드가 남았는지 구분용 (package.json 과 맞출 것)
-  const GAME_VERSION = '1.0.1';
+  const GAME_VERSION = '3.0.0';
 
   const TILE = 16;
   const SCALE = 3;
@@ -4934,6 +4934,7 @@
   function winBattle() {
     const b = game.battle;
     const mon = b.mon;
+    const wasPrologueClass = b.monId === 'bekkyeomon' && !!game.flags.classSession;
     // X-6 재대결(기억의 방)은 진행 플래그를 건드리지 않고 별도 처리한다 — 모든 승리 경로보다 앞.
     if (b.rematch) { winRematch(); return; }
     // 챕터 보스 — 별도 진행 플래그(chapterNClear)로 처리한다
@@ -4977,6 +4978,11 @@
       appendRankLine(b, lines, b.persuadeId); // B-2 판정 한 줄 + 최고 등급 기록
       grantDiaryShard('prologue', lines, b.mercyChoiceKind); // 첫 일기 조각(Q-2) — 미스터리의 시작
       lines.push(bandiBossLine('prologue', b.mercyChoiceKind, game.flags));
+      if (wasPrologueClass) {
+        lines.push(CLASS_END_LINE);
+        game.flags.classSession = false;
+        save();
+      }
     }
     // 영이(최종)는 곧장 진엔딩으로 이어지는 감정 장면이라 판정 라벨을 얹지 않는다(톤 보존).
     if (b.monId === 'yeongi') {
@@ -4994,6 +5000,7 @@
       });
     } else if (b.monId === 'bekkyeomon') {
       // X-1① 따라 배틀 승리 직후 — 주인공의 반응 한 번(정답 없음). 반디가 그 말을 받아 준다.
+      const offerPost = wasPrologueClass && getPrepost(game.currentSlot, 'prologue').pre;
       startDialog(lines, mon.name, () => {
         Sound.playMapBgm(MAPS[game.map].song);
         startPlayerVoice('ttara',
@@ -5001,7 +5008,8 @@
           ['"서툴러도, 네 그림은 네 거야."', '"…다음엔, 같이 그리자."'],
           '반디',
           ['반디: …응. 서툰 게, 제일 사람 같은 거래.\n(반디가 조금 웃었다.)',
-            '반디: …같이. 좋은 말이야.\n…나도, 끼워 줄 거지?']);
+            '반디: …같이. 좋은 말이야.\n…나도, 끼워 줄 거지?'],
+          offerPost ? () => openPrepost('post', 'prologue', 'world') : null);
       });
     } else {
       startDialog(lines, mon.name, () => {
@@ -8673,6 +8681,8 @@
     flags.classSession = true; // X-8 수업(차시) 세션 — 수업 진입 경로에서만 켜진다(일반 세이브 오염 없음)
     return flags;
   }
+  // 프롤로그 「연구실 → 정적의 숲」 수업 특별 항목.
+  const PROLOGUE_SEL = 1;
   // 수업 모드 특별 항목 「1장 — 전부 공짜 거리」 (스테이지 번호가 아닌 방탈출 수업용)
   const TRACE_SEL = 0;
   // 2장 「기울어진 거리」 수업 특별 항목 (sel = -1)
@@ -8686,9 +8696,22 @@
   // 파이널 「고요의 뜰 → 코어」 수업 특별 항목 (sel = -5)
   const FINAL_SEL = -5;
   const MIN_SEL = FINAL_SEL; // 선택기 하한
+  const MAX_SEL = PROLOGUE_SEL; // 선택기 상한
+  // 16차시 지도안과 여섯 거리·프롤로그의 관계. 한 거리에서 여러 관점으로
+  // 수업할 수 있으므로, 교사가 선택기 안에서 바로 대응 차시를 확인하게 한다.
+  const CLASS_RELATED = {
+    [PROLOGUE_SEL]: { lessons: '1·4·15차시', focus: '첫 약속 · 창작 윤리 · 출처 밝히기' },
+    [TRACE_SEL]: { lessons: '8·13차시', focus: '개인정보 · 동의 · 디지털 발자국' },
+    [TILT_SEL]: { lessons: '2·3·5차시', focus: '추천 편향 · 공정함 · 다른 관점 듣기' },
+    [RUMOR_SEL]: { lessons: '6·7·11차시', focus: '출처 확인 · AI 환각 · 정정 보도' },
+    [ARCADE_SEL]: { lessons: '9·10·13차시', focus: '사용 균형 · 다크패턴 · 계정 안전' },
+    [COZY_SEL]: { lessons: '9·12·14차시', focus: '경계 설정 · 관계 · 책임 있는 결정' },
+    [FINAL_SEL]: { lessons: '12·14·16차시', focus: '공감 · 책임 · 종합 성찰' },
+  };
   // Y-18 — 수업 선택기 값 → 사전/사후 세트 장 키. 파이널(FINAL_SEL)은 세트 없음(null).
   function classSelToChKey(sel) {
-    return sel === TRACE_SEL ? 'trace' : sel === TILT_SEL ? 'tilt' : sel === RUMOR_SEL ? 'rumor'
+    return sel === PROLOGUE_SEL ? 'prologue' : sel === TRACE_SEL ? 'trace'
+      : sel === TILT_SEL ? 'tilt' : sel === RUMOR_SEL ? 'rumor'
       : sel === ARCADE_SEL ? 'arcade' : sel === COZY_SEL ? 'cozy' : null;
   }
   // 지금 슬롯의 진행(chapterNClear)에 맞는 특별 항목을 고른다 — 「선생님 방」을 열 때
@@ -8699,7 +8722,21 @@
     if (flags.chapter3Clear) return ARCADE_SEL;
     if (flags.chapter2Clear) return RUMOR_SEL;
     if (flags.chapter1Clear) return TILT_SEL;
-    return TRACE_SEL;
+    if (flags.defeated && flags.defeated.bekkyeomon) return TRACE_SEL;
+    return PROLOGUE_SEL;
+  }
+  // 프롤로그 시작 상태. 이름 입력과 오프닝 대사만 건너뛰고 연구실의 세 단서부터
+  // 직접 시작한다. 다른 수업 점프와 달리 박사 대화·따라 클리어를 미리 처리하지 않는다.
+  function applyPrologueClass() {
+    const flags = newFlags();
+    flags.bandiJoined = true;
+    flags.classSession = true;
+    game.flags = flags;
+    game.map = 'introlab';
+    const p = game.player;
+    p.x = 14; p.y = 16; p.px = 14 * TS; p.py = 16 * TS;
+    p.moving = false; p.dir = 'up';
+    save();
   }
   // 1장 시작 상태로 맞추고, 전부 공짜 거리 입구에 서서 시작한다.
   // defeated.bekkyeomon(프롤로그 「따라」 격파)도 true로 맞춘다 — 1장 허브 안에 이미 서
@@ -8841,11 +8878,14 @@
         else if (cm.sel === RUMOR_SEL) applyRumorStreetClass();
         else if (cm.sel === TILT_SEL) applyTiltStreetClass();
         else if (cm.sel === TRACE_SEL) applyTraceRoomClass();
+        else if (cm.sel === PROLOGUE_SEL) applyPrologueClass();
         cm.confirm = false;
         // Y-18 — 그 장에 사전/사후 세트가 있으면 수업 시작 직전 옵트인 사전 점검을 연다(스킵 가능).
         // 파이널 등 세트가 없는 항목은 기존대로 적용 안내(toast) 후 월드로.
         const chKey = classSelToChKey(cm.sel);
-        if (chKey && PREPOST_CH[chKey]) { openPrepost('pre', chKey, cm.ret); return; }
+        // 사전 점검을 마치거나 건너뛰면 선생님 방으로 되돌아가지 않고, 방금 고른
+        // 구간의 월드에서 바로 수업을 시작한다.
+        if (chKey && PREPOST_CH[chKey]) { openPrepost('pre', chKey, 'world'); return; }
         cm.toast = 90;
         Sound.badge();
         return;
@@ -8853,10 +8893,10 @@
       if (justPressed('cancel') || justPressed('menu')) { cm.confirm = false; Sound.blip(); }
       return;
     }
-    // 특별 항목 6개(「1장 — 전부 공짜 거리」~「파이널 — 고요의 뜰 → 코어」)만 한 바퀴로 순환한다.
+    // 특별 항목 7개(프롤로그~파이널)만 한 바퀴로 순환한다.
     // v1 숫자 스테이지(1~5) 항목은 제거되었다 — v2 항목만 남는다.
-    if (justPressed('left') || justPressed('up')) { cm.sel = cm.sel <= MIN_SEL ? TRACE_SEL : cm.sel - 1; Sound.blip(); }
-    if (justPressed('right') || justPressed('down')) { cm.sel = cm.sel >= TRACE_SEL ? MIN_SEL : cm.sel + 1; Sound.blip(); }
+    if (justPressed('left') || justPressed('up')) { cm.sel = cm.sel <= MIN_SEL ? MAX_SEL : cm.sel - 1; Sound.blip(); }
+    if (justPressed('right') || justPressed('down')) { cm.sel = cm.sel >= MAX_SEL ? MIN_SEL : cm.sel + 1; Sound.blip(); }
     if (justPressed('action')) { cm.confirm = true; Sound.select(); return; }
     if (justPressed('cancel') || justPressed('menu')) { closeClassMode(); }
   }
@@ -8867,18 +8907,20 @@
     ctx.textAlign = 'left';
     ctx.fillStyle = '#fff';
     ctx.font = fs(22, true);
-    ctx.fillText('▶ 수업 모드 — 거리(챕터) 바로 시작', 24, 40);
+    ctx.fillText('▶ 수업 모드 — 이야기 구간 바로 시작', 24, 40);
     ctx.fillStyle = '#888';
     ctx.font = fs(13);
-    ctx.fillText('오늘 수업할 거리를 골라 바로 시작해요. (지금 학생 슬롯에 적용)', 24, 64);
+    ctx.fillText('오늘 수업할 구간을 골라 바로 시작해요. (지금 학생 슬롯에 적용)', 24, 64);
 
-    // 특별 항목 6개(v2 항목만 순환) — 「1장 — 전부 공짜 거리」는 그 외 모든 값이 아닐 때(else)로 처리한다.
+    // 특별 항목 7개(프롤로그~파이널).
+    const isPrologue = cm.sel === PROLOGUE_SEL;
     const isTilt = cm.sel === TILT_SEL;
     const isRumor = cm.sel === RUMOR_SEL;
     const isArcade = cm.sel === ARCADE_SEL;
     const isCozy = cm.sel === COZY_SEL;
     const isFinal = cm.sel === FINAL_SEL;
-    const selLabel = isFinal ? '파이널 시작 상태 · 포근한 집 안쪽 문 앞'
+    const selLabel = isPrologue ? '프롤로그 시작 상태 · 연구실'
+      : isFinal ? '파이널 시작 상태 · 포근한 집 안쪽 문 앞'
       : isCozy ? '5장 시작 상태 · 포근한 집 입구'
       : isArcade ? '4장 시작 상태 · 반짝 아케이드 입구'
       : isRumor ? '3장 시작 상태 · 대문짝 신문사 입구'
@@ -8888,7 +8930,10 @@
     // 스테이지 선택기
     ctx.textAlign = 'center';
     ctx.fillStyle = themeAccent();
-    if (isFinal) {
+    if (isPrologue) {
+      ctx.font = fs(30, true);
+      ctx.fillText('프롤로그 — 연구실 → 정적의 숲', LW / 2, 176);
+    } else if (isFinal) {
       ctx.font = fs(30, true);
       ctx.fillText('파이널 — 고요의 뜰 → 코어', LW / 2, 176);
     } else if (isCozy) {
@@ -8909,41 +8954,46 @@
     }
     ctx.fillStyle = '#fff';
     ctx.font = fs(15);
-    ctx.fillText(isFinal ? '고요의 뜰(걷기) → 고요 보스 → 코어(여덟 의자·봉헌 퍼즐) → 영이'
+    ctx.fillText(isPrologue ? '연구실 단서 3개 → 정적의 숲 흔적 → 따라와 첫 마음 조각 배틀'
+      : isFinal ? '고요의 뜰(걷기) → 고요 보스 → 코어(여덟 의자·봉헌 퍼즐) → 영이'
       : isCozy ? 'AI와의 관계 · 경계 설정 · 확인하는 용기 (구역 3개 → 루미 보스)'
       : isArcade ? '다크패턴 · 광고 · 2단계 인증 (구역 3개 → 반짝 보스)'
       : isRumor ? '가짜 뉴스 분별 · 출처 확인 · 정정 보도 (구역 3개 → 그럴싸 보스)'
       : isTilt ? '경청 · 필터버블 · 스스로 고르기 (구역 3개 → 기울 보스)'
       : '개인정보 · 디지털 발자국 · 동의 (구역 3개 → 담아 보스)', LW / 2, 250);
+    const related = CLASS_RELATED[cm.sel] || { lessons: '16차시', focus: '종합 성찰' };
+    ctx.fillStyle = '#ffd644';
+    ctx.font = fs(13, true);
+    ctx.fillText(`연계 ${related.lessons} · ${related.focus}`, LW / 2, 274);
     ctx.fillStyle = '#666';
     ctx.font = fs(13);
-    ctx.fillText('◀ ▶ 거리 고르기', LW / 2, 286);
+    ctx.fillText('◀ ▶ 수업 구간 고르기', LW / 2, 302);
 
     if (cm.toast > 0) {
       ctx.fillStyle = okColor();
       ctx.font = fs(17, true);
-      ctx.fillText(`✓ ${selLabel} 상태로 맞췄어요!`, LW / 2, 360);
+      ctx.fillText(`✓ ${selLabel} 상태로 맞췄어요!`, LW / 2, 366);
       ctx.fillStyle = '#aaa';
       ctx.font = fs(13);
-      ctx.fillText('잠시 후 모험 화면으로 돌아갑니다…', LW / 2, 386);
+      ctx.fillText('잠시 후 모험 화면으로 돌아갑니다…', LW / 2, 392);
       if (cm.toast === 1) { game.mode = cm.ret; }
     } else if (cm.confirm) {
       ctx.fillStyle = badColor();
       ctx.font = fs(16, true);
-      ctx.fillText(`지금 이 슬롯을 ${selLabel} 상태로 바꿀까요?`, LW / 2, 360);
+      ctx.fillText(`지금 이 슬롯을 ${selLabel} 상태로 바꿀까요?`, LW / 2, 366);
       ctx.fillStyle = '#ddd';
       ctx.font = fs(13);
-      ctx.fillText('이전 진행은 완료 처리되고 되돌릴 수 없어요.', LW / 2, 384);
+      ctx.fillText('이전 진행은 완료 처리되고 되돌릴 수 없어요.', LW / 2, 390);
       ctx.fillStyle = '#fff';
       ctx.font = fs(14, true);
-      ctx.fillText('Z: 시작   ·   X: 취소', LW / 2, 416);
+      ctx.fillText('Z: 시작   ·   X: 취소', LW / 2, 422);
     } else {
       ctx.fillStyle = '#777';
       ctx.font = fs(13);
-      ctx.fillText('Z: 이 거리로 시작 · X: 닫기', LW / 2, 360);
+      ctx.fillText('Z: 이 구간으로 시작 · X: 닫기', LW / 2, 366);
       ctx.fillStyle = '#555';
       ctx.font = fs(12);
-      ctx.fillText('※ 미리 「데이터 백업」을 해 두면 안전해요.', LW / 2, 388);
+      ctx.fillText('※ 미리 「데이터 백업」을 해 두면 안전해요.', LW / 2, 394);
     }
     ctx.textAlign = 'left';
   }
@@ -8953,6 +9003,7 @@
   // 장 보스 클리어 후 같은 문항으로 사후 점검 → 향상도를 CSV에 담는다. 전부 로컬·스킵 가능.
   // 저장 스키마 변경(meta.prepost) — 없던 슬롯은 그냥 빈 값으로 취급(하위 호환).
   const PREPOST_CH = {
+    prologue: { n: 0, label: '프롤로그 · 창작·출처', topics: ['copyright', 'genai', 'identity', 'transparency', 'responsibility'] },
     trace: { n: 1, label: '1장 · 개인정보·동의', topics: ['privacy', 'consent', 'footprint', 'copyright', 'identity'] },
     tilt: { n: 2, label: '2장 · 경청·편향', topics: ['listen', 'bias', 'filterbubble', 'balance', 'emotion'] },
     rumor: { n: 3, label: '3장 · 가짜 정보 분별', topics: ['fake', 'rumor', 'genai', 'deepfake', 'transparency'] },
@@ -9129,15 +9180,20 @@
   // ---------- 교사용 학생 진단 리포트 (U3) ----------
   // 주제 키 → 추천 차시(docs/차시별-활동지.md). 약점 주제를 다음 수업과 연결한다.
   const TOPIC_SESSION = {
-    privacy: '1차시 (개인정보·저작권)', copyright: '1차시 (개인정보·저작권)',
-    consent: '1차시 (개인정보·저작권)', security: '1차시 (개인정보·저작권)', identity: '1차시 (개인정보·저작권)',
-    fake: '2차시 (가짜 정보·생성형 AI)', genai: '2차시 (가짜 정보·생성형 AI)',
-    deepfake: '2차시 (가짜 정보·생성형 AI)', rumor: '2차시 (가짜 정보·생성형 AI)',
-    bias: '3차시 (공정함·편향)', filterbubble: '3차시 (공정함·편향)', listen: '3차시 (공정함·편향)',
-    balance: '4차시 (절제·디지털 발자국)', footprint: '4차시 (절제·디지털 발자국)',
-    saving: '4차시 (절제·디지털 발자국)', environment: '4차시 (절제·디지털 발자국)', persuasion: '4차시 (절제·디지털 발자국)',
-    manners: '5차시 (관계·책임)', emotion: '5차시 (관계·책임)', responsibility: '5차시 (관계·책임)',
-    excuse: '5차시 (관계·책임)', safety: '5차시 (관계·책임)', transparency: '5차시 (관계·책임)', core: '5차시 (관계·책임)',
+    privacy: '8차시 (개인정보 최소 수집)', consent: '8차시 (개인정보와 동의)',
+    copyright: '15차시 (AI 창작과 출처)', identity: '4차시 (나의 말·AI의 말 구분)',
+    security: '13차시 (계정·디지털 발자국)', footprint: '13차시 (계정·디지털 발자국)',
+    fake: '6차시 (출처 확인)', rumor: '11차시 (공유 전 확인·정정)',
+    genai: '7차시 (생성형 AI 환각)', deepfake: '7차시 (딥페이크 분별)',
+    bias: '3차시 (데이터와 공정함)', filterbubble: '2차시 (추천과 필터버블)',
+    listen: '5차시 (다른 관점 듣기)', balance: '9차시 (사용 시간과 경계)',
+    saving: '9차시 (디지털 절제·에너지)', environment: '9차시 (디지털 절제·에너지)',
+    persuasion: '10차시 (광고·다크패턴)', manners: '12차시 (AI와 관계 맺기)',
+    emotion: '12차시 (AI와 관계 맺기)', responsibility: '14차시 (AI 결정과 책임)',
+    excuse: '14차시 (AI 결정과 책임)', safety: '13차시 (계정·디지털 발자국)',
+    jobs: '14차시 (AI 변화와 사람의 책임)', creativity: '15차시 (AI 창작과 저작권)',
+    transparency: '4차시 (AI 사용 밝히기)', core: '16차시 (종합 성찰·나의 원칙)',
+    boss: '16차시 (여정 종합 복습)', finale: '16차시 (나의 AI 사용 원칙)',
   };
   function topicSession(t) { return TOPIC_SESSION[t] || '종합 복습 (퀴즈 챌린지)'; }
 
@@ -12124,7 +12180,7 @@
     buildClassCsv, csvCell, setupClassBaseFlags, classSelForFlags,
     backupSlotRows, buildLeaderboardCsv, openLeaderboard, // Y-20 반 순위표 검증용
     prepostQuizzes, openPrepost, recordPrepost, getPrepost, classSelToChKey, PREPOST_CH, // Y-18 사전/사후 점검
-    applyTraceRoomClass, applyTiltStreetClass, applyRumorStreetClass,
+    applyPrologueClass, applyTraceRoomClass, applyTiltStreetClass, applyRumorStreetClass,
     applyArcadeClass, applyCozyhomeClass, applyFinalClass,
     getPuzzleLog, writePuzzleLog, nextWaypoint, currentObjective: () => getObjective(game.flags, game.map), // 나침반/HUD 경로 — E2E가 '화살표 따라가기'를 재현할 때 사용
     privacyLeak, privacyPressureProfile, addPrivacyLeak, notePrivacyRecoveryPiece,

@@ -1215,8 +1215,9 @@ check('데드존 경계 바로 밖은 방향 인식', sd(35, 0, 100) === 'right'
 console.log('[66] 교사용 학생 진단 리포트 (U3)');
 const TR = vm.runInContext('window.__test', sandbox);
 // 약점 주제가 추천 차시로 매핑되는지 (순수 함수)
-check('주제→차시 매핑(개인정보=1차시)', /1차시/.test(TR.topicSession('privacy')));
-check('주제→차시 매핑(가짜정보=2차시)', /2차시/.test(TR.topicSession('fake')));
+check('주제→차시 매핑(개인정보=8차시)', /8차시/.test(TR.topicSession('privacy')));
+check('주제→차시 매핑(가짜정보=6차시)', /6차시/.test(TR.topicSession('fake')));
+check('주제→차시 매핑(저작권=15차시)', /15차시/.test(TR.topicSession('copyright')));
 check('미정 주제는 종합 복습 폴백', /종합 복습/.test(TR.topicSession('___none___')));
 const rep0 = TR.buildDiagnosticReport(0);
 check('진단 리포트 구조 반환', rep0 && typeof rep0.text === 'string' && Array.isArray(rep0.recommendations));
@@ -1705,6 +1706,13 @@ check('보스 승리 후 금고 앞(거리) 복귀', g.map === 'freestreet' && g
 check('라이브러리 수집몬 처치 플래그 오염 없음', g.flags.defeated.sujipmon === false);
 check('보스는 도감 순서에 없음', !DEX_ORDER.includes('sujipmon_boss'));
 check('보스 설득 로그 기록', g.flags.pStats.gateRight === 2 && g.flags.pStats.gateWrong >= 2);
+
+console.log('[69b] 수업 모드 — 프롤로그 「연구실 → 정적의 숲」 특별 항목');
+g.dialog = null; g.mode = 'world';
+TJ.applyPrologueClass();
+check('프롤로그 수업: 연구실 세 단서 시작점', g.map === 'introlab' && g.player.x === 14 && g.player.y === 16);
+check('프롤로그 수업: 따라·1장 미완료', !g.flags.defeated.bekkyeomon && !g.flags.chapter1Clear);
+check('프롤로그 수업: 차시 세션 배너 활성', g.flags.classSession === true);
 
 console.log('[70] 수업 모드 — 「1장 — 전부 공짜 거리」 특별 항목');
 g.dialog = null; g.mode = 'world';
@@ -3173,26 +3181,27 @@ console.log('[110c] 엔딩 분기별 후일담 — 박사·할머니 대사가 �
   check('엔딩 전 박사 — 후일담 미노출', !/잘 다녀왔니/.test(profBefore) && !/영이가 돌아왔단다/.test(profBefore));
 }
 
-console.log('[111] 수업 모드 선택기 — v1 숫자 스테이지 제거, v2 6개 항목만 순환');
+console.log('[111] 수업 모드 선택기 — 프롤로그~파이널 7개 항목만 순환');
 {
   const TJ2 = vm.runInContext('window.__test', sandbox);
   check('classSelForFlags 존재(테스트 훅)', typeof TJ2.classSelForFlags === 'function');
-  check('진행 없음 → TRACE_SEL(0)', TJ2.classSelForFlags({}) === 0);
+  check('진행 없음 → PROLOGUE_SEL(1)', TJ2.classSelForFlags({}) === 1);
+  check('따라 완료 → TRACE_SEL(0)', TJ2.classSelForFlags({ defeated: { bekkyeomon: true } }) === 0);
   check('chapter1Clear → TILT_SEL(-1)', TJ2.classSelForFlags({ chapter1Clear: true }) === -1);
   check('chapter2Clear → RUMOR_SEL(-2)', TJ2.classSelForFlags({ chapter1Clear: true, chapter2Clear: true }) === -2);
   check('chapter3Clear → ARCADE_SEL(-3)', TJ2.classSelForFlags({ chapter3Clear: true }) === -3);
   check('chapter4Clear → COZY_SEL(-4)', TJ2.classSelForFlags({ chapter4Clear: true }) === -4);
   check('chapter5Clear → FINAL_SEL(-5)', TJ2.classSelForFlags({ chapter5Clear: true }) === -5);
 
-  // 순환 경계 — 파이널(-5)에서 왼쪽/위로 가면 숫자 스테이지 없이 곧장 1장(0)으로 순환
+  // 순환 경계 — 파이널(-5)에서 왼쪽/위로 가면 프롤로그(1)로 순환
   g.dialog = null; g.mode = 'world';
   g.classmode.ret = 'world'; g.classmode.sel = -5; g.classmode.confirm = false; g.classmode.toast = 0;
   g.mode = 'classmode';
   tap('ArrowUp');
-  check('파이널에서 왼쪽 → 곧장 1장(0), 숫자 스테이지 없음', g.classmode.sel === 0);
-  // 1장(0)에서 오른쪽/아래로 가면 곧장 파이널(-5)로 순환
+  check('파이널에서 왼쪽 → 프롤로그(1)', g.classmode.sel === 1);
+  // 프롤로그(1)에서 오른쪽/아래로 가면 파이널(-5)로 순환
   tap('ArrowDown');
-  check('1장에서 오른쪽 → 곧장 파이널(-5), 숫자 스테이지 없음', g.classmode.sel === -5);
+  check('프롤로그에서 오른쪽 → 파이널(-5)', g.classmode.sel === -5);
 }
 
 console.log('[112] 4·5장 허브 HUD 진행 텍스트 — arcade(열쇠 N/2)·cozyhome(확인한 용기 N/3)');
@@ -3841,13 +3850,17 @@ console.log('[Y-14·Y-20] 패턴 레지스트리 정합성 · 반 순위표 집�
 
   // Y-18 사전/사후 점검 — 세트 결정론성·매핑·저장·CSV
   const preTrace = T.prepostQuizzes('trace');
-  check('Y-18 장별 사전/사후 세트 5문항', preTrace.length === 5 && T.prepostQuizzes('tilt').length === 5 &&
+  check('Y-18 프롤로그·장별 사전/사후 세트 5문항', T.prepostQuizzes('prologue').length === 5 &&
+    preTrace.length === 5 && T.prepostQuizzes('tilt').length === 5 &&
     T.prepostQuizzes('rumor').length === 5 && T.prepostQuizzes('arcade').length === 5 && T.prepostQuizzes('cozy').length === 5);
   check('Y-18 사전=사후 동일 세트(결정론적)',
     JSON.stringify(T.prepostQuizzes('trace').map((q) => q.q)) === JSON.stringify(preTrace.map((q) => q.q)));
   check('Y-18 파이널 등 세트 없는 항목은 빈 배열', T.prepostQuizzes('final').length === 0);
-  check('Y-18 수업 선택기 값 → 장 키 매핑', T.classSelToChKey(0) === 'trace' && T.classSelToChKey(-1) === 'tilt' &&
+  check('Y-18 수업 선택기 값 → 장 키 매핑', T.classSelToChKey(1) === 'prologue' &&
+    T.classSelToChKey(0) === 'trace' && T.classSelToChKey(-1) === 'tilt' &&
     T.classSelToChKey(-4) === 'cozy' && T.classSelToChKey(-5) === null);
+  check('Y-18 사전 점검 완료·건너뛰기 후 선택 구간 월드로 진입',
+    gameSrcFinal.includes("openPrepost('pre', chKey, 'world')"));
   // 저장·조회 왕복(슬롯 메타)
   windowObj.__game.currentSlot = 0;
   T.recordPrepost(0, 'trace', 'pre', 2, 5);
