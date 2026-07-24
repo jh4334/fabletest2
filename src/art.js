@@ -23,8 +23,13 @@ const GAME_ART = (() => {
   load('lumi', 'assets/art/lumi-expression-sheet.png');
   load('goyo', 'assets/art/goyo-expression-sheet.png');
   load('yeongi', 'assets/art/yeongi-expression-sheet.png');
-  load('floor', 'assets/cc0/ninja-adventure/tileset_floor.png');
-  load('village', 'assets/cc0/ninja-adventure/tileset_village_abandoned.png');
+  load('map_prologue', 'assets/art/maps/prologue-boundary.png');
+  load('map_ch1', 'assets/art/maps/ch1-free-street.png');
+  load('map_ch2', 'assets/art/maps/ch2-tilted-street.png');
+  load('map_ch3', 'assets/art/maps/ch3-rumor-news.png');
+  load('map_ch4', 'assets/art/maps/ch4-sparkle-arcade.png');
+  load('map_ch5', 'assets/art/maps/ch5-cozy-loop.png');
+  load('map_final', 'assets/art/maps/finale-memory-core.png');
 
   function ready(id) {
     const image = images[id];
@@ -76,81 +81,71 @@ const GAME_ART = (() => {
     return drawSheet(ctx, artId, 2, 2, frame[0], frame[1], x, y, size, size);
   }
 
-  function hash2(x, y) {
-    return Math.abs((x * 17 + y * 31 + x * y * 3) | 0);
-  }
-
-  // Ninja Adventure의 어두운 숲 바닥 세트. 경계마을의 G/P/F만 교체해
-  // 다른 챕터의 고유 팔레트는 건드리지 않는다.
-  function drawVillageGround(ctx, ch, x, y, dx, dy, size) {
-    if (!ready('floor') || !['G', 'P', 'F'].includes(ch)) return false;
-    const image = images.floor;
-    const h = hash2(x, y);
-    let sx;
-    let sy;
-    if (ch === 'P') {
-      // 오토타일 가장자리 조각을 반복하면 길마다 십자 이음새가 생긴다.
-      // 중앙 흙 조각 하나를 써서 맵 데이터가 만든 길 윤곽 자체가 선명하게 보이게 한다.
-      sx = h % 4 === 0 ? 16 : 12;
-      sy = 8;
-    } else {
-      sx = ch === 'F' ? 14 : 11 + (h % 5);
-      sy = 12;
-    }
-    ctx.drawImage(image, sx * 16, sy * 16, 16, 16, dx, dy, size, size);
-    ctx.fillStyle = ch === 'P' ? 'rgba(16,24,39,0.18)' : 'rgba(5,28,42,0.24)';
-    ctx.fillRect(dx, dy, size, size);
-    return true;
-  }
-
-  // 폐허 마을 아틀라스에서 독립적으로 완결되는 작은 바위 타일을 꺼내 쓴다.
-  function drawVillageRock(ctx, variant, dx, dy, size) {
-    if (!ready('village')) return false;
-    const coords = [[2, 3], [4, 3], [7, 3], [9, 3]][variant % 4];
-    ctx.drawImage(images.village, coords[0] * 16, coords[1] * 16, 16, 16,
-      Math.round(dx), Math.round(dy), size, size);
-    return true;
-  }
-
-  // 챕터 전역의 보행 바닥을 같은 CC0 아틀라스에서 꺼내고, 각 장의 이야기 색으로
-  // 얇게 덧입힌다. 충돌/타일 문자는 그대로라서 퍼즐 동선에는 영향을 주지 않는다.
-  const CHAPTER_GROUND = {
-    1: { base: '#563d55', tint: 'rgba(86,32,78,0.58)', accent: 'rgba(255,112,194,0.12)' },
-    2: { base: '#303344', tint: 'rgba(38,48,88,0.62)', accent: 'rgba(241,181,74,0.12)' },
-    3: { base: '#253646', tint: 'rgba(21,60,82,0.58)', accent: 'rgba(239,222,174,0.10)' },
-    4: { base: '#321f3c', tint: 'rgba(89,20,101,0.60)', accent: 'rgba(255,74,179,0.14)' },
-    5: { base: '#4a3428', tint: 'rgba(112,62,30,0.46)', accent: 'rgba(255,195,116,0.12)' },
-    final: { base: '#17182b', tint: 'rgba(10,12,40,0.72)', accent: 'rgba(165,188,255,0.09)' },
+  const MAP_TEXTURE = {
+    0: 'map_prologue',
+    1: 'map_ch1',
+    2: 'map_ch2',
+    3: 'map_ch3',
+    4: 'map_ch4',
+    5: 'map_ch5',
+    final: 'map_final',
   };
+  const PROLOGUE_MAPS = new Set(['introlab', 'forest', 'forestdeep', 'village']);
+  const TEXTURED_GROUND = new Set(['G', 'P', 'F', 'S', 'B', 'C', 'M', 'Z', 'E', 'I',
+    '2', '4', 'A', '1', '5', '6', '7', '8', '9']);
 
-  function drawChapterGround(ctx, chapter, ch, x, y, dx, dy, size) {
-    const style = CHAPTER_GROUND[chapter];
-    const groundChars = chapter === 1 ? 'GPFEI' : chapter === 2 ? '8E'
-      : chapter === 3 ? 'GPMI' : chapter === 4 ? 'I'
-        : chapter === 5 ? 'I' : chapter === 'final' ? 'IA' : '';
-    if (!style || !groundChars.includes(ch) || !ready('floor')) return false;
-    const image = images.floor;
-    // 같은 지형 안에서는 완결된 중앙 셀을 반복한다. 오토타일 가장자리 셀을 섞으면
-    // 한 칸마다 잔디/흙 경계가 생겨 체크무늬처럼 보이므로, 차이는 맵 데이터의 G/P와
-    // 아래의 작은 결정적 하이라이트만으로 만든다.
-    const cellPool = (ch === 'G' || ch === 'F')
-      ? [[12, 12], [13, 12], [14, 12], [15, 12]]
-      : [[16, 11], [17, 11], [18, 11], [19, 11]];
-    const cell = cellPool[hash2(x, y) % cellPool.length];
-    // 아틀라스의 오토타일 셀에는 가장자리용 투명 픽셀이 있다. 먼저 장별 베이스를
-    // 채워 두면 서로 다른 가장자리 조각을 섞어도 검은 체커가 비치지 않는다.
-    ctx.fillStyle = style.base;
-    ctx.fillRect(dx, dy, size, size);
-    ctx.drawImage(image, cell[0] * 16, cell[1] * 16, 16, 16, dx, dy, size, size);
-    ctx.fillStyle = style.tint;
-    ctx.fillRect(dx, dy, size, size);
-    if (hash2(x + 5, y + 9) % 7 === 0) {
-      ctx.fillStyle = style.accent;
-      ctx.fillRect(dx + size * 0.16, dy + size * 0.18, size * 0.68, Math.max(2, size * 0.08));
+  // v4 맵 아트 패스. 한 장의 색 필터가 아니라, 각 챕터 전용 512px 원화에서
+  // 좌표가 이어지는 64px 조각을 잘라 실제 지면으로 사용한다. 충돌 데이터는 그대로라
+  // 기존 세이브와 퍼즐 동선은 보존되지만 플레이 화면은 장마다 완전히 달라진다.
+  function drawMapGround(ctx, mapId, chapter, ch, x, y, dx, dy, size) {
+    if (!TEXTURED_GROUND.has(ch)) return false;
+    const theme = PROLOGUE_MAPS.has(mapId) ? 0 : chapter;
+    const imageId = MAP_TEXTURE[theme];
+    if (!imageId || !ready(imageId)) return false;
+    const image = images[imageId];
+    const cell = 64;
+    const cols = Math.max(1, Math.floor(image.naturalWidth / cell));
+    const rows = Math.max(1, Math.floor(image.naturalHeight / cell));
+    const sx = ((x % cols) + cols) % cols * cell;
+    const sy = ((y % rows) + rows) % rows * cell;
+    ctx.drawImage(image, sx, sy, cell, cell, Math.round(dx), Math.round(dy), size, size);
+
+    // 동일 원화 안에서도 길·실내·특수 바닥을 즉시 구분할 수 있게 얇은 재질층만 얹는다.
+    // 원화를 가리는 팔레트 필터가 아니라 충돌 문자의 가독성 보조층이다.
+    if (ch === 'P' || ch === '8') {
+      ctx.fillStyle = theme === 5 ? 'rgba(255,210,145,0.08)' : 'rgba(12,8,24,0.16)';
+      ctx.fillRect(dx, dy, size, size);
+    } else if (['E', 'I', 'M', 'C', 'A'].includes(ch)) {
+      ctx.fillStyle = 'rgba(4,7,18,0.12)';
+      ctx.fillRect(dx, dy, size, size);
+    } else if (ch === 'F') {
+      ctx.fillStyle = 'rgba(158,225,182,0.08)';
+      ctx.fillRect(dx, dy, size, size);
     }
     return true;
   }
 
-  return { ready, drawPlayer, drawBandi, drawBoss, drawVillageGround, drawVillageRock,
-    drawChapterGround };
+  // 구 CC0 폐허 아틀라스 의존을 끊고, 경계마을 바위도 같은 팔레트의 절차적 픽셀 오브젝트로 그린다.
+  function drawVillageRock(ctx, variant, dx, dy, size) {
+    const colors = [
+      ['#27314d', '#45567a', '#8a79a8'],
+      ['#273047', '#53627e', '#7bc6d1'],
+      ['#302c4a', '#604e74', '#c17aa4'],
+      ['#243044', '#405a67', '#9bb88a'],
+    ][variant % 4];
+    const x = Math.round(dx), y = Math.round(dy);
+    ctx.save();
+    ctx.fillStyle = 'rgba(3,8,20,0.34)';
+    ctx.fillRect(x + size * 0.18, y + size * 0.72, size * 0.68, size * 0.14);
+    ctx.fillStyle = colors[0];
+    ctx.fillRect(x + size * 0.12, y + size * 0.38, size * 0.76, size * 0.42);
+    ctx.fillStyle = colors[1];
+    ctx.fillRect(x + size * 0.22, y + size * 0.24, size * 0.56, size * 0.44);
+    ctx.fillStyle = colors[2];
+    ctx.fillRect(x + size * 0.32, y + size * 0.28, size * 0.22, size * 0.10);
+    ctx.restore();
+    return true;
+  }
+
+  return { ready, drawPlayer, drawBandi, drawBoss, drawMapGround, drawVillageRock };
 })();
