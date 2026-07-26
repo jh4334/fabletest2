@@ -1,21 +1,13 @@
 {
-  "name": "ai-ethics-adventure",
-  "version": "1.0.1",
-  "description": "한국 초등학생을 위한 AI 윤리 교육 게임 (순수 HTML5 Canvas, 런타임 의존성 없음)",
+  "name": "shadow-school",
+  "version": "0.1.0",
+  "description": "방과 후: 그림자 학교 — 초등 AI 윤리 학교탈출 게임 (디지털연구대회)",
   "private": true,
   "scripts": {
     "validate": "node tools/validate.js",
-    "bump": "node tools/bump-sw.js",
-    "playtest": "node tools/playbot.js",
-    "test": "node tools/smoketest.js && node tools/slottest.js",
-    "test:browser": "node tools/browsertest.js",
-    "shots": "node tools/shots.js",
-    "icons": "node tools/icons.js",
-    "docs": "node tools/quizlist.js",
-    "pack": "rm -f ai-ethics-adventure-offline.zip && zip -rq ai-ethics-adventure-offline.zip index.html sw.js manifest.webmanifest .nojekyll src icons docs README.md -x '*/.*' && echo '✔ ai-ethics-adventure-offline.zip 생성'"
+    "test": "node tools/smoketest.js"
   },
   "devDependencies": {
-    "canvas": "^3.2.3",
     "playwright": "^1.61.1"
   }
 }
