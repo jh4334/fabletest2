@@ -1,558 +1,60 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#24102c">
-<meta name="description" content="답장을 재촉하는 도시에서 여섯 선택권을 되찾아 나래에게 배달하는 종이 우편 판타지 어드벤처.">
-<meta property="og:type" content="website">
-<meta property="og:title" content="미결 우체국">
-<meta property="og:description" content="열어볼 권한부터 답장하지 않을 권리까지, 여섯 반송 도장을 되찾는 밤의 우편 모험.">
-<meta property="og:image" content="icons/postal-icon-512.png">
-<meta name="twitter:card" content="summary">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="미결 우체국">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icons/postal-apple-touch-icon.png">
-<link rel="icon" type="image/png" href="icons/postal-icon-192.png">
-<title>미결 우체국</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#14101c">
+<title>방과 후: 그림자 학교</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
-    width: 100%; height: 100%;
-    background: #000000;
-    overflow: hidden;
-    font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
-    touch-action: none;
-    -webkit-tap-highlight-color: transparent;
-    overscroll-behavior: none;
+    margin: 0; padding: 0; height: 100%;
+    background: #0d0a12; color: #f7e0bd;
+    font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none;
   }
-  #wrap {
-    width: 100%; height: 100%;
+  #stage {
+    position: relative; width: 100%; height: 100%;
     display: flex; align-items: center; justify-content: center;
   }
-  canvas {
-    image-rendering: pixelated;
-    image-rendering: crisp-edges;
-    max-width: 100%;
-    max-height: 100%;
-    outline: none;
+  /* 720x528 캔버스를 화면에 맞춰 통째로 축소한다(픽셀 뭉개짐 방지). */
+  #game {
+    width: min(100vw, calc(100vh * 720 / 528));
+    height: auto; max-height: 100vh;
+    image-rendering: pixelated; image-rendering: crisp-edges;
+    background: #14101c; display: block;
   }
-
-  /* ---- v6 시작 버전 게이트 — 매 새로고침마다 최신 세계를 명확히 확인 ---- */
-  #version-gate {
-    display: none;
-    position: fixed; inset: 0;
-    z-index: 180;
-    align-items: center; justify-content: center;
-    overflow: auto;
-    padding: max(18px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right))
-      max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
-    color: #fff2d2;
-    background:
-      linear-gradient(rgba(30, 11, 36, .35), rgba(30, 11, 36, .84)),
-      url('assets/art/maps/postal-central-hall.png') center / cover no-repeat;
+  #touch { position: absolute; inset: 0; pointer-events: none; }
+  #stick, #btnA, #btnB {
+    position: absolute; pointer-events: auto; touch-action: none;
+    border: 3px solid rgba(247,224,189,0.55); background: rgba(24,18,32,0.34);
   }
-  #version-gate::before {
-    content: '';
-    position: absolute; inset: 0;
-    background: radial-gradient(circle at 50% 46%, rgba(237, 113, 92, .14), transparent 40%);
-    box-shadow: inset 0 0 90px rgba(0, 0, 0, .86);
-    pointer-events: none;
+  #stick { left: 4vw; bottom: 5vh; width: 108px; height: 108px; border-radius: 50%; }
+  #knob {
+    position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px;
+    border-radius: 50%; background: rgba(247,224,189,0.62);
   }
-  .version-card {
-    position: relative;
-    width: min(760px, 94vw);
-    border: 2px solid #d9b878;
-    outline: 1px solid rgba(166, 226, 194, .46);
-    outline-offset: -9px;
-    background: linear-gradient(180deg, rgba(43, 18, 49, .94), rgba(24, 10, 31, .97));
-    box-shadow: 0 22px 80px #10050f, inset 0 0 40px rgba(166, 226, 194, .10);
-    padding: clamp(24px, 5vh, 44px) clamp(18px, 5vw, 54px) clamp(20px, 4vh, 34px);
-    text-align: center;
+  #btnA, #btnB {
+    right: 5vw; width: 78px; height: 78px; border-radius: 50%;
+    color: #f7e0bd; font: 700 22px inherit;
   }
-  .version-card::before, .version-card::after {
-    content: '◆';
-    position: absolute; top: 12px;
-    color: #d1b966; font-size: 13px;
-  }
-  .version-card::before { left: 15px; }
-  .version-card::after { right: 15px; }
-  .version-build {
-    position: absolute; top: 12px; right: 38px;
-    color: #a8e2c9; font: 700 11px/1 monospace; letter-spacing: 1px;
-  }
-  .version-kicker {
-    color: #a8e2c9;
-    font-size: clamp(11px, 1.8vw, 14px);
-    font-weight: 700;
-    letter-spacing: .3em;
-  }
-  .version-number {
-    margin-top: 7px;
-    color: #fff8c9;
-    font-family: Georgia, 'Times New Roman', serif;
-    font-size: clamp(38px, 8vw, 76px);
-    line-height: .95;
-    letter-spacing: .04em;
-    text-shadow: 0 0 24px rgba(238, 111, 91, .32);
-  }
-  .version-title {
-    margin-top: 14px;
-    font-size: clamp(18px, 3vw, 27px);
-    font-weight: 800;
-    letter-spacing: .12em;
-  }
-  .version-rebuilt {
-    margin-top: 6px;
-    color: #c5af60;
-    font: 800 clamp(11px, 2vw, 14px)/1.2 monospace;
-    letter-spacing: .2em;
-  }
-  .version-copy {
-    margin: 17px auto 0;
-    max-width: 610px;
-    color: #ddd0df;
-    font-size: clamp(12px, 1.8vw, 15px);
-    line-height: 1.65;
-  }
-  .promise-grid {
-    display: grid;
-    grid-template-columns: repeat(6, minmax(58px, 1fr));
-    gap: 8px;
-    margin: clamp(18px, 3.4vh, 28px) auto 0;
-    max-width: 630px;
-  }
-  .promise {
-    min-height: 72px;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 6px;
-    border: 1px solid rgba(169, 226, 201, .38);
-    background: rgba(64, 31, 66, .62);
-    color: #dcebf2;
-    font-size: 12px;
-  }
-  .promise b { color: #f3d879; font-size: 20px; line-height: 1; }
-  #version-go {
-    margin-top: clamp(18px, 3.4vh, 28px);
-    min-height: 48px;
-    padding: 12px 28px;
-    border: 1px solid #e6d486;
-    background: linear-gradient(#fff4be, #c8a94e);
-    color: #12111b;
-    font: 800 clamp(13px, 2vw, 16px)/1 'Malgun Gothic', sans-serif;
-    cursor: pointer;
-    box-shadow: 0 0 22px rgba(221, 199, 109, .2);
-  }
-  #version-go:focus-visible { outline: 3px solid #a8e2c9; outline-offset: 4px; }
-  .version-foot { margin-top: 12px; color: #75859c; font: 11px/1.4 monospace; }
-  @media (max-width: 680px), (max-height: 560px) {
-    .promise-grid { grid-template-columns: repeat(3, 1fr); max-width: 390px; }
-    .promise { min-height: 54px; }
-    .version-copy { margin-top: 10px; }
-  }
-
-  /* ---- 터치 컨트롤 (모바일/태블릿) ---- */
-  #touch-ui { display: none; }
-  body.touch #touch-ui { display: block; }
-  .tbtn {
-    position: fixed;
-    --b: clamp(56px, 13vmin, 82px);
-    width: var(--b); height: var(--b);
-    background: rgba(28,30,46,.55);
-    border: 2px solid rgba(255,255,255,.5);
-    border-radius: 16px;
-    color: #fff;
-    font-size: clamp(22px, 5.4vmin, 30px);
-    font-weight: bold;
-    display: flex; align-items: center; justify-content: center;
-    user-select: none; -webkit-user-select: none;
-    touch-action: none;
-    z-index: 10;
-    backdrop-filter: blur(2px);
-    box-shadow: 0 2px 8px rgba(0,0,0,.45);
-    transition: transform .04s ease, background .04s ease;
-  }
-  .tbtn:active { background: rgba(255,255,255,.42); color: #1c1e2e; transform: scale(.92); }
-  /* 버튼 아래 작은 안내 글자 */
-  .tbtn .sub {
-    position: absolute; bottom: -16px; left: 0; right: 0;
-    text-align: center; font-size: 11px; font-weight: normal;
-    color: rgba(255,255,255,.66); text-shadow: 0 1px 2px #000;
-  }
-
-  /* 가상 스틱 — 왼쪽 아래. 손가락으로 끌어 이동(상하좌우). */
-  #t-stick {
-    position: fixed;
-    left: calc(20px + env(safe-area-inset-left));
-    bottom: calc(24px + env(safe-area-inset-bottom));
-    --sr: clamp(116px, 30vmin, 168px);
-    width: var(--sr); height: var(--sr);
-    border-radius: 50%;
-    background: rgba(28,30,46,.42);
-    border: 2px solid rgba(255,255,255,.38);
-    box-shadow: inset 0 0 18px rgba(0,0,0,.35), 0 2px 8px rgba(0,0,0,.4);
-    backdrop-filter: blur(2px);
-    touch-action: none;
-    z-index: 10;
-  }
-  /* 방향 힌트(십자 가이드) */
-  #t-stick::before, #t-stick::after {
-    content: ''; position: absolute; background: rgba(255,255,255,.16);
-  }
-  #t-stick::before { left: 18%; right: 18%; top: 50%; height: 2px; margin-top: -1px; }
-  #t-stick::after  { top: 18%; bottom: 18%; left: 50%; width: 2px; margin-left: -1px; }
-  #t-stick-knob {
-    position: absolute; left: 50%; top: 50%;
-    width: 46%; height: 46%;
-    border-radius: 50%;
-    background: rgba(255,255,255,.5);
-    border: 2px solid rgba(255,255,255,.75);
-    box-shadow: 0 2px 8px rgba(0,0,0,.45);
-    transform: translate(-50%, -50%);
-    transition: transform .03s linear;
-    pointer-events: none;
-  }
-
-  /* A(결정/피하기) — 오른쪽 아래, 크고 둥글게 */
-  #t-a {
-    right: calc(26px + env(safe-area-inset-right));
-    bottom: calc(44px + var(--b) * 0.4 + env(safe-area-inset-bottom));
-    --b: clamp(72px, 17vmin, 104px);
-    border-radius: 50%;
-    background: rgba(224,90,90,.42);
-    border-color: rgba(255,170,170,.7);
-  }
-  /* 친구 수첩(C) — 오른쪽 위 작은 버튼 */
-  #t-menu {
-    right: calc(16px + env(safe-area-inset-right));
-    top: calc(16px + env(safe-area-inset-top));
-    --b: clamp(46px, 9.5vmin, 58px);
-    font-size: clamp(13px, 3vmin, 16px);
-    border-radius: 12px;
-  }
-  /* 메뉴·뒤로(X) — 왼쪽 위 작은 버튼 */
-  #t-pause {
-    left: calc(16px + env(safe-area-inset-left));
-    top: calc(16px + env(safe-area-inset-top));
-    --b: clamp(46px, 9.5vmin, 58px);
-    font-size: clamp(13px, 3vmin, 16px);
-    border-radius: 12px;
-  }
-  /* 힌트(H) — 방탈출 중에만 표시, A 버튼 위쪽 */
-  #t-hint { display: none; }
-  body.battle-hint #t-hint {
-    display: flex;
-    right: calc(26px + env(safe-area-inset-right));
-    bottom: calc(168px + var(--b) * 0.4 + env(safe-area-inset-bottom));
-    --b: clamp(50px, 11.5vmin, 68px);
-    font-size: clamp(12px, 2.6vmin, 15px);
-    border-radius: 12px;
-    background: rgba(255,214,68,.3);
-    border-color: rgba(255,214,68,.7);
-    color: #2a2410;
-  }
-
-  /* 선생님(교사 전용 방) — 타이틀의 슬롯 화면에서만, 오른쪽 아래에 작고 눈에 띄지 않게 */
-  #t-teacher { display: none; }
-  body.title-slots #t-teacher {
-    display: flex;
-    right: calc(14px + env(safe-area-inset-right));
-    bottom: calc(14px + env(safe-area-inset-bottom));
-    /* 최소 44px 터치 타깃 보장 (접근성) — 시각적으로는 여전히 작고 흐릿하게 유지 */
-    --b: clamp(44px, 8vmin, 52px);
-    font-size: clamp(10px, 2.2vmin, 12px);
-    border-radius: 10px;
-    background: rgba(28,30,46,.4);
-    opacity: .7;
-  }
-
-  /* ---- 세로 모드일 때 가로로 돌리라는 안내 ---- */
-  #rotate-hint {
-    display: none;
-    position: fixed; inset: 0;
-    background: #000000;
-    color: #fff;
-    flex-direction: column;
-    align-items: center; justify-content: center;
-    gap: 18px; text-align: center;
-    z-index: 200;
-    font-size: 20px;
-  }
-  #rotate-hint .ico { font-size: 64px; animation: rot 1.8s ease-in-out infinite; }
-  #rotate-hint small { color: #888; font-size: 15px; line-height: 1.5; }
-  #rotate-dismiss {
-    margin-top: 8px; padding: 12px 22px; min-height: 44px;
-    background: rgba(255,255,255,.14); color: #fff;
-    border: 1px solid rgba(255,255,255,.4); border-radius: 10px;
-    font-size: 15px; font-family: inherit;
-  }
-  @keyframes rot { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(78deg); } }
-  /* 화면 회전이 잠긴 기기(케이스·거치대)에서 영영 막히지 않도록, 사용자가
-     '세로로 계속하기'를 누르면 body.allow-portrait로 오버레이를 숨긴다. */
-  @media (orientation: portrait) and (pointer: coarse) {
-    #rotate-hint { display: flex; }
-    body.allow-portrait #rotate-hint { display: none; }
-  }
-
-  /* ---- 이름 입력 오버레이 ---- */
-  #name-overlay {
-    display: none;
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,.78);
-    align-items: center; justify-content: center;
-    z-index: 50;
-  }
-  #name-overlay .np-card {
-    background: #000;
-    border: 3px solid #fff;
-    border-radius: 8px;
-    padding: 28px 32px;
-    text-align: center;
-    width: min(86vw, 360px);
-  }
-  #name-overlay .np-title { color: #fff; font-size: 19px; font-weight: bold; margin-bottom: 6px; }
-  #name-overlay .np-sub { color: #888; font-size: 13px; margin-bottom: 16px; }
-  #name-input {
-    width: 100%;
-    font-size: 22px; text-align: center;
-    padding: 10px 12px;
-    border: 2px solid #444; border-radius: 6px;
-    background: #000; color: #fff;
-    outline: none;
-  }
-  #name-input:focus { border-color: #e0453a; }
-  #name-overlay .np-hint { color: #777; font-size: 13px; margin-top: 14px; }
-  #name-overlay .np-go {
-    margin-top: 16px;
-    background: #fff; color: #000;
-    font-size: 16px; font-weight: bold;
-    border: none; border-radius: 6px;
-    padding: 12px 28px; cursor: pointer;
-  }
-
-  /* ---- 초기 로딩 표시 (스크립트 파싱·초기화 동안) — __game 준비되면 JS가 숨긴다 ---- */
-  #loading {
-    position: fixed; inset: 0; z-index: 50;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    background: #12101c; color: #fff; gap: 10px;
-  }
-  #loading .load-title { font-size: 26px; font-weight: bold; letter-spacing: 2px; }
-  #loading .load-sub {
-    font-size: 14px; color: #9a93b0;
-    animation: loadpulse 1.4s ease-in-out infinite;
-  }
-  @keyframes loadpulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
-  @media (prefers-reduced-motion: reduce) { #loading .load-sub { animation: none; } }
-
-  /* ---- 첫 로딩 실패 안내 (스크립트가 안 받아졌을 때) ---- */
-  #boot-error {
-    display: none;
-    position: fixed; inset: 0;
-    background: #000; color: #fff;
-    flex-direction: column;
-    align-items: center; justify-content: center;
-    gap: 16px; text-align: center; padding: 24px;
-    z-index: 200; font-size: 18px;
-  }
-  #boot-error small { color: #999; font-size: 14px; line-height: 1.6; }
-  #boot-error button {
-    background: #fff; color: #000;
-    font-size: 16px; font-weight: bold;
-    border: none; border-radius: 6px;
-    padding: 12px 28px; cursor: pointer; margin-top: 6px;
-  }
+  #btnA { bottom: 12vh; }
+  #btnB { bottom: 2vh; right: 20vw; width: 62px; height: 62px; font-size: 18px; }
+  /* 마우스·키보드 환경에서는 터치 버튼을 숨긴다. */
+  @media (hover: hover) and (pointer: fine) { #touch { display: none; } }
 </style>
 </head>
 <body>
-<noscript>
-  <div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#12101c;color:#fff;font-family:sans-serif;text-align:center;padding:24px;z-index:9999;">
-    <div>
-      <div style="font-size:20px;font-weight:bold;margin-bottom:12px;">자바스크립트가 꺼져 있어요</div>
-      <div style="color:#cfc8e0;font-size:15px;line-height:1.7;">「미결 우체국」은 브라우저에서 자바스크립트로 동작해요.<br>브라우저 설정에서 자바스크립트를 켠 뒤 새로고침해 주세요.</div>
-    </div>
-  </div>
-</noscript>
-<div id="loading">
-  <div class="load-title">미결 우체국</div>
-  <div class="load-sub">불러오는 중…</div>
-</div>
-<section id="version-gate" role="dialog" aria-modal="true" aria-labelledby="version-heading" aria-describedby="version-desc">
-  <div class="version-card">
-    <div class="version-build">V6-20260724-CLEAN</div>
-    <div class="version-kicker">THE UNDELIVERED POST OFFICE</div>
-    <h1 class="version-number" id="version-heading">VERSION 6.0</h1>
-    <div class="version-title">미결 우체국</div>
-    <div class="version-rebuilt">ALL ASSETS &amp; STORY REPLACED</div>
-    <p class="version-copy" id="version-desc">기존 맵과 캐릭터 에셋을 전부 제거했습니다. 이제 당신은 답장을 받지 못한 한 통의 편지가 되어, 나래에게 여섯 선택권을 배달합니다.</p>
-    <div class="promise-grid" aria-label="되찾아야 할 여섯 답장 권리">
-      <div class="promise"><b>✉</b><span>열어볼 권한</span></div>
-      <div class="promise"><b>?</b><span>되묻기</span></div>
-      <div class="promise"><b>…</b><span>모른다고 말하기</span></div>
-      <div class="promise"><b>Ⅱ</b><span>멈추기</span></div>
-      <div class="promise"><b>↔</b><span>거리 두기</span></div>
-      <div class="promise"><b>○</b><span>답장하지 않기</span></div>
-    </div>
-    <button id="version-go" type="button">새 세계 확인하기 · Z / SPACE</button>
-    <div class="version-foot">BUILD 6.0.0 · ZERO LEGACY RUNTIME ASSETS</div>
-  </div>
-</section>
-<div id="wrap">
-  <canvas id="game" width="720" height="528" tabindex="0" role="application" aria-label="미결 우체국 게임 화면. 방향키로 이동, Z 또는 스페이스로 결정합니다."></canvas>
-</div>
-<!-- 화면 낭독기용 알림 미러 — 캔버스 안 텍스트는 낭독기가 못 읽으므로,
-     게임 알림(notice)·대사를 여기에 복사해 aria-live로 전달한다 -->
-<div id="sr-live" aria-live="polite" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;"></div>
-<div id="touch-ui">
-  <div id="t-stick" role="application" aria-label="이동 스틱. 손가락으로 끌어 상하좌우로 움직입니다.">
-    <div id="t-stick-knob"></div>
-  </div>
-  <div class="tbtn" id="t-a" role="button" aria-label="결정·대화">A<span class="sub">결정</span></div>
-  <div class="tbtn" id="t-hint" role="button" aria-label="힌트 보기">힌트</div>
-  <div class="tbtn" id="t-menu" role="button" aria-label="친구 수첩 열기">수첩</div>
-  <div class="tbtn" id="t-pause" role="button" aria-label="메뉴 열기">메뉴</div>
-  <div class="tbtn" id="t-teacher" role="button" aria-label="선생님 방 열기">선생님</div>
-</div>
-<div id="rotate-hint">
-  <div class="ico">📱</div>
-  <div>화면을 가로로 돌려 주세요</div>
-  <small>미결 우체국은 가로 화면에 맞춰져 있어요</small>
-  <button id="rotate-dismiss" type="button">세로로 계속하기</button>
-</div>
-<div id="name-overlay">
-  <div class="np-card">
-    <div class="np-title">미결 편지의 이름은?</div>
-    <div class="np-sub">최대 6글자 · 비워 두면 "미결편지"</div>
-    <input id="name-input" maxlength="6" placeholder="미결편지" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="미결 편지 이름 입력 (최대 6글자, 비우면 미결편지)">
-    <div><button class="np-go" id="name-go">모험 시작 ▶</button></div>
-    <div class="np-hint">「모험 시작」 버튼(또는 Enter)으로 시작 · Esc로 취소</div>
+<div id="stage">
+  <canvas id="game" width="720" height="528" aria-label="게임 화면"></canvas>
+  <div id="touch">
+    <div id="stick"><div id="knob"></div></div>
+    <button id="btnA" type="button">A</button>
+    <button id="btnB" type="button">B</button>
   </div>
 </div>
-<div id="boot-error">
-  <div>게임을 불러오지 못했어요 😢</div>
-  <small>인터넷 연결을 확인한 뒤 다시 시도해 주세요.<br>처음 한 번만 연결되면, 이후에는 오프라인에서도 실행됩니다.</small>
-  <button onclick="location.reload()">다시 시도</button>
-</div>
-<script>
-  // 게임 키 핸들러보다 먼저 설치해 버전 확인 전 입력이 뒤 화면으로 새지 않게 한다.
-  (function () {
-    var gate = document.getElementById('version-gate');
-    var go = document.getElementById('version-go');
-    var active = false;
-    function dismissVersionGate() {
-      if (!active) return;
-      active = false;
-      gate.style.display = 'none';
-      gate.dataset.dismissed = '1';
-      var canvas = document.getElementById('game');
-      if (canvas) canvas.focus();
-    }
-    window.__dismissVersionGate = dismissVersionGate;
-    window.addEventListener('keydown', function (e) {
-      if (!active) return;
-      if (e.key === 'z' || e.key === 'Z' || e.key === ' ' || e.key === 'Enter') {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        dismissVersionGate();
-      }
-    }, true);
-    if (go) go.addEventListener('click', dismissVersionGate);
-    var showWhenReady = setInterval(function () {
-      if (!window.__game) return;
-      clearInterval(showWhenReady);
-      var loading = document.getElementById('loading');
-      if (loading) loading.style.display = 'none';
-      gate.style.display = 'flex';
-      gate.dataset.ready = '1';
-      active = true;
-      if (go) go.focus();
-    }, 50);
-  })();
-</script>
-<script src="src/art.js?v=6.0.0-postal-clean"></script>
-<script src="src/sprites.js?v=6.0.0-postal-clean"></script>
-<script src="src/audio.js?v=6.0.0-postal-clean"></script>
-<script src="src/data.js?v=6.0.0-postal-clean"></script>
-<script src="src/game.js?v=6.0.0-postal-clean"></script>
-<script>
-  // 첫 로딩 감시: 게임이 일정 시간 안에 시작되지 않으면(스크립트 누락·네트워크 실패)
-  // 검은 화면 대신 안내와 '다시 시도' 버튼을 보여 준다.
-  (function () {
-    var t = setTimeout(function () {
-      if (!window.__game) {
-        var el = document.getElementById('boot-error');
-        if (el) el.style.display = 'flex';
-      }
-    }, 6000);
-    window.addEventListener('error', function () {
-      if (!window.__game) {
-        var el = document.getElementById('boot-error');
-        if (el) el.style.display = 'flex';
-      }
-    });
-    // 정상 시작되면 감시 해제 + 로딩 표시 제거
-    var iv = setInterval(function () {
-      if (window.__game) {
-        clearTimeout(t); clearInterval(iv);
-        var ld = document.getElementById('loading');
-        if (ld && ld.parentNode) ld.parentNode.removeChild(ld);
-      }
-    }, 100);
-  })();
-
-  // 세로 화면 안내에서 '세로로 계속하기' — 회전 잠금 기기가 영영 막히지 않도록.
-  // 한 번 선택하면 기억한다(다음부터 안내를 건너뜀).
-  (function () {
-    try {
-      if (localStorage.getItem('ai-ethics-allow-portrait') === '1') document.body.classList.add('allow-portrait');
-    } catch (e) {}
-    var rd = document.getElementById('rotate-dismiss');
-    if (rd) rd.addEventListener('click', function () {
-      document.body.classList.add('allow-portrait');
-      try { localStorage.setItem('ai-ethics-allow-portrait', '1'); } catch (e) {}
-    });
-  })();
-
-  // 오프라인 설치(PWA) — file:// 로 직접 열었을 때는 등록하지 않는다
-  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    const hadServiceWorkerController = !!navigator.serviceWorker.controller;
-    let reloadingForUpdate = false;
-    const registrationStartedAt = Date.now();
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (reloadingForUpdate) return;
-      // 이미 구버전 워커가 제어하던 첫 진입에서만 한 번 다시 열어, 구 캐시 화면을
-      // 최신 HTML/JS로 교체한다. 최초 설치·오래 플레이 중인 탭은 강제 갱신하지 않는다.
-      if (hadServiceWorkerController && Date.now() - registrationStartedAt < 60 * 1000) {
-        reloadingForUpdate = true;
-        location.reload();
-        return;
-      }
-      window.__newVersionReady = true;
-      if (window.__onNewVersion) window.__onNewVersion();
-    });
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
-        // 새 버전 감지 — 오래 플레이 중인 탭은 강제로 끊지 않고 안내만 띄운다.
-        const watch = (worker) => {
-          if (!worker) return;
-          worker.addEventListener('statechange', () => {
-            if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-              window.__newVersionReady = true;
-              if (window.__onNewVersion) window.__onNewVersion();
-            }
-          });
-        };
-        watch(reg.installing);
-        reg.addEventListener('updatefound', () => watch(reg.installing));
-        // 접속할 때마다 서버의 sw.js를 확인한다.
-        reg.update().catch(() => {});
-        // 교실에서 탭을 오래 열어 두는 환경 — 30분마다 업데이트 확인
-        setInterval(() => { reg.update().catch(() => {}); }, 30 * 60 * 1000);
-      }).catch(() => {});
-    });
-  }
-</script>
+<script src="src/art.js"></script>
+<script src="src/data.js"></script>
+<script src="src/engine.js"></script>
+<script>window.addEventListener('load', function () { window.GAME.start(); });</script>
 </body>
 </html>

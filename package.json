@@ -1,22 +1,13 @@
 {
-  "name": "ai-ethics-adventure",
-  "version": "6.0.0",
-  "description": "미결 우체국 — 여섯 답장 권리를 배달하는 한국어 AI 리터러시 어드벤처",
+  "name": "shadow-school",
+  "version": "0.1.0",
+  "description": "방과 후: 그림자 학교 — 초등 AI 윤리 학교탈출 게임 (디지털연구대회)",
   "private": true,
   "scripts": {
     "validate": "node tools/validate.js",
-    "bump": "node tools/bump-sw.js",
-    "playtest": "node tools/playbot.js",
-    "test": "node tools/smoketest.js && node tools/slottest.js",
-    "test:browser": "node tools/browsertest.js",
-    "releasecheck": "node tools/releasecheck.js",
-    "shots": "node tools/shots.js",
-    "icons": "node tools/icons.js",
-    "docs": "node tools/quizlist.js",
-    "pack": "rm -f ai-ethics-adventure-offline.zip && zip -rq ai-ethics-adventure-offline.zip index.html sw.js manifest.webmanifest .nojekyll src assets icons docs README.md -x '*/.*' && echo '✔ ai-ethics-adventure-offline.zip 생성'"
+    "test": "node tools/smoketest.js"
   },
   "devDependencies": {
-    "canvas": "^3.2.3",
     "playwright": "^1.61.1"
   }
 }

@@ -1,55 +1,21 @@
 name: GitHub Pages 배포
-
-# main 브랜치에 올라오면 검증(validate·smoke·slot) 통과 후 정적 사이트를 배포한다.
-# PR에서도 검증을 돌려, 깨진 코드가 main에 머지되는 것을 막는다.
-# (저장소 Settings → Pages → Source를 "GitHub Actions"로 한 번 설정해 두어야 한다.)
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  push: { branches: [main] }
   workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
-
+permissions: { contents: read, pages: write, id-token: write }
+concurrency: { group: pages, cancel-in-progress: true }
 jobs:
-  # 1) 데이터·플레이 경로·세이브 검증 (런타임 의존성 없음 → 설치 불필요)
-  verify:
+  deploy:
+    environment: { name: github-pages, url: ${{ steps.deployment.outputs.page_url }} }
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: 데이터 검증
-        run: node tools/validate.js
-      - name: 출시 후보 정합성
-        run: node tools/releasecheck.js
-      - name: 스모크 테스트
-        run: node tools/smoketest.js
-      - name: 슬롯 테스트
-        run: node tools/slottest.js
-
-  # 2) 검증 통과 시에만 배포 (PR에서는 배포하지 않음)
-  deploy:
-    needs: verify
-    if: github.event_name != 'pull_request'
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+        with: { node-version: 20 }
+      - run: npm ci --ignore-scripts
+      - run: npm run validate && npm test
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
-        with:
-          path: '.'
+        with: { path: '.' }
       - id: deployment
         uses: actions/deploy-pages@v4
