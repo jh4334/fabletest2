@@ -1,8 +1,260 @@
-// 스모크 테스트 — 슬라이스(P1)에서 엔진 로드·이동·배틀 검사로 교체된다.
-const fs = require('fs'); const path = require('path');
+// 스모크 테스트 — 「방과 후: 그림자 학교」 P1 수직 슬라이스
+// DOM/Canvas/Image/localStorage를 스텁으로 대체하고 vm 샌드박스에서 실제 플레이
+// 경로를 시뮬레이션한다. 스펙 §6: 이동·충돌 / 카드·노출도 / 배틀 완주 / 세이브.
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
 const ROOT = path.resolve(__dirname, '..');
-if (!fs.existsSync(path.join(ROOT, 'index.html'))) {
-  console.log('P0 단계(엔진 없음) — 구조 검사만 통과 처리'); process.exit(0);
+
+// ── DOM 스텁 ────────────────────────────────────────────────────────────────
+function makeCtx() {
+  return new Proxy({}, {
+    get(t, p) {
+      if (p === 'measureText') return () => ({ width: 40 });
+      if (p in t) return t[p];
+      return () => {};
+    },
+    set(t, p, v) { t[p] = v; return true; },
+  });
 }
-console.error('index.html이 생겼는데 스모크가 아직 스텁입니다. 슬라이스 스펙 §테스트를 구현하세요.');
-process.exit(1);
+function makeCanvas(w, h) {
+  return { width: w || 0, height: h || 0, getContext: () => makeCtx(), addEventListener() {} };
+}
+
+const listeners = {};
+let rafCb = null;
+const storage = new Map();
+
+// Image: src 대입 즉시 onload. (파일 존재 여부는 validate가 따로 본다)
+function ImageStub() { this.onload = null; this.onerror = null; }
+Object.defineProperty(ImageStub.prototype, 'src', {
+  set(v) { this._src = v; if (this.onload) this.onload(); },
+  get() { return this._src; },
+});
+
+const windowObj = {
+  addEventListener: (ev, fn) => { (listeners[ev] = listeners[ev] || []).push(fn); },
+  removeEventListener: () => {},
+  requestAnimationFrame: (cb) => { rafCb = cb; return 1; },
+};
+windowObj.window = windowObj;
+windowObj.Image = ImageStub;
+windowObj.document = {
+  getElementById: (id) => (id === 'game' ? makeCanvas(720, 528) : null),
+  createElement: () => makeCanvas(16, 16),
+};
+windowObj.localStorage = {
+  getItem: (k) => (storage.has(k) ? storage.get(k) : null),
+  setItem: (k, v) => storage.set(k, String(v)),
+  removeItem: (k) => storage.delete(k),
+};
+windowObj.console = console;
+windowObj.Math = Math;
+windowObj.JSON = JSON;
+
+vm.createContext(windowObj);
+// 탄막 스폰이 무작위라 결정적 시드로 고정한다(플래키 방지).
+let seed = 20260726;
+Math.random = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+
+for (const f of ['src/art.js', 'src/data.js', 'src/engine.js']) {
+  vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), windowObj, { filename: f });
+}
+const G = windowObj.GAME;
+const D = windowObj.DATA;
+const ART = windowObj.ART;
+
+// ── 시뮬레이션 도우미 ───────────────────────────────────────────────────────
+let clock = 0;
+function frame(n = 1) {
+  for (let i = 0; i < n; i++) {
+    const cb = rafCb; rafCb = null;
+    if (!cb) throw new Error('requestAnimationFrame 콜백이 없음');
+    clock += 16;
+    cb(clock);
+  }
+}
+function dispatch(ev, obj) {
+  for (const fn of (listeners[ev] || []).slice()) fn(Object.assign({ preventDefault() {} }, obj));
+}
+function tap(key) { dispatch('keydown', { key }); frame(1); dispatch('keyup', { key }); }
+function hold(key, n) { dispatch('keydown', { key }); frame(n); dispatch('keyup', { key }); frame(1); }
+function S() { return G.state(); }
+function advance(max = 20) {
+  for (let i = 0; i < max && S().dialog; i++) tap('z');
+  return !S().dialog;
+}
+function place(map, tx, ty) { G.enterMap(map, tx, ty); frame(1); }
+function tile() { return G.playerTile(); }
+
+let pass = 0; const fails = [];
+function check(name, cond) {
+  if (cond) { pass++; console.log('  ✔ ' + name); }
+  else { fails.push(name); console.error('  ✘ ' + name); }
+}
+
+// ── 1. 부팅 · 타이틀 ────────────────────────────────────────────────────────
+console.log('[1] 부팅 → 타이틀');
+G.start();
+frame(2);
+check('타이틀 화면 진입', S().mode === 'title');
+check('시트 로드 완료', ART.ready('floor') && ART.ready('student') && ART.ready('wall'));
+check('저장이 없으면 이어하기 없음', G.hasSave() === false);
+
+console.log('[2] 새 게임 → 인트로 → 교실');
+tap('z');
+check('인트로 대화 시작', !!S().dialog);
+check('인트로 상자 3개 이하 (헌법 §3-2)', S().dialog.seq.length <= 3);
+check('인트로 상자당 2줄', S().dialog.seq.every((b) => b.length <= 2));
+advance();
+check('월드 진입', S().mode === 'world' && S().map === 'classroom');
+check('시작 위치가 교실 스폰', tile().x === 7 && tile().y === 8);
+
+// ── 3. 이동 · 충돌 ──────────────────────────────────────────────────────────
+console.log('[3] 이동 · 충돌');
+const startX = S().px;
+hold('ArrowLeft', 10);
+check('왼쪽 이동으로 좌표가 줄어듦', S().px < startX);
+check('바라보는 방향이 왼쪽', S().dir === ART.DIR.left);
+hold('ArrowLeft', 400);
+check('왼쪽 벽에서 멈춤', tile().x === 1 && !G.solidAt(D.MAPS.classroom, tile().x, tile().y));
+hold('ArrowUp', 400);
+check('위쪽 벽에서 멈춤', tile().y === 1);
+place('classroom', 2, 8);
+hold('ArrowUp', 400);
+check('책상 줄을 통과하지 못함', tile().y >= 4);
+check('벽 자동타일: 좌상단 모서리', String(G.wallOffset(D.MAPS.classroom, 0, 0)) === '0,0');
+check('벽 자동타일: 문 위쪽 마감', String(G.wallOffset(D.MAPS.classroom, 14, 4)) === '4,0');
+
+// ── 4. 카드 · 노출도 ────────────────────────────────────────────────────────
+console.log('[4] 카드 줍기 → 광고 단말 → 되찾기');
+place('classroom', 12, 8);
+frame(2);
+check('교실 카드 획득', G.heldIds().indexOf('nameTag') >= 0);
+check('첫 획득 안내 토스트', !!S().toast);
+check('노출도는 0에서 시작', S().exposure === 0);
+
+place('classroom', 2, 2);   // 광고 단말 위
+frame(2);
+check('광고 단말이 카드를 뺏음', G.heldIds().length === 0);
+check('노출도 +1', S().exposure === 1);
+const dropped = S().cards.nameTag;
+check('뺏긴 카드가 반환 위치에 떨어짐', dropped.map === 'classroom' && dropped.x === 2 && dropped.y === 4);
+
+place('classroom', 2, 4);
+frame(2);
+check('다시 주우면 노출도 -1', G.heldIds().indexOf('nameTag') >= 0 && S().exposure === 0);
+
+// ── 5. 워프 ─────────────────────────────────────────────────────────────────
+console.log('[5] 교실 → 복도 워프');
+place('classroom', 14, 5);
+frame(2);
+check('복도로 이동', S().map === 'hallway');
+check('복도 입구에 도착', tile().x === 1 && tile().y === 5);
+
+// ── 6. 복도 단말 쿨다운 ─────────────────────────────────────────────────────
+console.log('[6] 복도 카드 · 단말 쿨다운');
+place('hallway', 2, 8);
+frame(2);
+check('복도 카드 획득 (2장 소지)', G.heldIds().length === 2);
+place('hallway', 6, 5);
+frame(2);
+check('복도 단말이 한 장만 뺏음', G.heldIds().length === 1 && S().exposure === 1);
+frame(40);
+check('쿨다운 중에는 연속으로 뺏기지 않음', G.heldIds().length === 1);
+place('hallway', 6, 8);
+frame(2);
+check('되찾아 노출도 복구', G.heldIds().length === 2 && S().exposure === 0);
+
+// ── 7. 배틀 진입 · 오답 루트 · 피격 ─────────────────────────────────────────
+console.log('[7] 짝꿍 배틀 — 오답 루트와 회복');
+place('hallway', 15, 5);
+frame(2);
+check('짝꿍 조우 대화', !!S().dialog);
+advance();
+check('배틀 진입', S().mode === 'battle');
+advance();
+check('내 턴 메뉴', S().battle.phase === 'menu' && S().battle.shadow === D.BATTLE.shadow);
+
+tap('ArrowRight');                        // 말 걸기 → 보여주기
+check('메뉴 커서 이동', S().battle.cursor === 1);
+tap('z');
+check('보여주기 목록 열림', S().battle.phase === 'sub');
+tap('ArrowDown'); tap('z');               // 두 번째 카드 = 비밀번호 쪽지
+advance();
+check('듣기 전 증거는 통하지 않음', S().battle.shadow === D.BATTLE.shadow);
+check('상대 턴 시작', S().battle.phase === 'enemy');
+
+// 탄막 피격: 하트 위에 조각을 놓고 한 프레임 진행
+S().battle.tell = 0;
+S().battle.bullets.push({ x: S().battle.hx, y: S().battle.hy, vx: 0, vy: 0, s: 13 });
+frame(1);
+check('피격 시 하트 감소', S().battle.hearts === D.BATTLE.hearts - 1);
+S().battle.hearts = 1; S().battle.inv = 0;
+S().battle.bullets.push({ x: S().battle.hx, y: S().battle.hy, vx: 0, vy: 0, s: 13 });
+frame(1);
+check('하트 0이어도 게임오버 없이 월드 복귀', S().mode === 'world' && S().battle === null);
+check('물러남 안내가 뜸', !!S().dialog);
+advance();
+check('클리어 플래그는 아직 없음 (재도전 가능)', S().flags.cleared === false);
+
+// ── 8. 정답 루트 완주 ───────────────────────────────────────────────────────
+console.log('[8] 짝꿍 배틀 — 듣기 → 증거 → 손 내밀기');
+place('hallway', 15, 5);
+frame(2);
+advance();                                // 조우 + 배틀 인트로
+check('배틀 재진입', S().mode === 'battle' && S().battle.phase === 'menu');
+S().battle.cursor = 2;                    // 가만히 듣기
+tap('z');
+advance();
+check('듣기로 그림자가 얇아짐', S().battle.heard === true && S().battle.shadow === D.BATTLE.shadow - 1);
+S().battle.timer = 999; frame(1);
+check('상대 턴 종료 후 내 턴', S().battle.phase === 'menu');
+
+S().battle.cursor = 1; tap('z');          // 보여주기
+tap('ArrowDown'); tap('z');               // 비밀번호 쪽지
+advance();
+check('증거 제시로 그림자 0', S().battle.shadow === 0);
+check('손 내밀기 준비 (이름 노랗게)', S().battle.spare === true);
+tap('z');
+advance();
+check('배틀 종료 후 월드', S().mode === 'world' && S().battle === null);
+check('짝꿍을 되돌림', S().flags.cleared === true);
+check('계단 문 개방', S().flags.stairsOpen === true);
+
+// ── 9. 세이브 / 로드 왕복 ───────────────────────────────────────────────────
+console.log('[9] 세이브 · 로드');
+check('자동 저장됨', G.hasSave() === true);
+const before = JSON.stringify({
+  map: S().map, exp: S().exposure, flags: S().flags, held: G.heldIds(),
+});
+// 저장을 건드리지 않고 메모리 상태만 흐트러뜨린다(enterMap은 자동 저장을 부른다).
+S().map = 'classroom'; S().exposure = 4;
+S().flags.cleared = false; S().cards.passNote.held = false;
+check('로드 성공', G.load() === true);
+const after = JSON.stringify({
+  map: S().map, exp: S().exposure, flags: S().flags, held: G.heldIds(),
+});
+check('로드 왕복이 상태를 그대로 복원', before === after);
+check('노출도가 0~최대 범위 안', S().exposure >= 0 && S().exposure <= D.MAX_EXPOSURE);
+
+// ── 10. 계단 → 슬라이스 종료 ────────────────────────────────────────────────
+console.log('[10] 계단 → 1층 통과');
+place('hallway', 18, 5);
+hold('ArrowRight', 40);
+check('계단 접촉 안내', !!S().dialog);
+advance();
+check('클리어 화면', S().mode === 'clear');
+tap('z');
+check('처음부터: 저장 삭제 후 타이틀', S().mode === 'title' && G.hasSave() === false);
+
+// ── 결과 ────────────────────────────────────────────────────────────────────
+console.log('');
+if (fails.length) {
+  console.error(`✘ 실패 ${fails.length}건 / 통과 ${pass}건`);
+  fails.forEach((f) => console.error('   - ' + f));
+  process.exit(1);
+}
+if (pass < 20) { console.error(`✘ 검사 수 부족: ${pass}건 (스펙 §6은 20건 이상)`); process.exit(1); }
+console.log(`✔ 스모크 ${pass}건 모두 통과`);

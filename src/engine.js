@@ -1,0 +1,805 @@
+// 엔진 — 방과 후: 그림자 학교 / P1 수직 슬라이스
+// 한글 문자열은 한 줄도 두지 않는다. 화면에 나오는 말은 전부 DATA.T / DATA.* 참조.
+(function (g) {
+  'use strict';
+
+  var A = g.ART, D = g.DATA;
+  var W = 720, H = 528, T = 48;
+  var FACE = '"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR","Nanum Gothic",sans-serif';
+  var SPEED = 132;          // 픽셀/초
+  var PICK_R = 30;          // 카드 줍기 반경
+  var TERM_R = 40;          // 광고 단말 반경
+  var TERM_COOL = 4.5;      // 단말이 다시 뺏기까지 쉬는 시간
+  var NPC_R = 58;
+
+  var cv = null, ctx = null, S = null, last = 0, raf = null;
+  var keys = {}, edge = {}, touchVec = { x: 0, y: 0 };
+
+  // ── 상태 ────────────────────────────────────────────────────────────────
+  function blankState() {
+    var cards = {};
+    D.CARDS.forEach(function (c) {
+      cards[c.id] = { held: false, map: c.at.map, x: c.at.x, y: c.at.y };
+    });
+    var m = D.MAPS.classroom;
+    return {
+      mode: 'title', map: 'classroom',
+      px: m.spawn.x * T + T / 2, py: m.spawn.y * T + T - 6,
+      dir: A.DIR[m.spawn.dir] || 0, frame: 0, walkT: 0, moving: false,
+      cam: { x: 0, y: 0 }, exposure: 0, cards: cards,
+      flags: { intro: false, firstCard: false, firstTake: false, cleared: false, stairsOpen: false, done: false },
+      dialog: null, battle: null, toast: null, cool: {}, time: 0
+    };
+  }
+
+  function heldIds() {
+    var out = [];
+    D.CARDS.forEach(function (c) { if (S.cards[c.id].held) out.push(c.id); });
+    return out;
+  }
+  function cardDef(id) {
+    for (var i = 0; i < D.CARDS.length; i++) if (D.CARDS[i].id === id) return D.CARDS[i];
+    return null;
+  }
+
+  // ── 맵 유틸 ─────────────────────────────────────────────────────────────
+  function mapOf(name) { return D.MAPS[name]; }
+  function chAt(m, tx, ty) {
+    if (tx < 0 || ty < 0 || tx >= m.w || ty >= m.h) return null;
+    return m.grid[ty].charAt(tx);
+  }
+  function legend(ch) { return (ch && D.LEGEND[ch]) || null; }
+  function solidAt(m, tx, ty) {
+    var ch = chAt(m, tx, ty); if (ch === null) return true;
+    var L = legend(ch); return !L || !!L.solid;
+  }
+  function isWallCh(m, tx, ty) {
+    var ch = chAt(m, tx, ty); if (ch === null) return true;
+    var L = legend(ch); return !!(L && L.wall);
+  }
+  // 벽 링(5x5 블록) 자동 선택 — 열린 이웃/대각선으로 모서리를 고른다.
+  function wallOffset(m, tx, ty) {
+    var n = !isWallCh(m, tx, ty - 1), s = !isWallCh(m, tx, ty + 1);
+    var w = !isWallCh(m, tx - 1, ty), e = !isWallCh(m, tx + 1, ty);
+    if (s && e) return [0, 0];
+    if (s && w) return [4, 0];
+    if (n && e) return [0, 4];
+    if (n && w) return [4, 4];
+    if (s) return [1, 0];
+    if (n) return [1, 4];
+    if (e) return [0, 1];
+    if (w) return [4, 1];
+    if (!isWallCh(m, tx + 1, ty + 1)) return [0, 0];
+    if (!isWallCh(m, tx - 1, ty + 1)) return [4, 0];
+    if (!isWallCh(m, tx + 1, ty - 1)) return [0, 4];
+    if (!isWallCh(m, tx - 1, ty - 1)) return [4, 4];
+    return null;
+  }
+  function playerTile() { return { x: Math.floor(S.px / T), y: Math.floor((S.py - 16) / T) }; }
+  function frontTile() {
+    var p = playerTile();
+    if (S.dir === 0) p.y += 1; else if (S.dir === 1) p.y -= 1;
+    else if (S.dir === 2) p.x -= 1; else p.x += 1;
+    return p;
+  }
+  function tileCenter(tx, ty) { return { x: tx * T + T / 2, y: ty * T + T / 2 }; }
+
+  // ── 대사/토스트 ─────────────────────────────────────────────────────────
+  function say(seq, then) { S.dialog = { seq: seq, i: 0, then: then || null }; }
+  function toast(str) { S.toast = { text: str, t: 2.4 }; }
+
+  // ── 진행 ────────────────────────────────────────────────────────────────
+  function newGame() {
+    S = blankState();
+    S.mode = 'world';
+    say(D.INTRO, function () { S.flags.intro = true; save(); });
+  }
+
+  function enterMap(name, sx, sy, dir) {
+    var m = mapOf(name); if (!m) return false;
+    S.map = name;
+    S.px = sx * T + T / 2; S.py = sy * T + T - 6;
+    if (dir && A.DIR[dir] !== undefined) S.dir = A.DIR[dir];
+    S.cool = {};
+    updateCam();
+    save();
+    return true;
+  }
+
+  function updateCam() {
+    var m = mapOf(S.map);
+    S.cam.x = Math.max(0, Math.min(m.w * T - W, S.px - W / 2));
+    S.cam.y = Math.max(0, Math.min(m.h * T - H, S.py - H / 2));
+  }
+
+  function setExposure(v) {
+    S.exposure = Math.max(0, Math.min(D.MAX_EXPOSURE, v));
+  }
+
+  function pickCard(id) {
+    var st = S.cards[id];
+    st.held = true; st.map = null;
+    setExposure(S.exposure - 1);
+    if (!S.flags.firstCard) { S.flags.firstCard = true; toast(D.T.firstCard); }
+    else toast(D.T.gotCard);
+    save();
+  }
+
+  function stealCard(term, key) {
+    var held = heldIds(); if (!held.length) return false;
+    var id = held[held.length - 1], st = S.cards[id];
+    st.held = false; st.map = S.map; st.x = term.drop.x; st.y = term.drop.y;
+    setExposure(S.exposure + 1);
+    S.cool[key] = TERM_COOL;
+    if (!S.flags.firstTake) { S.flags.firstTake = true; toast(D.T.taken + ' ' + D.T.takenHelp); }
+    else toast(D.T.taken);
+    save();
+    return true;
+  }
+
+  // ── 입력 ────────────────────────────────────────────────────────────────
+  var KEYMAP = {
+    ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+    w: 'up', s: 'down', a: 'left', d: 'right',
+    W: 'up', S: 'down', A: 'left', D: 'right',
+    z: 'ok', Z: 'ok', Enter: 'ok', ' ': 'ok', Spacebar: 'ok',
+    x: 'no', X: 'no', Escape: 'no', Backspace: 'no'
+  };
+  function onKeyDown(e) {
+    var k = KEYMAP[e.key]; if (!k) return;
+    if (!keys[k]) edge[k] = true;
+    keys[k] = true;
+    if (e.preventDefault) e.preventDefault();
+  }
+  function onKeyUp(e) { var k = KEYMAP[e.key]; if (k) keys[k] = false; }
+  function tapped(k) { return !!edge[k]; }
+  function clearEdges() { edge = {}; }
+  function axis() {
+    var x = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+    var y = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+    if (!x && Math.abs(touchVec.x) > 0.3) x = touchVec.x;
+    if (!y && Math.abs(touchVec.y) > 0.3) y = touchVec.y;
+    return { x: x, y: y };
+  }
+
+  // ── 월드 갱신 ───────────────────────────────────────────────────────────
+  function blockedTile(m, nx, ny) {
+    // 발밑만 판정한다(머리는 벽 위로 겹쳐도 된다) — 한 칸 문을 편하게 통과하려고.
+    var l = nx - 12, r = nx + 12, t = ny - 18, b = ny - 2;
+    for (var ty = Math.floor(t / T); ty <= Math.floor(b / T); ty++) {
+      for (var tx = Math.floor(l / T); tx <= Math.floor(r / T); tx++) {
+        if (solidAt(m, tx, ty)) return { x: tx, y: ty };
+      }
+    }
+    return null;
+  }
+
+  function updateWorld(dt) {
+    var m = mapOf(S.map);
+    for (var k in S.cool) if (S.cool[k] > 0) S.cool[k] -= dt;
+
+    var v = axis(), moved = false;
+    if (v.x || v.y) {
+      var len = Math.sqrt(v.x * v.x + v.y * v.y) || 1;
+      var dx = (v.x / len) * SPEED * dt, dy = (v.y / len) * SPEED * dt;
+      if (Math.abs(v.x) >= Math.abs(v.y)) S.dir = v.x > 0 ? A.DIR.right : A.DIR.left;
+      else S.dir = v.y > 0 ? A.DIR.down : A.DIR.up;
+      if (dx) {
+        var hit = blockedTile(m, S.px + dx, S.py);
+        if (!hit) { S.px += dx; moved = true; } else bump(m, hit);
+      }
+      if (dy) {
+        var hit2 = blockedTile(m, S.px, S.py + dy);
+        if (!hit2) { S.py += dy; moved = true; } else bump(m, hit2);
+      }
+    }
+    S.moving = moved;
+    if (moved) { S.walkT += dt; S.frame = Math.floor(S.walkT * 7) % A.WALK_FRAMES; }
+    else { S.walkT = 0; S.frame = 0; }
+    updateCam();
+
+    // 워프 (문 칸을 밟으면 넘어간다)
+    var pt = playerTile();
+    if (m.warps) {
+      for (var i = 0; i < m.warps.length; i++) {
+        var wp = m.warps[i];
+        if (wp.x === pt.x && wp.y === pt.y) { enterMap(wp.to, wp.sx, wp.sy, wp.dir); return; }
+      }
+    }
+    // 카드 줍기
+    D.CARDS.forEach(function (c) {
+      var st = S.cards[c.id];
+      if (st.held || st.map !== S.map) return;
+      var p = tileCenter(st.x, st.y);
+      if (Math.abs(p.x - S.px) < PICK_R && Math.abs(p.y - (S.py - 12)) < PICK_R) pickCard(c.id);
+    });
+    // 광고 단말
+    (m.terminals || []).forEach(function (tm, idx) {
+      var key = S.map + ':' + idx;
+      if (S.cool[key] > 0) return;
+      var p = tileCenter(tm.x, tm.y);
+      if (Math.abs(p.x - S.px) < TERM_R && Math.abs(p.y - (S.py - 12)) < TERM_R) stealCard(tm, key);
+    });
+    // 짝꿍 조우
+    if (m.npc && !S.flags.cleared) {
+      var np = tileCenter(m.npc.x, m.npc.y);
+      if (Math.abs(np.x - S.px) < NPC_R && Math.abs(np.y - (S.py - 12)) < NPC_R) {
+        say(D.NPC.approach, battleBegin);
+        return;
+      }
+    }
+    // 조사
+    if (tapped('ok')) look(m);
+  }
+
+  function bump(m, tile) {
+    var ch = chAt(m, tile.x, tile.y);
+    if (ch === 'S') stairsBump();
+  }
+
+  function stairsBump() {
+    if (S.dialog) return;
+    if (!S.flags.stairsOpen) { say([D.LOOK.stairs]); return; }
+    say(D.CLEAR.stairs, function () { S.mode = 'clear'; S.flags.done = true; save(); });
+  }
+
+  function look(m) {
+    var f = frontTile();
+    if (m.npc && m.npc.x === f.x && m.npc.y === f.y && S.flags.cleared) { say(D.CLEAR.hint); return; }
+    var ch = chAt(m, f.x, f.y), L = legend(ch);
+    if (ch === 'S') { stairsBump(); return; }
+    if (L && L.look) { say([D.LOOK[L.look]]); return; }
+    say([D.LOOK.nothing]);
+  }
+
+  // ── 배틀 ────────────────────────────────────────────────────────────────
+  var BOX = { x: 176, y: 244, w: 368, h: 136 };
+
+  function battleBegin() {
+    S.mode = 'battle'; S.toast = null;   // 월드 토스트가 배틀 화면에 남지 않게
+    S.battle = {
+      phase: 'text', shadow: D.BATTLE.shadow, hearts: D.BATTLE.hearts,
+      cursor: 0, sub: 0, heard: false, turn: 0, spare: false,
+      hx: BOX.x + BOX.w / 2, hy: BOX.y + BOX.h / 2,
+      bullets: [], timer: 0, spawnAcc: 0, atk: 0, inv: 0, tell: 0
+    };
+    say(D.BATTLE.intro, function () { S.battle.phase = 'menu'; });
+  }
+
+  function battleSay(seq, then) {
+    S.battle.phase = 'text';
+    say(seq, then);
+  }
+
+  function enemyTurn() {
+    var b = S.battle;
+    if (b.shadow <= 0) { readySpare(); return; }
+    b.phase = 'enemy'; b.bullets = []; b.timer = 0; b.spawnAcc = 0; b.inv = 0;
+    b.atk = Math.min(b.turn, D.BATTLE.attacks.length - 1);
+    b.tell = 1.1;
+    b.turn++;
+    b.hx = BOX.x + BOX.w / 2; b.hy = BOX.y + BOX.h / 2;
+  }
+
+  function readySpare() {
+    var b = S.battle; b.spare = true; b.cursor = 0;
+    battleSay(D.BATTLE.ready, function () { b.phase = 'menu'; });
+  }
+
+  function battleMenuPick() {
+    var b = S.battle;
+    if (b.spare) { doSpare(); return; }
+    if (b.cursor === 0) { battleSay(D.BATTLE.talk, enemyTurn); return; }
+    if (b.cursor === 1) {
+      if (!heldIds().length) { battleSay(D.BATTLE.showNone, function () { b.phase = 'menu'; }); return; }
+      b.phase = 'sub'; b.sub = 0; return;
+    }
+    if (b.cursor === 2) {
+      if (!b.heard) {
+        b.heard = true; b.shadow = Math.max(0, b.shadow - 1);
+        battleSay(D.BATTLE.listen.concat(D.BATTLE.listenHint), enemyTurn);
+      } else battleSay(D.BATTLE.listenAgain, enemyTurn);
+      return;
+    }
+    battleSay(D.BATTLE.flee, leaveBattle);
+  }
+
+  function battleSubPick() {
+    var b = S.battle, ids = heldIds(), id = ids[b.sub];
+    if (id === D.BATTLE.evidence && b.heard) {
+      b.shadow = 0;
+      battleSay(D.BATTLE.showRight, readySpare);
+    } else {
+      battleSay(D.BATTLE.showWrong, enemyTurn);
+    }
+  }
+
+  function doSpare() {
+    S.flags.cleared = true; S.flags.stairsOpen = true;
+    battleSay(D.CLEAR.spare.concat(D.CLEAR.promise), function () {
+      S.battle = null; S.mode = 'world';
+      var m = mapOf('hallway');
+      S.px = (m.npc.x - 2) * T + T / 2; S.py = m.npc.y * T + T - 6;
+      updateCam(); save();
+    });
+  }
+
+  function leaveBattle(msg) {
+    S.battle = null; S.mode = 'world';
+    var m = mapOf('hallway');
+    S.px = (m.npc.x - 3) * T + T / 2; S.py = m.npc.y * T + T - 6;
+    S.dir = A.DIR.left; updateCam(); save();
+    if (msg) say(msg);
+  }
+
+  function spawnBullet(a) {
+    var b = S.battle, r = Math.random();
+    if (a.kind === 'rain' || (a.kind === 'mix' && r < 0.5)) {
+      b.bullets.push({ x: BOX.x + 12 + Math.random() * (BOX.w - 24), y: BOX.y - 10, vx: 0, vy: a.speed, s: 13 });
+    } else {
+      var fromLeft = Math.random() < 0.5;
+      b.bullets.push({
+        x: fromLeft ? BOX.x - 10 : BOX.x + BOX.w + 10,
+        y: BOX.y + 14 + Math.random() * (BOX.h - 28),
+        vx: fromLeft ? a.speed : -a.speed, vy: 0, s: 13
+      });
+    }
+  }
+
+  function updateBattle(dt) {
+    var b = S.battle;
+    if (b.phase === 'menu') {
+      var n = b.spare ? 1 : D.BATTLE.menu.length;
+      if (tapped('right') || tapped('down')) b.cursor = (b.cursor + 1) % n;
+      if (tapped('left') || tapped('up')) b.cursor = (b.cursor + n - 1) % n;
+      if (tapped('ok')) battleMenuPick();
+      return;
+    }
+    if (b.phase === 'sub') {
+      var ids = heldIds();
+      if (tapped('down') || tapped('right')) b.sub = (b.sub + 1) % ids.length;
+      if (tapped('up') || tapped('left')) b.sub = (b.sub + ids.length - 1) % ids.length;
+      if (tapped('no')) { b.phase = 'menu'; return; }
+      if (tapped('ok')) battleSubPick();
+      return;
+    }
+    if (b.phase !== 'enemy') return;
+
+    var a = D.BATTLE.attacks[b.atk];
+    b.timer += dt; b.tell = Math.max(0, b.tell - dt); b.inv = Math.max(0, b.inv - dt);
+    if (b.timer >= a.time) { b.bullets = []; b.phase = 'menu'; b.cursor = 0; return; }
+
+    var v = axis();
+    if (v.x || v.y) {
+      var len = Math.sqrt(v.x * v.x + v.y * v.y) || 1;
+      b.hx += (v.x / len) * 168 * dt; b.hy += (v.y / len) * 168 * dt;
+    }
+    b.hx = Math.max(BOX.x + 12, Math.min(BOX.x + BOX.w - 12, b.hx));
+    b.hy = Math.max(BOX.y + 12, Math.min(BOX.y + BOX.h - 12, b.hy));
+
+    if (b.tell <= 0) {
+      b.spawnAcc += dt;
+      while (b.spawnAcc >= a.every) { b.spawnAcc -= a.every; spawnBullet(a); }
+    }
+    for (var i = b.bullets.length - 1; i >= 0; i--) {
+      var p = b.bullets[i];
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      if (p.y > BOX.y + BOX.h + 30 || p.x < BOX.x - 30 || p.x > BOX.x + BOX.w + 30) { b.bullets.splice(i, 1); continue; }
+      if (b.inv <= 0 && Math.abs(p.x - b.hx) < (p.s + 9) / 2 && Math.abs(p.y - b.hy) < (p.s + 9) / 2) {
+        b.hearts--; b.inv = 1.0;
+        if (b.hearts <= 0) { leaveBattle(D.BATTLE.hurt); return; }
+      }
+    }
+  }
+
+  // ── 저장 ────────────────────────────────────────────────────────────────
+  function save() {
+    if (!S) return false;
+    try {
+      var o = {
+        v: 1, map: S.map, px: Math.round(S.px), py: Math.round(S.py), dir: S.dir,
+        exposure: S.exposure, flags: S.flags, cards: {}
+      };
+      D.CARDS.forEach(function (c) {
+        var st = S.cards[c.id];
+        o.cards[c.id] = { held: st.held, map: st.map, x: st.x, y: st.y };
+      });
+      g.localStorage.setItem(D.SAVE_KEY, JSON.stringify(o));
+      return true;
+    } catch (e) { return false; }
+  }
+
+  function load() {
+    try {
+      var raw = g.localStorage.getItem(D.SAVE_KEY);
+      if (!raw) return false;
+      var o = JSON.parse(raw);
+      if (!o || !D.MAPS[o.map]) return false;
+      S = blankState();
+      S.mode = 'world'; S.map = o.map; S.px = o.px; S.py = o.py; S.dir = o.dir | 0;
+      S.exposure = o.exposure | 0;
+      for (var k in o.flags) S.flags[k] = o.flags[k];
+      D.CARDS.forEach(function (c) {
+        var st = o.cards && o.cards[c.id]; if (!st) return;
+        S.cards[c.id] = { held: !!st.held, map: st.map, x: st.x, y: st.y };
+      });
+      updateCam();
+      return true;
+    } catch (e) { return false; }
+  }
+
+  function hasSave() {
+    try { return !!g.localStorage.getItem(D.SAVE_KEY); } catch (e) { return false; }
+  }
+  function clearSave() {
+    try { g.localStorage.removeItem(D.SAVE_KEY); return true; } catch (e) { return false; }
+  }
+
+  // ── 그리기 ──────────────────────────────────────────────────────────────
+  function txt(str, x, y, size, color, align, weight) {
+    ctx.font = (weight || 700) + ' ' + size + 'px ' + FACE;
+    ctx.fillStyle = color; ctx.textAlign = align || 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(str, x, y);
+  }
+  function panel(x, y, w, h, alpha) {
+    ctx.fillStyle = 'rgba(18,14,24,' + (alpha === undefined ? 0.88 : alpha) + ')';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = A.PAL.cream; ctx.lineWidth = 3;
+    ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
+  }
+
+  function drawMap(m) {
+    var x0 = Math.max(0, Math.floor(S.cam.x / T)), x1 = Math.min(m.w - 1, Math.ceil((S.cam.x + W) / T));
+    var y0 = Math.max(0, Math.floor(S.cam.y / T)), y1 = Math.min(m.h - 1, Math.ceil((S.cam.y + H) / T));
+    for (var ty = y0; ty <= y1; ty++) {
+      for (var tx = x0; tx <= x1; tx++) {
+        var dx = tx * T - S.cam.x, dy = ty * T - S.cam.y;
+        if (!A.drawTile(ctx, 'floor', m.floor[0], m.floor[1], dx, dy)) {
+          ctx.fillStyle = A.PAL.tan; ctx.fillRect(dx, dy, T, T);
+        }
+        var ch = m.grid[ty].charAt(tx), L = legend(ch);
+        if (L && L.wall) {
+          var off = wallOffset(m, tx, ty);
+          if (off) A.drawTile(ctx, 'wall', m.wallBase[0] + off[0], m.wallBase[1] + off[1], dx, dy);
+          else { ctx.fillStyle = m.fill; ctx.fillRect(dx, dy, T, T); }
+        }
+        if (L && L.prop) {
+          if (L.prop === 'stairs') A.drawProp(ctx, S.flags.stairsOpen ? 'stairsOpen' : 'stairsLocked', dx, dy, T);
+          else A.drawProp(ctx, L.prop, dx, dy, T);
+        }
+      }
+    }
+    (m.decor || []).forEach(function (d) {
+      var dx = d.x * T - S.cam.x, dy = d.y * T - S.cam.y;
+      if (d.kind === 'pot') A.drawSprite(ctx, 'pot', 0, 0, 14, 16, dx + 12, dy + 10, 28, 32);
+      else A.drawProp(ctx, d.kind, dx, dy, T);
+    });
+  }
+
+  function drawEntities(m) {
+    var list = [];
+    D.CARDS.forEach(function (c) {
+      var st = S.cards[c.id];
+      if (st.held || st.map !== S.map) return;
+      list.push({ y: st.y * T + 42, draw: function (dx, dy) {
+        var bob = Math.sin(S.time * 3 + st.x) * 3;
+        // 바닥에서 눈에 띄라고 카드 밑에 옅은 빛을 깐다
+        ctx.fillStyle = 'rgba(240,200,110,' + (0.16 + Math.sin(S.time * 3 + st.x) * 0.08).toFixed(2) + ')';
+        ctx.fillRect(dx + 4, dy + 14, T - 8, T - 18);
+        A.drawProp(ctx, 'card', dx, dy + bob, T, c.tone);
+      }, tx: st.x, ty: st.y });
+    });
+    (m.terminals || []).forEach(function (tm, idx) {
+      var key = S.map + ':' + idx;
+      list.push({ y: tm.y * T + 42, tx: tm.x, ty: tm.y, draw: function (dx, dy) {
+        var cool = S.cool[key] > 0;
+        ctx.globalAlpha = cool ? 0.5 : 1;
+        if (!A.drawSprite(ctx, 'crate', 0, 0, 14, 15, dx + 8, dy + 9, 32, 34)) {
+          ctx.fillStyle = A.PAL.orange; ctx.fillRect(dx + 8, dy + 9, 32, 34);
+        }
+        ctx.globalAlpha = 1;
+        var blink = cool ? 0.25 : 0.55 + Math.sin(S.time * 6) * 0.35;
+        ctx.fillStyle = 'rgba(216,74,60,' + blink.toFixed(2) + ')';
+        ctx.fillRect(dx + 15, dy + 4, 18, 6);
+      } });
+    });
+    if (m.npc) {
+      list.push({ y: m.npc.y * T + 42, tx: m.npc.x, ty: m.npc.y, draw: function (dx, dy) {
+        A.drawChar(ctx, m.npc.sheet, S.flags.cleared ? A.DIR.down : A.DIR[m.npc.dir], 0,
+          dx + T / 2, dy + T - 6, { possessed: !S.flags.cleared });
+      } });
+    }
+    list.push({ y: S.py, draw: null });
+    list.sort(function (p, q) { return p.y - q.y; });
+    list.forEach(function (it) {
+      if (!it.draw) { A.drawChar(ctx, 'student', S.dir, S.frame, S.px - S.cam.x, S.py - S.cam.y); return; }
+      it.draw(it.tx * T - S.cam.x, it.ty * T - S.cam.y);
+    });
+  }
+
+  // 노출도만큼 화면 가장자리에 광고 딱지가 붙는다 (중앙 시야는 가리지 않는다)
+  var AD_SLOTS = [
+    { x: 8, y: 92, w: 118, h: 40, r: -6 },
+    { x: 594, y: 130, w: 118, h: 40, r: 5 },
+    { x: 20, y: 372, w: 112, h: 38, r: 4 },
+    { x: 588, y: 330, w: 124, h: 40, r: -4 },
+    { x: 300, y: 8, w: 120, h: 36, r: 2 }
+  ];
+  function drawAds() {
+    for (var i = 0; i < S.exposure && i < AD_SLOTS.length; i++) {
+      var a = AD_SLOTS[i];
+      ctx.save();
+      ctx.translate(a.x + a.w / 2, a.y + a.h / 2);
+      ctx.rotate(a.r * Math.PI / 180);
+      ctx.fillStyle = A.PAL.red; ctx.fillRect(-a.w / 2, -a.h / 2, a.w, a.h);
+      ctx.fillStyle = A.PAL.ribbon; ctx.fillRect(-a.w / 2 + 4, -a.h / 2 + 4, a.w - 8, a.h - 8);
+      txt(D.T.adWords[i % D.T.adWords.length], 0, 7, 20, A.PAL.ink, 'center');
+      ctx.restore();
+    }
+  }
+
+  function drawGauge(x, y) {
+    txt(D.T.expLabel, x, y + 16, 17, A.PAL.cream);
+    var bx = x + 58;
+    for (var i = 0; i < D.MAX_EXPOSURE; i++) {
+      ctx.fillStyle = i < S.exposure ? A.PAL.red : 'rgba(120,110,130,0.55)';
+      ctx.fillRect(bx + i * 22, y + 2, 18, 16);
+      ctx.strokeStyle = A.PAL.ink; ctx.lineWidth = 2;
+      ctx.strokeRect(bx + i * 22, y + 2, 18, 16);
+    }
+  }
+
+  function drawHud() {
+    // 칠판(윗벽 가운데)을 가리지 않도록 좌우 끝으로 붙인다.
+    panel(8, 8, 222, 30, 0.62);
+    drawGauge(16, 12);
+    var ids = heldIds();
+    panel(490, 8, 222, 30, 0.62);
+    var labels = ids.length ? ids.map(function (id) { return cardDef(id).label; }).join(' · ') : D.T.bagEmpty;
+    txt(D.T.bagLabel, 498, 30, 15, A.PAL.cream);
+    txt(labels, 706, 30, 15, A.PAL.ribbon, 'right');
+    drawHelp();
+  }
+
+  // 회복 경로는 항상 화면에 보인다 (기준서 §3-3)
+  function drawHelp() {
+    panel(8, H - 30, W - 16, 24, 0.62);
+    txt(D.T.expHelp, W / 2, H - 12, 15, A.PAL.blue, 'center', 600);
+  }
+
+  function drawDialog() {
+    var box = S.dialog.seq[S.dialog.i] || [];
+    panel(24, 384, W - 48, 104);
+    for (var i = 0; i < box.length && i < 2; i++) txt(box[i], 48, 428 + i * 34, 22, A.PAL.white);
+    txt('▼', W - 56, 480, 18, A.PAL.ribbon, 'center', 400);
+  }
+
+  function drawToast() {
+    var t = S.toast;
+    ctx.globalAlpha = Math.min(1, t.t * 2);
+    panel(W / 2 - 250, 48, 500, 38, 0.9);
+    txt(t.text, W / 2, 74, 18, A.PAL.ribbon, 'center');
+    ctx.globalAlpha = 1;
+  }
+
+  function drawWorld() {
+    var m = mapOf(S.map);
+    ctx.fillStyle = m.fill; ctx.fillRect(0, 0, W, H);
+    drawMap(m);
+    drawEntities(m);
+    ctx.fillStyle = m.tint; ctx.fillRect(0, 0, W, H);
+    drawAds();
+    drawHud();
+  }
+
+  function drawHearts(n, x, y) {
+    for (var i = 0; i < D.BATTLE.hearts; i++) {
+      var full = i < n;
+      if (!A.drawSprite(ctx, 'heart', (full ? 4 : 0) * 16, 0, 16, 16, x + i * 30, y, 26, 26)) {
+        ctx.fillStyle = full ? A.PAL.red : 'rgba(120,110,130,0.5)';
+        ctx.fillRect(x + i * 30, y, 26, 26);
+      }
+    }
+  }
+
+  function drawBattle() {
+    var b = S.battle;
+    ctx.fillStyle = '#14101c'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(58,43,74,0.55)';
+    ctx.fillRect(0, 40, W, 158);
+    // 씌인 실루엣이 배경에 묻히지 않게 뒤에서 옅게 비춰 준다
+    var gr = ctx.createRadialGradient && ctx.createRadialGradient(W / 2, 138, 10, W / 2, 138, 130);
+    if (gr && gr.addColorStop) {
+      gr.addColorStop(0, 'rgba(168,106,216,0.30)');
+      gr.addColorStop(1, 'rgba(168,106,216,0)');
+      ctx.fillStyle = gr; ctx.fillRect(W / 2 - 130, 8, 260, 260);
+    }
+
+    A.drawChar(ctx, 'mate', A.DIR.down, 0, W / 2, 184, { scale: 6, possessed: !b.spare, shadow: false });
+
+    txt(D.BATTLE.name, W / 2, 210, 20, b.spare ? A.PAL.ribbon : A.PAL.white, 'center');
+    var gw = 150, gx = W / 2 - gw / 2;
+    ctx.fillStyle = 'rgba(120,110,130,0.5)'; ctx.fillRect(gx, 218, gw, 10);
+    ctx.fillStyle = A.PAL.purpleLit;
+    ctx.fillRect(gx, 218, gw * Math.max(0, b.shadow) / D.BATTLE.shadow, 10);
+
+    panel(8, 8, 222, 30, 0.62); drawGauge(16, 12); drawHelp();
+    drawHearts(b.hearts, W - 108, 10);
+
+    ctx.strokeStyle = A.PAL.white; ctx.lineWidth = 4;
+    ctx.strokeRect(BOX.x, BOX.y, BOX.w, BOX.h);
+    ctx.fillStyle = 'rgba(8,6,12,0.6)'; ctx.fillRect(BOX.x + 2, BOX.y + 2, BOX.w - 4, BOX.h - 4);
+
+    if (b.phase === 'enemy') {
+      if (b.tell > 0) txt(D.BATTLE.tell, W / 2, BOX.y + 76, 19, A.PAL.purpleLit, 'center');
+      b.bullets.forEach(function (p) {
+        ctx.fillStyle = A.PAL.purple; ctx.fillRect(p.x - p.s / 2 - 2, p.y - p.s / 2 - 2, p.s + 4, p.s + 4);
+        ctx.fillStyle = A.PAL.purpleLit; ctx.fillRect(p.x - p.s / 2, p.y - p.s / 2, p.s, p.s);
+      });
+      ctx.globalAlpha = b.inv > 0 ? (Math.floor(b.inv * 12) % 2 ? 0.35 : 1) : 1;
+      if (!A.drawSprite(ctx, 'heart', 64, 0, 16, 16, b.hx - 11, b.hy - 11, 22, 22)) {
+        ctx.fillStyle = A.PAL.red; ctx.fillRect(b.hx - 8, b.hy - 8, 16, 16);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    if (b.phase === 'menu') {
+      panel(24, 384, W - 48, 104);
+      if (b.spare) {
+        txt('▶ ' + D.BATTLE.spareLabel, 60, 442, 24, A.PAL.ribbon);
+      } else {
+        D.BATTLE.menu.forEach(function (label, i) {
+          var x = 60 + (i % 2) * 320, y = 424 + Math.floor(i / 2) * 42;
+          txt((b.cursor === i ? '▶ ' : '   ') + label, x, y, 22,
+            b.cursor === i ? A.PAL.ribbon : A.PAL.white);
+        });
+      }
+    } else if (b.phase === 'sub') {
+      panel(24, 384, W - 48, 104);
+      heldIds().forEach(function (id, i) {
+        var x = 60 + (i % 2) * 320, y = 424 + Math.floor(i / 2) * 42;
+        txt((b.sub === i ? '▶ ' : '   ') + cardDef(id).label, x, y, 22,
+          b.sub === i ? A.PAL.ribbon : A.PAL.white);
+      });
+    }
+  }
+
+  function drawTitle() {
+    ctx.fillStyle = '#14101c'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(232,120,60,0.10)'; ctx.fillRect(0, 0, W, H);
+    for (var i = 0; i < 5; i++) {
+      ctx.fillStyle = 'rgba(58,43,74,' + (0.5 - i * 0.08) + ')';
+      ctx.fillRect(0, 120 + i * 60, W, 30);
+    }
+    txt(D.T.title, W / 2, 200, 46, A.PAL.cream, 'center');
+    txt(D.T.sub, W / 2, 240, 20, A.PAL.tan, 'center', 500);
+    panel(W / 2 - 110, 300, 220, 56);
+    txt('▶ ' + D.T.start, W / 2, 337, 26, A.PAL.ribbon, 'center');
+    txt(D.T.keys, W / 2, 420, 17, A.PAL.blue, 'center', 500);
+  }
+
+  function drawClear() {
+    ctx.fillStyle = '#14101c'; ctx.fillRect(0, 0, W, H);
+    txt(D.CLEAR.banner, W / 2, 230, 44, A.PAL.ribbon, 'center');
+    txt(D.CLEAR.stairs[0][0], W / 2, 286, 20, A.PAL.white, 'center', 500);
+    txt(D.CLEAR.again, W / 2, 380, 18, A.PAL.blue, 'center', 500);
+  }
+
+  function drawLoading() {
+    ctx.fillStyle = '#14101c'; ctx.fillRect(0, 0, W, H);
+    txt(D.T.loading, W / 2, H / 2, 22, A.PAL.cream, 'center');
+  }
+
+  // ── 루프 ────────────────────────────────────────────────────────────────
+  function update(dt) {
+    S.time += dt;
+    if (S.toast) { S.toast.t -= dt; if (S.toast.t <= 0) S.toast = null; }
+    // 슬롯 UI는 P3. 지금은 단일 슬롯 자동 이어하기 — 저장이 있으면 그 지점부터.
+    if (S.mode === 'title') { if (tapped('ok') && !load()) newGame(); return; }
+    if (S.mode === 'clear') { if (tapped('ok')) { clearSave(); S = blankState(); } return; }
+    if (S.dialog) {
+      if (tapped('ok')) {
+        S.dialog.i++;
+        if (S.dialog.i >= S.dialog.seq.length) {
+          var then = S.dialog.then; S.dialog = null; if (then) then();
+        }
+      }
+      return;
+    }
+    if (S.mode === 'world') updateWorld(dt);
+    else if (S.mode === 'battle') updateBattle(dt);
+  }
+
+  function render() {
+    if (S.mode === 'load') { drawLoading(); return; }
+    if (S.mode === 'title') { drawTitle(); return; }
+    if (S.mode === 'clear') { drawClear(); return; }
+    if (S.mode === 'battle') drawBattle(); else drawWorld();
+    if (S.dialog) drawDialog();
+    if (S.toast) drawToast();
+  }
+
+  function loop(ts) {
+    var t = typeof ts === 'number' ? ts : 0;
+    var dt = last ? Math.min(0.05, (t - last) / 1000) : 1 / 60;
+    last = t;
+    update(dt);
+    render();
+    clearEdges();
+    raf = g.requestAnimationFrame(loop);
+  }
+
+  // ── 터치 (index.html의 DOM 스틱/버튼) ───────────────────────────────────
+  function bindTouch() {
+    var doc = g.document; if (!doc || !doc.getElementById) return;
+    var stick = doc.getElementById('stick'), knob = doc.getElementById('knob');
+    var btnA = doc.getElementById('btnA'), btnB = doc.getElementById('btnB');
+    if (stick && stick.addEventListener) {
+      var id = null, cx = 0, cy = 0, R = 44;
+      var start = function (e) {
+        var r = stick.getBoundingClientRect ? stick.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
+        cx = r.left + r.width / 2; cy = r.top + r.height / 2;
+        id = e.pointerId; move(e);
+        if (stick.setPointerCapture) stick.setPointerCapture(id);
+        if (e.preventDefault) e.preventDefault();
+      };
+      var move = function (e) {
+        if (id === null) return;
+        var dx = e.clientX - cx, dy = e.clientY - cy;
+        var len = Math.sqrt(dx * dx + dy * dy) || 1, k = Math.min(1, len / R);
+        touchVec.x = (dx / len) * k; touchVec.y = (dy / len) * k;
+        if (knob) knob.style.transform = 'translate(' + (touchVec.x * R) + 'px,' + (touchVec.y * R) + 'px)';
+        if (e.preventDefault) e.preventDefault();
+      };
+      var end = function () {
+        id = null; touchVec.x = 0; touchVec.y = 0;
+        if (knob) knob.style.transform = 'translate(0,0)';
+      };
+      stick.addEventListener('pointerdown', start);
+      stick.addEventListener('pointermove', move);
+      stick.addEventListener('pointerup', end);
+      stick.addEventListener('pointercancel', end);
+      stick.addEventListener('pointerleave', end);
+    }
+    var hook = function (el, key) {
+      if (!el || !el.addEventListener) return;
+      el.addEventListener('pointerdown', function (e) {
+        if (!keys[key]) edge[key] = true;
+        keys[key] = true;
+        if (e.preventDefault) e.preventDefault();
+      });
+      var off = function () { keys[key] = false; };
+      el.addEventListener('pointerup', off);
+      el.addEventListener('pointercancel', off);
+      el.addEventListener('pointerleave', off);
+    };
+    hook(btnA, 'ok'); hook(btnB, 'no');
+  }
+
+  // ── 시작 ────────────────────────────────────────────────────────────────
+  function start() {
+    var doc = g.document;
+    cv = doc && doc.getElementById ? doc.getElementById('game') : null;
+    ctx = cv && cv.getContext ? cv.getContext('2d') : null;
+    if (ctx) { ctx.imageSmoothingEnabled = false; ctx.textBaseline = 'alphabetic'; }
+    S = blankState(); S.mode = 'load';
+    g.addEventListener('keydown', onKeyDown);
+    g.addEventListener('keyup', onKeyUp);
+    bindTouch();
+    A.load(A.SHEETS, function () { S.mode = 'title'; });
+    last = 0;
+    raf = g.requestAnimationFrame(loop);
+  }
+
+  g.GAME = {
+    start: start, newGame: newGame, enterMap: enterMap,
+    save: save, load: load, hasSave: hasSave, clearSave: clearSave,
+    state: function () { return S; },
+    setState: function (v) { S = v; },
+    blankState: blankState,
+    heldIds: heldIds, playerTile: playerTile, wallOffset: wallOffset,
+    solidAt: solidAt, BOX: BOX, keys: keys,
+    press: function (k) { if (!keys[k]) edge[k] = true; keys[k] = true; },
+    release: function (k) { keys[k] = false; }
+  };
+})(typeof window !== 'undefined' ? window : this);
