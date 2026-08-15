@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "validate": "node tools/validate.js",
-    "test": "node tools/smoketest.js"
+    "test": "node tools/smoketest.js",
+    "test:browser": "node tools/browsertest.js"
   },
   "devDependencies": {
     "playwright": "^1.61.1"

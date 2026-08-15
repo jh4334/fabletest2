@@ -17,3 +17,7 @@ jobs:
         run: npm run validate
       - name: 스모크 테스트
         run: npm test
+      - name: Chromium 설치 (브라우저 스모크)
+        run: npx playwright install --with-deps chromium
+      - name: 브라우저 스모크 (렌더·터치 UI·회전 안내·실플레이)
+        run: npm run test:browser
