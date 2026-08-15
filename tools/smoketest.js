@@ -398,6 +398,11 @@ check('로드가 계측을 복원', G.load() === true
   && S().stats.stolen === JSON.parse(st).stolen
   && Math.abs(S().stats.sec - JSON.parse(st).sec) <= 1);
 
+// ── 18. 버전 ────────────────────────────────────────────────────────────────
+console.log('[18] 버전');
+const pkgVer = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+check('GAME.VERSION == package.json', G.VERSION === pkgVer);
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {

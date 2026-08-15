@@ -3,6 +3,7 @@
 (function (g) {
   'use strict';
 
+  var VERSION = '0.2.0';   // package.json 과 validate 가 대조한다 — 배포 캐시 문의 판별용
   var A = g.ART, D = g.DATA;
   var W = 720, H = 528, T = 48;
   var FACE = '"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR","Nanum Gothic",sans-serif';
@@ -834,6 +835,7 @@
       txt((sel ? '▶ ' : '   ') + label, W / 2, 330 + i * 40, 24, sel ? A.PAL.ribbon : A.PAL.white, 'center');
     });
     txt(isTouch() ? D.T.keysTouch : D.T.keys, W / 2, 448, 17, A.PAL.blue, 'center', 500);
+    txt('v' + VERSION, 14, H - 12, 13, 'rgba(224,168,120,0.55)', 'left', 400);
     if (title.confirm) {
       panel(W / 2 - 220, 180, 440, 150, 0.95);
       txt(D.T.confirmWipe[0], W / 2, 222, 20, A.PAL.white, 'center');
@@ -1044,6 +1046,7 @@
   }
 
   g.GAME = {
+    VERSION: VERSION,
     start: start, newGame: newGame, enterMap: enterMap,
     save: save, load: load, hasSave: hasSave, clearSave: clearSave,
     state: function () { return S; },

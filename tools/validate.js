@@ -175,6 +175,16 @@ for (const f of ['src/engine.js', 'src/art.js', 'src/sound.js']) {
   if (perFile[f]) err(`${f}에 한글 문자열 ${perFile[f]}자 — data.js로 옮길 것 (스펙 §7)`);
 }
 
+// 버전 삼중 대조 — 타이틀 표기(engine VERSION)와 package.json이 어긋나면
+// 배포 캐시 문의를 판별할 수 없게 된다.
+{
+  const pkg = JSON.parse(read('package.json'));
+  const m = read('src/engine.js').match(/var VERSION = '([^']+)'/);
+  if (!m) err('engine.js에 VERSION 상수가 없음');
+  else if (m[1] !== pkg.version) err(`버전 불일치: engine ${m[1]} != package.json ${pkg.version}`);
+  if (!read('index.html').includes('shadow-school-errlog')) err('index.html 오류 링버퍼 누락');
+}
+
 const SLICE_BUDGET = 1800;   // 스펙 §4 (기준서 총예산 15,000자 중 슬라이스 몫)
 console.log(`텍스트 예산: ${totalKo}/${SLICE_BUDGET}자  ` +
   Object.keys(perFile).map((f) => `${f.replace('src/', '')}=${perFile[f]}`).join(' '));

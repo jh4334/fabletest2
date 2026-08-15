@@ -89,7 +89,18 @@ window.addEventListener('load', function () {
   var fb = document.getElementById('fallback');
   if (fb) fb.style.display = 'flex';
 });
-window.addEventListener('error', function () {
+window.addEventListener('error', function (e) {
+  // 문의 대응용 오류 링버퍼(최근 5건) — 교사가 개발자도구에서 확인할 수 있다.
+  try {
+    var K = 'shadow-school-errlog';
+    var log = JSON.parse(localStorage.getItem(K) || '[]');
+    log.push({
+      v: (window.GAME && window.GAME.VERSION) || '?',
+      at: new Date().toISOString(),
+      msg: String(e.message || e.error || 'unknown').slice(0, 200)
+    });
+    localStorage.setItem(K, JSON.stringify(log.slice(-5)));
+  } catch (err) { /* 로깅 실패는 무해 */ }
   // 시작 전에 터진 치명 오류만 안내로 승격(게임 도중 사소한 오류로 화면을 덮지 않게)
   if (window.GAME && window.GAME.state && window.GAME.state()) return;
   var fb = document.getElementById('fallback');
