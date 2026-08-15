@@ -293,6 +293,121 @@ const SHOTS = path.join(ROOT, 'shots');
     await ctx.close();
   }
 
+  // ── 4층: 액자 스티커 전/후 · 유리문 개방 · 미술 선생님 배틀 ───────────────
+  {
+    console.log('[floor4] 4층 미술실 · 출처 스티커');
+    const { ctx, page, errors } = await newPage({ viewport: { width: 1280, height: 800 } });
+    await page.keyboard.press('z');                       // 시작
+    for (let i = 0; i < 8; i++) { await page.keyboard.press('z'); await page.waitForTimeout(50); }
+
+    // 1~3층 배틀은 앞 블록에서 봤으니 4층 전시 복도로 바로 올린다.
+    await page.evaluate(() => {
+      const S = window.GAME.state();
+      S.clearedOf.mate = true; S.clearedOf.bro = true; S.clearedOf.senior = true;
+      S.stairsOpen.hallway = true; S.stairsOpen.lab = true; S.stairsOpen.hall3 = true;
+      // 셋째 액자 앞에 선다 — 바닥 카드가 화면 밖이라 그림이 완전히 정지한다
+      // (픽셀 비교로 '스티커 전/후'만 보려는 것)
+      const f = window.DATA.FRAMES[2];
+      window.GAME.enterMap('gallery', f.x, f.y - 1, 'down');
+      S.dialog = null; S.toast = null;
+    });
+    await page.waitForTimeout(250);
+    check('4층(전시 복도) 진입', await page.evaluate(() => {
+      const S = window.GAME.state(); return S.map === 'gallery' && S.floor === 4;
+    }));
+    check('유리문이 처음엔 진행을 막는다', await page.evaluate(() => {
+      const d = window.DATA.FRAMES[2].door[0];
+      return window.GAME.solidAt(window.DATA.MAPS.gallery, d.x, d.y) === true
+        && window.GAME.openedCells('gallery').length === 0;
+    }));
+    const before = await page.screenshot({ path: path.join(SHOTS, 'rt-f4-frame-before.png') });
+    await page.waitForTimeout(250);
+    const beforeAgain = await page.screenshot();
+    check('스티커 붙이기 전 액자 화면은 정지 상태', Buffer.compare(before, beforeAgain) === 0);
+
+    // 출처 스티커를 붙인 뒤 — 액자에 스티커가 붙고 유리문이 열린다.
+    // 저장→로드 경로로 열린 칸을 다시 만든다(3층 안개와 같은 재구성 규칙).
+    await page.evaluate(() => {
+      const S = window.GAME.state();
+      S.frames[window.DATA.FRAMES[2].id] = 'done';
+      window.GAME.save(); window.GAME.load();
+      window.GAME.state().dialog = null;
+    });
+    await page.waitForTimeout(250);
+    const after = await page.screenshot({ path: path.join(SHOTS, 'rt-f4-frame-after.png') });
+    check('스티커를 붙이면 액자 그림이 실제로 달라짐', Buffer.compare(before, after) !== 0);
+    check('붙인 유리문이 실제로 열린다', await page.evaluate(() => {
+      const f = window.DATA.FRAMES[2];
+      return window.GAME.solidAt(window.DATA.MAPS.gallery, f.door[0].x, f.door[0].y) === false
+        && window.GAME.openedCells('gallery').length === f.door.length;
+    }));
+    check('정직 게이지가 올라감', await page.evaluate(() => window.GAME.state().honest === 1));
+
+    // 스티커 제작대 — 방송 콘솔과 같은 커서 문법(새 UI 없음)
+    await page.evaluate(() => {
+      const S = window.GAME.state();
+      window.DATA.FRAMES.forEach((f) => { if (S.frames[f.id] === 'unseen') S.frames[f.id] = 'seen'; });
+      window.GAME.enterMap('artroom', 3, 8, 'up');
+      S.dialog = null; S.toast = null;
+    });
+    await page.waitForTimeout(200);
+    await page.keyboard.press('z');
+    await page.waitForTimeout(200);
+    check('스티커 제작대 열림', await page.evaluate(() => {
+      const S = window.GAME.state(); return S.mode === 'console' && S.con.kind === 'sticker';
+    }));
+    await page.screenshot({ path: path.join(SHOTS, 'rt-f4-bench.png') });
+    await page.keyboard.press('x');
+    await page.waitForTimeout(200);
+    check('취소로 제작대가 닫힘', await page.evaluate(() => {
+      const S = window.GAME.state(); return S.mode === 'world' && S.paused === false;
+    }));
+
+    // 미술 선생님 배틀 — 액자 3점을 다 밝혀야 나타난다
+    check('표기 전에는 선생님이 없다', await page.evaluate(() => window.GAME.framesDone() === false));
+    await page.evaluate(() => {
+      const S = window.GAME.state();
+      window.DATA.FRAMES.forEach((f) => { S.frames[f.id] = 'done'; });
+      window.GAME.save(); window.GAME.load();
+      window.GAME.enterMap('gallery', 16, 5, 'right');
+      window.GAME.state().dialog = null;
+    });
+    await page.waitForTimeout(200);
+    for (let i = 0; i < 8; i++) {
+      const ready = await page.evaluate(() => {
+        const S = window.GAME.state();
+        return S.mode === 'battle' && S.battle.phase === 'menu';
+      });
+      if (ready) break;
+      await page.keyboard.press('z'); await page.waitForTimeout(90);
+    }
+    check('미술 선생님 배틀 진입', await page.evaluate(() => {
+      const S = window.GAME.state(); return S.mode === 'battle' && S.battle.id === 'artTeacher';
+    }));
+    await page.screenshot({ path: path.join(SHOTS, 'rt-f4-art.png') });
+
+    // paint 탄막 — 물감이 바닥에 자국으로 잠깐 남는다
+    await page.evaluate(() => {
+      const S = window.GAME.state(), b = S.battle;
+      const P = window.DATA.BATTLES.artTeacher;
+      b.phase = 'enemy'; b.atk = P.attacks.findIndex((a) => a.kind === 'paint');
+      b.timer = 0; b.tell = 0; b.inv = 99; b.bullets = []; b.spawnAcc = 0;
+      b.hx = window.GAME.BOX.x + 40; b.hy = window.GAME.BOX.y + 30;
+    });
+    await page.waitForTimeout(2600);
+    check('물감이 바닥에 자국으로 남는다', await page.evaluate(() => {
+      const b = window.GAME.state().battle;
+      const P = window.DATA.BATTLES.artTeacher;
+      const max = P.attacks.find((a) => a.kind === 'paint').maxStain;
+      return b.bullets.some((p) => p.stain) && b.bullets.filter((p) => p.drop).length <= max;
+    }));
+    await page.screenshot({ path: path.join(SHOTS, 'rt-f4-paint.png') });
+
+    check('콘솔·페이지 에러 0 (4층)', errors.length === 0);
+    errors.slice(0, 5).forEach((e) => console.log('     · ' + e));
+    await ctx.close();
+  }
+
   // ── 모바일 세로: 회전 안내가 떠야 한다 ────────────────────────────────────
   {
     console.log('[mobile-portrait] 390x844');

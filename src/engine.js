@@ -1,9 +1,9 @@
-// 엔진 — 방과 후: 그림자 학교 / P1 수직 슬라이스
+// 엔진 — 방과 후: 그림자 학교 / 1~4층
 // 한글 문자열은 한 줄도 두지 않는다. 화면에 나오는 말은 전부 DATA.T / DATA.* 참조.
 (function (g) {
   'use strict';
 
-  var VERSION = '0.4.0';   // package.json 과 validate 가 대조한다 — 배포 캐시 문의 판별용
+  var VERSION = '0.5.0';   // package.json 과 validate 가 대조한다 — 배포 캐시 문의 판별용
   var A = g.ART, D = g.DATA;
   var W = 720, H = 528, T = 48;
   var FACE = '"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR","Nanum Gothic",sans-serif';
@@ -25,6 +25,8 @@
     });
     var rumors = {};
     (D.RUMORS || []).forEach(function (r) { rumors[r.id] = 'unread'; });
+    var frames = {}, stickers = {};
+    (D.FRAMES || []).forEach(function (f) { frames[f.id] = 'unseen'; stickers[f.id] = null; });
     var m = D.MAPS.classroom;
     return {
       mode: 'title', map: 'classroom', floor: m.fl || 1,
@@ -33,14 +35,17 @@
       cam: { x: 0, y: 0 }, exposure: 0, bubble: 0, loopN: 0, cards: cards,
       flags: {
         intro: false, firstCard: false, firstTake: false, termWarn: false,
-        recoWarn: false, airWarn: false, seniorUp: false, done: false
+        recoWarn: false, airWarn: false, seniorUp: false, artUp: false, done: false
       },
       // 인물·맵 단위 진행은 층이 늘어도 그대로 쓰이도록 사전으로 둔다.
       heardOf: {}, clearedOf: {}, stairsOpen: {}, visited: { classroom: true },
       // 3층: 소문 상태 머신 + 오염 게이지 + 복도를 막는 안개 칸
       rumors: rumors, pollute: 0, fog: {}, con: null,
+      // 4층: 액자 상태 머신 + 만든 스티커 + 정직 게이지 + 열린 유리문 칸
+      // (opened 는 안개의 역방향 — 같은 합성 지점에서 통행/그리기를 뒤집는다)
+      frames: frames, stickers: stickers, honest: 0, opened: {},
       dialog: null, battle: null, toast: null, cool: {}, time: 0, flash: 0, paused: false,
-      stats: { sec: 0, stolen: 0, retreats: 0 },  // 교사 관찰·아이 성취감용 계측
+      stats: { sec: 0, stolen: 0, retreats: 0, missSticker: 0 },  // 교사 관찰·아이 성취감용 계측
       looked: {}                                   // 재조사 대사 분기(세션 한정, 저장 안 함)
     };
   }
@@ -96,6 +101,64 @@
     return false;
   }
 
+  // ── 4층 액자·출처 스티커 ────────────────────────────────────────────────
+  // 안개의 역방향: 액자 상태에서 열린 칸을 다시 만들어 solidAt/그리기에 얹는다.
+  function frameDef(id) {
+    var list = D.FRAMES || [];
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  }
+  function authorDef(id) {
+    var list = D.AUTHORS || [];
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  }
+  function frameAt(m, tx, ty) {
+    var name = nameOf(m), list = D.FRAMES || [];
+    for (var i = 0; i < list.length; i++) {
+      var f = list[i];
+      if (f.map === name && f.x === tx && f.y === ty) return f;
+    }
+    return null;
+  }
+  function sampleAt(m, tx, ty) {
+    var list = m.samples || [];
+    for (var i = 0; i < list.length; i++) if (list[i].x === tx && list[i].y === ty) return list[i];
+    return null;
+  }
+  function framesDoneN() {
+    var n = 0;
+    (D.FRAMES || []).forEach(function (f) { if (S.frames[f.id] === 'done') n++; });
+    return n;
+  }
+  function framesAllDone() {
+    var list = D.FRAMES || [];
+    return list.length > 0 && framesDoneN() === list.length;
+  }
+  function rebuildOpened() {
+    var o = {};
+    (D.FRAMES || []).forEach(function (f) {
+      if (S.frames[f.id] !== 'done') return;
+      (f.door || []).forEach(function (c) {
+        (o[f.map] = o[f.map] || []).push({ x: c.x, y: c.y });
+      });
+    });
+    S.opened = o;
+    S.honest = Math.max(0, Math.min(D.MAX_HONEST, framesDoneN()));
+  }
+  function openedOf(m) {
+    if (!S || !S.opened) return [];
+    return S.opened[nameOf(m)] || [];
+  }
+  function openedAt(m, tx, ty) {
+    var list = openedOf(m);
+    for (var i = 0; i < list.length; i++) if (list[i].x === tx && list[i].y === ty) return true;
+    return false;
+  }
+  // 잠긴 서랍은 액자 한 점만 밝히면 열린다 (첫 성공의 보상)
+  function drawerOpen() { return framesDoneN() >= 1; }
+  function cardHidden(c) { return !!c.locked && !drawerOpen(); }
+
   // 가방·게이지·보여주기 목록은 전부 현재 층 카드만 본다 (층 분리).
   function heldIds() {
     var out = [];
@@ -119,6 +182,7 @@
   function solidAt(m, tx, ty) {
     var ch = chAt(m, tx, ty); if (ch === null) return true;
     if (fogAt(m, tx, ty)) return true;        // 소문 안개는 통로를 막는다(grid는 그대로)
+    if (openedAt(m, tx, ty)) return false;    // 출처를 밝힌 유리문은 열린다(안개의 역방향)
     var L = legend(ch); return !L || !!L.solid;
   }
   function isWallCh(m, tx, ty) {
@@ -188,10 +252,13 @@
   function setBubble(v) {
     S.bubble = Math.max(0, Math.min(D.MAX_BUBBLE, v));
   }
-  function isF2() { return S.floor === 2; }
 
   // 층마다 같은 자리·같은 문법의 게이지 하나. 회복 문구도 여기서 같이 고른다.
   function gaugeInfo() {
+    // 4층 정직 게이지만 올라갈수록 좋은 방향 — 색도 리본(금색)으로 갈라 준다.
+    if (S.floor === 4) {
+      return { label: D.T.honLabel, help: D.T.honHelp, val: S.honest, max: D.MAX_HONEST, tone: A.PAL.ribbon };
+    }
     if (S.floor === 3) {
       return { label: D.T.polLabel, help: D.T.polHelp, val: S.pollute, max: D.MAX_POLLUTE, tone: A.PAL.red };
     }
@@ -204,12 +271,13 @@
   function pickCard(id) {
     var st = S.cards[id], c = cardDef(id);
     st.held = true; st.map = null;
-    // 3층 오염은 카드를 줍는다고 내려가지 않는다 — 정정 방송으로만 걷힌다.
+    // 3층 오염·4층 정직은 카드를 줍는다고 움직이지 않는다 — 방송/스티커로만 바뀐다.
     if (c.floor === 2) setBubble(S.bubble - 1);
-    else if (c.floor !== 3) setExposure(S.exposure - 1);
+    else if (c.floor === 1) setExposure(S.exposure - 1);
     sfx('pick');
     if (c.floor === 1 && !S.flags.firstCard) { S.flags.firstCard = true; toast(D.T.firstCard); }
     else if (c.floor === 3) toast(D.T.gotCard3);
+    else if (c.floor === 4) toast(D.T.gotCard4);
     else toast(c.floor === 2 ? D.T.gotCard2 : D.T.gotCard);
     save();
   }
@@ -330,10 +398,10 @@
         if (wp.x === pt.x && wp.y === pt.y) { takeWarp(wp); return; }
       }
     }
-    // 카드 줍기
+    // 카드 줍기 (잠긴 서랍 속 자료는 열리기 전엔 없는 것과 같다)
     D.CARDS.forEach(function (c) {
       var st = S.cards[c.id];
-      if (st.held || st.map !== S.map) return;
+      if (st.held || st.map !== S.map || cardHidden(c)) return;
       var p = tileCenter(st.x, st.y);
       if (Math.abs(p.x - S.px) < PICK_R && Math.abs(p.y - (S.py - 12)) < PICK_R) pickCard(c.id);
     });
@@ -390,12 +458,13 @@
   function npcHere(m) {
     if (!m.npc) return false;
     if (m.npc.needs === 'rumors') return rumorsDone();
+    if (m.npc.needs === 'frames') return framesAllDone();
     return true;
   }
 
+  // 1층은 'stairs', 그 위는 'stairs2'·'stairs3'… — 층이 늘어도 키가 따라온다.
   function stairsKey() {
-    if (S.floor === 3) return 'stairs3';
-    return isF2() ? 'stairs2' : 'stairs';
+    return S.floor > 1 ? 'stairs' + S.floor : 'stairs';
   }
 
   function stairsBump() {
@@ -437,8 +506,15 @@
     if (note) { readNote(note.id); return; }
     var sign = signAt(m, f.x, f.y);
     if (sign) { var r = rumorDef(sign.rumor); say(r ? r.sign : [D.LOOK.sign]); return; }
+    // 4층: 액자(조사/스티커 붙이기) · 견본판 · 제작대 · 잠긴 서랍
+    var fr = frameAt(m, f.x, f.y);
+    if (fr) { touchFrame(fr); return; }
+    var sm = sampleAt(m, f.x, f.y);
+    if (sm) { var au = authorDef(sm.id); say(au ? au.sample : [D.LOOK.sample]); return; }
     var ch = chAt(m, f.x, f.y), L = legend(ch);
     if (ch === 'K') { openConsole(); return; }
+    if (ch === 'M') { openBench(); return; }
+    if (ch === 'J') { say([drawerOpen() ? D.LOOK.drawerOpen : D.LOOK.drawer]); return; }
     if (ch === 'S') { stairsBump(); return; }
     if (L && L.look) {
       var k = L.look === 'stairs' ? stairsKey() : L.look;
@@ -473,12 +549,20 @@
   }
   function conList() {
     if (!S.con) return [];
+    if (S.con.kind === 'sticker') {
+      if (S.con.level === 0) return seenFrames().concat(['close']);
+      return authorIds().concat(['back']);
+    }
     if (S.con.level === 0) return consoleRumors().concat(['close']);
     return conActions(S.con.rumor).concat(['back']);
   }
   function conLabel(key) {
     if (key === 'close') return D.CONSOLE.close;
     if (key === 'back') return D.CONSOLE.back;
+    if (S.con && S.con.kind === 'sticker') {
+      var fr = frameDef(key); if (fr) return fr.label;
+      var au = authorDef(key); return au ? au.sticker : '';
+    }
     if (key === 'air') return D.CONSOLE.air;
     if (key === 'check') return D.CONSOLE.check;
     if (key === 'fix') return D.CONSOLE.fix;
@@ -490,7 +574,7 @@
     // 처리할 소문이 없을 때: 아직 안 읽었나(none) / 다 끝났나(clear)를 갈라 준다.
     if (!consoleRumors().length) { say(rumorsDone() ? D.CONSOLE.clear : D.CONSOLE.none); return; }
     S.mode = 'console';
-    S.con = { level: 0, cursor: 0, rumor: null };
+    S.con = { kind: 'radio', level: 0, cursor: 0, rumor: null, frame: null };
     sfx('ok');
   }
   function closeConsole() {
@@ -501,7 +585,8 @@
   }
   function conBack() {
     if (!S.con) return;
-    S.con.level = 0; S.con.cursor = 0; S.con.rumor = null;
+    S.con.level = 0; S.con.cursor = 0; S.con.rumor = null; S.con.frame = null;
+    if (S.con.kind === 'sticker') { if (!seenFrames().length) closeConsole(); return; }
     if (!consoleRumors().length) closeConsole();
   }
   function hasCard(id) { return heldIds().indexOf(id) >= 0; }
@@ -518,7 +603,11 @@
     var pick = list[c.cursor];
     if (pick === 'close') { closeConsole(); return; }
     if (pick === 'back') { conBack(); return; }
-    if (c.level === 0) { c.rumor = pick; c.level = 1; c.cursor = 0; return; }
+    if (c.level === 0) {
+      if (c.kind === 'sticker') c.frame = pick; else c.rumor = pick;
+      c.level = 1; c.cursor = 0; return;
+    }
+    if (c.kind === 'sticker') { doSticker(pick); return; }
     doConsole(pick);
   }
 
@@ -565,6 +654,57 @@
     S.flags.seniorUp = true;
     closeConsole();
     say(D.CONSOLE.done, save);
+  }
+
+  // ── 4층 스티커 제작대 ───────────────────────────────────────────────────
+  // 방송 콘솔과 같은 커서·상자를 쓴다(새 UI 없음). kind 로만 갈린다.
+  function seenFrames() {
+    var out = [];
+    (D.FRAMES || []).forEach(function (f) { if (S.frames[f.id] === 'seen') out.push(f.id); });
+    return out;
+  }
+  function authorIds() {
+    return (D.AUTHORS || []).map(function (a) { return a.id; });
+  }
+  function openBench() {
+    // 액자를 아직 안 봤나(none) / 세 점을 다 밝혔나(clear)를 갈라 준다.
+    if (!seenFrames().length) { say(framesAllDone() ? D.STICKER.clear : D.STICKER.none); return; }
+    S.mode = 'console';
+    S.con = { kind: 'sticker', level: 0, cursor: 0, rumor: null, frame: null };
+    sfx('ok');
+  }
+  function doSticker(aid) {
+    if (!authorDef(aid)) return;
+    S.stickers[S.con.frame] = aid;
+    save(); sfx('ok');
+    conSay(D.STICKER.made);
+  }
+
+  // 액자 앞에서 Z — 스티커가 있으면 붙이고, 없으면 이상한 점을 본다.
+  function touchFrame(fr) {
+    if (S.frames[fr.id] === 'done') { say([D.LOOK.frameDone]); return; }
+    var pick = S.stickers[fr.id];
+    if (!pick) {
+      if (S.frames[fr.id] !== 'seen') { S.frames[fr.id] = 'seen'; sfx('pick'); save(); }
+      say(fr.look);
+      return;
+    }
+    if (pick !== fr.author) {
+      // 틀려도 벌은 없다 — 스티커만 도로 떼고 기록만 남긴다 (헌법 §3-3)
+      S.stickers[fr.id] = null;
+      S.stats.missSticker++;
+      sfx('warn'); save();
+      say(D.STICKER.wrong);
+      return;
+    }
+    S.frames[fr.id] = 'done'; S.stickers[fr.id] = null;
+    rebuildOpened();
+    sfx('clear'); save();
+    say(D.STICKER.right, function () {
+      if (!framesAllDone() || S.flags.artUp) { save(); return; }
+      S.flags.artUp = true;
+      say(D.STICKER.done, save);
+    });
   }
 
   // ── 배틀 ────────────────────────────────────────────────────────────────
@@ -669,8 +809,27 @@
     if (msg) say(msg);
   }
 
+  // 물감 방울이 바닥에 눌어붙는 높이 (상자 안쪽)
+  var PAINT_Y = BOX.y + BOX.h - 16;
+
+  function paintCount(b) {
+    var n = 0;
+    for (var i = 0; i < b.bullets.length; i++) if (b.bullets[i].drop) n++;
+    return n;
+  }
+
   function spawnBullet(a) {
     var b = S.battle, r = Math.random();
+    if (a.kind === 'paint') {
+      // 떨어지는 방울 + 남은 자국을 합쳐 maxStain 개까지만 — 화면이 자국으로
+      // 덮여 피할 데가 없어지는 일을 막는다(저학년 기준).
+      if (paintCount(b) >= (a.maxStain || 3)) return;
+      b.bullets.push({
+        x: BOX.x + 18 + Math.random() * (BOX.w - 36), y: BOX.y - 10,
+        vx: 0, vy: a.speed, s: 15, drop: true, stay: a.stay || 1.5
+      });
+      return;
+    }
     if (a.kind === 'burst') {
       // 속보처럼 한 지점에서 방사형 6발. 사이가 넓어 서서 기다리면 지나간다.
       var bx = BOX.x + 60 + Math.random() * (BOX.w - 120);
@@ -748,6 +907,15 @@
     }
     for (var i = b.bullets.length - 1; i >= 0; i--) {
       var p = b.bullets[i];
+      if (p.drop) {
+        // 물감: 바닥에 닿으면 그 자리에 자국으로 잠깐 남는다(지나가면 피격).
+        if (p.stain) {
+          p.hold -= dt;
+          if (p.hold <= 0) { b.bullets.splice(i, 1); continue; }
+        } else if (p.y >= PAINT_Y) {
+          p.y = PAINT_Y; p.vx = 0; p.vy = 0; p.stain = true; p.hold = p.stay;
+        }
+      }
       if (p.sp) {
         // 조준을 조금씩만 고쳐 잡는다 — 피할 시간이 남게(3~4학년 기준).
         var cx = b.hx - p.x, cy = b.hy - p.y, cl = Math.sqrt(cx * cx + cy * cy) || 1;
@@ -761,7 +929,9 @@
       // 위쪽 경계도 본다 — 방사형(burst) 조각은 위로도 날아간다.
       if (p.y > BOX.y + BOX.h + 30 || p.y < BOX.y - 30
         || p.x < BOX.x - 30 || p.x > BOX.x + BOX.w + 30) { b.bullets.splice(i, 1); continue; }
-      if (b.inv <= 0 && Math.abs(p.x - b.hx) < (p.s + 9) / 2 && Math.abs(p.y - b.hy) < (p.s + 9) / 2) {
+      // 자국은 납작하다 — 보이는 만큼만 맞게 세로 판정을 그림에 맞춘다.
+      var hw = (p.s + 9) / 2, hh = p.stain ? 7 : hw;
+      if (b.inv <= 0 && Math.abs(p.x - b.hx) < hw && Math.abs(p.y - b.hy) < hh) {
         b.hearts--; b.inv = 1.0; sfx('hit');
         if (b.hearts <= 0) { leaveBattle(D.BATTLE_UI.hurt); return; }
       }
@@ -776,9 +946,13 @@
         v: 1, map: S.map, px: Math.round(S.px), py: Math.round(S.py), dir: S.dir,
         floor: S.floor, exposure: S.exposure, bubble: S.bubble, loopN: S.loopN,
         pollute: S.pollute, rumors: S.rumors, fog: S.fog,
+        honest: S.honest, frames: S.frames, stickers: S.stickers,
         flags: S.flags, heardOf: S.heardOf, clearedOf: S.clearedOf,
         stairsOpen: S.stairsOpen, visited: S.visited, cards: {},
-        stats: { sec: Math.round(S.stats.sec), stolen: S.stats.stolen, retreats: S.stats.retreats }
+        stats: {
+          sec: Math.round(S.stats.sec), stolen: S.stats.stolen,
+          retreats: S.stats.retreats, missSticker: S.stats.missSticker
+        }
       };
       D.CARDS.forEach(function (c) {
         var st = S.cards[c.id];
@@ -818,6 +992,15 @@
       });
       // 안개·오염 게이지는 저장값을 믿지 않고 소문 상태에서 다시 만든다.
       rebuildFog();
+      // 4층 액자도 같은 규칙: 아는 id·아는 상태만 살리고, 스티커는 아는 견본만.
+      (D.FRAMES || []).forEach(function (f) {
+        var st = o.frames && o.frames[f.id];
+        S.frames[f.id] = FRAME_STATES.indexOf(st) >= 0 ? st : 'unseen';
+        var pk = o.stickers && o.stickers[f.id];
+        S.stickers[f.id] = authorDef(pk) ? pk : null;
+      });
+      // 열린 유리문·정직 게이지는 저장 좌표가 아니라 액자 상태에서 다시 만든다.
+      rebuildOpened();
       for (var k in S.flags) if (o.flags && typeof o.flags[k] === 'boolean') S.flags[k] = o.flags[k];
       S.heardOf = trueKeys(o.heardOf, D.BATTLES);
       S.clearedOf = trueKeys(o.clearedOf, D.BATTLES);
@@ -839,6 +1022,7 @@
         S.stats.sec = Math.max(0, +o.stats.sec || 0);
         S.stats.stolen = Math.max(0, o.stats.stolen | 0);
         S.stats.retreats = Math.max(0, o.stats.retreats | 0);
+        S.stats.missSticker = Math.max(0, o.stats.missSticker | 0);
       }
       // 들고 있지도, 바닥에도 없는 카드가 생기면(반쪽 저장) 원위치로 복구한다.
       D.CARDS.forEach(function (c) {
@@ -851,6 +1035,7 @@
   }
 
   var RUMOR_STATES = ['unread', 'read', 'aired', 'polluted', 'fixed', 'verified'];
+  var FRAME_STATES = ['unseen', 'seen', 'done'];
 
   // 저장된 사전에서 아는 키의 true 만 살린다 — 모르는 키·이상한 값은 버린다.
   function trueKeys(src, valid) {
@@ -959,7 +1144,7 @@
     var list = [];
     D.CARDS.forEach(function (c) {
       var st = S.cards[c.id];
-      if (st.held || st.map !== S.map) return;
+      if (st.held || st.map !== S.map || cardHidden(c)) return;
       list.push({ y: st.y * T + 42, draw: function (dx, dy) {
         var bob = Math.sin(S.time * 3 + st.x) * 3;
         // 바닥에서 눈에 띄라고 카드 밑에 옅은 빛을 깐다
@@ -1089,7 +1274,7 @@
     if (!S.con || S.dialog) return;
     var list = conList();
     panel(24, 360, W - 48, 128);
-    txt(D.CONSOLE.title, 48, 388, 19, A.PAL.ribbon);
+    txt(S.con.kind === 'sticker' ? D.STICKER.title : D.CONSOLE.title, 48, 388, 19, A.PAL.ribbon);
     list.forEach(function (key, i) {
       var x = 60 + (i % 2) * 320, y = 420 + Math.floor(i / 2) * 38;
       var on = S.con.cursor === i;
@@ -1117,11 +1302,34 @@
     ctx.globalAlpha = 1;
   }
 
+  // 열린 유리문 — 안개와 같은 자리에서 반대로 얹는다. 캐시된 지도 위에
+  // 바닥을 다시 깔고 열린 문틀만 그려, 통행 가능이 눈으로 바로 읽히게 한다.
+  function drawOpened(m) {
+    var list = openedOf(m); if (!list.length) return;
+    list.forEach(function (c) {
+      var dx = c.x * T - S.cam.x, dy = c.y * T - S.cam.y;
+      if (!A.drawTile(ctx, 'floor', m.floor[0], m.floor[1], dx, dy)) {
+        ctx.fillStyle = A.PAL.tan; ctx.fillRect(dx, dy, T, T);
+      }
+      A.drawProp(ctx, 'glassOpen', dx, dy, T);
+    });
+  }
+  // 출처를 밝힌 액자에 붙은 스티커 (액자 그림은 캐시된 지도 그대로)
+  function drawSticks(m) {
+    var name = nameOf(m);
+    (D.FRAMES || []).forEach(function (f) {
+      if (f.map !== name || S.frames[f.id] !== 'done') return;
+      A.drawProp(ctx, 'sticker', f.x * T - S.cam.x, f.y * T - S.cam.y, T);
+    });
+  }
+
   function drawWorld() {
     var m = mapOf(S.map);
     ctx.fillStyle = m.fill; ctx.fillRect(0, 0, W, H);
     drawMap(m);
     drawFog(m);
+    drawOpened(m);
+    drawSticks(m);
     drawEntities(m);
     ctx.fillStyle = m.tint; ctx.fillRect(0, 0, W, H);
     if (S.floor === 2) drawBubbles(); else if (S.floor === 1) drawAds();
@@ -1180,6 +1388,21 @@
     if (b.phase === 'enemy') {
       if (b.tell > 0) txt(D.BATTLE_UI.tell, W / 2, BOX.y + 76, 19, A.PAL.purpleLit, 'center');
       b.bullets.forEach(function (p) {
+        if (p.stain) {
+          // 마르기 직전의 자국은 옅어진다 — 언제 사라지는지 눈으로 읽히게.
+          ctx.globalAlpha = Math.max(0.35, Math.min(1, p.hold * 1.6));
+          ctx.fillStyle = A.PAL.purple; ctx.fillRect(p.x - 12, p.y - 7, 24, 14);
+          ctx.fillStyle = A.PAL.purpleLit; ctx.fillRect(p.x - 9, p.y - 4, 18, 8);
+          ctx.globalAlpha = 1;
+          return;
+        }
+        if (p.drop) {
+          // 떨어지는 물감은 방울 모양 — 다른 탄막과 한눈에 갈린다.
+          ctx.fillStyle = A.PAL.purple; ctx.fillRect(p.x - 7, p.y - 11, 14, 22);
+          ctx.fillStyle = A.PAL.purpleLit; ctx.fillRect(p.x - 4, p.y - 8, 8, 17);
+          ctx.fillStyle = A.PAL.white; ctx.fillRect(p.x - 2, p.y - 5, 3, 5);
+          return;
+        }
         ctx.fillStyle = A.PAL.purple; ctx.fillRect(p.x - p.s / 2 - 2, p.y - p.s / 2 - 2, p.s + 4, p.s + 4);
         ctx.fillStyle = A.PAL.purpleLit; ctx.fillRect(p.x - p.s / 2, p.y - p.s / 2, p.s, p.s);
       });
@@ -1480,6 +1703,10 @@
     // 3층 검사용 — 안개 칸·소문 처리 여부를 밖에서 확인한다
     fogCells: function (name) { return (S && S.fog && S.fog[name]) || []; },
     rumorsDone: function () { return !!S && rumorsDone(); },
+    // 4층 검사용 — 열린 유리문 칸·액자 완료 여부·서랍 개방을 밖에서 확인한다
+    openedCells: function (name) { return (S && S.opened && S.opened[name]) || []; },
+    framesDone: function () { return !!S && framesAllDone(); },
+    drawerOpen: function () { return !!S && drawerOpen(); },
     pause: pause,
     press: function (k) { if (!keys[k]) edge[k] = true; keys[k] = true; },
     release: function (k) { keys[k] = false; }
