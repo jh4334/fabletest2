@@ -260,8 +260,9 @@
         return;
       }
     }
-    // 조사
+    // 조사 / 일시정지 — X는 월드에서 빈 입력이라 멈춤에 배정(교실 지도 상황 대응)
     if (tapped('ok')) look(m);
+    else if (tapped('no')) { pause(); sfx('cancel'); }
   }
 
   function bump(m, tile) {
@@ -404,6 +405,7 @@
         if (tapped('up') || tapped('down')) { b.cursor ^= 2; sfx('cursor'); }
       }
       if (tapped('ok')) { sfx('ok'); battleMenuPick(); }
+      else if (tapped('no')) { pause(); sfx('cancel'); }
       return;
     }
     if (b.phase === 'sub') {
@@ -415,6 +417,7 @@
       return;
     }
     if (b.phase !== 'enemy') return;
+    if (tapped('no')) { pause(); return; }   // 탄막 중에도 멈출 수 있다(숨 고르기 허용)
 
     var a = D.BATTLE.attacks[b.atk];
     b.timer += dt; b.tell = Math.max(0, b.tell - dt); b.inv = Math.max(0, b.inv - dt);

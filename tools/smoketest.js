@@ -375,6 +375,9 @@ frame(1); S().toast = null;
 console.log('[16] 자리 비움 일시정지');
 G.pause();
 check('월드에서 일시정지 진입', S().paused === true);
+tap('z');                                   // 일단 해제
+tap('x');                                   // 수동: X키로도 멈춘다
+check('X키 수동 일시정지', S().paused === true);
 const pausedX = S().px;
 hold('ArrowLeft', 5);
 check('일시정지 중엔 움직이지 않음', S().px === pausedX && S().paused === true);
