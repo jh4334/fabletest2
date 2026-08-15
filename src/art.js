@@ -337,6 +337,85 @@
       px(ctx, PAL.wood, x + 6, y + 11, s - 12, 9);
       px(ctx, PAL.metal, x + s / 2 - 5, y + 16, 10, 3);
       px(ctx, PAL.metal, x + s / 2 - 5, y + 27, 10, 3);
+    },
+    // ── 5층 소품 (팩 팔레트 색만 쓰는 절차 도트) ──────────────────────────
+    // 나비스 단말 — 1층 광고 단말과 다른 실루엣: 스피커 격자 + 눈 하나.
+    navis: function (ctx, x, y, s) {
+      px(ctx, PAL.ink, x + 5, y + 4, s - 10, s - 8);
+      px(ctx, PAL.metalDark, x + 7, y + 6, s - 14, s - 12);
+      px(ctx, PAL.metal, x + 10, y + 9, s - 20, 11);
+      px(ctx, PAL.ink, x + 12, y + 11, s - 24, 2);
+      px(ctx, PAL.ink, x + 12, y + 15, s - 24, 2);
+      px(ctx, PAL.cream, x + s / 2 - 6, y + s - 20, 12, 11);
+      px(ctx, PAL.purpleLit, x + s / 2 - 3, y + s - 17, 6, 6);
+      px(ctx, PAL.ink, x + s / 2 - 1, y + s - 15, 2, 2);
+    },
+    cabinet: function (ctx, x, y, s) {        // 잠긴 캐비닛
+      px(ctx, PAL.ink, x + 2, y + 2, s - 4, s - 4);
+      px(ctx, PAL.metal, x + 5, y + 5, s - 10, s - 8);
+      px(ctx, PAL.metalDark, x + 5, y + s / 2 - 1, s - 10, 3);
+      px(ctx, PAL.metalDark, x + 9, y + 10, s - 18, 3);
+      px(ctx, PAL.red, x + s / 2 - 5, y + s / 2 - 9, 10, 13);
+      px(ctx, PAL.ink, x + s / 2 - 2, y + s / 2 - 4, 4, 6);
+    },
+    cabinetOpen: function (ctx, x, y, s) {    // 열린 캐비닛 — 안이 비쳐 보인다
+      px(ctx, PAL.ink, x + 2, y + 2, s - 4, s - 4);
+      px(ctx, PAL.night, x + 6, y + 5, s - 12, s - 9);
+      px(ctx, PAL.metalDark, x + 1, y + 4, 6, s - 8);
+      px(ctx, PAL.paper, x + 12, y + 11, s - 26, 9);
+      px(ctx, PAL.ribbon, x + 12, y + 24, s - 30, 4);
+    },
+    fileBox: function (ctx, x, y, s) {        // 잠긴 서류함
+      px(ctx, PAL.ink, x + 2, y + 4, s - 4, s - 8);
+      px(ctx, PAL.woodDark, x + 5, y + 7, s - 10, s - 13);
+      px(ctx, PAL.wood, x + 5, y + 7, s - 10, 8);
+      px(ctx, PAL.metal, x + 10, y + 20, s - 20, 3);
+      px(ctx, PAL.red, x + s / 2 - 4, y + s / 2 + 2, 8, 11);
+      px(ctx, PAL.ink, x + s / 2 - 1, y + s / 2 + 6, 3, 5);
+    },
+    fileBoxOpen: function (ctx, x, y, s) {    // 열린 서류함 — 서랍이 빠져 나왔다
+      px(ctx, PAL.ink, x + 2, y + 4, s - 4, s - 8);
+      px(ctx, PAL.night, x + 5, y + 7, s - 10, s - 13);
+      px(ctx, PAL.woodDark, x + 7, y + 22, s - 14, 10);
+      px(ctx, PAL.paper, x + 11, y + 11, s - 24, 8);
+      px(ctx, PAL.metal, x + s / 2 - 5, y + 25, 10, 3);
+    },
+    innerDoor: function (ctx, x, y, s) {      // 복도 안쪽 문 — 시간표가 붙어 있다
+      px(ctx, PAL.ink, x + 2, y + 2, s - 4, s - 4);
+      px(ctx, PAL.woodDark, x + 5, y + 5, s - 10, s - 8);
+      px(ctx, PAL.paper, x + 9, y + 9, s - 18, 15);
+      px(ctx, PAL.metalDark, x + 11, y + 12, s - 22, 2);
+      px(ctx, PAL.metalDark, x + 11, y + 16, s - 26, 2);
+      px(ctx, PAL.red, x + s / 2 - 4, y + s - 17, 8, 11);
+      px(ctx, PAL.ink, x + s / 2 - 1, y + s - 13, 3, 5);
+    },
+    innerOpen: function (ctx, x, y, s) {      // 열린 안쪽 문 — 가운데가 비었다
+      px(ctx, PAL.woodDark, x + 1, y + 2, 7, s - 4);
+      px(ctx, PAL.woodDark, x + s - 8, y + 2, 7, s - 4);
+      px(ctx, PAL.night, x + 8, y + 4, s - 16, s - 8);
+      px(ctx, PAL.ribbon, x + 3, y + s / 2 - 2, 3, 4);
+    },
+    paper: function (ctx, x, y, s) {          // 날짜가 적힌 서류 한 장
+      px(ctx, PAL.woodDark, x + 8, y + 28, s - 16, 8);
+      px(ctx, PAL.ink, x + 9, y + 10, s - 18, 20);
+      px(ctx, PAL.paper, x + 11, y + 12, s - 22, 16);
+      px(ctx, PAL.metalDark, x + 14, y + 16, s - 30, 2);
+      px(ctx, PAL.red, x + s - 20, y + 21, 6, 6);
+    },
+    plant: function (ctx, x, y, s) {          // 큰 화분 — 밑이 젖어 있다
+      px(ctx, PAL.metalDark, x + 6, y + s - 12, s - 12, 5);
+      px(ctx, PAL.deep, x + 11, y + s - 22, s - 22, 12);
+      px(ctx, PAL.wood, x + 11, y + s - 22, s - 22, 4);
+      px(ctx, PAL.green, x + 13, y + 8, s - 26, 16);
+      px(ctx, PAL.board, x + 9, y + 13, s - 18, 6);
+      px(ctx, PAL.blue, x + 7, y + s - 8, s - 14, 3);
+    },
+    // 조사 가능 칸 위의 작은 빛 점 (5층 한정 연출 — 의존이 오르면 꺼진다)
+    glint: function (ctx, x, y, s, tone) {
+      var c = s / 16;
+      px(ctx, tone || PAL.cream, x + s / 2 - c, y + c, c * 2, c * 2);
+      px(ctx, tone || PAL.cream, x + s / 2 - c * 2, y + c * 2, c * 4, c);
+      px(ctx, tone || PAL.cream, x + s / 2 - c / 2, y, c, c * 4);
     }
   };
 

@@ -408,6 +408,154 @@ const SHOTS = path.join(ROOT, 'shots');
     await ctx.close();
   }
 
+  // ── 5층: 조작권 잠식 — 감속 실측 · 회색 안개 MAX · 교감 배틀 · stamp 예고 ──
+  {
+    console.log('[floor5] 5층 교무실 · 조작권 잠식');
+    const { ctx, page, errors } = await newPage({ viewport: { width: 1280, height: 800 } });
+    await page.keyboard.press('z');                       // 시작
+    for (let i = 0; i < 8; i++) { await page.keyboard.press('z'); await page.waitForTimeout(50); }
+
+    // 1~4층 배틀은 앞 블록에서 봤으니 5층 복도로 바로 올린다.
+    await page.evaluate(() => {
+      const S = window.GAME.state();
+      S.clearedOf.mate = true; S.clearedOf.bro = true;
+      S.clearedOf.senior = true; S.clearedOf.artTeacher = true;
+      S.stairsOpen.hallway = true; S.stairsOpen.lab = true;
+      S.stairsOpen.hall3 = true; S.stairsOpen.gallery = true;
+      window.DATA.FRAMES.forEach((f) => { S.frames[f.id] = 'done'; });
+      window.GAME.save(); window.GAME.load();
+      window.GAME.enterMap('hall5', 2, 3, 'right');
+      const T = window.GAME.state();
+      T.dialog = null; T.toast = null;
+    });
+    await page.waitForTimeout(250);
+    check('5층(교무실 복도) 진입', await page.evaluate(() => {
+      const S = window.GAME.state(); return S.map === 'hall5' && S.floor === 5;
+    }));
+    check('장치 셋이 처음엔 진행을 막는다', await page.evaluate(() =>
+      window.DATA.LOCKS.every((k) =>
+        window.GAME.solidAt(window.DATA.MAPS[k.map], k.at.x, k.at.y) === true)));
+    check('반짝임 표시가 켜져 있다', await page.evaluate(() => window.GAME.glintOn() === true));
+    const lit = await page.screenshot({ path: path.join(SHOTS, 'rt-f5-hall-glint.png') });
+
+    // 감속 실측 — 같은 시간 동안 실제로 얼마나 갔나(상수가 아니라 화면에서 잰다)
+    async function runFor(ms) {
+      await page.evaluate(() => {
+        const S = window.GAME.state();
+        S.px = 2 * 48 + 24; S.py = 3 * 48 + 42; S.dialog = null; S.toast = null;
+      });
+      await page.waitForTimeout(120);
+      const x0 = await page.evaluate(() => window.GAME.state().px);
+      await page.keyboard.down('ArrowRight');
+      await page.waitForTimeout(ms);
+      await page.keyboard.up('ArrowRight');
+      await page.waitForTimeout(60);
+      return (await page.evaluate(() => window.GAME.state().px)) - x0;
+    }
+    const fast = await runFor(700);
+    await page.evaluate(() => { window.GAME.state().depend = window.DATA.MAX_DEPEND; });
+    const slow = await runFor(700);
+    const ratio = slow / fast;
+    console.log(`     · 감속 실측: ${fast.toFixed(0)}px → ${slow.toFixed(0)}px (배율 ${ratio.toFixed(2)})`);
+    check('감속 전에는 제 속도로 걷는다', fast > 60);
+    check('의존 MAX면 눈에 띄게 느려진다', slow < fast * 0.8);
+    check('의존 MAX여도 멈추지는 않는다 (최저 속도 > 0)', slow > 0);
+    check('실측 배율이 설계치(0.55)에 맞는다', ratio > 0.42 && ratio < 0.70);
+
+    // 회색 안개 MAX — 가장자리가 흐려지되 아래 회복 안내 띠는 그대로다
+    await page.evaluate(() => {
+      const S = window.GAME.state();
+      S.depend = window.DATA.MAX_DEPEND; S.dialog = null; S.toast = null;
+    });
+    await page.waitForTimeout(250);
+    const dim = await page.screenshot({ path: path.join(SHOTS, 'rt-f5-depend-max.png') });
+    check('의존 MAX 오버레이가 화면에 나타남', Buffer.compare(lit, dim) !== 0);
+    check('의존 +2부터 반짝임 표시가 꺼진다',
+      await page.evaluate(() => window.GAME.glintOn() === false));
+    // 헌법 §3-3: 회복 안내 띠(화면 아래 24px)는 안개가 덮지 않는다.
+    check('회복 안내 띠는 안개에 덮이지 않는다', await page.evaluate(() => {
+      const cv = document.getElementById('game');
+      const c = cv.getContext('2d');
+      const d = c.getImageData(0, cv.height - 20, cv.width, 18).data;
+      let bright = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 420) bright++;
+      return bright > 40;                     // 흰 글자 획이 살아 있다
+    }));
+
+    // 나비스 단말 — 방송 콘솔과 같은 커서 문법(새 UI 없음)
+    await page.evaluate(() => {
+      const S = window.GAME.state();
+      S.depend = 0;
+      const k = window.DATA.LOCKS.find((x) => x.id === 'innerDoor');
+      window.GAME.enterMap(k.map, k.term.x, k.term.y - 1, 'down');
+      const T = window.GAME.state();
+      T.dialog = null; T.toast = null;
+    });
+    await page.waitForTimeout(200);
+    await page.keyboard.press('z');
+    await page.waitForTimeout(200);
+    check('나비스 단말 열림', await page.evaluate(() => {
+      const S = window.GAME.state();
+      return S.mode === 'console' && S.con.kind === 'navis' && S.con.lock === 'innerDoor';
+    }));
+    await page.screenshot({ path: path.join(SHOTS, 'rt-f5-navis.png') });
+    await page.keyboard.press('x');
+    await page.waitForTimeout(200);
+    check('취소로 단말이 닫힘', await page.evaluate(() => {
+      const S = window.GAME.state(); return S.mode === 'world' && S.paused === false;
+    }));
+
+    // 교감 배틀 — 캐비닛을 열어야 안쪽 방에 닿는다
+    await page.evaluate(() => {
+      const S = window.GAME.state();
+      window.DATA.LOCKS.forEach((k) => { S.locks[k.id] = true; });
+      window.GAME.save(); window.GAME.load();
+      window.GAME.enterMap('office', 10, 5, 'right');
+      window.GAME.state().dialog = null;
+    });
+    await page.waitForTimeout(200);
+    check('연 장치는 실제로 통행 가능해진다', await page.evaluate(() =>
+      window.DATA.LOCKS.every((k) =>
+        window.GAME.solidAt(window.DATA.MAPS[k.map], k.at.x, k.at.y) === false)));
+    for (let i = 0; i < 8; i++) {
+      const ready = await page.evaluate(() => {
+        const S = window.GAME.state();
+        return S.mode === 'battle' && S.battle.phase === 'menu';
+      });
+      if (ready) break;
+      await page.keyboard.press('z'); await page.waitForTimeout(90);
+    }
+    check('교감 배틀 진입', await page.evaluate(() => {
+      const S = window.GAME.state(); return S.mode === 'battle' && S.battle.id === 'vice';
+    }));
+    await page.screenshot({ path: path.join(SHOTS, 'rt-f5-vice.png') });
+
+    // stamp 탄막 — 찍힐 칸을 먼저 보여 준 뒤 내리찍는다
+    await page.evaluate(() => {
+      const S = window.GAME.state(), b = S.battle;
+      const P = window.DATA.BATTLES.vice;
+      b.phase = 'enemy'; b.atk = P.attacks.findIndex((a) => a.kind === 'stamp');
+      b.timer = 0; b.tell = 0; b.inv = 99; b.bullets = []; b.spawnAcc = P.attacks[b.atk].every;
+      b.hx = window.GAME.BOX.x + 40; b.hy = window.GAME.BOX.y + 110;
+    });
+    await page.waitForTimeout(350);
+    check('도장은 먼저 예고 칸으로 뜬다', await page.evaluate(() => {
+      const b = window.GAME.state().battle;
+      return b.bullets.length > 0 && b.bullets.every((p) => p.stamp && p.warn > 0);
+    }));
+    await page.screenshot({ path: path.join(SHOTS, 'rt-f5-stamp.png') });
+    await page.waitForTimeout(900);
+    check('동시에 뜨는 도장이 상한을 넘지 않는다', await page.evaluate(() => {
+      const b = window.GAME.state().battle;
+      const a = window.DATA.BATTLES.vice.attacks.find((x) => x.kind === 'stamp');
+      return b.bullets.filter((p) => p.stamp).length <= a.cells;
+    }));
+
+    check('콘솔·페이지 에러 0 (5층)', errors.length === 0);
+    errors.slice(0, 5).forEach((e) => console.log('     · ' + e));
+    await ctx.close();
+  }
+
   // ── 모바일 세로: 회전 안내가 떠야 한다 ────────────────────────────────────
   {
     console.log('[mobile-portrait] 390x844');
