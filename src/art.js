@@ -282,6 +282,61 @@
       px(ctx, PAL.woodDark, x + 6, y + 6, s - 12, s - 10);
       px(ctx, PAL.metalDark, x + 10, y + 12, s - 20, 12);
       px(ctx, PAL.metal, x + s - 15, y + s / 2, 5, 5);
+    },
+    // ── 4층 소품 (팩 팔레트 색만 쓰는 절차 도트) ──────────────────────────
+    frame: function (ctx, x, y, s) {          // 벽에 걸린 그림 액자
+      px(ctx, PAL.ink, x + 4, y + 5, s - 8, s - 13);
+      px(ctx, PAL.wood, x + 6, y + 7, s - 12, s - 17);
+      px(ctx, PAL.night, x + 9, y + 10, s - 18, s - 23);
+      px(ctx, PAL.purpleLit, x + 12, y + 13, s - 26, 5);
+      px(ctx, PAL.blue, x + 12, y + 21, s - 30, 4);
+      px(ctx, PAL.tan, x + 12, y + 28, s - 34, 3);
+      px(ctx, PAL.woodDark, x + 6, y + s - 11, s - 12, 3);
+    },
+    // 붙인 출처 스티커 — 액자 위에 겹쳐 그리는 오버레이(액자 그림은 그대로).
+    sticker: function (ctx, x, y, s) {
+      px(ctx, PAL.ink, x + s - 24, y + s - 21, 20, 14);
+      px(ctx, PAL.cream, x + s - 22, y + s - 19, 16, 10);
+      px(ctx, PAL.green, x + s - 20, y + s - 17, 12, 3);
+      px(ctx, PAL.metalDark, x + s - 20, y + s - 12, 8, 2);
+    },
+    glass: function (ctx, x, y, s) {          // 잠긴 유리문
+      px(ctx, PAL.metalDark, x + 2, y + 2, s - 4, s - 4);
+      px(ctx, 'rgba(120,188,216,0.45)', x + 6, y + 6, s - 12, s - 10);
+      px(ctx, PAL.cream, x + 11, y + 10, 3, s - 22);
+      px(ctx, PAL.metal, x + 6, y + s / 2 - 2, s - 12, 4);
+      px(ctx, PAL.red, x + s / 2 - 5, y + s / 2 - 9, 10, 13);
+      px(ctx, PAL.ink, x + s / 2 - 2, y + s / 2 - 4, 4, 6);
+    },
+    glassOpen: function (ctx, x, y, s) {      // 열린 유리문 — 가운데가 비었다
+      px(ctx, PAL.metalDark, x + 1, y + 2, 7, s - 4);
+      px(ctx, PAL.metalDark, x + s - 8, y + 2, 7, s - 4);
+      px(ctx, 'rgba(120,188,216,0.30)', x + 2, y + 4, 5, s - 8);
+      px(ctx, 'rgba(120,188,216,0.30)', x + s - 7, y + 4, 5, s - 8);
+      px(ctx, PAL.ribbon, x + 3, y + 6, 3, 3);
+    },
+    bench: function (ctx, x, y, s) {          // 스티커 제작대
+      px(ctx, PAL.ink, x + 3, y + 11, s - 6, s - 15);
+      px(ctx, PAL.wood, x + 5, y + 13, s - 10, s - 19);
+      px(ctx, PAL.paper, x + 8, y + 16, 13, 11);
+      px(ctx, PAL.ribbon, x + 24, y + 16, 12, 5);
+      px(ctx, PAL.green, x + 24, y + 24, 9, 4);
+      px(ctx, PAL.metalDark, x + 7, y + s - 9, s - 14, 4);
+    },
+    sample: function (ctx, x, y, s) {         // 스타일 견본판
+      px(ctx, PAL.woodDark, x + 4, y + 5, s - 8, s - 15);
+      px(ctx, PAL.paper, x + 7, y + 8, s - 14, s - 23);
+      px(ctx, PAL.purple, x + 10, y + 11, s - 24, 4);
+      px(ctx, PAL.orange, x + 10, y + 18, s - 28, 3);
+      px(ctx, PAL.blue, x + 10, y + 24, s - 32, 3);
+      px(ctx, PAL.metalDark, x + s / 2 - 3, y + s - 11, 6, 7);
+    },
+    drawer: function (ctx, x, y, s) {         // 잠긴 서랍
+      px(ctx, PAL.ink, x + 4, y + 9, s - 8, s - 13);
+      px(ctx, PAL.woodDark, x + 6, y + 11, s - 12, s - 17);
+      px(ctx, PAL.wood, x + 6, y + 11, s - 12, 9);
+      px(ctx, PAL.metal, x + s / 2 - 5, y + 16, 10, 3);
+      px(ctx, PAL.metal, x + s / 2 - 5, y + 27, 10, 3);
     }
   };
 

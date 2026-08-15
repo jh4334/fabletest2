@@ -1,4 +1,4 @@
-// 스모크 테스트 — 「방과 후: 그림자 학교」 1~3층
+// 스모크 테스트 — 「방과 후: 그림자 학교」 1~4층
 // DOM/Canvas/Image/localStorage를 스텁으로 대체하고 vm 샌드박스에서 실제 플레이
 // 경로를 시뮬레이션한다. 스펙 §6: 이동·충돌 / 카드·노출도 / 배틀 완주 / 세이브.
 const fs = require('fs');
@@ -575,7 +575,8 @@ check('3층 가방은 비어 있음 (층별 카드 집계 분리)', G.heldIds().
 check('오염은 0에서 시작', S().pollute === 0 && D.MAX_POLLUTE === 3);
 check('3층 계단은 아직 잠김', !S().stairsOpen.hall3);
 place('hall3', 18, 4); hold('ArrowRight', 30);
-check('잠긴 옥상 계단 안내', !!S().dialog && S().dialog.seq[0] === D.LOOK.stairs3);
+// P4에서 3층 계단의 행선지가 옥상 → 4층으로 바뀌어 검사 이름만 따라 고쳤다.
+check('잠긴 4층 계단 안내', !!S().dialog && S().dialog.seq[0] === D.LOOK.stairs3);
 advance();
 check('잠긴 계단은 클리어 화면으로 가지 않음', S().mode === 'world');
 
@@ -793,29 +794,26 @@ check('다 처리한 뒤의 콘솔은 다른 안내',
   S().mode === 'world' && S().dialog && S().dialog.seq === D.CONSOLE.clear);
 advance();
 
-// ── 32. 3층 통과 → 클리어 화면 ─────────────────────────────────────────────
-// [24]에서 옮겨온 클리어 화면 검사 — 오늘의 마지막 계단이 3층으로 바뀌었을 뿐,
-// 검사 이름과 뜻은 그대로 둔다(옥상은 공사 중).
-console.log('[32] 3층 통과');
+// ── 32. 3층 통과 → 4층 진입 ────────────────────────────────────────────────
+// P4: 3층 계단은 더 이상 클리어 화면이 아니라 4층 복도로 이어진다(스펙 §1).
+// 클리어 화면 검사는 이름 그대로 오늘의 마지막 계단(전시 복도)으로 옮겨 [40]에서 돈다.
+console.log('[32] 3층 통과 → 4층');
 place('hall3', 18, 4);
 hold('ArrowRight', 30);
 check('계단 접촉 안내(3층)', !!S().dialog);
+tap('z');                                   // 계단 대사를 넘기면 그 자리에서 4층으로
+check('4층으로 올라감', S().map === 'hall4' && S().floor === 4);
+check('4층 도착 안내 상자', S().dialog && S().dialog.seq === D.FLOOR4.enter);
 advance();
-check('클리어 화면', S().mode === 'clear');
-check('클리어 배너가 층 번호를 쓴다', S().floor === 3 && typeof D.CLEAR.bannerFloor === 'string');
-tap('z');                                   // 기본값: 계속 둘러보기
-check('클리어 후 Z 연타에도 저장 생존 + 월드 복귀', S().mode === 'world' && G.hasSave() === true);
-check('계단 앞으로 복귀', tile().x === 18 && tile().y === 4);
-hold('ArrowRight', 30);
-advance();
-check('클리어 화면 재진입 가능', S().mode === 'clear');
-tap('ArrowDown'); tap('z');                 // 타이틀로
-check('타이틀로 가도 저장 유지', S().mode === 'title' && G.hasSave() === true);
-tap('z');                                   // 이어하기
-check('이어하기로 클리어 상태 복원', S().mode === 'world' && S().flags.done === true);
-check('이어하기가 3층을 기억', S().floor === 3 && S().map === 'hall3');
+check('4층 복도 입구에 도착', tile().x === 1 && tile().y === 5);
+check('4층 가방은 비어 있음 (층별 카드 집계 분리)', G.heldIds().length === 0);
+check('정직은 0에서 시작', S().honest === 0 && D.MAX_HONEST === 3);
+check('4층 계단은 아직 잠김', !S().stairsOpen.gallery);
+// 층이 늘어도 아래층 진행은 세이브 왕복에서 살아남아야 한다
+G.save();
+S().bubble = 0; S().loopN = 0; S().rumors[R[0].id] = 'unread';
+check('로드 성공(4층까지 온 저장)', G.load() === true);
 check('이어하기가 버블·루프도 복원', S().bubble >= 0 && S().loopN >= 4);
-check('이어하기가 인물 진행을 복원', S().clearedOf.bro === true && S().heardOf.bro === true);
 check('이어하기가 소문 처리도 복원',
   S().rumors[R[0].id] === 'fixed' && S().rumors[R[1].id] === 'verified');
 
@@ -842,6 +840,269 @@ check('오염 최악에도 방송실 문·계단 앞은 열려 있다',
   !G.solidAt(D.MAPS.hall3, 18, 5) && !G.solidAt(D.MAPS.hall3, 18, 4));
 check('오염 최악에도 회복 경로 문구가 있다', typeof D.T.polHelp === 'string' && D.T.polHelp.length > 0);
 
+// ══ 4층: 미술실 · 생성AI와 저작권 (스펙 P4 §6) ══════════════════════════════
+const FR = D.FRAMES, AU = D.AUTHORS;
+// 액자는 위쪽 통로에서 내려다본다(액자 타일은 막힌 칸).
+function lookFrame(i) {
+  const f = FR[i];
+  place('gallery', f.x, f.y - 1);
+  tap('ArrowDown'); tap('z');
+}
+function openBench() { place('artroom', 3, 8); tap('ArrowUp'); tap('z'); }
+const seenList = () => FR.filter((f) => S().frames[f.id] === 'seen').map((f) => f.id);
+// 제작대에서 [액자 → 스티커] 를 골라 스티커 한 장을 만든다(콘솔과 같은 커서 문법).
+function craft(frameId, authorId) {
+  openBench();
+  S().con.cursor = seenList().indexOf(frameId);
+  tap('z');
+  S().con.cursor = AU.findIndex((a) => a.id === authorId);
+  tap('z');
+  advance();
+  closeCon();
+}
+
+// ── 34. 전시 복도 — 잠긴 유리문과 액자 조사 ─────────────────────────────────
+console.log('[34] 전시 복도 — 유리문과 액자');
+G.newGame(); advance();
+// 1~3층 진행은 앞 절에서 다 봤으니 4층 상태로 바로 올린다.
+S().clearedOf.mate = true; S().clearedOf.bro = true; S().clearedOf.senior = true;
+S().stairsOpen.hallway = true; S().stairsOpen.lab = true; S().stairsOpen.hall3 = true;
+openBench();
+check('본 액자가 없으면 제작대가 안내만 함',
+  S().mode === 'world' && S().dialog && S().dialog.seq === D.STICKER.none);
+advance();
+place('gallery', 1, 5); frame(2);
+check('4층 전시 복도 진입', S().map === 'gallery' && S().floor === 4);
+check('유리문 셋이 모두 잠겨 있다',
+  FR.every((f) => G.solidAt(D.MAPS.gallery, f.door[0].x, f.door[0].y) === true));
+check('열린 유리문 칸은 아직 없다', G.openedCells('gallery').length === 0);
+place('gallery', 4, 5);
+hold('ArrowRight', 60);
+check('잠긴 유리문이 진행을 막는다', tile().x === 4);
+tap('ArrowRight'); tap('z');
+check('유리문을 조사하면 왜 안 열리는지 알려 준다', S().dialog && S().dialog.seq[0] === D.LOOK.glass);
+advance();
+lookFrame(0);
+check('액자를 조사하면 이상한 점이 보인다', S().dialog && S().dialog.seq === FR[0].look);
+advance();
+check('액자 상태: unseen → seen', S().frames[FR[0].id] === 'seen');
+lookFrame(1); advance();
+lookFrame(2); advance();
+check('유리문이 다 잠겨도 액자 세 점을 모두 볼 수 있다 (소프트락 없음)',
+  FR.every((f) => S().frames[f.id] === 'seen'));
+const c4 = (id) => D.CARDS.find((c) => c.id === id);
+place('gallery', c4('firstSketch').at.x, c4('firstSketch').at.y); frame(2);
+check('전시 복도에서 첫 스케치 획득', G.heldIds().indexOf('firstSketch') >= 0);
+check('4층 카드는 정직 게이지를 건드리지 않음', S().honest === 0);
+check('4층 카드 안내 토스트', !!S().toast && S().toast.text === D.T.gotCard4);
+
+// ── 35. 미술실 — 견본판 · 잠긴 서랍 · 제작대 ────────────────────────────────
+console.log('[35] 미술실 자료와 제작대');
+place('artroom', c4('styleCard').at.x, c4('styleCard').at.y); frame(2);
+check('미술실에서 스타일 견본 획득', G.heldIds().indexOf('styleCard') >= 0);
+place('artroom', D.MAPS.artroom.samples[0].x, D.MAPS.artroom.samples[0].y + 1);
+tap('ArrowUp'); tap('z');
+check('견본판을 조사하면 화풍을 알려 준다', S().dialog && S().dialog.seq === AU[0].sample);
+advance();
+place('artroom', 11, 8);
+check('잠긴 서랍 속 자료는 아직 주울 수 없다',
+  G.drawerOpen() === false && G.heldIds().indexOf('aiReceipt') < 0);
+tap('ArrowUp'); tap('z');
+check('서랍은 처음엔 잠겨 있다', S().dialog && S().dialog.seq[0] === D.LOOK.drawer);
+advance();
+openBench();
+check('제작대가 열린다 (방송 콘솔과 같은 문법)',
+  S().mode === 'console' && S().con.kind === 'sticker' && S().con.level === 0);
+tap('z');
+check('액자를 고르면 스티커 목록이 뜬다', S().con.level === 1 && S().con.frame === seenList()[0]);
+tap('x');
+check('취소로 액자 선택으로 돌아온다', S().mode === 'console' && S().con.level === 0);
+tap('x');
+check('취소로 제작대를 닫는다', S().mode === 'world' && S().con === null);
+
+// ── 36. 틀린 스티커 — 벌 없이 되돌림 ────────────────────────────────────────
+console.log('[36] 틀린 스티커');
+craft(FR[0].id, FR[1].author);              // 일부러 다른 화풍
+check('제작대에서 스티커를 만든다', S().stickers[FR[0].id] === FR[1].author);
+const miss0 = S().stats.missSticker;
+lookFrame(0);
+check('틀린 스티커는 되돌림 안내', S().dialog && S().dialog.seq === D.STICKER.wrong);
+advance();
+check('틀려도 게이지·액자 상태는 그대로 (벌 없음)',
+  S().honest === 0 && S().frames[FR[0].id] === 'seen');
+check('스티커만 도로 떼진다', S().stickers[FR[0].id] === null);
+check('오답은 기록만 남는다', S().stats.missSticker === miss0 + 1);
+check('틀린 뒤에도 유리문은 닫힌 채',
+  G.solidAt(D.MAPS.gallery, FR[0].door[0].x, FR[0].door[0].y) === true
+  && G.openedCells('gallery').length === 0);
+
+// ── 37. 올바른 스티커 — 유리문 개방과 정직 게이지 ───────────────────────────
+console.log('[37] 올바른 스티커 → 유리문 개방');
+craft(FR[0].id, FR[0].author);
+lookFrame(0);
+check('올바른 스티커 안내', S().dialog && S().dialog.seq === D.STICKER.right);
+advance();
+check('액자 상태: seen → done', S().frames[FR[0].id] === 'done');
+check('정직 게이지 +1', S().honest === 1);
+check('유리문이 열린다', G.solidAt(D.MAPS.gallery, FR[0].door[0].x, FR[0].door[0].y) === false);
+check('열린 칸은 맵 grid를 바꾸지 않음',
+  D.MAPS.gallery.grid[FR[0].door[0].y].charAt(FR[0].door[0].x) === 'g');
+check('열린 유리문 칸이 기록됨', G.openedCells('gallery').length === FR[0].door.length);
+place('gallery', 4, 5);
+check('열린 문으로 실제로 지나간다', walkUntil('ArrowRight', () => tile().x > FR[0].door[0].x));
+check('둘째 유리문은 아직 닫혀 있다',
+  G.solidAt(D.MAPS.gallery, FR[1].door[0].x, FR[1].door[0].y) === true);
+lookFrame(0);
+check('붙인 액자는 출처가 보인다', S().dialog && S().dialog.seq[0] === D.LOOK.frameDone);
+advance();
+
+// ── 38. 첫 표기로 잠긴 서랍이 열린다 ────────────────────────────────────────
+console.log('[38] 서랍 개방');
+check('스티커 한 장이면 서랍이 열림', G.drawerOpen() === true);
+place('artroom', 11, 8);
+tap('ArrowUp'); tap('z');
+check('열린 서랍 대사', S().dialog && S().dialog.seq[0] === D.LOOK.drawerOpen);
+advance();
+place('artroom', c4('aiReceipt').at.x, c4('aiReceipt').at.y); frame(2);
+check('서랍 속 생성 기록 획득', G.heldIds().indexOf('aiReceipt') >= 0);
+check('4층 카드 3장을 다 들었다', G.heldIds().length === 3);
+
+// ── 39. 세 점 표기 → 미술 선생님 배틀 ───────────────────────────────────────
+console.log('[39] 미술 선생님 배틀');
+place('gallery', 16, 5); frame(2);
+check('표기 전에는 선생님이 없다', S().mode === 'world' && G.framesDone() === false);
+craft(FR[1].id, FR[1].author);
+lookFrame(1); advance();
+check('둘째 유리문 개방',
+  G.solidAt(D.MAPS.gallery, FR[1].door[0].x, FR[1].door[0].y) === false && S().honest === 2);
+craft(FR[2].id, FR[2].author);
+lookFrame(2);
+check('셋째도 올바른 스티커', S().dialog && S().dialog.seq === D.STICKER.right);
+tap('z');                                   // 마지막 한 점을 넘기면 바로 이어진다
+check('세 점 완료 안내 상자', !!S().dialog && S().dialog.seq === D.STICKER.done);
+advance();
+check('정직 게이지 최대', S().honest === D.MAX_HONEST && G.framesDone() === true);
+check('유리문 셋이 모두 열림', G.openedCells('gallery').length === 3);
+
+place('gallery', 16, 5); frame(2);
+check('미술 선생님 조우 대화', !!S().dialog && S().dialog.seq === D.BATTLES.artTeacher.approach);
+advance();
+check('미술 선생님 배틀 진입', S().mode === 'battle' && S().battle.id === 'artTeacher');
+advance();
+check('미술 선생님 프로필로 배틀이 구성됨', S().battle.phase === 'menu'
+  && S().battle.shadow === D.BATTLES.artTeacher.shadow
+  && S().battle.hearts === D.BATTLES.artTeacher.hearts);
+S().battle.cursor = 1; tap('z');
+S().battle.sub = G.heldIds().indexOf('styleCard'); tap('z');
+advance();
+check('듣기 전 증거는 통하지 않음(선생님)', S().battle.shadow === D.BATTLES.artTeacher.shadow);
+check('상대 턴 시작(선생님)', S().battle.phase === 'enemy');
+{
+  // paint 탄막: 느리게 떨어져 바닥에 자국으로 잠깐 남는다
+  const pi = D.BATTLES.artTeacher.attacks.findIndex((a) => a.kind === 'paint');
+  const pa = D.BATTLES.artTeacher.attacks[pi];
+  check('paint 탄막이 프로필에 있고 느리다', pi >= 0 && pa.speed <= 120);
+  const b = S().battle;
+  b.atk = pi; b.timer = 0; b.tell = 0; b.inv = 99; b.bullets = []; b.spawnAcc = 0;
+  b.hx = G.BOX.x + 30; b.hy = G.BOX.y + 30;   // 떨어지는 자리에서 비켜서 있는다
+  frame(180);
+  const stains = () => S().battle.bullets.filter((p) => p.stain);
+  check('물감 방울이 바닥에 자국으로 남는다', stains().length > 0);
+  check('동시 자국이 상한을 넘지 않는다',
+    S().battle.bullets.filter((p) => p.drop).length <= pa.maxStain);
+  const st0 = stains()[0], hp = S().battle.hearts;
+  S().battle.inv = 0; S().battle.hx = st0.x; S().battle.hy = st0.y;
+  frame(1);
+  check('자국 위를 지나면 피격', S().battle.hearts === hp - 1);
+  S().battle.hearts = D.BATTLES.artTeacher.hearts; S().battle.inv = 99;
+  S().battle.bullets.forEach((p) => { if (p.stain) p.hold = 0.01; });
+  frame(3);
+  check('자국은 마르면 사라진다', stains().length === 0);
+  S().battle.bullets = []; S().battle.timer = 999; frame(1);
+}
+check('상대 턴 종료 후 내 턴(선생님)', S().battle.phase === 'menu');
+S().battle.cursor = 2; tap('z'); advance();
+check('듣기로 그림자가 얇아짐(선생님)',
+  S().battle.heard === true && S().battle.shadow === D.BATTLES.artTeacher.shadow - 1);
+S().battle.timer = 999; frame(1);
+S().battle.cursor = 3; tap('z'); advance();
+check('물러나기로 월드 복귀(선생님)', S().mode === 'world' && S().map === 'gallery');
+place('gallery', 16, 5); frame(2);
+check('재조우는 축약 대사(선생님)', S().dialog && S().dialog.seq === D.BATTLES.artTeacher.reApproach);
+advance();
+check('재도전: 그림자 1칸 깎인 채 재개(선생님)',
+  S().battle.shadow === D.BATTLES.artTeacher.shadow - 1);
+advance();
+S().battle.cursor = 1; tap('z');
+S().battle.sub = G.heldIds().indexOf('firstSketch'); tap('z');
+advance();
+check('증거 제시로 그림자 0(선생님)', S().battle.shadow === 0);
+check('손 내밀기 준비(선생님)', S().battle.spare === true);
+tap('z'); advance();
+check('미술 선생님을 되돌림', S().clearedOf.artTeacher === true);
+check('4층 계단 개방', S().stairsOpen.gallery === true);
+check('1~3층 진행은 건드리지 않음',
+  S().stairsOpen.hall3 === true && S().clearedOf.senior === true);
+place('gallery', 16, 5); frame(2);
+check('되돌린 뒤엔 다시 배틀하지 않음(선생님)', S().mode === 'world');
+tap('ArrowRight'); tap('z');
+check('되돌린 선생님이 한 줄 힌트를 준다', S().dialog && S().dialog.seq === D.BATTLES.artTeacher.hint);
+advance();
+openBench();
+check('다 붙인 뒤의 제작대는 다른 안내',
+  S().mode === 'world' && S().dialog && S().dialog.seq === D.STICKER.clear);
+advance();
+
+// ── 40. 4층 통과 → 클리어 화면 ─────────────────────────────────────────────
+// [32]에서 옮겨온 클리어 화면 검사 — 오늘의 마지막 계단이 전시 복도로 바뀌었을 뿐,
+// 검사 이름과 뜻은 그대로 둔다(5층은 공사 중).
+console.log('[40] 4층 통과');
+place('gallery', 18, 5);
+hold('ArrowRight', 30);
+check('계단 접촉 안내(4층)', !!S().dialog);
+advance();
+check('클리어 화면', S().mode === 'clear');
+check('클리어 배너가 층 번호를 쓴다', S().floor === 4 && typeof D.CLEAR.bannerFloor === 'string');
+tap('z');                                   // 기본값: 계속 둘러보기
+check('클리어 후 Z 연타에도 저장 생존 + 월드 복귀', S().mode === 'world' && G.hasSave() === true);
+check('계단 앞으로 복귀', tile().x === 18 && tile().y === 5);
+hold('ArrowRight', 30);
+advance();
+check('클리어 화면 재진입 가능', S().mode === 'clear');
+tap('ArrowDown'); tap('z');                 // 타이틀로
+check('타이틀로 가도 저장 유지', S().mode === 'title' && G.hasSave() === true);
+tap('z');                                   // 이어하기
+check('이어하기로 클리어 상태 복원', S().mode === 'world' && S().flags.done === true);
+check('이어하기가 4층을 기억', S().floor === 4 && S().map === 'gallery');
+check('이어하기가 액자·정직도 복원', G.framesDone() === true && S().honest === D.MAX_HONEST);
+check('이어하기가 인물 진행을 복원',
+  S().clearedOf.artTeacher === true && S().heardOf.artTeacher === true);
+check('이어하기가 열린 유리문도 복원', G.openedCells('gallery').length === 3);
+
+// ── 41. 4층 세이브 방어 ────────────────────────────────────────────────────
+console.log('[41] 4층 세이브 방어');
+windowObj.localStorage.setItem(D.SAVE_KEY, JSON.stringify({
+  v: 1, map: 'gallery', px: 100, py: 260, dir: 3, honest: 99,
+  frames: { [FR[0].id]: 'done', [FR[1].id]: '이상한값', ghost: 'done' },
+  stickers: { [FR[1].id]: AU[1].id, [FR[2].id]: 'a99', ghost: AU[0].id },
+  opened: { gallery: [{ x: 0, y: 0 }], nowhere: [{ x: 1, y: 1 }] },
+  stats: { sec: 10, stolen: 0, retreats: 0, missSticker: -5 },
+}));
+check('손상된 4층 저장도 로드는 된다', G.load() === true);
+check('모르는 액자 상태값은 처음으로 되돌림', S().frames[FR[1].id] === 'unseen');
+check('모르는 액자 키는 버림', S().frames.ghost === undefined);
+check('아는 견본의 스티커는 살아남음', S().stickers[FR[1].id] === AU[1].id);
+check('모르는 견본의 스티커는 버림', S().stickers[FR[2].id] === null);
+check('정직 게이지는 액자 상태에서 다시 계산', S().honest === 1);
+check('열린 유리문은 저장 좌표가 아니라 액자 상태에서 다시 만든다',
+  G.openedCells('nowhere').length === 0
+  && JSON.stringify(G.openedCells('gallery')) === JSON.stringify(FR[0].door));
+check('음수 오답 기록은 0으로', S().stats.missSticker === 0);
+// 유리문 하나만 열린 최악에서도 액자·카드·복도 문은 그대로 닿는다 (헌법 §3-3)
+check('한 점만 밝힌 상태에서도 액자 앞·복도 문은 열려 있다',
+  !G.solidAt(D.MAPS.gallery, FR[2].x, FR[2].y - 1) && !G.solidAt(D.MAPS.gallery, 1, 5));
+check('4층 회복 경로 문구가 있다', typeof D.T.honHelp === 'string' && D.T.honHelp.length > 0);
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {
@@ -849,6 +1110,6 @@ if (fails.length) {
   fails.forEach((f) => console.error('   - ' + f));
   process.exit(1);
 }
-// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P2 179건 + P3 신규 30건 이상)
-if (pass < 209) { console.error(`✘ 검사 수 부족: ${pass}건 (P3 기준 209건 이상)`); process.exit(1); }
+// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P3 262건 + P4 신규 30건 이상)
+if (pass < 292) { console.error(`✘ 검사 수 부족: ${pass}건 (P4 기준 292건 이상)`); process.exit(1); }
 console.log(`✔ 스모크 ${pass}건 모두 통과`);

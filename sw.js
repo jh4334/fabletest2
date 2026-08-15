@@ -1,7 +1,7 @@
 // 오프라인 서비스워커 — 방과 후: 그림자 학교
 // 처음 방문에서 전부 캐시해 교실 와이파이가 끊겨도 수업이 계속되게 한다.
 // CACHE 해시는 npm run bump 가 자산에서 계산해 갱신한다(validate가 대조).
-const CACHE = 'shadow-school-2b8ad1bb';
+const CACHE = 'shadow-school-391021eb';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest',
   './src/art.js', './src/sound.js', './src/data.js', './src/engine.js',
