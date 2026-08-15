@@ -145,11 +145,13 @@
     tell: '그림자 조각이 쏟아진다',
     hurt: [['한 발 물러났다.', '숨 고르고 다시 가 보자.']],
     flee: [['일단 물러났다.']],
+    subHint: '취소 X (터치는 B)',
     // 상대 턴 탄막 (기준서: 짧게, 하트는 0이 돼도 게임오버 없음)
+    // 3~4학년 손 기준: 첫 턴은 짧고 성기게, 뒤로 갈수록 조금씩만 어렵게.
     attacks: [
-      { kind: 'rain', time: 8, every: 0.42, speed: 150 },
-      { kind: 'side', time: 8, every: 0.5, speed: 165 },
-      { kind: 'mix', time: 8, every: 0.4, speed: 175 }
+      { kind: 'rain', time: 5.5, every: 0.52, speed: 140 },
+      { kind: 'side', time: 6, every: 0.5, speed: 158 },
+      { kind: 'mix', time: 6.5, every: 0.44, speed: 168 }
     ]
   };
 

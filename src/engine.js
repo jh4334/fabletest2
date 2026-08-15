@@ -370,9 +370,13 @@
   function updateBattle(dt) {
     var b = S.battle;
     if (b.phase === 'menu') {
-      var n = b.spare ? 1 : D.BATTLE.menu.length;
-      if (tapped('right') || tapped('down')) b.cursor = (b.cursor + 1) % n;
-      if (tapped('left') || tapped('up')) b.cursor = (b.cursor + n - 1) % n;
+      // 메뉴는 2x2 그리드로 그려진다 — 입력도 그리드와 일치시킨다.
+      // 0 1  좌우 = 열 토글(XOR 1), 상하 = 행 토글(XOR 2).
+      // 2 3
+      if (!b.spare) {
+        if (tapped('left') || tapped('right')) b.cursor ^= 1;
+        if (tapped('up') || tapped('down')) b.cursor ^= 2;
+      }
       if (tapped('ok')) battleMenuPick();
       return;
     }
@@ -716,6 +720,7 @@
         txt((b.sub === i ? '▶ ' : '   ') + cardDef(id).label, x, y, 22,
           b.sub === i ? A.PAL.ribbon : A.PAL.white);
       });
+      txt(D.BATTLE.subHint, W - 44, 478, 15, A.PAL.blue, 'right', 500);
     }
   }
 

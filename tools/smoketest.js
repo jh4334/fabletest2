@@ -177,6 +177,12 @@ check('배틀 진입', S().mode === 'battle');
 advance();
 check('내 턴 메뉴', S().battle.phase === 'menu' && S().battle.shadow === D.BATTLE.shadow);
 
+tap('ArrowDown');                         // 그리드: 0(말 걸기) 아래는 2(가만히 듣기)
+check('그리드 내비: ↓ = 아랫줄', S().battle.cursor === 2);
+tap('ArrowRight');
+check('그리드 내비: → = 옆 칸', S().battle.cursor === 3);
+tap('ArrowUp'); tap('ArrowLeft');         // 3 → 1 → 0
+check('그리드 내비: ↑← 복귀', S().battle.cursor === 0);
 tap('ArrowRight');                        // 말 걸기 → 보여주기
 check('메뉴 커서 이동', S().battle.cursor === 1);
 tap('z');
