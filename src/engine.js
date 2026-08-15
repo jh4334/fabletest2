@@ -829,11 +829,33 @@
     } catch (e) { return false; }
   }
 
+  var clearUi = { cursor: 0 };
+
+  // 클리어 화면에서 저장을 지우지 않는다 — 삭제는 타이틀의 확인 경로 하나로 일원화.
+  // (대화 넘기던 Z 연타 관성으로 기록이 증발하는 사고 방지)
+  function updateClear() {
+    if (tapped('up') || tapped('down')) { clearUi.cursor = 1 - clearUi.cursor; sfx('cursor'); }
+    if (!tapped('ok')) return;
+    sfx('ok');
+    if (clearUi.cursor === 0) {          // 계속 둘러보기 — 계단 앞으로 복귀
+      S.mode = 'world';
+      var m = mapOf(S.map);
+      if (m.stairs) { S.px = (m.stairs.x - 1) * T + T / 2; S.py = m.stairs.y * T + T - 6; }
+      S.dir = A.DIR.left; updateCam(); save();
+    } else {                             // 타이틀로 — 저장은 그대로 둔다
+      S = blankState(); title.cursor = 0;
+    }
+  }
+
   function drawClear() {
     ctx.fillStyle = '#14101c'; ctx.fillRect(0, 0, W, H);
-    txt(D.CLEAR.banner, W / 2, 230, 44, A.PAL.ribbon, 'center');
-    txt(D.CLEAR.stairs[0][0], W / 2, 286, 20, A.PAL.white, 'center', 500);
-    txt(D.CLEAR.again, W / 2, 380, 18, A.PAL.blue, 'center', 500);
+    txt(D.CLEAR.banner, W / 2, 210, 44, A.PAL.ribbon, 'center');
+    txt(D.CLEAR.stairs[0][0], W / 2, 262, 20, A.PAL.white, 'center', 500);
+    D.CLEAR.menu.forEach(function (label, i) {
+      var sel = clearUi.cursor === i;
+      txt((sel ? '▶ ' : '   ') + label, W / 2, 330 + i * 42, 23, sel ? A.PAL.ribbon : A.PAL.white, 'center');
+    });
+    txt(D.CLEAR.keepNote, W / 2, 452, 16, A.PAL.blue, 'center', 500);
   }
 
   function drawLoading() {
@@ -849,7 +871,7 @@
     if (S.toast) { S.toast.t -= dt; if (S.toast.t <= 0) S.toast = null; }
     // 슬롯 UI는 P3. 단일 슬롯이되, 공유 태블릿을 위해 이어하기/처음부터를 고른다.
     if (S.mode === 'title') { updateTitle(); return; }
-    if (S.mode === 'clear') { if (tapped('ok')) { clearSave(); S = blankState(); } return; }
+    if (S.mode === 'clear') { updateClear(); return; }
     if (S.dialog) {
       if (tapped('ok')) {
         S.dialog.i++;

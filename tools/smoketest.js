@@ -254,8 +254,15 @@ hold('ArrowRight', 40);
 check('계단 접촉 안내', !!S().dialog);
 advance();
 check('클리어 화면', S().mode === 'clear');
-tap('z');
-check('처음부터: 저장 삭제 후 타이틀', S().mode === 'title' && G.hasSave() === false);
+tap('z');                                   // 기본값: 계속 둘러보기
+check('클리어 후 Z 연타에도 저장 생존 + 월드 복귀', S().mode === 'world' && G.hasSave() === true);
+hold('ArrowRight', 30);                     // 계단 다시 → 클리어 화면 재진입
+advance();
+check('클리어 화면 재진입 가능', S().mode === 'clear');
+tap('ArrowDown'); tap('z');                 // 타이틀로
+check('타이틀로 가도 저장 유지', S().mode === 'title' && G.hasSave() === true);
+tap('z');                                   // 이어하기
+check('이어하기로 클리어 상태 복원', S().mode === 'world' && S().flags.done === true);
 
 // ── 11. 세이브 무결성 (손상·조작 방어) ──────────────────────────────────────
 console.log('[11] 세이브 무결성');
