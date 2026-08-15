@@ -270,6 +270,21 @@ check('범위 밖 값은 클램프해 살림', G.load() === true
 check('불리언 아닌 플래그는 무시', S().flags.cleared === false);
 check('유령 맵의 카드는 원위치 복구', S().cards.nameTag.map === 'classroom');
 
+// ── 12. 입력 — 한글 IME · e.code 매핑 ───────────────────────────────────────
+console.log('[12] 한글 IME 입력');
+// 한글 모드: e.key='Process', e.code='KeyZ' — code 로 눌려야 한다.
+dispatch('keydown', { key: 'Process', code: 'KeyZ' });
+check('IME 상태에서 Z(code) 인식', G.keys.ok === true);
+dispatch('keyup', { key: 'Process', code: 'KeyZ' });
+check('IME 상태에서 keyup 해제', G.keys.ok === false);
+// code 미지원 구형: 한글 낱자 폴백
+dispatch('keydown', { key: 'ㅈ' });
+check('구형 폴백: ㅈ = 결정', G.keys.ok === true);
+dispatch('keyup', { key: 'ㅈ' });
+dispatch('keydown', { key: 'Process', code: 'ArrowLeft' });
+check('IME 상태에서 방향키 인식', G.keys.left === true);
+dispatch('keyup', { key: 'Process', code: 'ArrowLeft' });
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {

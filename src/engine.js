@@ -138,20 +138,32 @@
   }
 
   // ── 입력 ────────────────────────────────────────────────────────────────
+  // e.code(물리 키) 우선 — 한글 IME가 켜져 있으면 e.key 가 'Process'/'ㅈ' 로 와서
+  // Z·X가 죽는다. 교실 PC 기본값이 한글 모드라 code 매핑이 없으면 게임이 안 된다.
+  var CODEMAP = {
+    ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+    KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right',
+    KeyZ: 'ok', Enter: 'ok', NumpadEnter: 'ok', Space: 'ok',
+    KeyX: 'no', Escape: 'no', Backspace: 'no'
+  };
+  // e.code 미지원(아주 구형)일 때만 쓰는 보조 매핑
   var KEYMAP = {
     ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
     w: 'up', s: 'down', a: 'left', d: 'right',
     W: 'up', S: 'down', A: 'left', D: 'right',
-    z: 'ok', Z: 'ok', Enter: 'ok', ' ': 'ok', Spacebar: 'ok',
-    x: 'no', X: 'no', Escape: 'no', Backspace: 'no'
+    z: 'ok', Z: 'ok', 'ㅈ': 'ok', Enter: 'ok', ' ': 'ok', Spacebar: 'ok',
+    x: 'no', X: 'no', 'ㅌ': 'no', Escape: 'no', Backspace: 'no'
   };
+  function mapKey(e) {
+    return (e.code && CODEMAP[e.code]) || KEYMAP[e.key] || null;
+  }
   function onKeyDown(e) {
-    var k = KEYMAP[e.key]; if (!k) return;
+    var k = mapKey(e); if (!k) return;
     if (!keys[k]) edge[k] = true;
     keys[k] = true;
     if (e.preventDefault) e.preventDefault();
   }
-  function onKeyUp(e) { var k = KEYMAP[e.key]; if (k) keys[k] = false; }
+  function onKeyUp(e) { var k = mapKey(e); if (k) keys[k] = false; }
   function tapped(k) { return !!edge[k]; }
   function clearEdges() { edge = {}; }
   function axis() {
@@ -779,23 +791,45 @@
         id = null; touchVec.x = 0; touchVec.y = 0;
         if (knob) knob.style.transform = 'translate(0,0)';
       };
-      stick.addEventListener('pointerdown', start);
-      stick.addEventListener('pointermove', move);
-      stick.addEventListener('pointerup', end);
-      stick.addEventListener('pointercancel', end);
-      stick.addEventListener('pointerleave', end);
+      if (g.PointerEvent) {
+        stick.addEventListener('pointerdown', start);
+        stick.addEventListener('pointermove', move);
+        stick.addEventListener('pointerup', end);
+        stick.addEventListener('pointercancel', end);
+        stick.addEventListener('pointerleave', end);
+      } else {
+        // 구형 태블릿(iOS 12 등)엔 PointerEvent가 없다 — TouchEvent로 같은 동작.
+        var wrapTouch = function (fn) {
+          return function (e) {
+            var t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+            if (t) fn({ pointerId: 1, clientX: t.clientX, clientY: t.clientY, preventDefault: function () { e.preventDefault(); } });
+            else fn({ pointerId: 1, clientX: cx, clientY: cy, preventDefault: function () { e.preventDefault(); } });
+          };
+        };
+        stick.addEventListener('touchstart', wrapTouch(start), { passive: false });
+        stick.addEventListener('touchmove', wrapTouch(move), { passive: false });
+        stick.addEventListener('touchend', end);
+        stick.addEventListener('touchcancel', end);
+      }
     }
     var hook = function (el, key) {
       if (!el || !el.addEventListener) return;
-      el.addEventListener('pointerdown', function (e) {
+      var on = function (e) {
         if (!keys[key]) edge[key] = true;
         keys[key] = true;
         if (e.preventDefault) e.preventDefault();
-      });
+      };
       var off = function () { keys[key] = false; };
-      el.addEventListener('pointerup', off);
-      el.addEventListener('pointercancel', off);
-      el.addEventListener('pointerleave', off);
+      if (g.PointerEvent) {
+        el.addEventListener('pointerdown', on);
+        el.addEventListener('pointerup', off);
+        el.addEventListener('pointercancel', off);
+        el.addEventListener('pointerleave', off);
+      } else {
+        el.addEventListener('touchstart', on, { passive: false });
+        el.addEventListener('touchend', off);
+        el.addEventListener('touchcancel', off);
+      }
     };
     hook(btnA, 'ok'); hook(btnB, 'no');
   }
