@@ -101,6 +101,17 @@ const SHOTS = path.join(ROOT, 'shots');
     await page.waitForTimeout(80);
     check('확인으로 재개', await page.evaluate(() => window.GAME.state().paused === false));
 
+    // R2 신규 기능 — X 수동 일시정지, 버전 노출, 계측
+    await page.keyboard.press('x');
+    await page.waitForTimeout(80);
+    check('X키 수동 일시정지', await page.evaluate(() => window.GAME.state().paused === true));
+    await page.keyboard.press('z');
+    check('버전 상수 노출', await page.evaluate(() => /^\d+\.\d+\.\d+$/.test(window.GAME.VERSION)));
+    check('플레이 계측 동작', await page.evaluate(() => window.GAME.state().stats.sec > 0));
+    check('manifest 링크', !!(await page.$('link[rel="manifest"]')));
+    const swRes = await page.evaluate(() => fetch('sw.js').then((r) => r.status).catch(() => 0));
+    check('sw.js 서빙 가능', swRes === 200);
+
     check('콘솔·페이지 에러 0', errors.length === 0);
     errors.slice(0, 5).forEach((e) => console.log('     · ' + e));
     await ctx.close();

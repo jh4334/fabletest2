@@ -175,6 +175,33 @@ for (const f of ['src/engine.js', 'src/art.js', 'src/sound.js']) {
   if (perFile[f]) err(`${f}에 한글 문자열 ${perFile[f]}자 — data.js로 옮길 것 (스펙 §7)`);
 }
 
+// 버전 삼중 대조 — 타이틀 표기(engine VERSION)와 package.json이 어긋나면
+// 배포 캐시 문의를 판별할 수 없게 된다.
+{
+  const pkg = JSON.parse(read('package.json'));
+  const m = read('src/engine.js').match(/var VERSION = '([^']+)'/);
+  if (!m) err('engine.js에 VERSION 상수가 없음');
+  else if (m[1] !== pkg.version) err(`버전 불일치: engine ${m[1]} != package.json ${pkg.version}`);
+  if (!read('index.html').includes('shadow-school-errlog')) err('index.html 오류 링버퍼 누락');
+}
+
+// 오프라인 캐시 정합 — sw.js의 ASSETS가 전부 실재하고, CACHE 해시가 자산과 일치해야 한다.
+if (has('sw.js')) {
+  const crypto = require('crypto');
+  const sw = read('sw.js');
+  const assets = [...sw.matchAll(/'\.\/([^']+)'/g)].map((m) => m[1]).filter((x) => x);
+  for (const a of assets) if (a !== '/' && !has(a)) err(`sw.js ASSETS에 없는 파일: ${a}`);
+  for (const f of ['src/art.js', 'src/sound.js', 'src/data.js', 'src/engine.js']) {
+    if (!assets.includes(f)) err(`sw.js ASSETS에 런타임 파일 누락: ${f}`);
+  }
+  const h = crypto.createHash('sha1');
+  h.update(read('index.html'));
+  for (const a of assets.filter((x) => has(x)).sort()) h.update(fs.readFileSync(path.join(ROOT, a)));
+  const tag = 'shadow-school-' + h.digest('hex').slice(0, 8);
+  const cur = (sw.match(/shadow-school-[0-9a-f]+/) || [''])[0];
+  if (cur !== tag) err(`sw 캐시 해시 불일치(${cur} != ${tag}) — npm run bump 실행`);
+} else err('sw.js 없음 (오프라인 캐시)');
+
 const SLICE_BUDGET = 1800;   // 스펙 §4 (기준서 총예산 15,000자 중 슬라이스 몫)
 console.log(`텍스트 예산: ${totalKo}/${SLICE_BUDGET}자  ` +
   Object.keys(perFile).map((f) => `${f.replace('src/', '')}=${perFile[f]}`).join(' '));

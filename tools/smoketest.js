@@ -185,6 +185,16 @@ tap('ArrowRight');
 check('그리드 내비: → = 옆 칸', S().battle.cursor === 3);
 tap('ArrowUp'); tap('ArrowLeft');         // 3 → 1 → 0
 check('그리드 내비: ↑← 복귀', S().battle.cursor === 0);
+// 말 걸기 3단 반응 — 반복할수록 대사가 변한다
+tap('z');                                 // 말 걸기 1회
+check('말 걸기 1: 가로챔', S().dialog && S().dialog.seq === D.BATTLE.talk);
+advance(); S().battle.timer = 999; frame(1);
+tap('z');
+check('말 걸기 2: 반응이 달라짐', S().dialog && S().dialog.seq === D.BATTLE.talk2);
+advance(); S().battle.timer = 999; frame(1);
+tap('z');
+check('말 걸기 3+: 듣기 유도 힌트', S().dialog && S().dialog.seq === D.BATTLE.talk3);
+advance(); S().battle.timer = 999; frame(1);
 tap('ArrowRight');                        // 말 걸기 → 보여주기
 check('메뉴 커서 이동', S().battle.cursor === 1);
 tap('z');
@@ -217,8 +227,21 @@ S().battle.cursor = 2;                    // 가만히 듣기
 tap('z');
 advance();
 check('듣기로 그림자가 얇아짐', S().battle.heard === true && S().battle.shadow === D.BATTLE.shadow - 1);
+check('들은 사실이 세이브 플래그로 승격', S().flags.mateHeard === true);
 S().battle.timer = 999; frame(1);
 check('상대 턴 종료 후 내 턴', S().battle.phase === 'menu');
+
+// 절반 기억: 물러났다 재진입해도 들은 이야기가 유지된다
+S().battle.cursor = 3; tap('z');          // 물러나기
+advance();
+check('물러나기로 월드 복귀', S().mode === 'world');
+place('hallway', 15, 5); frame(2);
+check('재조우는 축약 대사', S().dialog && S().dialog.seq === D.NPC.reApproach);
+advance();
+check('재도전: 그림자 1칸 깎인 채 + 들은 상태 유지',
+  S().mode === 'battle' && S().battle.heard === true
+  && S().battle.shadow === D.BATTLE.shadow - 1);
+advance();
 
 S().battle.cursor = 1; tap('z');          // 보여주기
 tap('ArrowDown'); tap('z');               // 비밀번호 쪽지
@@ -254,8 +277,15 @@ hold('ArrowRight', 40);
 check('계단 접촉 안내', !!S().dialog);
 advance();
 check('클리어 화면', S().mode === 'clear');
-tap('z');
-check('처음부터: 저장 삭제 후 타이틀', S().mode === 'title' && G.hasSave() === false);
+tap('z');                                   // 기본값: 계속 둘러보기
+check('클리어 후 Z 연타에도 저장 생존 + 월드 복귀', S().mode === 'world' && G.hasSave() === true);
+hold('ArrowRight', 30);                     // 계단 다시 → 클리어 화면 재진입
+advance();
+check('클리어 화면 재진입 가능', S().mode === 'clear');
+tap('ArrowDown'); tap('z');                 // 타이틀로
+check('타이틀로 가도 저장 유지', S().mode === 'title' && G.hasSave() === true);
+tap('z');                                   // 이어하기
+check('이어하기로 클리어 상태 복원', S().mode === 'world' && S().flags.done === true);
 
 // ── 11. 세이브 무결성 (손상·조작 방어) ──────────────────────────────────────
 console.log('[11] 세이브 무결성');
@@ -345,11 +375,44 @@ frame(1); S().toast = null;
 console.log('[16] 자리 비움 일시정지');
 G.pause();
 check('월드에서 일시정지 진입', S().paused === true);
+tap('z');                                   // 일단 해제
+tap('x');                                   // 수동: X키로도 멈춘다
+check('X키 수동 일시정지', S().paused === true);
+check('일시정지 안내 기기별 문구 존재', typeof D.T.pausedHelpTouch === 'string' && D.T.pausedHelpTouch.length > 0);
 const pausedX = S().px;
 hold('ArrowLeft', 5);
 check('일시정지 중엔 움직이지 않음', S().px === pausedX && S().paused === true);
 tap('z');
 check('확인으로 재개', S().paused === false);
+
+// ── 17. 플레이 계측 ─────────────────────────────────────────────────────────
+console.log('[17] 플레이 계측');
+tap('z');                                   // 일시정지 해제([16] 잔여)
+check('플레이 시간이 누적됨', S().stats.sec > 0);
+check('새 게임이 계측을 초기화([13] 처음부터 이후)', S().stats.retreats === 0);
+check('뺏김이 계측됨([14]의 1회)', S().stats.stolen === 1);
+G.save();
+const st = JSON.stringify(S().stats);
+S().stats.stolen = 999;
+check('로드가 계측을 복원', G.load() === true
+  && S().stats.stolen === JSON.parse(st).stolen
+  && Math.abs(S().stats.sec - JSON.parse(st).sec) <= 1);
+
+// ── 18. 버전 ────────────────────────────────────────────────────────────────
+console.log('[18] 버전');
+const pkgVer = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+check('GAME.VERSION == package.json', G.VERSION === pkgVer);
+
+// ── 19. 조사 2단 대사 ───────────────────────────────────────────────────────
+console.log('[19] 조사 재방문 대사');
+place('classroom', 6, 1);
+tap('ArrowUp');                             // 칠판을 바라본다
+tap('z');
+check('첫 조사: 기본 대사', S().dialog && S().dialog.seq[0] === D.LOOK.board);
+advance();
+tap('z');
+check('재조사: 다른 대사', S().dialog && S().dialog.seq[0] === D.LOOK2.board);
+advance();
 
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');

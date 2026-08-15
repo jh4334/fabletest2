@@ -3,6 +3,7 @@
 (function (g) {
   'use strict';
 
+  var VERSION = '0.2.0';   // package.json 과 validate 가 대조한다 — 배포 캐시 문의 판별용
   var A = g.ART, D = g.DATA;
   var W = 720, H = 528, T = 48;
   var FACE = '"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR","Nanum Gothic",sans-serif';
@@ -27,8 +28,10 @@
       px: m.spawn.x * T + T / 2, py: m.spawn.y * T + T - 6,
       dir: A.DIR[m.spawn.dir] || 0, frame: 0, walkT: 0, moving: false,
       cam: { x: 0, y: 0 }, exposure: 0, cards: cards,
-      flags: { intro: false, firstCard: false, firstTake: false, termWarn: false, cleared: false, stairsOpen: false, done: false },
-      dialog: null, battle: null, toast: null, cool: {}, time: 0, flash: 0, paused: false
+      flags: { intro: false, firstCard: false, firstTake: false, termWarn: false, mateHeard: false, cleared: false, stairsOpen: false, done: false },
+      dialog: null, battle: null, toast: null, cool: {}, time: 0, flash: 0, paused: false,
+      stats: { sec: 0, stolen: 0, retreats: 0 },  // 교사 관찰·아이 성취감용 계측
+      looked: {}                                   // 재조사 대사 분기(세션 한정, 저장 안 함)
     };
   }
 
@@ -132,6 +135,7 @@
     var id = held[held.length - 1], st = S.cards[id];
     st.held = false; st.map = S.map; st.x = term.drop.x; st.y = term.drop.y;
     setExposure(S.exposure + 1);
+    S.stats.stolen++;
     S.flash = 0.7;                 // 뺏김을 몸으로 느끼는 붉은 펄스
     sfx('steal');
     S.cool[key] = TERM_COOL;
@@ -255,12 +259,14 @@
     if (m.npc && !S.flags.cleared) {
       var np = tileCenter(m.npc.x, m.npc.y);
       if (Math.abs(np.x - S.px) < NPC_R && Math.abs(np.y - (S.py - 12)) < NPC_R) {
-        say(D.NPC.approach, battleBegin);
+        // 재도전은 짧게 — 이미 나눈 이야기를 처음부터 반복시키지 않는다.
+        say(S.flags.mateHeard ? D.NPC.reApproach : D.NPC.approach, battleBegin);
         return;
       }
     }
-    // 조사
+    // 조사 / 일시정지 — X는 월드에서 빈 입력이라 멈춤에 배정(교실 지도 상황 대응)
     if (tapped('ok')) look(m);
+    else if (tapped('no')) { pause(); sfx('cancel'); }
   }
 
   function bump(m, tile) {
@@ -279,7 +285,12 @@
     if (m.npc && m.npc.x === f.x && m.npc.y === f.y && S.flags.cleared) { say(D.CLEAR.hint); return; }
     var ch = chAt(m, f.x, f.y), L = legend(ch);
     if (ch === 'S') { stairsBump(); return; }
-    if (L && L.look) { say([D.LOOK[L.look]]); return; }
+    if (L && L.look) {
+      var k = L.look;
+      var seq = (S.looked[k] && D.LOOK2[k]) ? [D.LOOK2[k]] : [D.LOOK[k]];
+      S.looked[k] = true;
+      say(seq); return;
+    }
     say([D.LOOK.nothing]);
   }
 
@@ -292,12 +303,15 @@
     S.battle = {
       // 배틀이 시작된 곳을 기억한다 — 복귀 좌표를 맵 이름 하드코딩 없이 계산(2층+ 대비)
       from: S.map, npcX: m.npc.x, npcY: m.npc.y,
-      phase: 'text', shadow: D.BATTLE.shadow, hearts: D.BATTLE.hearts,
-      cursor: 0, sub: 0, heard: false, turn: 0, spare: false,
+      phase: 'text',
+      // 절반 기억: 물러났다 와도 들은 이야기는 유지된다 (재도전 존중)
+      shadow: D.BATTLE.shadow - (S.flags.mateHeard ? 1 : 0),
+      hearts: D.BATTLE.hearts,
+      cursor: 0, sub: 0, heard: !!S.flags.mateHeard, turn: 0, talks: 0, spare: false,
       hx: BOX.x + BOX.w / 2, hy: BOX.y + BOX.h / 2,
       bullets: [], timer: 0, spawnAcc: 0, atk: 0, inv: 0, tell: 0
     };
-    say(D.BATTLE.intro, function () { S.battle.phase = 'menu'; });
+    say(S.flags.mateHeard ? D.BATTLE.reIntro : D.BATTLE.intro, function () { S.battle.phase = 'menu'; });
   }
 
   function battleSay(seq, then) {
@@ -324,7 +338,12 @@
   function battleMenuPick() {
     var b = S.battle;
     if (b.spare) { doSpare(); return; }
-    if (b.cursor === 0) { battleSay(D.BATTLE.talk, enemyTurn); return; }
+    if (b.cursor === 0) {
+      b.talks++;
+      var seq = b.talks === 1 ? D.BATTLE.talk : (b.talks === 2 ? D.BATTLE.talk2 : D.BATTLE.talk3);
+      battleSay(seq, enemyTurn);
+      return;
+    }
     if (b.cursor === 1) {
       if (!heldIds().length) { battleSay(D.BATTLE.showNone, function () { b.phase = 'menu'; }); return; }
       b.phase = 'sub'; b.sub = 0; return;
@@ -332,6 +351,7 @@
     if (b.cursor === 2) {
       if (!b.heard) {
         b.heard = true; b.shadow = Math.max(0, b.shadow - 1);
+        S.flags.mateHeard = true; save();
         sfx('listen');
         battleSay(D.BATTLE.listen.concat(D.BATTLE.listenHint), enemyTurn);
       } else battleSay(D.BATTLE.listenAgain, enemyTurn);
@@ -363,6 +383,7 @@
 
   function leaveBattle(msg) {
     var b = S.battle;
+    S.stats.retreats++;
     S.battle = null; S.mode = 'world'; S.map = b.from;
     S.px = (b.npcX - 3) * T + T / 2; S.py = b.npcY * T + T - 6;
     S.dir = A.DIR.left; updateCam(); save();
@@ -394,6 +415,7 @@
         if (tapped('up') || tapped('down')) { b.cursor ^= 2; sfx('cursor'); }
       }
       if (tapped('ok')) { sfx('ok'); battleMenuPick(); }
+      else if (tapped('no')) { pause(); sfx('cancel'); }
       return;
     }
     if (b.phase === 'sub') {
@@ -405,6 +427,7 @@
       return;
     }
     if (b.phase !== 'enemy') return;
+    if (tapped('no')) { pause(); return; }   // 탄막 중에도 멈출 수 있다(숨 고르기 허용)
 
     var a = D.BATTLE.attacks[b.atk];
     b.timer += dt; b.tell = Math.max(0, b.tell - dt); b.inv = Math.max(0, b.inv - dt);
@@ -439,7 +462,8 @@
     try {
       var o = {
         v: 1, map: S.map, px: Math.round(S.px), py: Math.round(S.py), dir: S.dir,
-        exposure: S.exposure, flags: S.flags, cards: {}
+        exposure: S.exposure, flags: S.flags, cards: {},
+        stats: { sec: Math.round(S.stats.sec), stolen: S.stats.stolen, retreats: S.stats.retreats }
       };
       D.CARDS.forEach(function (c) {
         var st = S.cards[c.id];
@@ -478,6 +502,11 @@
           y: mm ? Math.max(0, Math.min(mm.h - 1, st.y | 0)) : c.at.y
         };
       });
+      if (o.stats) {
+        S.stats.sec = Math.max(0, +o.stats.sec || 0);
+        S.stats.stolen = Math.max(0, o.stats.stolen | 0);
+        S.stats.retreats = Math.max(0, o.stats.retreats | 0);
+      }
       // 들고 있지도, 바닥에도 없는 카드가 생기면(반쪽 저장) 원위치로 복구한다.
       D.CARDS.forEach(function (c) {
         var st = S.cards[c.id];
@@ -640,6 +669,8 @@
       ctx.strokeStyle = A.PAL.ink; ctx.lineWidth = 2;
       ctx.strokeRect(bx + i * 22, y + 2, 18, 16);
     }
+    // 색약 학생을 위한 이중 부호화 — 색과 함께 숫자로도 알려 준다
+    txt(S.exposure + '/' + D.MAX_EXPOSURE, bx + D.MAX_EXPOSURE * 22 + 6, y + 16, 15, A.PAL.cream, 'left', 500);
   }
 
   function drawHud() {
@@ -725,6 +756,7 @@
     ctx.fillStyle = 'rgba(120,110,130,0.5)'; ctx.fillRect(gx, 218, gw, 10);
     ctx.fillStyle = A.PAL.purpleLit;
     ctx.fillRect(gx, 218, gw * Math.max(0, b.shadow) / D.BATTLE.shadow, 10);
+    txt(Math.max(0, b.shadow) + '/' + D.BATTLE.shadow, gx + gw + 10, 227, 14, A.PAL.white, 'left', 500);
 
     panel(8, 8, 222, 30, 0.62); drawGauge(16, 12); drawHelp();
     drawHearts(b.hearts, W - 108, 10);
@@ -809,6 +841,7 @@
       txt((sel ? '▶ ' : '   ') + label, W / 2, 330 + i * 40, 24, sel ? A.PAL.ribbon : A.PAL.white, 'center');
     });
     txt(isTouch() ? D.T.keysTouch : D.T.keys, W / 2, 448, 17, A.PAL.blue, 'center', 500);
+    txt('v' + VERSION, 14, H - 12, 13, 'rgba(224,168,120,0.55)', 'left', 400);
     if (title.confirm) {
       panel(W / 2 - 220, 180, 440, 150, 0.95);
       txt(D.T.confirmWipe[0], W / 2, 222, 20, A.PAL.white, 'center');
@@ -829,11 +862,39 @@
     } catch (e) { return false; }
   }
 
+  var clearUi = { cursor: 0 };
+
+  // 클리어 화면에서 저장을 지우지 않는다 — 삭제는 타이틀의 확인 경로 하나로 일원화.
+  // (대화 넘기던 Z 연타 관성으로 기록이 증발하는 사고 방지)
+  function updateClear() {
+    if (tapped('up') || tapped('down')) { clearUi.cursor = 1 - clearUi.cursor; sfx('cursor'); }
+    if (!tapped('ok')) return;
+    sfx('ok');
+    if (clearUi.cursor === 0) {          // 계속 둘러보기 — 계단 앞으로 복귀
+      S.mode = 'world';
+      var m = mapOf(S.map);
+      if (m.stairs) { S.px = (m.stairs.x - 1) * T + T / 2; S.py = m.stairs.y * T + T - 6; }
+      S.dir = A.DIR.left; updateCam(); save();
+    } else {                             // 타이틀로 — 저장은 그대로 둔다
+      S = blankState(); title.cursor = 0;
+    }
+  }
+
   function drawClear() {
     ctx.fillStyle = '#14101c'; ctx.fillRect(0, 0, W, H);
-    txt(D.CLEAR.banner, W / 2, 230, 44, A.PAL.ribbon, 'center');
-    txt(D.CLEAR.stairs[0][0], W / 2, 286, 20, A.PAL.white, 'center', 500);
-    txt(D.CLEAR.again, W / 2, 380, 18, A.PAL.blue, 'center', 500);
+    txt(D.CLEAR.banner, W / 2, 210, 44, A.PAL.ribbon, 'center');
+    txt(D.CLEAR.stairs[0][0], W / 2, 262, 20, A.PAL.white, 'center', 500);
+    // 내 기록 — 아이에겐 성취, 교사에겐 관찰 데이터
+    var sec = Math.round(S.stats.sec), mm = Math.floor(sec / 60), ss = sec % 60;
+    var line = D.CLEAR.statTime + ' ' + (mm ? mm + D.CLEAR.unitMin + ' ' : '') + ss + D.CLEAR.unitSec
+      + ' · ' + D.CLEAR.statStolen + ' ' + S.stats.stolen + D.CLEAR.unitCnt
+      + ' · ' + D.CLEAR.statRetreat + ' ' + S.stats.retreats + D.CLEAR.unitCnt;
+    txt(line, W / 2, 300, 17, A.PAL.tan, 'center', 500);
+    D.CLEAR.menu.forEach(function (label, i) {
+      var sel = clearUi.cursor === i;
+      txt((sel ? '▶ ' : '   ') + label, W / 2, 342 + i * 42, 23, sel ? A.PAL.ribbon : A.PAL.white, 'center');
+    });
+    txt(D.CLEAR.keepNote, W / 2, 452, 16, A.PAL.blue, 'center', 500);
   }
 
   function drawLoading() {
@@ -844,12 +905,13 @@
   // ── 루프 ────────────────────────────────────────────────────────────────
   function update(dt) {
     S.time += dt;
+    if (S.mode !== 'title' && S.mode !== 'load' && !S.paused) S.stats.sec += dt;
     if (S.paused) { if (tapped('ok')) S.paused = false; return; }
     if (S.flash > 0) S.flash -= dt;
     if (S.toast) { S.toast.t -= dt; if (S.toast.t <= 0) S.toast = null; }
     // 슬롯 UI는 P3. 단일 슬롯이되, 공유 태블릿을 위해 이어하기/처음부터를 고른다.
     if (S.mode === 'title') { updateTitle(); return; }
-    if (S.mode === 'clear') { if (tapped('ok')) { clearSave(); S = blankState(); } return; }
+    if (S.mode === 'clear') { updateClear(); return; }
     if (S.dialog) {
       if (tapped('ok')) {
         S.dialog.i++;
@@ -877,7 +939,7 @@
     ctx.fillStyle = 'rgba(8,6,12,0.72)'; ctx.fillRect(0, 0, W, H);
     panel(W / 2 - 190, H / 2 - 62, 380, 116, 0.95);
     txt(D.T.paused, W / 2, H / 2 - 12, 26, A.PAL.cream, 'center');
-    txt(D.T.pausedHelp, W / 2, H / 2 + 26, 17, A.PAL.blue, 'center', 500);
+    txt(isTouch() ? D.T.pausedHelpTouch : D.T.pausedHelp, W / 2, H / 2 + 26, 17, A.PAL.blue, 'center', 500);
   }
 
   // 탄막 도중 자리를 비웠다 돌아오면 바로 맞지 않게 멈춰 준다.
@@ -990,6 +1052,7 @@
   }
 
   g.GAME = {
+    VERSION: VERSION,
     start: start, newGame: newGame, enterMap: enterMap,
     save: save, load: load, hasSave: hasSave, clearSave: clearSave,
     state: function () { return S; },
