@@ -1,4 +1,4 @@
-// 스모크 테스트 — 「방과 후: 그림자 학교」 P1 수직 슬라이스
+// 스모크 테스트 — 「방과 후: 그림자 학교」 1~3층
 // DOM/Canvas/Image/localStorage를 스텁으로 대체하고 vm 샌드박스에서 실제 플레이
 // 경로를 시뮬레이션한다. 스펙 §6: 이동·충돌 / 카드·노출도 / 배틀 완주 / 세이브.
 const fs = require('fs');
@@ -559,27 +559,25 @@ check('1층 진행은 건드리지 않음', S().stairsOpen.hallway === true && S
 place('roomB', 6, 3); frame(2);
 check('되돌린 뒤엔 다시 배틀하지 않음', S().mode === 'world');
 
-// ── 24. 2층 계단 → 클리어 화면 ──────────────────────────────────────────────
-console.log('[24] 2층 통과');
+// ── 24. 2층 계단 → 3층 진입 ────────────────────────────────────────────────
+// P3: 2층 계단은 더 이상 클리어 화면이 아니라 3층 복도로 이어진다(스펙 §1).
+// 클리어 화면 검사는 그대로 3층 계단(=오늘의 마지막 계단)으로 옮겨 [31]에서 돈다.
+console.log('[24] 2층 통과 → 3층');
 place('lab', 7, 1);
 hold('ArrowUp', 30);
 check('계단 접촉 안내', !!S().dialog);
+tap('z');                                   // 계단 대사를 넘기면 그 자리에서 3층으로
+check('3층으로 올라감', S().map === 'hall3' && S().floor === 3);
+check('3층 도착 안내 상자', S().dialog && S().dialog.seq === D.FLOOR3.enter);
 advance();
-check('클리어 화면', S().mode === 'clear');
-check('클리어 배너가 층 번호를 쓴다', S().floor === 2 && typeof D.CLEAR.bannerFloor === 'string');
-tap('z');                                   // 기본값: 계속 둘러보기
-check('클리어 후 Z 연타에도 저장 생존 + 월드 복귀', S().mode === 'world' && G.hasSave() === true);
-check('계단 앞으로 복귀', tile().x === 7 && tile().y === 1);
-hold('ArrowUp', 30);
+check('3층 복도 입구에 도착', tile().x === 1 && tile().y === 5);
+check('3층 가방은 비어 있음 (층별 카드 집계 분리)', G.heldIds().length === 0);
+check('오염은 0에서 시작', S().pollute === 0 && D.MAX_POLLUTE === 3);
+check('3층 계단은 아직 잠김', !S().stairsOpen.hall3);
+place('hall3', 18, 4); hold('ArrowRight', 30);
+check('잠긴 옥상 계단 안내', !!S().dialog && S().dialog.seq[0] === D.LOOK.stairs3);
 advance();
-check('클리어 화면 재진입 가능', S().mode === 'clear');
-tap('ArrowDown'); tap('z');                 // 타이틀로
-check('타이틀로 가도 저장 유지', S().mode === 'title' && G.hasSave() === true);
-tap('z');                                   // 이어하기
-check('이어하기로 클리어 상태 복원', S().mode === 'world' && S().flags.done === true);
-check('이어하기가 2층을 기억', S().floor === 2 && S().map === 'lab');
-check('이어하기가 버블·루프도 복원', S().bubble >= 0 && S().loopN >= 4);
-check('이어하기가 인물 진행을 복원', S().clearedOf.bro === true && S().heardOf.bro === true);
+check('잠긴 계단은 클리어 화면으로 가지 않음', S().mode === 'world');
 
 // ── 25. 2층 조사 대사 ───────────────────────────────────────────────────────
 console.log('[25] 2층 조사');
@@ -595,6 +593,255 @@ tap('ArrowRight'); tap('z');
 check('추천 문 조사 대사', S().dialog && S().dialog.seq[0] === D.LOOK.doorReco);
 advance();
 
+// ══ 3층: 방송실 · 가짜뉴스 (스펙 P3 §6) ═════════════════════════════════════
+// ── 26. 소문 쪽지 읽기 · 콘솔 열기 ──────────────────────────────────────────
+console.log('[26] 소문 쪽지 → 방송 콘솔');
+const R = D.RUMORS;
+// 쪽지 앞에 서서 위를 보고 조사한다 (쪽지 타일은 막힌 칸)
+function readNote(i) {
+  const n = D.MAPS.studio.notes[i];
+  place('studio', n.x, n.y + 1);
+  tap('ArrowUp'); tap('z');
+}
+// 콘솔은 처리할 소문이 남아 있으면 열린 채로 있다 — 월드에서 X는 일시정지라 섞지 않는다.
+function closeCon() { for (let i = 0; i < 4 && S().mode === 'console'; i++) tap('x'); }
+place('studio', 6, 2);
+tap('ArrowUp'); tap('z');
+check('읽은 쪽지가 없으면 콘솔이 안내만 함',
+  S().mode === 'world' && S().dialog && S().dialog.seq === D.CONSOLE.none);
+advance();
+check('소문 3개는 모두 안 읽은 상태', R.every((r) => S().rumors[r.id] === 'unread'));
+readNote(0);
+check('쪽지를 읽으면 소문 내용이 뜬다', S().dialog && S().dialog.seq === R[0].note);
+advance();
+check('소문 상태: unread → read', S().rumors[R[0].id] === 'read');
+readNote(0);
+check('이미 읽은 쪽지는 다른 한 줄', S().dialog && S().dialog.seq[0] === D.LOOK.noteRead);
+advance();
+place('studio', 6, 2);
+tap('ArrowUp'); tap('z');
+check('읽은 쪽지가 있으면 콘솔이 열린다', S().mode === 'console' && S().con.level === 0);
+check('콘솔 목록에 읽은 소문 + 닫기', S().con.cursor === 0);
+tap('x');
+check('취소로 콘솔을 닫는다', S().mode === 'world' && S().con === null);
+
+// ── 27. 바로 방송 → 경고 1회 → 오염·안개 ───────────────────────────────────
+console.log('[27] 바로 방송 — 경고와 오염');
+place('studio', 6, 2);
+tap('ArrowUp'); tap('z');                   // 콘솔
+tap('z');                                   // 첫 소문 선택
+check('소문을 고르면 처리 방법이 뜬다', S().con.level === 1 && S().mode === 'console');
+tap('z');                                   // 바로 방송 (첫 시도)
+check('첫 바로 방송 전에 1회 경고', !!S().dialog && S().dialog.seq === D.CONSOLE.warn);
+check('경고는 플래그로 1회만', S().flags.airWarn === true);
+advance();
+check('경고 단계에서는 아직 방송하지 않음', S().rumors[R[0].id] === 'read' && S().pollute === 0);
+tap('z');                                   // 다시 바로 방송
+check('소문 상태: read → aired', S().rumors[R[0].id] === 'aired');
+check('방송 순간 붉은 펄스', S().flash > 0);
+advance();
+check('소문 상태: aired → polluted', S().rumors[R[0].id] === 'polluted');
+check('오염 게이지 +1', S().pollute === 1);
+closeCon();
+check('복도에 안개 칸이 생김', G.fogCells('hall3').length === R[0].fog.length);
+check('안개 칸이 막힌 칸이 됨', G.solidAt(D.MAPS.hall3, R[0].fog[0].x, R[0].fog[0].y) === true);
+check('안개는 맵 grid를 바꾸지 않음',
+  D.MAPS.hall3.grid[R[0].fog[0].y].charAt(R[0].fog[0].x) === '.');
+const f0 = R[0].fog[0];
+place('hall3', f0.x - 1, f0.y);
+hold('ArrowRight', 60);
+check('안개가 지름길을 실제로 막는다', tile().x === f0.x - 1);
+tap('ArrowRight'); tap('z');
+check('안개를 조사하면 걷는 법을 알려 준다', S().dialog && S().dialog.seq[0] === D.LOOK.fog);
+advance();
+check('막혀도 돌아가는 길은 열려 있다 (위쪽 통로)',
+  !G.solidAt(D.MAPS.hall3, 1, 4) && !G.solidAt(D.MAPS.hall3, f0.x, 1));
+
+// ── 28. 확인 후 방송 — 오염 없음 ────────────────────────────────────────────
+console.log('[28] 확인 후 방송');
+readNote(1);
+advance();
+check('둘째 소문도 읽음', S().rumors[R[1].id] === 'read');
+place('studio', 6, 2);
+tap('ArrowUp'); tap('z');                   // 콘솔
+tap('ArrowDown'); tap('z');                 // 둘째 소문
+tap('ArrowDown'); tap('z');                 // 확인 후 방송
+check('사실 카드가 없으면 확인 방송이 막힌다',
+  !!S().dialog && S().dialog.seq === D.CONSOLE.needCard && S().rumors[R[1].id] === 'read');
+advance();
+check('콘솔은 열린 채로 남는다', S().mode === 'console');
+closeCon();
+place('archive', D.MAPS.archive.signs[1].x, D.MAPS.archive.signs[1].y + 1);
+tap('ArrowUp'); tap('z');
+check('표지를 조사하면 어느 소문의 자료인지 알려 준다', S().dialog && S().dialog.seq === R[1].sign);
+advance();
+const cardOf = (id) => D.CARDS.find((c) => c.id === id);
+place('archive', cardOf(R[1].card).at.x, cardOf(R[1].card).at.y);
+frame(2);
+check('표지 옆에서 사실 카드 획득', G.heldIds().indexOf(R[1].card) >= 0);
+check('3층 카드는 오염 게이지를 건드리지 않음', S().pollute === 1);
+check('사실 카드 안내 토스트', !!S().toast && S().toast.text === D.T.gotCard3);
+place('studio', 6, 2);
+tap('ArrowUp'); tap('z');
+tap('ArrowDown'); tap('z');                 // 둘째 소문
+tap('ArrowDown'); tap('z');                 // 확인 후 방송
+check('확인 후 방송은 오염 없이 처리', S().dialog && S().dialog.seq === D.CONSOLE.verified);
+advance();
+check('소문 상태: read → verified', S().rumors[R[1].id] === 'verified');
+check('확인하고 내보내면 안개가 안 생김', S().pollute === 1 && G.fogCells('hall3').length === 2);
+closeCon();
+
+// ── 29. 정정 방송 — 두 배 힘든 회복 ─────────────────────────────────────────
+console.log('[29] 정정 방송');
+place('studio', 6, 2);
+tap('ArrowUp'); tap('z');
+tap('z');                                   // 오염된 첫 소문
+check('오염된 소문은 정정만 고를 수 있다', S().con.level === 1);
+tap('z');                                   // 정정 방송 (카드 없이)
+check('사실 카드 없이는 정정도 안 된다',
+  !!S().dialog && S().dialog.seq === D.CONSOLE.needCard && S().rumors[R[0].id] === 'polluted');
+advance(); closeCon();
+place('archive', cardOf(R[0].card).at.x, cardOf(R[0].card).at.y);
+frame(2);
+check('정정용 사실 카드 획득 (같은 수고 한 번 더)', G.heldIds().indexOf(R[0].card) >= 0);
+place('studio', 6, 2);
+tap('ArrowUp'); tap('z');
+tap('z'); tap('z');                         // 첫 소문 → 정정 방송
+check('정정 방송 안내', S().dialog && S().dialog.seq === D.CONSOLE.fixed);
+advance();
+check('소문 상태: polluted → fixed', S().rumors[R[0].id] === 'fixed');
+check('오염 게이지 -1', S().pollute === 0);
+check('안개가 걷힘', G.fogCells('hall3').length === 0);
+place('hall3', R[0].fog[0].x - 1, R[0].fog[0].y);
+check('걷힌 통로로 다시 지나간다',
+  walkUntil('ArrowRight', () => tile().x > R[0].fog[R[0].fog.length - 1].x));
+
+// ── 30. 소문 3개 처리 → 선배 등장 ───────────────────────────────────────────
+console.log('[30] 선배 등장');
+place('studio', 11, 5); frame(2);
+check('처리 전에는 선배가 없다', S().mode === 'world' && !G.rumorsDone());
+readNote(2);
+advance();
+place('archive', cardOf(R[2].card).at.x, cardOf(R[2].card).at.y);
+frame(2);
+check('당사자 메모 획득', G.heldIds().indexOf('ownWords') >= 0);
+place('studio', 6, 2);
+tap('ArrowUp'); tap('z');
+tap('z');                                   // 남은 소문 하나뿐
+tap('ArrowDown'); tap('z');                 // 확인 후 방송
+check('소문 3개 모두 처리', G.rumorsDone() === true);
+tap('z');                                   // 방송 안내를 넘기면 바로 이어진다
+check('처리 완료 안내 상자', !!S().dialog && S().dialog.seq === D.CONSOLE.done);
+advance();
+check('콘솔이 닫힘', S().mode === 'world' && S().con === null);
+
+// ── 31. 선배 배틀 ───────────────────────────────────────────────────────────
+console.log('[31] 선배 배틀');
+place('studio', 11, 5); frame(2);
+check('선배 조우 대화', !!S().dialog && S().dialog.seq === D.BATTLES.senior.approach);
+advance();
+check('선배 배틀 진입', S().mode === 'battle' && S().battle.id === 'senior');
+advance();
+check('선배 프로필로 배틀이 구성됨', S().battle.phase === 'menu'
+  && S().battle.shadow === D.BATTLES.senior.shadow && S().battle.hearts === D.BATTLES.senior.hearts);
+S().battle.cursor = 1; tap('z');
+S().battle.sub = G.heldIds().indexOf(R[1].card); tap('z');
+advance();
+check('듣기 전 증거는 통하지 않음(선배)', S().battle.shadow === D.BATTLES.senior.shadow);
+{
+  // burst 탄막: 예고 뒤 한 지점에서 방사형으로 터진다
+  const b = S().battle;
+  b.atk = D.BATTLES.senior.attacks.findIndex((a) => a.kind === 'burst');
+  b.timer = 0; b.tell = 0; b.inv = 9; b.bullets = []; b.spawnAcc = 0;
+  frame(120);
+  const bs = S().battle.bullets;
+  check('burst가 여러 발을 한꺼번에 뿌린다', bs.length >= 6);
+  check('burst 조각이 사방으로 흩어진다',
+    bs.some((p) => p.vy < 0) && bs.some((p) => p.vy > 0));
+  S().battle.bullets = []; S().battle.timer = 999; frame(1);
+}
+check('상대 턴 종료 후 내 턴(선배)', S().battle.phase === 'menu');
+S().battle.cursor = 2; tap('z'); advance();
+check('듣기로 그림자가 얇아짐(선배)',
+  S().battle.heard === true && S().battle.shadow === D.BATTLES.senior.shadow - 1);
+S().battle.timer = 999; frame(1);
+S().battle.cursor = 3; tap('z'); advance();
+check('물러나기로 월드 복귀(선배)', S().mode === 'world' && S().map === 'studio');
+place('studio', 11, 5); frame(2);
+check('재조우는 축약 대사(선배)', S().dialog && S().dialog.seq === D.BATTLES.senior.reApproach);
+advance();
+check('재도전: 그림자 1칸 깎인 채 재개(선배)', S().battle.shadow === D.BATTLES.senior.shadow - 1);
+advance();
+S().battle.cursor = 1; tap('z');
+S().battle.sub = G.heldIds().indexOf('ownWords'); tap('z');
+advance();
+check('증거 제시로 그림자 0(선배)', S().battle.shadow === 0);
+check('손 내밀기 준비(선배)', S().battle.spare === true);
+tap('z'); advance();
+check('선배를 되돌림', S().clearedOf.senior === true);
+check('3층 계단 개방', S().stairsOpen.hall3 === true);
+check('1~2층 진행은 건드리지 않음',
+  S().stairsOpen.hallway === true && S().stairsOpen.lab === true && S().clearedOf.bro === true);
+place('studio', 11, 5); frame(2);
+check('되돌린 뒤엔 다시 배틀하지 않음(선배)', S().mode === 'world');
+tap('ArrowRight'); tap('z');
+check('되돌린 선배가 한 줄 힌트를 준다', S().dialog && S().dialog.seq === D.BATTLES.senior.hint);
+advance();
+place('studio', 6, 2);
+tap('ArrowUp'); tap('z');
+check('다 처리한 뒤의 콘솔은 다른 안내',
+  S().mode === 'world' && S().dialog && S().dialog.seq === D.CONSOLE.clear);
+advance();
+
+// ── 32. 3층 통과 → 클리어 화면 ─────────────────────────────────────────────
+// [24]에서 옮겨온 클리어 화면 검사 — 오늘의 마지막 계단이 3층으로 바뀌었을 뿐,
+// 검사 이름과 뜻은 그대로 둔다(옥상은 공사 중).
+console.log('[32] 3층 통과');
+place('hall3', 18, 4);
+hold('ArrowRight', 30);
+check('계단 접촉 안내(3층)', !!S().dialog);
+advance();
+check('클리어 화면', S().mode === 'clear');
+check('클리어 배너가 층 번호를 쓴다', S().floor === 3 && typeof D.CLEAR.bannerFloor === 'string');
+tap('z');                                   // 기본값: 계속 둘러보기
+check('클리어 후 Z 연타에도 저장 생존 + 월드 복귀', S().mode === 'world' && G.hasSave() === true);
+check('계단 앞으로 복귀', tile().x === 18 && tile().y === 4);
+hold('ArrowRight', 30);
+advance();
+check('클리어 화면 재진입 가능', S().mode === 'clear');
+tap('ArrowDown'); tap('z');                 // 타이틀로
+check('타이틀로 가도 저장 유지', S().mode === 'title' && G.hasSave() === true);
+tap('z');                                   // 이어하기
+check('이어하기로 클리어 상태 복원', S().mode === 'world' && S().flags.done === true);
+check('이어하기가 3층을 기억', S().floor === 3 && S().map === 'hall3');
+check('이어하기가 버블·루프도 복원', S().bubble >= 0 && S().loopN >= 4);
+check('이어하기가 인물 진행을 복원', S().clearedOf.bro === true && S().heardOf.bro === true);
+check('이어하기가 소문 처리도 복원',
+  S().rumors[R[0].id] === 'fixed' && S().rumors[R[1].id] === 'verified');
+
+// ── 33. 3층 세이브 방어 ─────────────────────────────────────────────────────
+console.log('[33] 3층 세이브 방어');
+windowObj.localStorage.setItem(D.SAVE_KEY, JSON.stringify({
+  v: 1, map: 'hall3', px: 100, py: 260, dir: 3,
+  pollute: 99, rumors: { r1: 'aired', r2: '이상한값', ghost: 'polluted' },
+  fog: { hall3: [{ x: 0, y: 0 }], nowhere: [{ x: 1, y: 1 }] },
+}));
+check('손상된 3층 저장도 로드는 된다', G.load() === true);
+check('중간 상태(aired)는 오염으로 확정', S().rumors.r1 === 'polluted');
+check('모르는 상태값은 처음으로 되돌림', S().rumors.r2 === 'unread');
+check('모르는 소문 키는 버림', S().rumors.ghost === undefined);
+check('오염 게이지는 소문 수에서 다시 계산', S().pollute === 1);
+check('안개는 저장 좌표가 아니라 소문에서 다시 만든다',
+  G.fogCells('nowhere').length === 0
+  && JSON.stringify(G.fogCells('hall3')) === JSON.stringify(R[0].fog));
+// 최악(3건 모두 오염)에서도 배틀 지점·계단으로 가는 길은 살아 있다 (헌법 §3-3)
+S().rumors[R[1].id] = 'polluted'; S().rumors[R[2].id] = 'polluted';
+G.save(); G.load();
+check('오염 최악이어도 게이지는 최대에서 멈춤', S().pollute === D.MAX_POLLUTE);
+check('오염 최악에도 방송실 문·계단 앞은 열려 있다',
+  !G.solidAt(D.MAPS.hall3, 18, 5) && !G.solidAt(D.MAPS.hall3, 18, 4));
+check('오염 최악에도 회복 경로 문구가 있다', typeof D.T.polHelp === 'string' && D.T.polHelp.length > 0);
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {
@@ -602,6 +849,6 @@ if (fails.length) {
   fails.forEach((f) => console.error('   - ' + f));
   process.exit(1);
 }
-// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P1 107건 + P2 신규 25건 이상)
-if (pass < 132) { console.error(`✘ 검사 수 부족: ${pass}건 (P2 기준 132건 이상)`); process.exit(1); }
+// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P2 179건 + P3 신규 30건 이상)
+if (pass < 209) { console.error(`✘ 검사 수 부족: ${pass}건 (P3 기준 209건 이상)`); process.exit(1); }
 console.log(`✔ 스모크 ${pass}건 모두 통과`);

@@ -193,6 +193,106 @@ const SHOTS = path.join(ROOT, 'shots');
     await ctx.close();
   }
 
+  // ── 3층: 소문 오염 전/후 복도 · 정정 · 선배 배틀 ──────────────────────────
+  {
+    console.log('[floor3] 3층 방송실 · 소문 오염');
+    const { ctx, page, errors } = await newPage({ viewport: { width: 1280, height: 800 } });
+    await page.keyboard.press('z');                       // 시작
+    for (let i = 0; i < 8; i++) { await page.keyboard.press('z'); await page.waitForTimeout(50); }
+
+    // 1~2층 배틀은 앞 블록에서 봤으니 3층 복도로 바로 올린다.
+    await page.evaluate(() => {
+      const S = window.GAME.state();
+      S.clearedOf.mate = true; S.clearedOf.bro = true;
+      S.stairsOpen.hallway = true; S.stairsOpen.lab = true;
+      window.GAME.enterMap('hall3', 7, 1, 'down');
+      S.dialog = null; S.toast = null;
+    });
+    await page.waitForTimeout(250);
+    check('3층(복도) 진입', await page.evaluate(() => {
+      const S = window.GAME.state(); return S.map === 'hall3' && S.floor === 3;
+    }));
+    const clean = await page.screenshot({ path: path.join(SHOTS, 'rt-f3-hall-clean.png') });
+    await page.waitForTimeout(250);
+    const cleanAgain = await page.screenshot();
+    check('오염 전 복도는 정지 상태', Buffer.compare(clean, cleanAgain) === 0);
+
+    // 확인 없이 내보낸 소문 = 복도에 안개. 저장→로드 경로로 안개를 다시 만든다.
+    await page.evaluate(() => {
+      const S = window.GAME.state();
+      S.rumors.r1 = 'polluted';
+      window.GAME.save(); window.GAME.load();
+      window.GAME.state().dialog = null;
+    });
+    await page.waitForTimeout(250);
+    const fogged = await page.screenshot({ path: path.join(SHOTS, 'rt-f3-hall-fog.png') });
+    check('오염되면 복도 그림이 실제로 달라짐', Buffer.compare(clean, fogged) !== 0);
+    check('안개 칸이 실제로 막힌다', await page.evaluate(() => {
+      const r = window.DATA.RUMORS[0].fog[0];
+      return window.GAME.solidAt(window.DATA.MAPS.hall3, r.x, r.y) === true
+        && window.GAME.fogCells('hall3').length === window.DATA.RUMORS[0].fog.length;
+    }));
+    check('오염 게이지가 올라감', await page.evaluate(() => window.GAME.state().pollute === 1));
+
+    // 방송 콘솔 — 기존 메뉴 문법 그대로(새 UI 없음)
+    await page.evaluate(() => {
+      const S = window.GAME.state();
+      window.DATA.RUMORS.forEach((r) => { if (S.rumors[r.id] === 'unread') S.rumors[r.id] = 'read'; });
+      window.GAME.enterMap('studio', 6, 2, 'up');
+      S.dialog = null; S.toast = null;
+    });
+    await page.waitForTimeout(200);
+    await page.keyboard.press('z');
+    await page.waitForTimeout(200);
+    check('방송 콘솔 열림', await page.evaluate(() => window.GAME.state().mode === 'console'));
+    await page.screenshot({ path: path.join(SHOTS, 'rt-f3-console.png') });
+    await page.keyboard.press('x');
+    await page.waitForTimeout(200);           // 취소 입력이 프레임에 반영된 뒤 다음 단계로
+    check('취소로 콘솔이 닫힘', await page.evaluate(() => {
+      const S = window.GAME.state(); return S.mode === 'world' && S.paused === false;
+    }));
+
+    // 정정 방송 = 안개가 걷히고 복도가 원래대로
+    await page.evaluate(() => {
+      const S = window.GAME.state();
+      S.rumors.r1 = 'fixed';
+      window.GAME.enterMap('hall3', 7, 1, 'down');
+      window.GAME.save(); window.GAME.load();
+      window.GAME.state().dialog = null;
+    });
+    await page.waitForTimeout(250);
+    const fixed = await page.screenshot({ path: path.join(SHOTS, 'rt-f3-hall-fixed.png') });
+    check('정정하면 복도가 원래 모습으로 돌아옴', Buffer.compare(clean, fixed) === 0);
+    check('오염 게이지도 내려감', await page.evaluate(() => window.GAME.state().pollute === 0));
+
+    // 선배 배틀 — 소문 3개를 다 처리해야 나타난다
+    check('처리 전에는 선배가 없다', await page.evaluate(() => window.GAME.rumorsDone() === false));
+    await page.evaluate(() => {
+      const S = window.GAME.state();
+      window.DATA.RUMORS.forEach((r) => { S.rumors[r.id] = 'verified'; });
+      window.GAME.save(); window.GAME.load();
+      window.GAME.enterMap('studio', 11, 5, 'right');
+      window.GAME.state().dialog = null;
+    });
+    await page.waitForTimeout(200);
+    for (let i = 0; i < 8; i++) {
+      const ready = await page.evaluate(() => {
+        const S = window.GAME.state();
+        return S.mode === 'battle' && S.battle.phase === 'menu';
+      });
+      if (ready) break;
+      await page.keyboard.press('z'); await page.waitForTimeout(90);
+    }
+    check('선배 배틀 진입', await page.evaluate(() => {
+      const S = window.GAME.state(); return S.mode === 'battle' && S.battle.id === 'senior';
+    }));
+    await page.screenshot({ path: path.join(SHOTS, 'rt-f3-senior.png') });
+
+    check('콘솔·페이지 에러 0 (3층)', errors.length === 0);
+    errors.slice(0, 5).forEach((e) => console.log('     · ' + e));
+    await ctx.close();
+  }
+
   // ── 모바일 세로: 회전 안내가 떠야 한다 ────────────────────────────────────
   {
     console.log('[mobile-portrait] 390x844');

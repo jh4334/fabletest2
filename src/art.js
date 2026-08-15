@@ -227,6 +227,56 @@
       px(ctx, PAL.cream, x + s - 13, y + 10, 3, 3);
       px(ctx, PAL.cream, x + 10, y + s - 14, 3, 3);
     },
+    // ── 3층 소품 (팩 팔레트 색만 쓰는 절차 도트) ──────────────────────────
+    console: function (ctx, x, y, s) {        // 방송 콘솔 — 버튼 두 줄 + 송출 램프
+      px(ctx, PAL.ink, x + 2, y + 8, s - 4, s - 12);
+      px(ctx, PAL.metalDark, x + 4, y + 10, s - 8, s - 16);
+      px(ctx, PAL.metal, x + 6, y + 12, s - 12, 6);
+      px(ctx, PAL.red, x + 7, y + 13, 8, 4);
+      for (var i = 0; i < 4; i++) {
+        px(ctx, i % 2 ? PAL.ribbon : PAL.cream, x + 7 + i * 9, y + 22, 6, 5);
+        px(ctx, PAL.boardLine, x + 7 + i * 9, y + 30, 6, 5);
+      }
+    },
+    note: function (ctx, x, y, s) {           // 소문 쪽지 — 접힌 종이 한 장
+      px(ctx, PAL.woodDark, x + 10, y + 26, s - 20, 10);
+      px(ctx, PAL.ink, x + 9, y + 10, s - 18, 18);
+      px(ctx, PAL.paper, x + 11, y + 12, s - 22, 14);
+      px(ctx, PAL.metalDark, x + 14, y + 16, s - 30, 2);
+      px(ctx, PAL.metalDark, x + 14, y + 21, s - 34, 2);
+    },
+    sign: function (ctx, x, y, s) {           // 자료실 표지 — 기둥에 붙은 이름표
+      px(ctx, PAL.woodDark, x + s / 2 - 3, y + 18, 6, s - 22);
+      px(ctx, PAL.ink, x + 6, y + 6, s - 12, 16);
+      px(ctx, PAL.cream, x + 8, y + 8, s - 16, 12);
+      px(ctx, PAL.metalDark, x + 11, y + 12, s - 24, 3);
+    },
+    // 소문 안개 — 통로를 덮는 뿌연 덩어리. 8x8 마스크라 확대해도 각진 도트를 지킨다.
+    fog: (function () {
+      var MASK = [
+        '..####..',
+        '.######.',
+        '########',
+        '########',
+        '########',
+        '########',
+        '.######.',
+        '..####..'
+      ];
+      var HI = { '2,1': 1, '1,2': 1, '2,2': 1, '3,1': 1, '5,4': 1, '4,5': 1, '5,5': 1 };
+      return function (ctx, x, y, s) {
+        var c = s / 8;
+        px(ctx, 'rgba(58,43,74,0.55)', x, y, s, s);   // 칸 전체는 옅게 — 못 지나감이 보이게
+        for (var r = 0; r < 8; r++) {
+          for (var q = 0; q < 8; q++) {
+            if (MASK[r].charAt(q) !== '#') continue;
+            px(ctx, HI[q + ',' + r] ? 'rgba(147,167,174,0.62)' : 'rgba(58,43,74,0.86)',
+              x + q * c, y + r * c, c + 1, c + 1);
+          }
+        }
+        px(ctx, 'rgba(242,238,242,0.20)', x + 2 * c, y + 2 * c, 3 * c, c);
+      };
+    })(),
     doorPlain: function (ctx, x, y, s) {      // 낯선 문 — 수수함
       px(ctx, PAL.ink, x + 3, y + 3, s - 6, s - 6);
       px(ctx, PAL.woodDark, x + 6, y + 6, s - 12, s - 10);
