@@ -27,7 +27,7 @@
       px: m.spawn.x * T + T / 2, py: m.spawn.y * T + T - 6,
       dir: A.DIR[m.spawn.dir] || 0, frame: 0, walkT: 0, moving: false,
       cam: { x: 0, y: 0 }, exposure: 0, cards: cards,
-      flags: { intro: false, firstCard: false, firstTake: false, termWarn: false, cleared: false, stairsOpen: false, done: false },
+      flags: { intro: false, firstCard: false, firstTake: false, termWarn: false, mateHeard: false, cleared: false, stairsOpen: false, done: false },
       dialog: null, battle: null, toast: null, cool: {}, time: 0, flash: 0, paused: false
     };
   }
@@ -255,7 +255,8 @@
     if (m.npc && !S.flags.cleared) {
       var np = tileCenter(m.npc.x, m.npc.y);
       if (Math.abs(np.x - S.px) < NPC_R && Math.abs(np.y - (S.py - 12)) < NPC_R) {
-        say(D.NPC.approach, battleBegin);
+        // 재도전은 짧게 — 이미 나눈 이야기를 처음부터 반복시키지 않는다.
+        say(S.flags.mateHeard ? D.NPC.reApproach : D.NPC.approach, battleBegin);
         return;
       }
     }
@@ -292,12 +293,15 @@
     S.battle = {
       // 배틀이 시작된 곳을 기억한다 — 복귀 좌표를 맵 이름 하드코딩 없이 계산(2층+ 대비)
       from: S.map, npcX: m.npc.x, npcY: m.npc.y,
-      phase: 'text', shadow: D.BATTLE.shadow, hearts: D.BATTLE.hearts,
-      cursor: 0, sub: 0, heard: false, turn: 0, spare: false,
+      phase: 'text',
+      // 절반 기억: 물러났다 와도 들은 이야기는 유지된다 (재도전 존중)
+      shadow: D.BATTLE.shadow - (S.flags.mateHeard ? 1 : 0),
+      hearts: D.BATTLE.hearts,
+      cursor: 0, sub: 0, heard: !!S.flags.mateHeard, turn: 0, spare: false,
       hx: BOX.x + BOX.w / 2, hy: BOX.y + BOX.h / 2,
       bullets: [], timer: 0, spawnAcc: 0, atk: 0, inv: 0, tell: 0
     };
-    say(D.BATTLE.intro, function () { S.battle.phase = 'menu'; });
+    say(S.flags.mateHeard ? D.BATTLE.reIntro : D.BATTLE.intro, function () { S.battle.phase = 'menu'; });
   }
 
   function battleSay(seq, then) {
@@ -332,6 +336,7 @@
     if (b.cursor === 2) {
       if (!b.heard) {
         b.heard = true; b.shadow = Math.max(0, b.shadow - 1);
+        S.flags.mateHeard = true; save();
         sfx('listen');
         battleSay(D.BATTLE.listen.concat(D.BATTLE.listenHint), enemyTurn);
       } else battleSay(D.BATTLE.listenAgain, enemyTurn);

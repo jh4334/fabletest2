@@ -217,8 +217,21 @@ S().battle.cursor = 2;                    // 가만히 듣기
 tap('z');
 advance();
 check('듣기로 그림자가 얇아짐', S().battle.heard === true && S().battle.shadow === D.BATTLE.shadow - 1);
+check('들은 사실이 세이브 플래그로 승격', S().flags.mateHeard === true);
 S().battle.timer = 999; frame(1);
 check('상대 턴 종료 후 내 턴', S().battle.phase === 'menu');
+
+// 절반 기억: 물러났다 재진입해도 들은 이야기가 유지된다
+S().battle.cursor = 3; tap('z');          // 물러나기
+advance();
+check('물러나기로 월드 복귀', S().mode === 'world');
+place('hallway', 15, 5); frame(2);
+check('재조우는 축약 대사', S().dialog && S().dialog.seq === D.NPC.reApproach);
+advance();
+check('재도전: 그림자 1칸 깎인 채 + 들은 상태 유지',
+  S().mode === 'battle' && S().battle.heard === true
+  && S().battle.shadow === D.BATTLE.shadow - 1);
+advance();
 
 S().battle.cursor = 1; tap('z');          // 보여주기
 tap('ArrowDown'); tap('z');               // 비밀번호 쪽지
