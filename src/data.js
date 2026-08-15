@@ -94,6 +94,8 @@
     soundOn: '소리 켬',
     soundOff: '소리 끔',
     loading: '불러오는 중',
+    paused: '잠깐 쉬는 중',
+    pausedHelp: 'Z(확인)를 누르면 이어서 해요',
 
     expLabel: '노출도',
     expHelp: '흘린 카드를 다시 주우면 노출도가 내려가요',

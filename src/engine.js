@@ -28,7 +28,7 @@
       dir: A.DIR[m.spawn.dir] || 0, frame: 0, walkT: 0, moving: false,
       cam: { x: 0, y: 0 }, exposure: 0, cards: cards,
       flags: { intro: false, firstCard: false, firstTake: false, termWarn: false, cleared: false, stairsOpen: false, done: false },
-      dialog: null, battle: null, toast: null, cool: {}, time: 0, flash: 0
+      dialog: null, battle: null, toast: null, cool: {}, time: 0, flash: 0, paused: false
     };
   }
 
@@ -510,31 +510,59 @@
     ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
   }
 
+  // 정적 레이어(바닥·벽·고정 소품)는 맵 진입 시 1회만 그린다 — 저사양 태블릿 프레임 확보.
+  // 계단 잠김/열림이 그림에 들어가므로 stairsOpen 도 캐시 키에 넣는다.
+  var mapCache = { map: null, stairsOpen: null, cv: null };
+
+  function mapLayer(m) {
+    if (mapCache.cv && mapCache.map === S.map && mapCache.stairsOpen === S.flags.stairsOpen) {
+      return mapCache.cv;
+    }
+    var doc = g.document;
+    if (!doc || !doc.createElement) return null;
+    var off = doc.createElement('canvas');
+    off.width = m.w * T; off.height = m.h * T;
+    var oc = off.getContext && off.getContext('2d');
+    if (!oc) return null;
+    if ('imageSmoothingEnabled' in oc) oc.imageSmoothingEnabled = false;
+    paintMap(oc, m, 0, 0, m.w - 1, m.h - 1);
+    mapCache.map = S.map; mapCache.stairsOpen = S.flags.stairsOpen; mapCache.cv = off;
+    return off;
+  }
+
   function drawMap(m) {
+    var layer = mapLayer(m);
+    if (layer) { ctx.drawImage(layer, S.cam.x, S.cam.y, W, H, 0, 0, W, H); return; }
+    // 오프스크린을 못 만들면(스텁 환경 등) 화면 범위만 직접 그린다.
     var x0 = Math.max(0, Math.floor(S.cam.x / T)), x1 = Math.min(m.w - 1, Math.ceil((S.cam.x + W) / T));
     var y0 = Math.max(0, Math.floor(S.cam.y / T)), y1 = Math.min(m.h - 1, Math.ceil((S.cam.y + H) / T));
+    paintMap(ctx, m, x0, y0, x1, y1, S.cam.x, S.cam.y);
+  }
+
+  function paintMap(c, m, x0, y0, x1, y1, camX, camY) {
+    camX = camX || 0; camY = camY || 0;
     for (var ty = y0; ty <= y1; ty++) {
       for (var tx = x0; tx <= x1; tx++) {
-        var dx = tx * T - S.cam.x, dy = ty * T - S.cam.y;
-        if (!A.drawTile(ctx, 'floor', m.floor[0], m.floor[1], dx, dy)) {
-          ctx.fillStyle = A.PAL.tan; ctx.fillRect(dx, dy, T, T);
+        var dx = tx * T - camX, dy = ty * T - camY;
+        if (!A.drawTile(c, 'floor', m.floor[0], m.floor[1], dx, dy)) {
+          c.fillStyle = A.PAL.tan; c.fillRect(dx, dy, T, T);
         }
         var ch = m.grid[ty].charAt(tx), L = legend(ch);
         if (L && L.wall) {
           var off = wallOffset(m, tx, ty);
-          if (off) A.drawTile(ctx, 'wall', m.wallBase[0] + off[0], m.wallBase[1] + off[1], dx, dy);
-          else { ctx.fillStyle = m.fill; ctx.fillRect(dx, dy, T, T); }
+          if (off) A.drawTile(c, 'wall', m.wallBase[0] + off[0], m.wallBase[1] + off[1], dx, dy);
+          else { c.fillStyle = m.fill; c.fillRect(dx, dy, T, T); }
         }
         if (L && L.prop) {
-          if (L.prop === 'stairs') A.drawProp(ctx, S.flags.stairsOpen ? 'stairsOpen' : 'stairsLocked', dx, dy, T);
-          else A.drawProp(ctx, L.prop, dx, dy, T);
+          if (L.prop === 'stairs') A.drawProp(c, S.flags.stairsOpen ? 'stairsOpen' : 'stairsLocked', dx, dy, T);
+          else A.drawProp(c, L.prop, dx, dy, T);
         }
       }
     }
     (m.decor || []).forEach(function (d) {
-      var dx = d.x * T - S.cam.x, dy = d.y * T - S.cam.y;
-      if (d.kind === 'pot') A.drawSprite(ctx, 'pot', 0, 0, 14, 16, dx + 12, dy + 10, 28, 32);
-      else A.drawProp(ctx, d.kind, dx, dy, T);
+      var dx = d.x * T - camX, dy = d.y * T - camY;
+      if (d.kind === 'pot') A.drawSprite(c, 'pot', 0, 0, 14, 16, dx + 12, dy + 10, 28, 32);
+      else A.drawProp(c, d.kind, dx, dy, T);
     });
   }
 
@@ -813,6 +841,7 @@
   // ── 루프 ────────────────────────────────────────────────────────────────
   function update(dt) {
     S.time += dt;
+    if (S.paused) { if (tapped('ok')) S.paused = false; return; }
     if (S.flash > 0) S.flash -= dt;
     if (S.toast) { S.toast.t -= dt; if (S.toast.t <= 0) S.toast = null; }
     // 슬롯 UI는 P3. 단일 슬롯이되, 공유 태블릿을 위해 이어하기/처음부터를 고른다.
@@ -838,6 +867,19 @@
     if (S.mode === 'battle') drawBattle(); else drawWorld();
     if (S.dialog) drawDialog();
     if (S.toast) drawToast();
+    if (S.paused) drawPaused();
+  }
+
+  function drawPaused() {
+    ctx.fillStyle = 'rgba(8,6,12,0.72)'; ctx.fillRect(0, 0, W, H);
+    panel(W / 2 - 190, H / 2 - 62, 380, 116, 0.95);
+    txt(D.T.paused, W / 2, H / 2 - 12, 26, A.PAL.cream, 'center');
+    txt(D.T.pausedHelp, W / 2, H / 2 + 26, 17, A.PAL.blue, 'center', 500);
+  }
+
+  // 탄막 도중 자리를 비웠다 돌아오면 바로 맞지 않게 멈춰 준다.
+  function pause() {
+    if (S && (S.mode === 'battle' || S.mode === 'world') && !S.dialog) S.paused = true;
   }
 
   function loop(ts) {
@@ -935,6 +977,9 @@
     S = blankState(); S.mode = 'load';
     g.addEventListener('keydown', onKeyDown);
     g.addEventListener('keyup', onKeyUp);
+    if (doc.addEventListener) {
+      doc.addEventListener('visibilitychange', function () { if (doc.hidden) pause(); });
+    }
     bindTouch();
     A.load(A.SHEETS, function () { S.mode = 'title'; });
     last = 0;
@@ -949,6 +994,7 @@
     blankState: blankState,
     heldIds: heldIds, playerTile: playerTile, wallOffset: wallOffset,
     solidAt: solidAt, BOX: BOX, keys: keys,
+    pause: pause,
     press: function (k) { if (!keys[k]) edge[k] = true; keys[k] = true; },
     release: function (k) { keys[k] = false; }
   };

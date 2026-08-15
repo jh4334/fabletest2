@@ -339,6 +339,16 @@ dispatch('keyup', { key: 'm', code: 'KeyM' });
 check('다시 M = 소리 켬', windowObj.SFX.isOn() === true);
 frame(1); S().toast = null;
 
+// ── 16. 자리 비움 일시정지 ──────────────────────────────────────────────────
+console.log('[16] 자리 비움 일시정지');
+G.pause();
+check('월드에서 일시정지 진입', S().paused === true);
+const pausedX = S().px;
+hold('ArrowLeft', 5);
+check('일시정지 중엔 움직이지 않음', S().px === pausedX && S().paused === true);
+tap('z');
+check('확인으로 재개', S().paused === false);
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {
