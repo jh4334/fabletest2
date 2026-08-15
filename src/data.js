@@ -89,8 +89,10 @@
     confirmWipe: ['하던 이야기가 지워져요.', '정말 처음부터 할까요?'],
     yes: '네, 처음부터',
     no: '아니요',
-    keys: '이동 화살표 · 결정 Z · 취소 X',
+    keys: '이동 화살표 · 결정 Z · 취소 X · 소리 M',
     keysTouch: '이동 왼쪽 스틱 · 결정 A · 취소 B',
+    soundOn: '소리 켬',
+    soundOff: '소리 끔',
     loading: '불러오는 중',
 
     expLabel: '노출도',

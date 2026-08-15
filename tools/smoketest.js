@@ -58,7 +58,7 @@ vm.createContext(windowObj);
 let seed = 20260726;
 Math.random = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
 
-for (const f of ['src/art.js', 'src/data.js', 'src/engine.js']) {
+for (const f of ['src/art.js', 'src/sound.js', 'src/data.js', 'src/engine.js']) {
   vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), windowObj, { filename: f });
 }
 const G = windowObj.GAME;
@@ -324,6 +324,20 @@ check('경고는 플래그로 1회만', S().flags.termWarn === true);
 place('classroom', 2, 2); frame(2);
 check('접촉하면 뺏김 + 붉은 펄스', G.heldIds().length === 0 && S().exposure === 1 && S().flash > 0);
 check('노출도 최대 = 카드 수(3)', D.MAX_EXPOSURE === 3);
+
+// ── 15. 사운드 — 토글·저장·안전성 ──────────────────────────────────────────
+console.log('[15] 사운드');
+check('SFX 모듈: AudioContext 없어도 안전 로드', !!windowObj.SFX && windowObj.SFX.isOn() === true);
+windowObj.SFX.play('pick');               // 컨텍스트 없음 → 조용히 무시(예외 없음)
+check('재생 호출이 예외 없이 통과', true);
+dispatch('keydown', { key: 'm', code: 'KeyM' });
+dispatch('keyup', { key: 'm', code: 'KeyM' });
+check('M키 음소거 + 토스트', windowObj.SFX.isOn() === false && S().toast && S().toast.text === D.T.soundOff);
+check('음소거 설정이 저장됨', windowObj.localStorage.getItem('shadow-school-sound') === '0');
+dispatch('keydown', { key: 'm', code: 'KeyM' });
+dispatch('keyup', { key: 'm', code: 'KeyM' });
+check('다시 M = 소리 켬', windowObj.SFX.isOn() === true);
+frame(1); S().toast = null;
 
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');

@@ -28,7 +28,7 @@ for (const p of ASSETS) if (!has(p)) err(`필수 에셋 없음: ${p}`);
 for (const p of ['docs/기준서-방과후-그림자학교-v1.md', 'docs/스펙-P1-1층-수직슬라이스.md']) {
   if (!has(p)) err(`필수 문서 없음: ${p}`);
 }
-for (const p of ['index.html', 'src/art.js', 'src/data.js', 'src/engine.js']) {
+for (const p of ['index.html', 'src/art.js', 'src/sound.js', 'src/data.js', 'src/engine.js']) {
   if (!has(p)) err(`필수 소스 없음: ${p}`);
 }
 
@@ -156,7 +156,7 @@ const BAN = /몬스터|도감|[가-힣]몬(?=[^가-힣]|$)/;
 const LIT = /['"`]([^'"`\n]{2,})['"`]/g;
 let totalKo = 0;
 const perFile = {};
-for (const f of ['src/data.js', 'src/engine.js', 'src/art.js', 'index.html']) {
+for (const f of ['src/data.js', 'src/engine.js', 'src/art.js', 'src/sound.js', 'index.html']) {
   if (!has(f)) continue;
   const s = read(f);
   let n = 0, m;
@@ -171,7 +171,7 @@ for (const f of ['src/data.js', 'src/engine.js', 'src/art.js', 'index.html']) {
   totalKo += n;
 }
 // 스펙 §7: 한글 문자열은 data.js·index.html에만. 엔진/아트는 데이터 키만 참조한다.
-for (const f of ['src/engine.js', 'src/art.js']) {
+for (const f of ['src/engine.js', 'src/art.js', 'src/sound.js']) {
   if (perFile[f]) err(`${f}에 한글 문자열 ${perFile[f]}자 — data.js로 옮길 것 (스펙 §7)`);
 }
 

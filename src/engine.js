@@ -84,9 +84,10 @@
   }
   function tileCenter(tx, ty) { return { x: tx * T + T / 2, y: ty * T + T / 2 }; }
 
-  // ── 대사/토스트 ─────────────────────────────────────────────────────────
+  // ── 대사/토스트/효과음 ──────────────────────────────────────────────────
   function say(seq, then) { S.dialog = { seq: seq, i: 0, then: then || null }; }
   function toast(str) { S.toast = { text: str, t: 2.4 }; }
+  function sfx(name) { if (g.SFX) g.SFX.play(name); }
 
   // ── 진행 ────────────────────────────────────────────────────────────────
   function newGame() {
@@ -120,6 +121,7 @@
     var st = S.cards[id];
     st.held = true; st.map = null;
     setExposure(S.exposure - 1);
+    sfx('pick');
     if (!S.flags.firstCard) { S.flags.firstCard = true; toast(D.T.firstCard); }
     else toast(D.T.gotCard);
     save();
@@ -131,6 +133,7 @@
     st.held = false; st.map = S.map; st.x = term.drop.x; st.y = term.drop.y;
     setExposure(S.exposure + 1);
     S.flash = 0.7;                 // 뺏김을 몸으로 느끼는 붉은 펄스
+    sfx('steal');
     S.cool[key] = TERM_COOL;
     if (!S.flags.firstTake) { S.flags.firstTake = true; toast(D.T.taken + ' ' + D.T.takenHelp); }
     else toast(D.T.taken);
@@ -145,7 +148,8 @@
     ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
     KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right',
     KeyZ: 'ok', Enter: 'ok', NumpadEnter: 'ok', Space: 'ok',
-    KeyX: 'no', Escape: 'no', Backspace: 'no'
+    KeyX: 'no', Escape: 'no', Backspace: 'no',
+    KeyM: 'mute'
   };
   // e.code 미지원(아주 구형)일 때만 쓰는 보조 매핑
   var KEYMAP = {
@@ -164,6 +168,12 @@
   }
   function onKeyDown(e) {
     var k = mapKey(e); if (!k) return;
+    if (g.SFX) g.SFX.unlock();   // 자동재생 정책: 첫 입력에서 오디오를 깨운다
+    if (k === 'mute') {
+      if (g.SFX && S) toast(g.SFX.toggle() ? D.T.soundOn : D.T.soundOff);
+      if (e.preventDefault) e.preventDefault();
+      return;
+    }
     if (!keys[k]) edge[k] = true;
     keys[k] = true;
     if (e.preventDefault) e.preventDefault();
@@ -237,7 +247,7 @@
       var p = tileCenter(tm.x, tm.y);
       var ax = Math.abs(p.x - S.px), ay = Math.abs(p.y - (S.py - 12));
       if (!S.flags.termWarn && heldIds().length && ax < TERM_R + 70 && ay < TERM_R + 70) {
-        S.flags.termWarn = true; toast(D.T.termWarn); save();
+        S.flags.termWarn = true; toast(D.T.termWarn); sfx('warn'); save();
       }
       if (ax < TERM_R && ay < TERM_R) stealCard(tm, key);
     });
@@ -304,6 +314,7 @@
 
   function readySpare() {
     var b = S.battle; b.spare = true; b.cursor = 0;
+    sfx('off');
     battleSay(D.BATTLE.ready, function () { b.phase = 'menu'; });
   }
 
@@ -318,6 +329,7 @@
     if (b.cursor === 2) {
       if (!b.heard) {
         b.heard = true; b.shadow = Math.max(0, b.shadow - 1);
+        sfx('listen');
         battleSay(D.BATTLE.listen.concat(D.BATTLE.listenHint), enemyTurn);
       } else battleSay(D.BATTLE.listenAgain, enemyTurn);
       return;
@@ -337,6 +349,7 @@
 
   function doSpare() {
     S.flags.cleared = true; S.flags.stairsOpen = true;
+    sfx('clear');
     battleSay(D.CLEAR.spare.concat(D.CLEAR.promise), function () {
       S.battle = null; S.mode = 'world';
       var m = mapOf('hallway');
@@ -374,18 +387,18 @@
       // 0 1  좌우 = 열 토글(XOR 1), 상하 = 행 토글(XOR 2).
       // 2 3
       if (!b.spare) {
-        if (tapped('left') || tapped('right')) b.cursor ^= 1;
-        if (tapped('up') || tapped('down')) b.cursor ^= 2;
+        if (tapped('left') || tapped('right')) { b.cursor ^= 1; sfx('cursor'); }
+        if (tapped('up') || tapped('down')) { b.cursor ^= 2; sfx('cursor'); }
       }
-      if (tapped('ok')) battleMenuPick();
+      if (tapped('ok')) { sfx('ok'); battleMenuPick(); }
       return;
     }
     if (b.phase === 'sub') {
       var ids = heldIds();
       if (tapped('down') || tapped('right')) b.sub = (b.sub + 1) % ids.length;
       if (tapped('up') || tapped('left')) b.sub = (b.sub + ids.length - 1) % ids.length;
-      if (tapped('no')) { b.phase = 'menu'; return; }
-      if (tapped('ok')) battleSubPick();
+      if (tapped('no')) { b.phase = 'menu'; sfx('cancel'); return; }
+      if (tapped('ok')) { sfx('ok'); battleSubPick(); }
       return;
     }
     if (b.phase !== 'enemy') return;
@@ -411,7 +424,7 @@
       p.x += p.vx * dt; p.y += p.vy * dt;
       if (p.y > BOX.y + BOX.h + 30 || p.x < BOX.x - 30 || p.x > BOX.x + BOX.w + 30) { b.bullets.splice(i, 1); continue; }
       if (b.inv <= 0 && Math.abs(p.x - b.hx) < (p.s + 9) / 2 && Math.abs(p.y - b.hy) < (p.s + 9) / 2) {
-        b.hearts--; b.inv = 1.0;
+        b.hearts--; b.inv = 1.0; sfx('hit');
         if (b.hearts <= 0) { leaveBattle(D.BATTLE.hurt); return; }
       }
     }
@@ -742,7 +755,7 @@
       return;
     }
     var n = titleOptions().length;
-    if (n > 1 && (tapped('up') || tapped('down'))) title.cursor = 1 - title.cursor;
+    if (n > 1 && (tapped('up') || tapped('down'))) { title.cursor = 1 - title.cursor; sfx('cursor'); }
     if (!tapped('ok')) return;
     if (n === 1) { newGame(); return; }
     if (title.cursor === 0) { if (!load()) newGame(); return; }
@@ -887,6 +900,7 @@
     var hook = function (el, key) {
       if (!el || !el.addEventListener) return;
       var on = function (e) {
+        if (g.SFX) g.SFX.unlock();
         if (!keys[key]) edge[key] = true;
         keys[key] = true;
         if (e.preventDefault) e.preventDefault();
