@@ -1,5 +1,6 @@
 // 데이터·어휘 검증 — 「방과 후: 그림자 학교」
 // P1: 에셋 무결성 + 맵 그리드 정합 + 카드/배틀 데이터 + 어휘 린트 + 텍스트 예산.
+// P2: 층별 카드 3장 + 배틀 프로필 무결성 + 추천 복도 문 정합 + 2층 상자 예산.
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -25,7 +26,8 @@ const ASSETS = [
   'assets/pack/props/crate.png', 'assets/pack/props/heart.png', 'assets/pack/props/pot.png',
 ];
 for (const p of ASSETS) if (!has(p)) err(`필수 에셋 없음: ${p}`);
-for (const p of ['docs/기준서-방과후-그림자학교-v1.md', 'docs/스펙-P1-1층-수직슬라이스.md']) {
+for (const p of ['docs/기준서-방과후-그림자학교-v1.md', 'docs/스펙-P1-1층-수직슬라이스.md',
+  'docs/스펙-P2-2층-필터버블.md']) {
   if (!has(p)) err(`필수 문서 없음: ${p}`);
 }
 for (const p of ['index.html', 'src/art.js', 'src/sound.js', 'src/data.js', 'src/engine.js']) {
@@ -101,41 +103,122 @@ if (D) {
       if (!walkable(m, t.x, t.y)) err(at(`광고 단말 ${i}이 막힌 칸(${t.x},${t.y})`));
       if (!t.drop || !walkable(m, t.drop.x, t.drop.y)) err(at(`광고 단말 ${i}의 카드 반환 위치가 막힌 칸`));
     });
-    if (m.npc && !walkable(m, m.npc.x, m.npc.y)) err(at('npc가 막힌 칸에 있음'));
+    if (m.npc) {
+      if (!walkable(m, m.npc.x, m.npc.y)) err(at('npc가 막힌 칸에 있음'));
+      if (!D.BATTLES[m.npc.battle]) err(at(`npc.battle 프로필이 없음: ${m.npc.battle}`));
+      if (m.npc.opens && !D.MAPS[m.npc.opens]) err(at(`npc.opens 맵이 없음: ${m.npc.opens}`));
+    }
     if (m.stairs && m.grid[m.stairs.y].charAt(m.stairs.x) !== 'S') err(at('stairs 좌표에 계단 타일이 없음'));
+    // 계단 앞 복귀 좌표(클리어 화면에서 돌아올 자리)는 걸을 수 있어야 한다
+    if (m.stairs && m.stairs.face && !walkable(m, m.stairs.face.x, m.stairs.face.y)) {
+      err(at('stairs.face 가 막힌 칸'));
+    }
+    if (m.stairsTo) {
+      const up = D.MAPS[m.stairsTo.map];
+      if (!up) err(at(`위층 맵 없음: ${m.stairsTo.map}`));
+      else if (!walkable(up, m.stairsTo.sx, m.stairsTo.sy)) err(at('위층 도착 칸이 막힘'));
+      if (!m.stairs) err(at('stairsTo 가 있는데 stairs 타일이 없음'));
+    }
+    if ((m.fl || 1) !== 1 && (m.fl || 1) !== 2) err(at(`층(fl) 값이 이상함: ${m.fl}`));
   }
 
-  // ── 내 정보 카드 3장 (스펙 §3-4) ──────────────────────────────────────────
+  // ── 증거 카드: 층마다 3장 (스펙 §3) ───────────────────────────────────────
   const cards = D.CARDS || [];
-  if (cards.length !== 3) err(`내 정보 카드는 3장이어야 함 (현재 ${cards.length}장)`);
   const ids = new Set();
+  const byFloor = {};
   cards.forEach((c) => {
     if (ids.has(c.id)) err(`카드 id 중복: ${c.id}`);
     ids.add(c.id);
+    const fl = c.floor;
+    if (fl !== 1 && fl !== 2) { err(`카드 ${c.id}의 floor 태그가 없음/이상함: ${fl}`); return; }
+    byFloor[fl] = (byFloor[fl] || 0) + 1;
     const m = D.MAPS[c.at.map];
     if (!m) { err(`카드 ${c.id}의 맵 없음: ${c.at.map}`); return; }
+    if ((m.fl || 1) !== fl) err(`카드 ${c.id}의 floor(${fl})와 맵 ${c.at.map}의 층(${m.fl})이 다름`);
     if (!walkable(m, c.at.x, c.at.y)) err(`카드 ${c.id}이 막힌 칸(${c.at.x},${c.at.y})`);
   });
+  for (const fl of [1, 2]) {
+    if (byFloor[fl] !== 3) err(`${fl}층 증거 카드는 3장이어야 함 (현재 ${byFloor[fl] || 0}장)`);
+  }
   if (!(D.MAX_EXPOSURE > 0)) err('MAX_EXPOSURE가 없음(노출도 게이지)');
+  if (!(D.MAX_BUBBLE > 0)) err('MAX_BUBBLE이 없음(버블 게이지)');
 
-  // ── 배틀 ──────────────────────────────────────────────────────────────────
-  const B = D.BATTLE || {};
-  if (!ids.has(B.evidence)) err(`배틀 정답 증거가 카드 목록에 없음: ${B.evidence}`);
-  if (!(B.shadow > 0)) err('배틀 그림자 게이지가 0 이하');
-  if (!(B.hearts > 0)) err('배틀 하트가 0 이하');
-  if (!Array.isArray(B.menu) || B.menu.length < 3) err('배틀 메뉴는 3개 이상이어야 함');
-  if (!Array.isArray(B.attacks) || !B.attacks.length) err('배틀 탄막 패턴이 없음');
-  (B.attacks || []).forEach((a, i) => {
-    if (!(a.time > 0) || !(a.every > 0) || !(a.speed > 0)) err(`탄막 ${i} 수치 이상`);
-  });
-  // 기준서 §4: 배틀 1회는 3~4턴. 상대 턴 상한 = 탄막 패턴 수.
-  if ((B.attacks || []).length > 4) err(`배틀 턴이 너무 김: 탄막 ${B.attacks.length}개 (3~4턴)`);
+  // ── 배틀 프로필 (스펙 §4) ─────────────────────────────────────────────────
+  const UI = D.BATTLE_UI || {};
+  if (!Array.isArray(UI.menu) || UI.menu.length < 3) err('배틀 메뉴는 3개 이상이어야 함');
+  const used = new Set();
+  Object.keys(D.MAPS || {}).forEach((n) => { if (D.MAPS[n].npc) used.add(D.MAPS[n].npc.battle); });
+  const profiles = Object.keys(D.BATTLES || {});
+  if (profiles.length < 2) err(`배틀 프로필이 부족함: ${profiles.length}개 (짝꿍+형)`);
+  for (const id of profiles) {
+    const B = D.BATTLES[id];
+    const at = (s) => `배틀 ${id}: ${s}`;
+    if (!used.has(id)) err(at('어떤 맵의 npc도 이 프로필을 쓰지 않음'));
+    if (!ids.has(B.evidence)) err(at(`정답 증거가 카드 목록에 없음: ${B.evidence}`));
+    else {
+      const ev = cards.find((c) => c.id === B.evidence);
+      // 증거는 그 인물이 있는 층에서 주울 수 있어야 한다(가방은 층별로 갈린다)
+      const home = Object.keys(D.MAPS).find((n) => D.MAPS[n].npc && D.MAPS[n].npc.battle === id);
+      if (home && ev.floor !== (D.MAPS[home].fl || 1)) err(at('증거 카드가 다른 층에 있음'));
+    }
+    if (!(B.shadow > 0)) err(at('그림자 게이지가 0 이하'));
+    if (!(B.hearts > 0)) err(at('하트가 0 이하'));
+    for (const k of ['approach', 'reApproach', 'intro', 'reIntro', 'talk', 'talk2', 'talk3',
+      'listen', 'listenAgain', 'listenHint', 'showWrong', 'showRight', 'spare', 'promise', 'hint']) {
+      if (!Array.isArray(B[k]) || !B[k].length) err(at(`대사 ${k} 누락`));
+    }
+    if (!Array.isArray(B.attacks) || !B.attacks.length) err(at('탄막 패턴이 없음'));
+    (B.attacks || []).forEach((a, i) => {
+      if (!(a.time > 0) || !(a.every > 0) || !(a.speed > 0)) err(at(`탄막 ${i} 수치 이상`));
+      if (a.time < 5 || a.time > 7) err(at(`탄막 ${i} 길이 ${a.time}초 (5.5~6.5초 권장 범위 밖)`));
+      // 3~4학년 기준: 하트를 쫓는 조각은 느려야 피할 수 있다 (스펙 §4)
+      if (a.kind === 'chase' && a.speed > 120) err(at(`chase 탄막이 너무 빠름: ${a.speed}`));
+    });
+    // 기준서 §4: 배틀 1회는 3~4턴. 상대 턴 상한 = 탄막 패턴 수.
+    if ((B.attacks || []).length > 4) err(at(`턴이 너무 김: 탄막 ${B.attacks.length}개 (3~4턴)`));
+  }
+
+  // ── 추천 복도 문 정합 (스펙 §2) ───────────────────────────────────────────
+  {
+    const loop = D.MAPS.loop;
+    if (!loop) err('2층 추천 복도(loop) 맵이 없음');
+    else {
+      const reco = (loop.warps || []).filter((w) => w.kind === 'reco');
+      const strange = (loop.warps || []).filter((w) => w.kind === 'strange');
+      if (reco.length !== 1) err(`추천 문은 1개여야 함 (현재 ${reco.length}개)`);
+      if (strange.length !== 1) err(`낯선 문은 1개여야 함 (현재 ${strange.length}개)`);
+      reco.forEach((w) => {
+        if (loop.grid[w.y].charAt(w.x) !== 'r') err('추천 문 좌표에 추천 문 타일(r)이 없음');
+        if (w.to !== 'loop') err('추천 문은 같은 복도로 되돌아와야 함');
+        if (w.sx !== loop.spawn.x || w.sy !== loop.spawn.y) err('추천 문 복귀 지점이 복도 입구가 아님');
+        if (!w.warn) err('추천 문에 사전 경고 표시(warn)가 없음');
+      });
+      strange.forEach((w) => {
+        if (loop.grid[w.y].charAt(w.x) !== 'u') err('낯선 문 좌표에 낯선 문 타일(u)이 없음');
+        for (const t of [w.to, w.alt]) {
+          if (!D.MAPS[t]) { err(`낯선 문 목적지 맵 없음: ${t}`); continue; }
+          if (!walkable(D.MAPS[t], w.sx, w.sy)) err(`낯선 문 도착(${t})이 막힌 칸`);
+          // 두 방 모두 복도로 돌아오는 길이 있어야 갇히지 않는다
+          if (!(D.MAPS[t].warps || []).some((b) => b.to === 'loop')) err(`${t}에서 복도로 돌아올 문이 없음`);
+        }
+        if (w.to === w.alt) err('낯선 문이 같은 방만 반복함');
+      });
+      if (!(loop.decor || []).some((d) => d.kind === 'poster')) err('추천 복도에 포스터 장식이 없음');
+      if (!(loop.decor || []).some((d) => d.kind === 'window')) err('추천 복도에 창문 장식이 없음');
+    }
+  }
 
   // ── 헌법 §3-2: 시작 ~ 첫 배틀까지 대화 상자 5개 이내 / 상자당 2줄 ─────────
-  const boxes = (D.INTRO || []).length + ((D.NPC && D.NPC.approach) || []).length +
-    ((B.intro || []).length);
+  const mate = (D.BATTLES && D.BATTLES.mate) || {};
+  const bro = (D.BATTLES && D.BATTLES.bro) || {};
+  const boxes = (D.INTRO || []).length + (mate.approach || []).length + (mate.intro || []).length;
   if (boxes > 5) err(`첫 배틀까지 대화 상자 ${boxes}개 > 5개 (기준서 §3-2)`);
   else console.log(`첫 배틀까지 대화 상자: ${boxes}/5개`);
+  // 2층 진입 ~ 형 배틀까지도 같은 규칙 (스펙 §5)
+  const boxes2 = ((D.FLOOR2 && D.FLOOR2.up) || []).length + ((D.FLOOR2 && D.FLOOR2.enter) || []).length +
+    (bro.approach || []).length + (bro.intro || []).length;
+  if (boxes2 > 5) err(`2층 진입~형 배틀까지 대화 상자 ${boxes2}개 > 5개 (스펙 §5)`);
+  else console.log(`2층 진입~형 배틀까지 대화 상자: ${boxes2}/5개`);
 
   const over = [];
   const walkBoxes = (v) => {
@@ -144,10 +227,12 @@ if (D) {
     v.forEach(walkBoxes);
   };
   const NOT_DIALOG = new Set(['menu', 'attacks', 'adWords']);  // 목록 UI라 2줄 규칙 밖
-  [D.INTRO, D.LOOK, D.NPC, D.BATTLE, D.CLEAR].forEach((o) => {
-    if (Array.isArray(o)) walkBoxes(o);
-    else Object.keys(o || {}).forEach((k) => { if (!NOT_DIALOG.has(k)) walkBoxes(o[k]); });
-  });
+  [D.INTRO, D.LOOK, D.LOOK2, D.FLOOR2, D.BATTLE_UI, D.CLEAR]
+    .concat(Object.keys(D.BATTLES || {}).map((k) => D.BATTLES[k]))
+    .forEach((o) => {
+      if (Array.isArray(o)) walkBoxes(o);
+      else Object.keys(o || {}).forEach((k) => { if (!NOT_DIALOG.has(k)) walkBoxes(o[k]); });
+    });
   if (over.length) err(`상자당 2줄 초과: ${over.length}곳 (예: ${over[0]})`);
 }
 
@@ -202,7 +287,8 @@ if (has('sw.js')) {
   if (cur !== tag) err(`sw 캐시 해시 불일치(${cur} != ${tag}) — npm run bump 실행`);
 } else err('sw.js 없음 (오프라인 캐시)');
 
-const SLICE_BUDGET = 1800;   // 스펙 §4 (기준서 총예산 15,000자 중 슬라이스 몫)
+// 층당 1,800자 (기준서 총예산 15,000자 중 몫). 현재 구현은 1층 + 2층 = 2개 층.
+const SLICE_BUDGET = 3600;
 console.log(`텍스트 예산: ${totalKo}/${SLICE_BUDGET}자  ` +
   Object.keys(perFile).map((f) => `${f.replace('src/', '')}=${perFile[f]}`).join(' '));
 if (totalKo > SLICE_BUDGET) err(`텍스트 예산 초과: ${totalKo}자 > ${SLICE_BUDGET}자 (스펙 §4)`);

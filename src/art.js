@@ -187,6 +187,51 @@
       px(ctx, PAL.woodDark, x + 4, y + 8, s - 8, s - 16);
       px(ctx, PAL.paper, x + 8, y + 12, 12, 10);
       px(ctx, PAL.red, x + 24, y + 16, 11, 9);
+    },
+    // ── 2층 소품 (팩 팔레트 색만 쓰는 절차 도트) ──────────────────────────
+    pc: function (ctx, x, y, s) {             // 컴퓨터 책상
+      px(ctx, PAL.ink, x + 3, y + s - 22, s - 6, 18);
+      px(ctx, PAL.metalDark, x + 3, y + s - 22, s - 6, 6);
+      px(ctx, PAL.metal, x + s / 2 - 3, y + s - 30, 6, 8);
+      px(ctx, PAL.ink, x + 8, y + 4, s - 16, 22);
+      px(ctx, PAL.board, x + 10, y + 6, s - 20, 18);
+      px(ctx, PAL.blue, x + 13, y + 10, s - 30, 3);
+      px(ctx, PAL.boardLine, x + 13, y + 16, s - 34, 3);
+    },
+    box: function (ctx, x, y, s) {            // 먼지 쌓인 상자
+      px(ctx, PAL.ink, x + 6, y + 12, s - 12, s - 18);
+      px(ctx, PAL.woodDark, x + 8, y + 14, s - 16, s - 22);
+      px(ctx, PAL.wood, x + 8, y + 14, s - 16, 6);
+      px(ctx, PAL.paper, x + s / 2 - 3, y + 14, 6, s - 22);
+    },
+    poster: function (ctx, x, y, s, tone) {   // 복도 광고 포스터
+      px(ctx, PAL.ink, x + 7, y + 6, s - 14, s - 14);
+      px(ctx, PAL.paper, x + 9, y + 8, s - 18, s - 18);
+      px(ctx, tone || PAL.red, x + 9, y + 8, s - 18, 12);
+      px(ctx, tone || PAL.red, x + 12, y + 25, s - 26, 4);
+      px(ctx, PAL.metalDark, x + 12, y + 32, s - 30, 3);
+    },
+    window: function (ctx, x, y, s) {         // 복도 창문
+      px(ctx, PAL.woodDark, x + 5, y + 6, s - 10, s - 14);
+      px(ctx, PAL.metalDark, x + 8, y + 9, s - 16, s - 20);
+      px(ctx, PAL.cream, x + s / 2 - 2, y + 9, 3, s - 20);
+      px(ctx, PAL.cream, x + 8, y + s / 2 - 4, s - 16, 3);
+    },
+    doorReco: function (ctx, x, y, s) {       // 추천 문 — 반짝임 + 광고
+      px(ctx, PAL.ink, x + 3, y + 3, s - 6, s - 6);
+      px(ctx, PAL.wood, x + 6, y + 6, s - 12, s - 10);
+      px(ctx, PAL.red, x + 11, y + 11, s - 22, 14);
+      px(ctx, PAL.ribbon, x + 13, y + 14, s - 30, 4);
+      px(ctx, PAL.ribbon, x + s - 15, y + s / 2, 5, 5);
+      px(ctx, PAL.cream, x + 8, y + 8, 4, 4);
+      px(ctx, PAL.cream, x + s - 13, y + 10, 3, 3);
+      px(ctx, PAL.cream, x + 10, y + s - 14, 3, 3);
+    },
+    doorPlain: function (ctx, x, y, s) {      // 낯선 문 — 수수함
+      px(ctx, PAL.ink, x + 3, y + 3, s - 6, s - 6);
+      px(ctx, PAL.woodDark, x + 6, y + 6, s - 12, s - 10);
+      px(ctx, PAL.metalDark, x + 10, y + 12, s - 20, 12);
+      px(ctx, PAL.metal, x + s - 15, y + s / 2, 5, 5);
     }
   };
 
