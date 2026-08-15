@@ -27,8 +27,8 @@
       px: m.spawn.x * T + T / 2, py: m.spawn.y * T + T - 6,
       dir: A.DIR[m.spawn.dir] || 0, frame: 0, walkT: 0, moving: false,
       cam: { x: 0, y: 0 }, exposure: 0, cards: cards,
-      flags: { intro: false, firstCard: false, firstTake: false, cleared: false, stairsOpen: false, done: false },
-      dialog: null, battle: null, toast: null, cool: {}, time: 0
+      flags: { intro: false, firstCard: false, firstTake: false, termWarn: false, cleared: false, stairsOpen: false, done: false },
+      dialog: null, battle: null, toast: null, cool: {}, time: 0, flash: 0
     };
   }
 
@@ -130,6 +130,7 @@
     var id = held[held.length - 1], st = S.cards[id];
     st.held = false; st.map = S.map; st.x = term.drop.x; st.y = term.drop.y;
     setExposure(S.exposure + 1);
+    S.flash = 0.7;                 // 뺏김을 몸으로 느끼는 붉은 펄스
     S.cool[key] = TERM_COOL;
     if (!S.flags.firstTake) { S.flags.firstTake = true; toast(D.T.taken + ' ' + D.T.takenHelp); }
     else toast(D.T.taken);
@@ -229,12 +230,16 @@
       var p = tileCenter(st.x, st.y);
       if (Math.abs(p.x - S.px) < PICK_R && Math.abs(p.y - (S.py - 12)) < PICK_R) pickCard(c.id);
     });
-    // 광고 단말
+    // 광고 단말 — 뺏기 전에 한 번은 경고한다(가르치기 전에 벌주지 않기).
     (m.terminals || []).forEach(function (tm, idx) {
       var key = S.map + ':' + idx;
       if (S.cool[key] > 0) return;
       var p = tileCenter(tm.x, tm.y);
-      if (Math.abs(p.x - S.px) < TERM_R && Math.abs(p.y - (S.py - 12)) < TERM_R) stealCard(tm, key);
+      var ax = Math.abs(p.x - S.px), ay = Math.abs(p.y - (S.py - 12));
+      if (!S.flags.termWarn && heldIds().length && ax < TERM_R + 70 && ay < TERM_R + 70) {
+        S.flags.termWarn = true; toast(D.T.termWarn); save();
+      }
+      if (ax < TERM_R && ay < TERM_R) stealCard(tm, key);
     });
     // 짝꿍 조우
     if (m.npc && !S.flags.cleared) {
@@ -629,7 +634,17 @@
     drawEntities(m);
     ctx.fillStyle = m.tint; ctx.fillRect(0, 0, W, H);
     drawAds();
+    if (S.flash > 0) drawFlash();
     drawHud();
+  }
+
+  // 카드를 뺏긴 순간의 붉은 비네트 — 가장자리만 물들여 시야는 가리지 않는다.
+  function drawFlash() {
+    var a = Math.min(0.5, S.flash * 0.7);
+    var e = 46;
+    ctx.fillStyle = 'rgba(216,74,60,' + a.toFixed(2) + ')';
+    ctx.fillRect(0, 0, W, e); ctx.fillRect(0, H - e, W, e);
+    ctx.fillRect(0, e, e, H - e * 2); ctx.fillRect(W - e, e, e, H - e * 2);
   }
 
   function drawHearts(n, x, y) {
@@ -780,6 +795,7 @@
   // ── 루프 ────────────────────────────────────────────────────────────────
   function update(dt) {
     S.time += dt;
+    if (S.flash > 0) S.flash -= dt;
     if (S.toast) { S.toast.t -= dt; if (S.toast.t <= 0) S.toast = null; }
     // 슬롯 UI는 P3. 단일 슬롯이되, 공유 태블릿을 위해 이어하기/처음부터를 고른다.
     if (S.mode === 'title') { updateTitle(); return; }

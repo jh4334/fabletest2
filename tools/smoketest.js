@@ -305,6 +305,20 @@ check('네 → 저장 삭제 후 새 게임 인트로', !!S().dialog && G.hasSav
 advance();
 check('새 게임이 교실에서 시작', S().mode === 'world' && S().map === 'classroom');
 
+// ── 14. 단말 사전 경고 · 뺏김 피드백 ────────────────────────────────────────
+console.log('[14] 단말 경고 → 뺏김 피드백');
+// [13] 끝에서 새 게임 상태(termWarn 미소비). 카드를 들고 경고 반경까지만 접근.
+place('classroom', 12, 8); frame(2);
+check('카드 재획득', G.heldIds().length === 1);
+S().toast = null;                          // 직전 획득 토스트 제거(경고 토스트만 보이게)
+place('classroom', 4, 2); frame(2);
+check('경고 반경: 뺏기 전에 먼저 알려줌',
+  !!S().toast && S().toast.text === D.T.termWarn && G.heldIds().length === 1 && S().exposure === 0);
+check('경고는 플래그로 1회만', S().flags.termWarn === true);
+place('classroom', 2, 2); frame(2);
+check('접촉하면 뺏김 + 붉은 펄스', G.heldIds().length === 0 && S().exposure === 1 && S().flash > 0);
+check('노출도 최대 = 카드 수(3)', D.MAX_EXPOSURE === 3);
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {
