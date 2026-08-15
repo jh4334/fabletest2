@@ -12,7 +12,7 @@
     'B': { solid: true, wall: true, prop: 'board', look: 'board' },
     '=': { solid: true, prop: 'desk', look: 'desk' },
     'L': { solid: true, prop: 'locker', look: 'locker' },
-    'd': { solid: false, prop: 'door' },
+    'd': { solid: false, prop: 'door', look: 'door' },
     'S': { solid: true, prop: 'stairs', look: 'stairs' }
   };
 
@@ -117,13 +117,20 @@
     ['교문이 잠겼다.', '복도로 나가 보자.']
   ];
 
-  // 조사 플레이버 (Z로 바라본 칸)
+  // 조사 플레이버 (Z로 바라본 칸) — 재조사(LOOK2)는 다른 대사로, 세계가 살아있게.
   D.LOOK = {
     board: ['칠판: 비밀번호 함부로 알려주지 않기', '누가 밑줄을 세 번 그었다.'],
     desk: ['짝꿍 자리. 필통이 열려 있다.', '연필이 전부 부러져 있다.'],
     locker: ['사물함마다 광고 스티커가 붙었다.', '내 이름이 적힌 것도 있다.'],
+    door: ['교실 문. 복도로 이어진다.'],
     stairs: ['2층으로 가는 계단 문.', '그림자가 손잡이를 붙잡고 있다.'],
     nothing: ['아무것도 없다.']
+  };
+  D.LOOK2 = {
+    board: ['밑줄 밑에 작게 적혀 있다.', '「내 생일도 비번으로 쓰지 말기」'],
+    desk: ['필통 속 지우개에 이빨 자국.', '…내 지우개였는데.'],
+    locker: ['스티커를 한 장 떼 봤다.', '밑에 광고가 한 장 더 있다.'],
+    stairs: ['손잡이의 그림자가', '나를 슬쩍 쳐다본 것 같다.']
   };
 
   D.NPC = {

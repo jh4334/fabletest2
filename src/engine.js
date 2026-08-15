@@ -30,7 +30,8 @@
       cam: { x: 0, y: 0 }, exposure: 0, cards: cards,
       flags: { intro: false, firstCard: false, firstTake: false, termWarn: false, mateHeard: false, cleared: false, stairsOpen: false, done: false },
       dialog: null, battle: null, toast: null, cool: {}, time: 0, flash: 0, paused: false,
-      stats: { sec: 0, stolen: 0, retreats: 0 }   // 교사 관찰·아이 성취감용 계측
+      stats: { sec: 0, stolen: 0, retreats: 0 },  // 교사 관찰·아이 성취감용 계측
+      looked: {}                                   // 재조사 대사 분기(세션 한정, 저장 안 함)
     };
   }
 
@@ -284,7 +285,12 @@
     if (m.npc && m.npc.x === f.x && m.npc.y === f.y && S.flags.cleared) { say(D.CLEAR.hint); return; }
     var ch = chAt(m, f.x, f.y), L = legend(ch);
     if (ch === 'S') { stairsBump(); return; }
-    if (L && L.look) { say([D.LOOK[L.look]]); return; }
+    if (L && L.look) {
+      var k = L.look;
+      var seq = (S.looked[k] && D.LOOK2[k]) ? [D.LOOK2[k]] : [D.LOOK[k]];
+      S.looked[k] = true;
+      say(seq); return;
+    }
     say([D.LOOK.nothing]);
   }
 

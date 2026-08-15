@@ -403,6 +403,17 @@ console.log('[18] 버전');
 const pkgVer = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 check('GAME.VERSION == package.json', G.VERSION === pkgVer);
 
+// ── 19. 조사 2단 대사 ───────────────────────────────────────────────────────
+console.log('[19] 조사 재방문 대사');
+place('classroom', 6, 1);
+tap('ArrowUp');                             // 칠판을 바라본다
+tap('z');
+check('첫 조사: 기본 대사', S().dialog && S().dialog.seq[0] === D.LOOK.board);
+advance();
+tap('z');
+check('재조사: 다른 대사', S().dialog && S().dialog.seq[0] === D.LOOK2.board);
+advance();
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {
