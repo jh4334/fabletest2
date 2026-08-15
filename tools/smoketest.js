@@ -385,6 +385,19 @@ check('일시정지 중엔 움직이지 않음', S().px === pausedX && S().pause
 tap('z');
 check('확인으로 재개', S().paused === false);
 
+// ── 17. 플레이 계측 ─────────────────────────────────────────────────────────
+console.log('[17] 플레이 계측');
+tap('z');                                   // 일시정지 해제([16] 잔여)
+check('플레이 시간이 누적됨', S().stats.sec > 0);
+check('새 게임이 계측을 초기화([13] 처음부터 이후)', S().stats.retreats === 0);
+check('뺏김이 계측됨([14]의 1회)', S().stats.stolen === 1);
+G.save();
+const st = JSON.stringify(S().stats);
+S().stats.stolen = 999;
+check('로드가 계측을 복원', G.load() === true
+  && S().stats.stolen === JSON.parse(st).stolen
+  && Math.abs(S().stats.sec - JSON.parse(st).sec) <= 1);
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {

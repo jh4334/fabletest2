@@ -28,7 +28,8 @@
       dir: A.DIR[m.spawn.dir] || 0, frame: 0, walkT: 0, moving: false,
       cam: { x: 0, y: 0 }, exposure: 0, cards: cards,
       flags: { intro: false, firstCard: false, firstTake: false, termWarn: false, mateHeard: false, cleared: false, stairsOpen: false, done: false },
-      dialog: null, battle: null, toast: null, cool: {}, time: 0, flash: 0, paused: false
+      dialog: null, battle: null, toast: null, cool: {}, time: 0, flash: 0, paused: false,
+      stats: { sec: 0, stolen: 0, retreats: 0 }   // 교사 관찰·아이 성취감용 계측
     };
   }
 
@@ -132,6 +133,7 @@
     var id = held[held.length - 1], st = S.cards[id];
     st.held = false; st.map = S.map; st.x = term.drop.x; st.y = term.drop.y;
     setExposure(S.exposure + 1);
+    S.stats.stolen++;
     S.flash = 0.7;                 // 뺏김을 몸으로 느끼는 붉은 펄스
     sfx('steal');
     S.cool[key] = TERM_COOL;
@@ -374,6 +376,7 @@
 
   function leaveBattle(msg) {
     var b = S.battle;
+    S.stats.retreats++;
     S.battle = null; S.mode = 'world'; S.map = b.from;
     S.px = (b.npcX - 3) * T + T / 2; S.py = b.npcY * T + T - 6;
     S.dir = A.DIR.left; updateCam(); save();
@@ -452,7 +455,8 @@
     try {
       var o = {
         v: 1, map: S.map, px: Math.round(S.px), py: Math.round(S.py), dir: S.dir,
-        exposure: S.exposure, flags: S.flags, cards: {}
+        exposure: S.exposure, flags: S.flags, cards: {},
+        stats: { sec: Math.round(S.stats.sec), stolen: S.stats.stolen, retreats: S.stats.retreats }
       };
       D.CARDS.forEach(function (c) {
         var st = S.cards[c.id];
@@ -491,6 +495,11 @@
           y: mm ? Math.max(0, Math.min(mm.h - 1, st.y | 0)) : c.at.y
         };
       });
+      if (o.stats) {
+        S.stats.sec = Math.max(0, +o.stats.sec || 0);
+        S.stats.stolen = Math.max(0, o.stats.stolen | 0);
+        S.stats.retreats = Math.max(0, o.stats.retreats | 0);
+      }
       // 들고 있지도, 바닥에도 없는 카드가 생기면(반쪽 저장) 원위치로 복구한다.
       D.CARDS.forEach(function (c) {
         var st = S.cards[c.id];
@@ -867,9 +876,15 @@
     ctx.fillStyle = '#14101c'; ctx.fillRect(0, 0, W, H);
     txt(D.CLEAR.banner, W / 2, 210, 44, A.PAL.ribbon, 'center');
     txt(D.CLEAR.stairs[0][0], W / 2, 262, 20, A.PAL.white, 'center', 500);
+    // 내 기록 — 아이에겐 성취, 교사에겐 관찰 데이터
+    var sec = Math.round(S.stats.sec), mm = Math.floor(sec / 60), ss = sec % 60;
+    var line = D.CLEAR.statTime + ' ' + (mm ? mm + D.CLEAR.unitMin + ' ' : '') + ss + D.CLEAR.unitSec
+      + ' · ' + D.CLEAR.statStolen + ' ' + S.stats.stolen + D.CLEAR.unitCnt
+      + ' · ' + D.CLEAR.statRetreat + ' ' + S.stats.retreats + D.CLEAR.unitCnt;
+    txt(line, W / 2, 300, 17, A.PAL.tan, 'center', 500);
     D.CLEAR.menu.forEach(function (label, i) {
       var sel = clearUi.cursor === i;
-      txt((sel ? '▶ ' : '   ') + label, W / 2, 330 + i * 42, 23, sel ? A.PAL.ribbon : A.PAL.white, 'center');
+      txt((sel ? '▶ ' : '   ') + label, W / 2, 342 + i * 42, 23, sel ? A.PAL.ribbon : A.PAL.white, 'center');
     });
     txt(D.CLEAR.keepNote, W / 2, 452, 16, A.PAL.blue, 'center', 500);
   }
@@ -882,6 +897,7 @@
   // ── 루프 ────────────────────────────────────────────────────────────────
   function update(dt) {
     S.time += dt;
+    if (S.mode !== 'title' && S.mode !== 'load' && !S.paused) S.stats.sec += dt;
     if (S.paused) { if (tapped('ok')) S.paused = false; return; }
     if (S.flash > 0) S.flash -= dt;
     if (S.toast) { S.toast.t -= dt; if (S.toast.t <= 0) S.toast = null; }

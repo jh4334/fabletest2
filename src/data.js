@@ -171,6 +171,10 @@
     hint: [['「비번은 나만 알고 있기.」', '짝꿍이 계단 쪽을 가리킨다.']],
     stairs: [['2층은 공사 중.', '오늘은 여기까지.']],
     banner: '1층 통과',
+    statTime: '걸린 시간',
+    statStolen: '뺏긴 카드',
+    statRetreat: '물러난 횟수',
+    unitMin: '분', unitSec: '초', unitCnt: '번',
     menu: ['계속 둘러보기', '타이틀로'],
     keepNote: '기록은 저장돼 있어요. 처음부터는 타이틀에서.'
   };
