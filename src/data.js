@@ -84,7 +84,13 @@
     title: '방과 후: 그림자 학교',
     sub: '1층 · 교실',
     start: '시작',
+    resume: '이어하기',
+    restart: '처음부터',
+    confirmWipe: ['하던 이야기가 지워져요.', '정말 처음부터 할까요?'],
+    yes: '네, 처음부터',
+    no: '아니요',
     keys: '이동 화살표 · 결정 Z · 취소 X',
+    keysTouch: '이동 왼쪽 스틱 · 결정 A · 취소 B',
     loading: '불러오는 중',
 
     expLabel: '노출도',

@@ -151,9 +151,13 @@
     ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
     w: 'up', s: 'down', a: 'left', d: 'right',
     W: 'up', S: 'down', A: 'left', D: 'right',
-    z: 'ok', Z: 'ok', 'ㅈ': 'ok', Enter: 'ok', ' ': 'ok', Spacebar: 'ok',
-    x: 'no', X: 'no', 'ㅌ': 'no', Escape: 'no', Backspace: 'no'
+    z: 'ok', Z: 'ok', Enter: 'ok', ' ': 'ok', Spacebar: 'ok',
+    x: 'no', X: 'no', Escape: 'no', Backspace: 'no'
   };
+  // 한글 낱자 폴백(ㅈ→결정, ㅌ→취소). 화면 문구가 아니라 키 코드라
+  // 엔진 한글 0자 린트를 지키기 위해 코드포인트로 적는다.
+  KEYMAP[String.fromCharCode(0x3148)] = 'ok';
+  KEYMAP[String.fromCharCode(0x314C)] = 'no';
   function mapKey(e) {
     return (e.code && CODEMAP[e.code]) || KEYMAP[e.key] || null;
   }
@@ -700,6 +704,31 @@
     }
   }
 
+  // 타이틀 메뉴 — 저장이 있으면 [이어하기/처음부터], 처음부터는 확인 한 번.
+  var title = { cursor: 0, confirm: false, confirmCursor: 1 };
+
+  function titleOptions() {
+    return hasSave() ? [D.T.resume, D.T.restart] : [D.T.start];
+  }
+
+  function updateTitle() {
+    if (title.confirm) {
+      if (tapped('left') || tapped('right') || tapped('up') || tapped('down')) title.confirmCursor = 1 - title.confirmCursor;
+      if (tapped('no')) { title.confirm = false; return; }
+      if (tapped('ok')) {
+        title.confirm = false;
+        if (title.confirmCursor === 0) { clearSave(); title.cursor = 0; newGame(); }
+      }
+      return;
+    }
+    var n = titleOptions().length;
+    if (n > 1 && (tapped('up') || tapped('down'))) title.cursor = 1 - title.cursor;
+    if (!tapped('ok')) return;
+    if (n === 1) { newGame(); return; }
+    if (title.cursor === 0) { if (!load()) newGame(); return; }
+    title.confirm = true; title.confirmCursor = 1; // 기본값은 거절 쪽 — 실수 방지
+  }
+
   function drawTitle() {
     ctx.fillStyle = '#14101c'; ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = 'rgba(232,120,60,0.10)'; ctx.fillRect(0, 0, W, H);
@@ -709,9 +738,31 @@
     }
     txt(D.T.title, W / 2, 200, 46, A.PAL.cream, 'center');
     txt(D.T.sub, W / 2, 240, 20, A.PAL.tan, 'center', 500);
-    panel(W / 2 - 110, 300, 220, 56);
-    txt('▶ ' + D.T.start, W / 2, 337, 26, A.PAL.ribbon, 'center');
-    txt(D.T.keys, W / 2, 420, 17, A.PAL.blue, 'center', 500);
+    var opts = titleOptions();
+    panel(W / 2 - 130, 292, 260, 30 + opts.length * 40);
+    opts.forEach(function (label, i) {
+      var sel = opts.length === 1 || title.cursor === i;
+      txt((sel ? '▶ ' : '   ') + label, W / 2, 330 + i * 40, 24, sel ? A.PAL.ribbon : A.PAL.white, 'center');
+    });
+    txt(isTouch() ? D.T.keysTouch : D.T.keys, W / 2, 448, 17, A.PAL.blue, 'center', 500);
+    if (title.confirm) {
+      panel(W / 2 - 220, 180, 440, 150, 0.95);
+      txt(D.T.confirmWipe[0], W / 2, 222, 20, A.PAL.white, 'center');
+      txt(D.T.confirmWipe[1], W / 2, 252, 20, A.PAL.white, 'center');
+      [D.T.yes, D.T.no].forEach(function (label, i) {
+        var sel = title.confirmCursor === i;
+        txt((sel ? '▶ ' : '   ') + label, W / 2 - 110 + i * 220, 300, 21,
+          sel ? A.PAL.ribbon : A.PAL.white, 'center');
+      });
+    }
+  }
+
+  // 터치 기기 감지 — 조작 안내 문구를 고르는 용도로만 쓴다.
+  function isTouch() {
+    try {
+      return !!(g.matchMedia && g.matchMedia('(hover: none), (pointer: coarse)').matches)
+        || ('ontouchstart' in g);
+    } catch (e) { return false; }
   }
 
   function drawClear() {
@@ -730,8 +781,8 @@
   function update(dt) {
     S.time += dt;
     if (S.toast) { S.toast.t -= dt; if (S.toast.t <= 0) S.toast = null; }
-    // 슬롯 UI는 P3. 지금은 단일 슬롯 자동 이어하기 — 저장이 있으면 그 지점부터.
-    if (S.mode === 'title') { if (tapped('ok') && !load()) newGame(); return; }
+    // 슬롯 UI는 P3. 단일 슬롯이되, 공유 태블릿을 위해 이어하기/처음부터를 고른다.
+    if (S.mode === 'title') { updateTitle(); return; }
     if (S.mode === 'clear') { if (tapped('ok')) { clearSave(); S = blankState(); } return; }
     if (S.dialog) {
       if (tapped('ok')) {

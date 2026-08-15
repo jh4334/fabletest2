@@ -284,6 +284,26 @@ dispatch('keyup', { key: 'ㅈ' });
 dispatch('keydown', { key: 'Process', code: 'ArrowLeft' });
 check('IME 상태에서 방향키 인식', G.keys.left === true);
 dispatch('keyup', { key: 'Process', code: 'ArrowLeft' });
+frame(2); S().dialog = null; S().toast = null;   // 잔류 엣지·부수 효과 청소(테스트 격리)
+
+// ── 13. 타이틀 — 이어하기/처음부터 (공유 태블릿) ────────────────────────────
+console.log('[13] 타이틀 이어하기·처음부터');
+G.save();                                   // [11]에서 로드된 유효 상태를 저장
+S().mode = 'title'; frame(1);
+check('저장 있음 → 타이틀 복귀', G.hasSave() === true);
+tap('ArrowDown');                           // 처음부터 선택
+tap('z');
+check('처음부터는 바로 지우지 않고 확인을 띄움', S().mode === 'title' && G.hasSave() === true);
+tap('x');                                   // 취소
+tap('z');                                   // (커서 유지) 다시 확인
+tap('z');                                   // 기본값 '아니요' 결정
+check('아니요 → 저장 유지', S().mode === 'title' && G.hasSave() === true);
+tap('z');                                   // 다시 확인
+tap('ArrowLeft');                           // '네, 처음부터'
+tap('z');
+check('네 → 저장 삭제 후 새 게임 인트로', !!S().dialog && G.hasSave() === false);
+advance();
+check('새 게임이 교실에서 시작', S().mode === 'world' && S().map === 'classroom');
 
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
