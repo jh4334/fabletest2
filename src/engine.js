@@ -3,7 +3,7 @@
 (function (g) {
   'use strict';
 
-  var VERSION = '0.3.0';   // package.json 과 validate 가 대조한다 — 배포 캐시 문의 판별용
+  var VERSION = '0.4.0';   // package.json 과 validate 가 대조한다 — 배포 캐시 문의 판별용
   var A = g.ART, D = g.DATA;
   var W = 720, H = 528, T = 48;
   var FACE = '"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR","Nanum Gothic",sans-serif';
@@ -23,19 +23,77 @@
     D.CARDS.forEach(function (c) {
       cards[c.id] = { held: false, map: c.at.map, x: c.at.x, y: c.at.y };
     });
+    var rumors = {};
+    (D.RUMORS || []).forEach(function (r) { rumors[r.id] = 'unread'; });
     var m = D.MAPS.classroom;
     return {
       mode: 'title', map: 'classroom', floor: m.fl || 1,
       px: m.spawn.x * T + T / 2, py: m.spawn.y * T + T - 6,
       dir: A.DIR[m.spawn.dir] || 0, frame: 0, walkT: 0, moving: false,
       cam: { x: 0, y: 0 }, exposure: 0, bubble: 0, loopN: 0, cards: cards,
-      flags: { intro: false, firstCard: false, firstTake: false, termWarn: false, recoWarn: false, done: false },
+      flags: {
+        intro: false, firstCard: false, firstTake: false, termWarn: false,
+        recoWarn: false, airWarn: false, seniorUp: false, done: false
+      },
       // 인물·맵 단위 진행은 층이 늘어도 그대로 쓰이도록 사전으로 둔다.
       heardOf: {}, clearedOf: {}, stairsOpen: {}, visited: { classroom: true },
+      // 3층: 소문 상태 머신 + 오염 게이지 + 복도를 막는 안개 칸
+      rumors: rumors, pollute: 0, fog: {}, con: null,
       dialog: null, battle: null, toast: null, cool: {}, time: 0, flash: 0, paused: false,
       stats: { sec: 0, stolen: 0, retreats: 0 },  // 교사 관찰·아이 성취감용 계측
       looked: {}                                   // 재조사 대사 분기(세션 한정, 저장 안 함)
     };
+  }
+
+  // ── 3층 소문·안개 ───────────────────────────────────────────────────────
+  function rumorDef(id) {
+    var list = D.RUMORS || [];
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  }
+  // 안개는 소문 상태에서 다시 만든다 — 저장값이 어긋나도 화면과 통행이 어긋나지 않는다.
+  function rebuildFog() {
+    var f = {};
+    (D.RUMORS || []).forEach(function (r) {
+      if (S.rumors[r.id] !== 'polluted') return;
+      (r.fog || []).forEach(function (c) {
+        (f[r.map] = f[r.map] || []).push({ x: c.x, y: c.y });
+      });
+    });
+    S.fog = f;
+    S.pollute = countPolluted();
+  }
+  function countPolluted() {
+    var n = 0;
+    (D.RUMORS || []).forEach(function (r) { if (S.rumors[r.id] === 'polluted') n++; });
+    return Math.max(0, Math.min(D.MAX_POLLUTE, n));
+  }
+  function rumorsDone() {
+    var list = D.RUMORS || [];
+    for (var i = 0; i < list.length; i++) {
+      var st = S.rumors[list[i].id];
+      if (st !== 'verified' && st !== 'fixed') return false;
+    }
+    return list.length > 0;
+  }
+  // 맵 객체 → 이름. 안개는 맵 이름으로 저장되는데 렌더·충돌은 맵 객체만 받는다.
+  var mapPairs = null;
+  function nameOf(m) {
+    if (!mapPairs) {
+      mapPairs = [];
+      for (var k in D.MAPS) mapPairs.push([D.MAPS[k], k]);
+    }
+    for (var i = 0; i < mapPairs.length; i++) if (mapPairs[i][0] === m) return mapPairs[i][1];
+    return null;
+  }
+  function fogOf(m) {
+    if (!S || !S.fog) return [];
+    return S.fog[nameOf(m)] || [];
+  }
+  function fogAt(m, tx, ty) {
+    var list = fogOf(m);
+    for (var i = 0; i < list.length; i++) if (list[i].x === tx && list[i].y === ty) return true;
+    return false;
   }
 
   // 가방·게이지·보여주기 목록은 전부 현재 층 카드만 본다 (층 분리).
@@ -60,6 +118,7 @@
   function legend(ch) { return (ch && D.LEGEND[ch]) || null; }
   function solidAt(m, tx, ty) {
     var ch = chAt(m, tx, ty); if (ch === null) return true;
+    if (fogAt(m, tx, ty)) return true;        // 소문 안개는 통로를 막는다(grid는 그대로)
     var L = legend(ch); return !L || !!L.solid;
   }
   function isWallCh(m, tx, ty) {
@@ -131,12 +190,26 @@
   }
   function isF2() { return S.floor === 2; }
 
+  // 층마다 같은 자리·같은 문법의 게이지 하나. 회복 문구도 여기서 같이 고른다.
+  function gaugeInfo() {
+    if (S.floor === 3) {
+      return { label: D.T.polLabel, help: D.T.polHelp, val: S.pollute, max: D.MAX_POLLUTE, tone: A.PAL.red };
+    }
+    if (S.floor === 2) {
+      return { label: D.T.bubLabel, help: D.T.bubHelp, val: S.bubble, max: D.MAX_BUBBLE, tone: A.PAL.blue };
+    }
+    return { label: D.T.expLabel, help: D.T.expHelp, val: S.exposure, max: D.MAX_EXPOSURE, tone: A.PAL.red };
+  }
+
   function pickCard(id) {
     var st = S.cards[id], c = cardDef(id);
     st.held = true; st.map = null;
-    if (c.floor === 2) setBubble(S.bubble - 1); else setExposure(S.exposure - 1);
+    // 3층 오염은 카드를 줍는다고 내려가지 않는다 — 정정 방송으로만 걷힌다.
+    if (c.floor === 2) setBubble(S.bubble - 1);
+    else if (c.floor !== 3) setExposure(S.exposure - 1);
     sfx('pick');
     if (c.floor === 1 && !S.flags.firstCard) { S.flags.firstCard = true; toast(D.T.firstCard); }
+    else if (c.floor === 3) toast(D.T.gotCard3);
     else toast(c.floor === 2 ? D.T.gotCard2 : D.T.gotCard);
     save();
   }
@@ -276,7 +349,7 @@
       if (ax < TERM_R && ay < TERM_R) stealCard(tm, key);
     });
     // 씌인 인물 조우
-    if (m.npc && !S.clearedOf[m.npc.battle]) {
+    if (npcHere(m) && !S.clearedOf[m.npc.battle]) {
       var np = tileCenter(m.npc.x, m.npc.y);
       if (Math.abs(np.x - S.px) < NPC_R && Math.abs(np.y - (S.py - 12)) < NPC_R) {
         var P0 = D.BATTLES[m.npc.battle];
@@ -310,10 +383,20 @@
 
   function bump(m, tile) {
     var ch = chAt(m, tile.x, tile.y);
-    if (ch === 'S') stairsBump();
+    if (ch === 'S' && !fogAt(m, tile.x, tile.y)) stairsBump();
   }
 
-  function stairsKey() { return isF2() ? 'stairs2' : 'stairs'; }
+  // 조건부로 나타나는 인물(3층 선배 = 소문 3개를 다 처리해야 등장)
+  function npcHere(m) {
+    if (!m.npc) return false;
+    if (m.npc.needs === 'rumors') return rumorsDone();
+    return true;
+  }
+
+  function stairsKey() {
+    if (S.floor === 3) return 'stairs3';
+    return isF2() ? 'stairs2' : 'stairs';
+  }
 
   function stairsBump() {
     if (S.dialog) return;
@@ -321,23 +404,41 @@
     if (!S.stairsOpen[S.map]) { say([D.LOOK[stairsKey()]]); return; }
     // 위층이 있으면 올라간다. 없으면 오늘 수업은 여기까지.
     if (m.stairsTo) {
-      var up = m.stairsTo;
+      var up = m.stairsTo, txt2 = (D.FLOOR_UP && D.FLOOR_UP[up.map]) || D.FLOOR2;
       sfx('clear');
-      say(D.FLOOR2.up, function () {
+      say(txt2.up, function () {
         enterMap(up.map, up.sx, up.sy, up.dir);
-        say(D.FLOOR2.enter, save);
+        say(txt2.enter, save);
       });
       return;
     }
     say(D.CLEAR.stairs, function () { S.mode = 'clear'; S.flags.done = true; save(); });
   }
 
+  function noteAt(m, tx, ty) {
+    var list = m.notes || [];
+    for (var i = 0; i < list.length; i++) if (list[i].x === tx && list[i].y === ty) return list[i];
+    return null;
+  }
+  function signAt(m, tx, ty) {
+    var list = m.signs || [];
+    for (var i = 0; i < list.length; i++) if (list[i].x === tx && list[i].y === ty) return list[i];
+    return null;
+  }
+
   function look(m) {
     var f = frontTile();
-    if (m.npc && m.npc.x === f.x && m.npc.y === f.y && S.clearedOf[m.npc.battle]) {
+    if (npcHere(m) && m.npc.x === f.x && m.npc.y === f.y && S.clearedOf[m.npc.battle]) {
       say(D.BATTLES[m.npc.battle].hint); return;
     }
+    // 안개를 바라보면 걷는 법(정정 방송)을 그 자리에서 알려 준다 (헌법 §3-3)
+    if (fogAt(m, f.x, f.y)) { say([D.LOOK.fog]); return; }
+    var note = noteAt(m, f.x, f.y);
+    if (note) { readNote(note.id); return; }
+    var sign = signAt(m, f.x, f.y);
+    if (sign) { var r = rumorDef(sign.rumor); say(r ? r.sign : [D.LOOK.sign]); return; }
     var ch = chAt(m, f.x, f.y), L = legend(ch);
+    if (ch === 'K') { openConsole(); return; }
     if (ch === 'S') { stairsBump(); return; }
     if (L && L.look) {
       var k = L.look === 'stairs' ? stairsKey() : L.look;
@@ -346,6 +447,124 @@
       say(seq); return;
     }
     say([D.LOOK.nothing]);
+  }
+
+  // ── 3층 방송 콘솔 ───────────────────────────────────────────────────────
+  // 새 UI를 만들지 않는다 — 배틀 메뉴/서브 목록과 같은 커서 문법을 그대로 쓴다.
+  function readNote(id) {
+    if (S.rumors[id] !== 'unread') { say([D.LOOK.noteRead]); return; }
+    S.rumors[id] = 'read';
+    sfx('pick'); save();
+    var r = rumorDef(id);
+    say(r ? r.note : [D.LOOK.note]);
+  }
+
+  // 콘솔에 올라오는 소문 = 읽었고 아직 처리 안 된 것 + 오염돼 정정이 필요한 것
+  function consoleRumors() {
+    var out = [];
+    (D.RUMORS || []).forEach(function (r) {
+      var st = S.rumors[r.id];
+      if (st === 'read' || st === 'aired' || st === 'polluted') out.push(r.id);
+    });
+    return out;
+  }
+  function conActions(id) {
+    return S.rumors[id] === 'read' ? ['air', 'check'] : ['fix'];
+  }
+  function conList() {
+    if (!S.con) return [];
+    if (S.con.level === 0) return consoleRumors().concat(['close']);
+    return conActions(S.con.rumor).concat(['back']);
+  }
+  function conLabel(key) {
+    if (key === 'close') return D.CONSOLE.close;
+    if (key === 'back') return D.CONSOLE.back;
+    if (key === 'air') return D.CONSOLE.air;
+    if (key === 'check') return D.CONSOLE.check;
+    if (key === 'fix') return D.CONSOLE.fix;
+    var r = rumorDef(key);
+    return r ? r.label : '';
+  }
+
+  function openConsole() {
+    // 처리할 소문이 없을 때: 아직 안 읽었나(none) / 다 끝났나(clear)를 갈라 준다.
+    if (!consoleRumors().length) { say(rumorsDone() ? D.CONSOLE.clear : D.CONSOLE.none); return; }
+    S.mode = 'console';
+    S.con = { level: 0, cursor: 0, rumor: null };
+    sfx('ok');
+  }
+  function closeConsole() {
+    S.mode = 'world'; S.con = null;
+  }
+  function conSay(seq, then) {
+    say(seq, then || function () { conBack(); });
+  }
+  function conBack() {
+    if (!S.con) return;
+    S.con.level = 0; S.con.cursor = 0; S.con.rumor = null;
+    if (!consoleRumors().length) closeConsole();
+  }
+  function hasCard(id) { return heldIds().indexOf(id) >= 0; }
+
+  function updateConsole() {
+    var c = S.con, list = conList(), n = list.length;
+    if (!n) { closeConsole(); return; }
+    if (c.cursor >= n) c.cursor = n - 1;
+    if (tapped('up') || tapped('left')) { c.cursor = (c.cursor + n - 1) % n; sfx('cursor'); }
+    if (tapped('down') || tapped('right')) { c.cursor = (c.cursor + 1) % n; sfx('cursor'); }
+    if (tapped('no')) { sfx('cancel'); if (c.level) { conBack(); } else { closeConsole(); } return; }
+    if (!tapped('ok')) return;
+    sfx('ok');
+    var pick = list[c.cursor];
+    if (pick === 'close') { closeConsole(); return; }
+    if (pick === 'back') { conBack(); return; }
+    if (c.level === 0) { c.rumor = pick; c.level = 1; c.cursor = 0; return; }
+    doConsole(pick);
+  }
+
+  function doConsole(act) {
+    var id = S.con.rumor, r = rumorDef(id);
+    if (act === 'air') {
+      // 처음 한 번은 벌 대신 경고 — 1층 단말·2층 추천 문과 같은 문법.
+      if (!S.flags.airWarn) {
+        S.flags.airWarn = true; sfx('warn'); save();
+        say(D.CONSOLE.warn, function () { if (S.con) S.con.cursor = 0; });
+        return;
+      }
+      S.rumors[id] = 'aired'; save();
+      sfx('steal'); S.flash = 0.7;
+      conSay(D.CONSOLE.aired, function () { spreadFog(id); conAfter(); });
+      return;
+    }
+    if (act === 'check') {
+      if (!hasCard(r.card)) { say(D.CONSOLE.needCard); return; }
+      S.rumors[id] = 'verified'; save();
+      sfx('clear');
+      conSay(D.CONSOLE.verified, conAfter);
+      return;
+    }
+    if (act === 'fix') {
+      if (!hasCard(r.card)) { say(D.CONSOLE.needCard); return; }
+      S.rumors[id] = 'fixed'; rebuildFog(); save();
+      sfx('off');
+      conSay(D.CONSOLE.fixed, conAfter);
+    }
+  }
+
+  // 확인 없이 내보낸 소문은 복도에 안개로 남는다 (aired → polluted)
+  function spreadFog(id) {
+    S.rumors[id] = 'polluted';
+    rebuildFog();
+    save();
+  }
+
+  function conAfter() {
+    conBack();
+    save();
+    if (!rumorsDone() || S.flags.seniorUp) return;
+    S.flags.seniorUp = true;
+    closeConsole();
+    say(D.CONSOLE.done, save);
   }
 
   // ── 배틀 ────────────────────────────────────────────────────────────────
@@ -452,6 +671,18 @@
 
   function spawnBullet(a) {
     var b = S.battle, r = Math.random();
+    if (a.kind === 'burst') {
+      // 속보처럼 한 지점에서 방사형 6발. 사이가 넓어 서서 기다리면 지나간다.
+      var bx = BOX.x + 60 + Math.random() * (BOX.w - 120);
+      var by = BOX.y + 30 + Math.random() * (BOX.h - 60);
+      for (var i = 0; i < 6; i++) {
+        var ang = (Math.PI * 2 * i) / 6 + r;
+        b.bullets.push({
+          x: bx, y: by, vx: Math.cos(ang) * a.speed, vy: Math.sin(ang) * a.speed, s: 13
+        });
+      }
+      return;
+    }
     if (a.kind === 'chase') {
       // 하트를 향해 느리게 꺾이는 조각. 오래 떠 있지 않게 수명을 준다.
       var fx = BOX.x + 12 + Math.random() * (BOX.w - 24), fy = BOX.y - 10;
@@ -527,7 +758,9 @@
         if (p.life <= 0) { b.bullets.splice(i, 1); continue; }
       }
       p.x += p.vx * dt; p.y += p.vy * dt;
-      if (p.y > BOX.y + BOX.h + 30 || p.x < BOX.x - 30 || p.x > BOX.x + BOX.w + 30) { b.bullets.splice(i, 1); continue; }
+      // 위쪽 경계도 본다 — 방사형(burst) 조각은 위로도 날아간다.
+      if (p.y > BOX.y + BOX.h + 30 || p.y < BOX.y - 30
+        || p.x < BOX.x - 30 || p.x > BOX.x + BOX.w + 30) { b.bullets.splice(i, 1); continue; }
       if (b.inv <= 0 && Math.abs(p.x - b.hx) < (p.s + 9) / 2 && Math.abs(p.y - b.hy) < (p.s + 9) / 2) {
         b.hearts--; b.inv = 1.0; sfx('hit');
         if (b.hearts <= 0) { leaveBattle(D.BATTLE_UI.hurt); return; }
@@ -542,6 +775,7 @@
       var o = {
         v: 1, map: S.map, px: Math.round(S.px), py: Math.round(S.py), dir: S.dir,
         floor: S.floor, exposure: S.exposure, bubble: S.bubble, loopN: S.loopN,
+        pollute: S.pollute, rumors: S.rumors, fog: S.fog,
         flags: S.flags, heardOf: S.heardOf, clearedOf: S.clearedOf,
         stairsOpen: S.stairsOpen, visited: S.visited, cards: {},
         stats: { sec: Math.round(S.stats.sec), stolen: S.stats.stolen, retreats: S.stats.retreats }
@@ -575,6 +809,15 @@
       S.exposure = Math.max(0, Math.min(D.MAX_EXPOSURE, o.exposure | 0));
       S.bubble = Math.max(0, Math.min(D.MAX_BUBBLE, o.bubble | 0));
       S.loopN = Math.max(0, Math.min(999, o.loopN | 0));
+      // 소문은 아는 id·아는 상태만 살린다. 대화 도중 껐다면(aired) 오염으로 확정한다
+      // — 안개 없이 목록에서만 사라지는 상태를 남기지 않는다.
+      (D.RUMORS || []).forEach(function (r) {
+        var st = o.rumors && o.rumors[r.id];
+        if (RUMOR_STATES.indexOf(st) < 0) st = 'unread';
+        S.rumors[r.id] = st === 'aired' ? 'polluted' : st;
+      });
+      // 안개·오염 게이지는 저장값을 믿지 않고 소문 상태에서 다시 만든다.
+      rebuildFog();
       for (var k in S.flags) if (o.flags && typeof o.flags[k] === 'boolean') S.flags[k] = o.flags[k];
       S.heardOf = trueKeys(o.heardOf, D.BATTLES);
       S.clearedOf = trueKeys(o.clearedOf, D.BATTLES);
@@ -606,6 +849,8 @@
       return true;
     } catch (e) { return dropBadSave(); }
   }
+
+  var RUMOR_STATES = ['unread', 'read', 'aired', 'polluted', 'fixed', 'verified'];
 
   // 저장된 사전에서 아는 키의 true 만 살린다 — 모르는 키·이상한 값은 버린다.
   function trueKeys(src, valid) {
@@ -696,12 +941,14 @@
       var dx = d.x * T - camX, dy = d.y * T - camY;
       if (d.kind === 'pot') { A.drawSprite(c, 'pot', 0, 0, 14, 16, dx + 12, dy + 10, 28, 32); return; }
       // 루프를 돌수록 복도가 단조로워진다: 포스터가 한 그림으로 도배되고, 창문까지 가린다.
+      // (2층 추천 복도의 연출 — 다른 층 복도까지 물들이지 않는다)
+      var dull = S.floor === 2;
       if (d.kind === 'poster') {
-        A.drawProp(c, 'poster', dx, dy, T, S.loopN >= 2 ? A.PAL.red : A.PAL[d.tone]);
+        A.drawProp(c, 'poster', dx, dy, T, dull && S.loopN >= 2 ? A.PAL.red : A.PAL[d.tone]);
         return;
       }
       if (d.kind === 'window') {
-        A.drawProp(c, S.loopN >= 4 ? 'poster' : 'window', dx, dy, T, A.PAL.red);
+        A.drawProp(c, dull && S.loopN >= 4 ? 'poster' : 'window', dx, dy, T, A.PAL.red);
         return;
       }
       A.drawProp(c, d.kind, dx, dy, T);
@@ -735,7 +982,7 @@
         ctx.fillRect(dx + 15, dy + 4, 18, 6);
       } });
     });
-    if (m.npc) {
+    if (npcHere(m)) {
       var free = !!S.clearedOf[m.npc.battle];
       list.push({ y: m.npc.y * T + 42, tx: m.npc.x, ty: m.npc.y, draw: function (dx, dy) {
         A.drawChar(ctx, m.npc.sheet, free ? A.DIR.down : A.DIR[m.npc.dir], 0,
@@ -797,14 +1044,13 @@
     }
   }
 
-  // 같은 자리·같은 문법의 게이지. 1층은 노출도(빨강), 2층은 버블(청록).
+  // 같은 자리·같은 문법의 게이지. 1층 노출도(빨강) · 2층 버블(청록) · 3층 오염(빨강).
   function drawGauge(x, y) {
-    var f2 = isF2();
-    var max = f2 ? D.MAX_BUBBLE : D.MAX_EXPOSURE, val = f2 ? S.bubble : S.exposure;
-    txt(f2 ? D.T.bubLabel : D.T.expLabel, x, y + 16, 17, A.PAL.cream);
+    var G0 = gaugeInfo(), max = G0.max, val = G0.val;
+    txt(G0.label, x, y + 16, 17, A.PAL.cream);
     var bx = x + 58;
     for (var i = 0; i < max; i++) {
-      ctx.fillStyle = i < val ? (f2 ? A.PAL.blue : A.PAL.red) : 'rgba(120,110,130,0.55)';
+      ctx.fillStyle = i < val ? G0.tone : 'rgba(120,110,130,0.55)';
       ctx.fillRect(bx + i * 22, y + 2, 18, 16);
       ctx.strokeStyle = A.PAL.ink; ctx.lineWidth = 2;
       ctx.strokeRect(bx + i * 22, y + 2, 18, 16);
@@ -828,7 +1074,7 @@
   // 회복 경로는 항상 화면에 보인다 (기준서 §3-3)
   function drawHelp() {
     panel(8, H - 30, W - 16, 24, 0.62);
-    txt(isF2() ? D.T.bubHelp : D.T.expHelp, W / 2, H - 12, 15, A.PAL.blue, 'center', 600);
+    txt(gaugeInfo().help, W / 2, H - 12, 15, A.PAL.blue, 'center', 600);
   }
 
   function drawDialog() {
@@ -836,6 +1082,20 @@
     panel(24, 384, W - 48, 104);
     for (var i = 0; i < box.length && i < 2; i++) txt(box[i], 48, 428 + i * 34, 22, A.PAL.white);
     txt('▼', W - 56, 480, 18, A.PAL.ribbon, 'center', 400);
+  }
+
+  // 콘솔 선택지 — 배틀 메뉴와 같은 상자·같은 커서(새 UI 없음).
+  function drawConsole() {
+    if (!S.con || S.dialog) return;
+    var list = conList();
+    panel(24, 360, W - 48, 128);
+    txt(D.CONSOLE.title, 48, 388, 19, A.PAL.ribbon);
+    list.forEach(function (key, i) {
+      var x = 60 + (i % 2) * 320, y = 420 + Math.floor(i / 2) * 38;
+      var on = S.con.cursor === i;
+      txt((on ? '▶ ' : '   ') + conLabel(key), x, y, 21, on ? A.PAL.ribbon : A.PAL.white);
+    });
+    txt(D.CONSOLE.hint, W - 44, 482, 15, A.PAL.blue, 'right', 500);
   }
 
   function drawToast() {
@@ -846,13 +1106,25 @@
     ctx.globalAlpha = 1;
   }
 
+  // 소문 안개 — 맵 그리드는 그대로 두고 오버레이로 얹는다(정정 방송이면 바로 걷힌다).
+  function drawFog(m) {
+    var list = fogOf(m); if (!list.length) return;
+    var a = 0.88 + Math.sin(S.time * 2) * 0.10;
+    ctx.globalAlpha = Math.max(0, Math.min(1, a));
+    list.forEach(function (c) {
+      A.drawProp(ctx, 'fog', c.x * T - S.cam.x, c.y * T - S.cam.y, T);
+    });
+    ctx.globalAlpha = 1;
+  }
+
   function drawWorld() {
     var m = mapOf(S.map);
     ctx.fillStyle = m.fill; ctx.fillRect(0, 0, W, H);
     drawMap(m);
+    drawFog(m);
     drawEntities(m);
     ctx.fillStyle = m.tint; ctx.fillRect(0, 0, W, H);
-    if (isF2()) drawBubbles(); else drawAds();
+    if (S.floor === 2) drawBubbles(); else if (S.floor === 1) drawAds();
     if (S.flash > 0) drawFlash();
     drawHud();
   }
@@ -1066,6 +1338,7 @@
     }
     if (S.mode === 'world') updateWorld(dt);
     else if (S.mode === 'battle') updateBattle(dt);
+    else if (S.mode === 'console') updateConsole(dt);
   }
 
   function render() {
@@ -1073,6 +1346,7 @@
     if (S.mode === 'title') { drawTitle(); return; }
     if (S.mode === 'clear') { drawClear(); return; }
     if (S.mode === 'battle') drawBattle(); else drawWorld();
+    if (S.mode === 'console') drawConsole();
     if (S.dialog) drawDialog();
     if (S.toast) drawToast();
     if (S.paused) drawPaused();
@@ -1203,6 +1477,9 @@
     blankState: blankState,
     heldIds: heldIds, playerTile: playerTile, wallOffset: wallOffset,
     solidAt: solidAt, BOX: BOX, keys: keys,
+    // 3층 검사용 — 안개 칸·소문 처리 여부를 밖에서 확인한다
+    fogCells: function (name) { return (S && S.fog && S.fog[name]) || []; },
+    rumorsDone: function () { return !!S && rumorsDone(); },
     pause: pause,
     press: function (k) { if (!keys[k]) edge[k] = true; keys[k] = true; },
     release: function (k) { keys[k] = false; }
