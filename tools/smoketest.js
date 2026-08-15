@@ -185,6 +185,16 @@ tap('ArrowRight');
 check('그리드 내비: → = 옆 칸', S().battle.cursor === 3);
 tap('ArrowUp'); tap('ArrowLeft');         // 3 → 1 → 0
 check('그리드 내비: ↑← 복귀', S().battle.cursor === 0);
+// 말 걸기 3단 반응 — 반복할수록 대사가 변한다
+tap('z');                                 // 말 걸기 1회
+check('말 걸기 1: 가로챔', S().dialog && S().dialog.seq === D.BATTLE.talk);
+advance(); S().battle.timer = 999; frame(1);
+tap('z');
+check('말 걸기 2: 반응이 달라짐', S().dialog && S().dialog.seq === D.BATTLE.talk2);
+advance(); S().battle.timer = 999; frame(1);
+tap('z');
+check('말 걸기 3+: 듣기 유도 힌트', S().dialog && S().dialog.seq === D.BATTLE.talk3);
+advance(); S().battle.timer = 999; frame(1);
 tap('ArrowRight');                        // 말 걸기 → 보여주기
 check('메뉴 커서 이동', S().battle.cursor === 1);
 tap('z');

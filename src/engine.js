@@ -297,7 +297,7 @@
       // 절반 기억: 물러났다 와도 들은 이야기는 유지된다 (재도전 존중)
       shadow: D.BATTLE.shadow - (S.flags.mateHeard ? 1 : 0),
       hearts: D.BATTLE.hearts,
-      cursor: 0, sub: 0, heard: !!S.flags.mateHeard, turn: 0, spare: false,
+      cursor: 0, sub: 0, heard: !!S.flags.mateHeard, turn: 0, talks: 0, spare: false,
       hx: BOX.x + BOX.w / 2, hy: BOX.y + BOX.h / 2,
       bullets: [], timer: 0, spawnAcc: 0, atk: 0, inv: 0, tell: 0
     };
@@ -328,7 +328,12 @@
   function battleMenuPick() {
     var b = S.battle;
     if (b.spare) { doSpare(); return; }
-    if (b.cursor === 0) { battleSay(D.BATTLE.talk, enemyTurn); return; }
+    if (b.cursor === 0) {
+      b.talks++;
+      var seq = b.talks === 1 ? D.BATTLE.talk : (b.talks === 2 ? D.BATTLE.talk2 : D.BATTLE.talk3);
+      battleSay(seq, enemyTurn);
+      return;
+    }
     if (b.cursor === 1) {
       if (!heldIds().length) { battleSay(D.BATTLE.showNone, function () { b.phase = 'menu'; }); return; }
       b.phase = 'sub'; b.sub = 0; return;
