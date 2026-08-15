@@ -249,6 +249,27 @@ check('클리어 화면', S().mode === 'clear');
 tap('z');
 check('처음부터: 저장 삭제 후 타이틀', S().mode === 'title' && G.hasSave() === false);
 
+// ── 11. 세이브 무결성 (손상·조작 방어) ──────────────────────────────────────
+console.log('[11] 세이브 무결성');
+const K = D.SAVE_KEY;
+windowObj.localStorage.setItem(K, '{깨진 json');
+check('깨진 JSON → 로드 거부', G.load() === false);
+check('깨진 저장은 자동 폐기', G.hasSave() === false);
+windowObj.localStorage.setItem(K, JSON.stringify({ v: 1, map: 'no-such-map', px: 100, py: 100 }));
+check('없는 맵 → 로드 거부·폐기', G.load() === false && G.hasSave() === false);
+windowObj.localStorage.setItem(K, JSON.stringify({ v: 1, map: 'classroom', px: '백', py: 240 }));
+check('숫자 아닌 좌표 → 로드 거부', G.load() === false);
+windowObj.localStorage.setItem(K, JSON.stringify({ v: 2, map: 'classroom', px: 240, py: 240 }));
+check('스키마 버전 불일치 → 로드 거부', G.load() === false);
+windowObj.localStorage.setItem(K, JSON.stringify({
+  v: 1, map: 'classroom', px: 99999, py: -50, dir: 9, exposure: 99,
+  flags: { cleared: 'yes' }, cards: { nameTag: { held: false, map: 'ghost', x: 999, y: -3 } },
+}));
+check('범위 밖 값은 클램프해 살림', G.load() === true
+  && S().exposure <= D.MAX_EXPOSURE && S().px <= D.MAPS.classroom.w * 48 && S().py >= 0);
+check('불리언 아닌 플래그는 무시', S().flags.cleared === false);
+check('유령 맵의 카드는 원위치 복구', S().cards.nameTag.map === 'classroom');
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {

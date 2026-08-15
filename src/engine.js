@@ -414,18 +414,42 @@
       var raw = g.localStorage.getItem(D.SAVE_KEY);
       if (!raw) return false;
       var o = JSON.parse(raw);
-      if (!o || !D.MAPS[o.map]) return false;
+      // 손상·조작·구버전 세이브는 조용히 버린다 — NaN 좌표로 먹통이 되는 것보다
+      // 처음부터 다시가 낫다(슬라이스 분량 5분). 검증 실패 시 저장소도 비운다.
+      if (!o || o.v !== 1 || !D.MAPS[o.map]) return dropBadSave();
+      if (!isFinite(o.px) || !isFinite(o.py)) return dropBadSave();
+      var m = D.MAPS[o.map];
       S = blankState();
-      S.mode = 'world'; S.map = o.map; S.px = o.px; S.py = o.py; S.dir = o.dir | 0;
-      S.exposure = o.exposure | 0;
-      for (var k in o.flags) S.flags[k] = o.flags[k];
+      S.mode = 'world'; S.map = o.map;
+      S.px = Math.max(T / 2, Math.min(m.w * T - T / 2, +o.px));
+      S.py = Math.max(T, Math.min(m.h * T - 2, +o.py));
+      S.dir = [0, 1, 2, 3].indexOf(o.dir | 0) >= 0 ? (o.dir | 0) : 0;
+      S.exposure = Math.max(0, Math.min(D.MAX_EXPOSURE, o.exposure | 0));
+      for (var k in S.flags) if (o.flags && typeof o.flags[k] === 'boolean') S.flags[k] = o.flags[k];
       D.CARDS.forEach(function (c) {
         var st = o.cards && o.cards[c.id]; if (!st) return;
-        S.cards[c.id] = { held: !!st.held, map: st.map, x: st.x, y: st.y };
+        var map = st.map === null || D.MAPS[st.map] ? st.map : c.at.map;
+        var mm = map ? D.MAPS[map] : null;
+        S.cards[c.id] = {
+          held: !!st.held,
+          map: map,
+          x: mm ? Math.max(0, Math.min(mm.w - 1, st.x | 0)) : c.at.x,
+          y: mm ? Math.max(0, Math.min(mm.h - 1, st.y | 0)) : c.at.y
+        };
+      });
+      // 들고 있지도, 바닥에도 없는 카드가 생기면(반쪽 저장) 원위치로 복구한다.
+      D.CARDS.forEach(function (c) {
+        var st = S.cards[c.id];
+        if (!st.held && !st.map) { st.map = c.at.map; st.x = c.at.x; st.y = c.at.y; }
       });
       updateCam();
       return true;
-    } catch (e) { return false; }
+    } catch (e) { return dropBadSave(); }
+  }
+
+  function dropBadSave() {
+    try { g.localStorage.removeItem(D.SAVE_KEY); } catch (e) { /* 비워도 못 비워도 새 게임 */ }
+    return false;
   }
 
   function hasSave() {
@@ -781,7 +805,13 @@
     var doc = g.document;
     cv = doc && doc.getElementById ? doc.getElementById('game') : null;
     ctx = cv && cv.getContext ? cv.getContext('2d') : null;
-    if (ctx) { ctx.imageSmoothingEnabled = false; ctx.textBaseline = 'alphabetic'; }
+    // 캔버스를 못 얻으면(구형 브라우저·렌더 차단) 검은 화면 대신 안내를 띄운다.
+    if (!ctx) {
+      var fb = doc && doc.getElementById ? doc.getElementById('fallback') : null;
+      if (fb && fb.style) fb.style.display = 'flex';
+      return;
+    }
+    ctx.imageSmoothingEnabled = false; ctx.textBaseline = 'alphabetic';
     S = blankState(); S.mode = 'load';
     g.addEventListener('keydown', onKeyDown);
     g.addEventListener('keyup', onKeyUp);
