@@ -1,6 +1,6 @@
 {
   "name": "shadow-school",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "방과 후: 그림자 학교 — 초등 AI 윤리 학교탈출 게임 (디지털연구대회)",
   "private": true,
   "scripts": {
