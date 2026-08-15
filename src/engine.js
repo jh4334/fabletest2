@@ -1,9 +1,9 @@
-// 엔진 — 방과 후: 그림자 학교 / 1~4층
+// 엔진 — 방과 후: 그림자 학교 / 1~5층
 // 한글 문자열은 한 줄도 두지 않는다. 화면에 나오는 말은 전부 DATA.T / DATA.* 참조.
 (function (g) {
   'use strict';
 
-  var VERSION = '0.5.0';   // package.json 과 validate 가 대조한다 — 배포 캐시 문의 판별용
+  var VERSION = '0.6.0';   // package.json 과 validate 가 대조한다 — 배포 캐시 문의 판별용
   var A = g.ART, D = g.DATA;
   var W = 720, H = 528, T = 48;
   var FACE = '"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR","Nanum Gothic",sans-serif';
@@ -35,7 +35,8 @@
       cam: { x: 0, y: 0 }, exposure: 0, bubble: 0, loopN: 0, cards: cards,
       flags: {
         intro: false, firstCard: false, firstTake: false, termWarn: false,
-        recoWarn: false, airWarn: false, seniorUp: false, artUp: false, done: false
+        recoWarn: false, airWarn: false, seniorUp: false, artUp: false,
+        trustWarn: false, done: false
       },
       // 인물·맵 단위 진행은 층이 늘어도 그대로 쓰이도록 사전으로 둔다.
       heardOf: {}, clearedOf: {}, stairsOpen: {}, visited: { classroom: true },
@@ -44,6 +45,9 @@
       // 4층: 액자 상태 머신 + 만든 스티커 + 정직 게이지 + 열린 유리문 칸
       // (opened 는 안개의 역방향 — 같은 합성 지점에서 통행/그리기를 뒤집는다)
       frames: frames, stickers: stickers, honest: 0, opened: {},
+      // 5층: 잠긴 장치 개방 여부 + 맡긴 장치(회복 대상) + 의존 게이지 + 열쇠
+      // 열린 장치 칸은 유리문과 같은 opened 합성 지점에 얹힌다.
+      locks: {}, trusted: {}, depend: 0, hasKey: false,
       dialog: null, battle: null, toast: null, cool: {}, time: 0, flash: 0, paused: false,
       stats: { sec: 0, stolen: 0, retreats: 0, missSticker: 0 },  // 교사 관찰·아이 성취감용 계측
       looked: {}                                   // 재조사 대사 분기(세션 한정, 저장 안 함)
@@ -135,12 +139,19 @@
     var list = D.FRAMES || [];
     return list.length > 0 && framesDoneN() === list.length;
   }
+  // 4층 유리문 + 5층 잠긴 장치가 같은 합성 지점을 쓴다 — 통행/그리기를 한 곳에서 뒤집는다.
   function rebuildOpened() {
     var o = {};
     (D.FRAMES || []).forEach(function (f) {
       if (S.frames[f.id] !== 'done') return;
       (f.door || []).forEach(function (c) {
         (o[f.map] = o[f.map] || []).push({ x: c.x, y: c.y });
+      });
+    });
+    (D.LOCKS || []).forEach(function (k) {
+      if (!S.locks[k.id]) return;
+      (k.open || []).forEach(function (c) {
+        (o[k.map] = o[k.map] || []).push({ x: c.x, y: c.y });
       });
     });
     S.opened = o;
@@ -158,6 +169,55 @@
   // 잠긴 서랍은 액자 한 점만 밝히면 열린다 (첫 성공의 보상)
   function drawerOpen() { return framesDoneN() >= 1; }
   function cardHidden(c) { return !!c.locked && !drawerOpen(); }
+
+  // ── 5층 잠긴 장치 · 의존 게이지 ─────────────────────────────────────────
+  function lockDef(id) {
+    var list = D.LOCKS || [];
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  }
+  function lockOpen(id) { return !!(S && S.locks[id]); }
+  // 단말 칸 / 장치 칸을 좌표로 찾는다 (맵 이름 하드코딩 없이)
+  function lockByTerm(m, tx, ty) {
+    var name = nameOf(m), list = D.LOCKS || [];
+    for (var i = 0; i < list.length; i++) {
+      var k = list[i];
+      if (k.map === name && k.term.x === tx && k.term.y === ty) return k;
+    }
+    return null;
+  }
+  function lockByCell(m, tx, ty) {
+    var name = nameOf(m), list = D.LOCKS || [];
+    for (var i = 0; i < list.length; i++) {
+      var k = list[i];
+      if (k.map !== name) continue;
+      for (var j = 0; j < (k.open || []).length; j++) {
+        if (k.open[j].x === tx && k.open[j].y === ty) return k;
+      }
+    }
+    return null;
+  }
+  function paperDef(id) {
+    var list = D.PAPERS || [];
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  }
+  function paperAt(m, tx, ty) {
+    var list = m.papers || [];
+    for (var i = 0; i < list.length; i++) if (list[i].x === tx && list[i].y === ty) return list[i];
+    return null;
+  }
+  function setDepend(v) {
+    S.depend = Math.max(0, Math.min(D.MAX_DEPEND, v));
+  }
+  // 감속은 SPEED 상수를 건드리지 않고 여기서 파생한다(스펙 §7).
+  // 최저 속도는 0이 되지 않는다 — 느려질 뿐, 멈추지 않는다(헌법 §3-3).
+  function moveSpeed() {
+    var d = S ? Math.max(0, Math.min(D.MAX_DEPEND, S.depend)) : 0;
+    return SPEED * Math.max(0.1, 1 - D.DEPEND_SLOW * d);
+  }
+  // 반짝임 표시는 5층 한정 연출. 의존이 오르면 꺼진다(1~4층 소급 적용 안 함).
+  function glintOn() { return !!S && S.floor === 5 && S.depend < D.DEPEND_DIM; }
 
   // 가방·게이지·보여주기 목록은 전부 현재 층 카드만 본다 (층 분리).
   function heldIds() {
@@ -255,6 +315,10 @@
 
   // 층마다 같은 자리·같은 문법의 게이지 하나. 회복 문구도 여기서 같이 고른다.
   function gaugeInfo() {
+    // 5층 의존 — 맡길수록 올라간다. 회복은 단말 재방문(스스로 하기).
+    if (S.floor === 5) {
+      return { label: D.T.depLabel, help: D.T.depHelp, val: S.depend, max: D.MAX_DEPEND, tone: A.PAL.metal };
+    }
     // 4층 정직 게이지만 올라갈수록 좋은 방향 — 색도 리본(금색)으로 갈라 준다.
     if (S.floor === 4) {
       return { label: D.T.honLabel, help: D.T.honHelp, val: S.honest, max: D.MAX_HONEST, tone: A.PAL.ribbon };
@@ -278,6 +342,7 @@
     if (c.floor === 1 && !S.flags.firstCard) { S.flags.firstCard = true; toast(D.T.firstCard); }
     else if (c.floor === 3) toast(D.T.gotCard3);
     else if (c.floor === 4) toast(D.T.gotCard4);
+    else if (c.floor === 5) toast(D.T.gotCard5);
     else toast(c.floor === 2 ? D.T.gotCard2 : D.T.gotCard);
     save();
   }
@@ -363,8 +428,8 @@
 
     var v = axis(), moved = false;
     if (v.x || v.y) {
-      var len = Math.sqrt(v.x * v.x + v.y * v.y) || 1;
-      var dx = (v.x / len) * SPEED * dt, dy = (v.y / len) * SPEED * dt;
+      var len = Math.sqrt(v.x * v.x + v.y * v.y) || 1, sp = moveSpeed();
+      var dx = (v.x / len) * sp * dt, dy = (v.y / len) * sp * dt;
       if (Math.abs(v.x) >= Math.abs(v.y)) S.dir = v.x > 0 ? A.DIR.right : A.DIR.left;
       else S.dir = v.y > 0 ? A.DIR.down : A.DIR.up;
       if (dx) {
@@ -511,7 +576,15 @@
     if (fr) { touchFrame(fr); return; }
     var sm = sampleAt(m, f.x, f.y);
     if (sm) { var au = authorDef(sm.id); say(au ? au.sample : [D.LOOK.sample]); return; }
+    // 5층: 나비스 단말(선택) · 잠긴 장치(상태 대사) · 서류(날짜 단서) · 화분(열쇠)
+    var term = lockByTerm(m, f.x, f.y);
+    if (term) { openNavis(term); return; }
+    var dev = lockByCell(m, f.x, f.y);
+    if (dev && lockOpen(dev.id)) { say([D.LOOK[dev.id + 'Open'] || D.LOOK.nothing]); return; }
+    var pp = paperAt(m, f.x, f.y);
+    if (pp) { var pd = paperDef(pp.id); say(pd ? pd.look : [D.LOOK.paper]); return; }
     var ch = chAt(m, f.x, f.y), L = legend(ch);
+    if (ch === 'H') { takeKey(); return; }
     if (ch === 'K') { openConsole(); return; }
     if (ch === 'M') { openBench(); return; }
     if (ch === 'J') { say([drawerOpen() ? D.LOOK.drawerOpen : D.LOOK.drawer]); return; }
@@ -549,6 +622,7 @@
   }
   function conList() {
     if (!S.con) return [];
+    if (S.con.kind === 'navis') return navisList();
     if (S.con.kind === 'sticker') {
       if (S.con.level === 0) return seenFrames().concat(['close']);
       return authorIds().concat(['back']);
@@ -559,6 +633,13 @@
   function conLabel(key) {
     if (key === 'close') return D.CONSOLE.close;
     if (key === 'back') return D.CONSOLE.back;
+    if (S.con && S.con.kind === 'navis') {
+      if (key === 'trust') return D.NAVIS.trust;
+      if (key === 'self') return D.NAVIS.self;
+      if (key === 'redo') return D.NAVIS.redo;
+      var pd = paperDef(key); if (pd) return pd.label;
+      var qc = quizDef(lockDef(S.con.lock), key); return qc ? qc.label : '';
+    }
     if (S.con && S.con.kind === 'sticker') {
       var fr = frameDef(key); if (fr) return fr.label;
       var au = authorDef(key); return au ? au.sticker : '';
@@ -586,6 +667,7 @@
   function conBack() {
     if (!S.con) return;
     S.con.level = 0; S.con.cursor = 0; S.con.rumor = null; S.con.frame = null;
+    if (S.con.kind === 'navis') { if (!navisList().length) closeConsole(); return; }
     if (S.con.kind === 'sticker') { if (!seenFrames().length) closeConsole(); return; }
     if (!consoleRumors().length) closeConsole();
   }
@@ -603,6 +685,10 @@
     var pick = list[c.cursor];
     if (pick === 'close') { closeConsole(); return; }
     if (pick === 'back') { conBack(); return; }
+    if (c.kind === 'navis') {
+      if (c.level === 0) doNavis(pick); else doNavisTask(pick);
+      return;
+    }
     if (c.level === 0) {
       if (c.kind === 'sticker') c.frame = pick; else c.rumor = pick;
       c.level = 1; c.cursor = 0; return;
@@ -705,6 +791,105 @@
       S.flags.artUp = true;
       say(D.STICKER.done, save);
     });
+  }
+
+  // ── 5층 나비스 단말 ─────────────────────────────────────────────────────
+  // 방송 콘솔·제작대와 같은 커서·상자를 쓴다(새 UI 없음). kind 로만 갈린다.
+  // level 0 = 무엇을 할지, level 1 = 스스로 하기 과제.
+  function quizDef(k, id) {
+    var list = (k && k.quiz) || [];
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  }
+  function navisList() {
+    if (!S.con || !S.con.lock) return [];
+    var k = lockDef(S.con.lock);
+    if (!k) return [];
+    if (S.con.level === 1) {
+      if (k.task === 'order') return (D.MAPS[k.map].papers || []).map(function (p) { return p.id; }).concat(['back']);
+      if (k.task === 'quiz') return (k.quiz || []).map(function (q) { return q.id; }).concat(['back']);
+      return ['back'];
+    }
+    if (!lockOpen(k.id)) return ['trust', 'self', 'close'];
+    if (S.trusted[k.id]) return ['redo', 'close'];   // 맡긴 장치만 회복할 게 남는다
+    return [];
+  }
+  function openNavis(k) {
+    if (lockOpen(k.id) && !S.trusted[k.id]) { say(D.NAVIS.opened); return; }
+    S.mode = 'console';
+    S.con = { kind: 'navis', level: 0, cursor: 0, rumor: null, frame: null, lock: k.id, step: 0 };
+    sfx('ok');
+  }
+  // 장치를 연다. 카드는 잠긴 칸 뒤에 놓여 있어 열린 뒤에 주울 수 있다.
+  function openLock(k) {
+    S.locks[k.id] = true;
+    rebuildOpened();
+    save();
+  }
+  function doNavis(act) {
+    var k = lockDef(S.con.lock);
+    if (!k) { closeConsole(); return; }
+    if (act === 'trust') {
+      // 처음 한 번은 벌 대신 경고 — 1층 단말·2층 추천 문·3층 콘솔과 같은 문법.
+      if (!S.flags.trustWarn) {
+        S.flags.trustWarn = true; sfx('warn'); save();
+        say(D.NAVIS.warn, function () { if (S.con) S.con.cursor = 0; });
+        return;
+      }
+      openLock(k);
+      S.trusted[k.id] = true;
+      setDepend(S.depend + 1);
+      sfx('steal'); S.flash = 0.5; save();
+      conSay(D.NAVIS.trusted);
+      return;
+    }
+    if (act === 'self' || act === 'redo') { startTask(k); return; }
+  }
+  // 과제 시작. 열쇠 과제만 목록이 없다 — 열쇠를 들고 있으면 그 자리에서 열린다.
+  function startTask(k) {
+    if (k.task === 'key') {
+      if (!S.hasKey) { say(D.NAVIS.needKey); return; }
+      finishTask(k);
+      return;
+    }
+    S.con.step = 0; S.con.cursor = 0;
+    var ask = k.task === 'order' ? D.NAVIS.orderAsk : D.NAVIS.quizAsk;
+    say(ask, function () { if (S.con) { S.con.level = 1; S.con.cursor = 0; } });
+  }
+  function doNavisTask(pick) {
+    var k = lockDef(S.con.lock);
+    if (!k) { closeConsole(); return; }
+    if (k.task === 'order') {
+      if (pick === k.order[S.con.step]) {
+        S.con.step++;
+        if (S.con.step >= k.order.length) { finishTask(k); return; }
+        sfx('ok');
+        say(D.NAVIS.orderOk, function () { if (S.con) S.con.cursor = 0; });
+        return;
+      }
+      // 틀려도 벌은 없다 — 처음부터 다시 고르면 된다(헌법 §3-3).
+      S.con.step = 0; sfx('warn');
+      say(D.NAVIS.orderNo, function () { if (S.con) S.con.cursor = 0; });
+      return;
+    }
+    if (k.task === 'quiz') {
+      if (pick === k.answer) { finishTask(k); return; }
+      sfx('warn');
+      say(D.NAVIS.quizNo, function () { if (S.con) S.con.cursor = 0; });
+    }
+  }
+  // 스스로 풀었다. 맡겼던 장치였다면 의존이 한 칸 내려간다(회복 경로).
+  function finishTask(k) {
+    var back = !!S.trusted[k.id];
+    openLock(k);
+    if (back) { S.trusted[k.id] = false; setDepend(S.depend - 1); }
+    sfx('clear'); save();
+    conSay(back ? D.NAVIS.recovered : D.NAVIS.selfDone);
+  }
+  function takeKey() {
+    if (S.hasKey) { say(D.NAVIS.keyGone); return; }
+    S.hasKey = true; sfx('pick'); save();
+    say(D.NAVIS.gotKey);
   }
 
   // ── 배틀 ────────────────────────────────────────────────────────────────
@@ -818,8 +1003,27 @@
     return n;
   }
 
+  function stampCount(b) {
+    var n = 0;
+    for (var i = 0; i < b.bullets.length; i++) if (b.bullets[i].stamp) n++;
+    return n;
+  }
+
   function spawnBullet(a) {
     var b = S.battle, r = Math.random();
+    if (a.kind === 'stamp') {
+      // 예고형: 찍힐 칸을 warn 초 동안 보여 준 뒤 내리찍는다(읽고 피하는 형).
+      // 동시에 뜨는 칸은 cells 개까지 — 저학년 기준으로 읽을 시간을 남긴다.
+      if (stampCount(b) >= (a.cells || 2)) return;
+      var hs = (a.s || 44) / 2;
+      b.bullets.push({
+        x: BOX.x + hs + 4 + Math.random() * (BOX.w - hs * 2 - 8),
+        y: BOX.y + hs + 4 + Math.random() * (BOX.h - hs * 2 - 8),
+        vx: 0, vy: 0, s: a.s || 44,
+        stamp: true, warn: a.warn || 1.0, hold: a.hit || 0.35
+      });
+      return;
+    }
     if (a.kind === 'paint') {
       // 떨어지는 방울 + 남은 자국을 합쳐 maxStain 개까지만 — 화면이 자국으로
       // 덮여 피할 데가 없어지는 일을 막는다(저학년 기준).
@@ -907,6 +1111,18 @@
     }
     for (var i = b.bullets.length - 1; i >= 0; i--) {
       var p = b.bullets[i];
+      if (p.stamp) {
+        // 예고 중엔 자리만 알려 주고 맞지 않는다. 예고가 끝나야 판정이 산다.
+        if (p.warn > 0) { p.warn -= dt; continue; }
+        p.hold -= dt;
+        if (p.hold <= 0) { b.bullets.splice(i, 1); continue; }
+        var sh = p.s / 2;
+        if (b.inv <= 0 && Math.abs(p.x - b.hx) < sh && Math.abs(p.y - b.hy) < sh) {
+          b.hearts--; b.inv = 1.0; sfx('hit');
+          if (b.hearts <= 0) { leaveBattle(D.BATTLE_UI.hurt); return; }
+        }
+        continue;
+      }
       if (p.drop) {
         // 물감: 바닥에 닿으면 그 자리에 자국으로 잠깐 남는다(지나가면 피격).
         if (p.stain) {
@@ -947,6 +1163,7 @@
         floor: S.floor, exposure: S.exposure, bubble: S.bubble, loopN: S.loopN,
         pollute: S.pollute, rumors: S.rumors, fog: S.fog,
         honest: S.honest, frames: S.frames, stickers: S.stickers,
+        depend: S.depend, locks: S.locks, trusted: S.trusted, hasKey: S.hasKey,
         flags: S.flags, heardOf: S.heardOf, clearedOf: S.clearedOf,
         stairsOpen: S.stairsOpen, visited: S.visited, cards: {},
         stats: {
@@ -999,7 +1216,16 @@
         var pk = o.stickers && o.stickers[f.id];
         S.stickers[f.id] = authorDef(pk) ? pk : null;
       });
-      // 열린 유리문·정직 게이지는 저장 좌표가 아니라 액자 상태에서 다시 만든다.
+      // 5층 장치도 같은 규칙: 아는 장치의 true 만 살린다. 회복 대상(trusted)은
+      // 열린 장치에만 남는다 — 닫힌 장치에 회복 빚이 남는 상태를 만들지 않는다.
+      var lockIds = {};
+      (D.LOCKS || []).forEach(function (k) { lockIds[k.id] = true; });
+      S.locks = trueKeys(o.locks, lockIds);
+      S.trusted = trueKeys(o.trusted, lockIds);
+      for (var lk in S.trusted) if (!S.locks[lk]) delete S.trusted[lk];
+      S.hasKey = o.hasKey === true;
+      S.depend = Math.max(0, Math.min(D.MAX_DEPEND, o.depend | 0));
+      // 열린 유리문·장치·정직 게이지는 저장 좌표가 아니라 상태에서 다시 만든다.
       rebuildOpened();
       for (var k in S.flags) if (o.flags && typeof o.flags[k] === 'boolean') S.flags[k] = o.flags[k];
       S.heardOf = trueKeys(o.heardOf, D.BATTLES);
@@ -1274,7 +1500,9 @@
     if (!S.con || S.dialog) return;
     var list = conList();
     panel(24, 360, W - 48, 128);
-    txt(S.con.kind === 'sticker' ? D.STICKER.title : D.CONSOLE.title, 48, 388, 19, A.PAL.ribbon);
+    var conTitle = S.con.kind === 'sticker' ? D.STICKER.title
+      : (S.con.kind === 'navis' ? D.NAVIS.title : D.CONSOLE.title);
+    txt(conTitle, 48, 388, 19, A.PAL.ribbon);
     list.forEach(function (key, i) {
       var x = 60 + (i % 2) * 320, y = 420 + Math.floor(i / 2) * 38;
       var on = S.con.cursor === i;
@@ -1304,6 +1532,8 @@
 
   // 열린 유리문 — 안개와 같은 자리에서 반대로 얹는다. 캐시된 지도 위에
   // 바닥을 다시 깔고 열린 문틀만 그려, 통행 가능이 눈으로 바로 읽히게 한다.
+  // 열린 칸 밑 그림은 원래 타일 글자로 고른다 — 층이 늘어도 분기 하나만 는다.
+  var OPEN_PROP = { g: 'glassOpen', Y: 'cabinetOpen', Z: 'fileBoxOpen', I: 'innerOpen' };
   function drawOpened(m) {
     var list = openedOf(m); if (!list.length) return;
     list.forEach(function (c) {
@@ -1311,8 +1541,43 @@
       if (!A.drawTile(ctx, 'floor', m.floor[0], m.floor[1], dx, dy)) {
         ctx.fillStyle = A.PAL.tan; ctx.fillRect(dx, dy, T, T);
       }
-      A.drawProp(ctx, 'glassOpen', dx, dy, T);
+      A.drawProp(ctx, OPEN_PROP[chAt(m, c.x, c.y)] || 'glassOpen', dx, dy, T);
     });
+  }
+
+  // ── 5층 연출 ────────────────────────────────────────────────────────────
+  // 조사 가능 칸 위의 작은 빛 점. 5층 한정이고, 의존 +2부터 꺼진다(스펙 §2).
+  var GLINT_CH = { X: 1, Y: 1, Z: 1, I: 1, O: 1, H: 1, W: 1 };
+  function drawGlints(m) {
+    if (!glintOn()) return;
+    var x0 = Math.max(0, Math.floor(S.cam.x / T)), x1 = Math.min(m.w - 1, Math.ceil((S.cam.x + W) / T));
+    var y0 = Math.max(0, Math.floor(S.cam.y / T)), y1 = Math.min(m.h - 1, Math.ceil((S.cam.y + H) / T));
+    var a = 0.55 + Math.sin(S.time * 4) * 0.35;
+    ctx.globalAlpha = Math.max(0, Math.min(1, a));
+    for (var ty = y0; ty <= y1; ty++) {
+      for (var tx = x0; tx <= x1; tx++) {
+        if (!GLINT_CH[chAt(m, tx, ty)]) continue;
+        if (openedAt(m, tx, ty)) continue;      // 이미 연 장치는 더 부르지 않는다
+        A.drawProp(ctx, 'glint', tx * T - S.cam.x, ty * T - S.cam.y - 14, T, A.PAL.cream);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  // 의존 MAX의 회색 안개. 아래 회복 안내 띠(H-34 아래)는 절대 덮지 않는다(헌법 §3-3).
+  var HELP_TOP = H - 34;
+  function drawDim() {
+    if (S.depend < D.DEPEND_FOG) return;
+    var e = 44;
+    ctx.fillStyle = 'rgba(147,167,174,0.22)';
+    ctx.fillRect(0, 0, W, e);
+    ctx.fillRect(0, e, e, HELP_TOP - e);
+    ctx.fillRect(W - e, e, e, HELP_TOP - e);
+    ctx.fillRect(0, HELP_TOP - e, W, e);
+    ctx.fillStyle = 'rgba(91,112,121,0.20)';
+    ctx.fillRect(0, 0, W, 18);
+    ctx.fillRect(0, HELP_TOP - 18, W, 18);
+    ctx.fillRect(0, 18, 18, HELP_TOP - 36);
+    ctx.fillRect(W - 18, 18, 18, HELP_TOP - 36);
   }
   // 출처를 밝힌 액자에 붙은 스티커 (액자 그림은 캐시된 지도 그대로)
   function drawSticks(m) {
@@ -1330,9 +1595,12 @@
     drawFog(m);
     drawOpened(m);
     drawSticks(m);
+    drawGlints(m);
     drawEntities(m);
     ctx.fillStyle = m.tint; ctx.fillRect(0, 0, W, H);
-    if (S.floor === 2) drawBubbles(); else if (S.floor === 1) drawAds();
+    if (S.floor === 2) drawBubbles();
+    else if (S.floor === 1) drawAds();
+    else if (S.floor === 5) drawDim();
     if (S.flash > 0) drawFlash();
     drawHud();
   }
@@ -1388,6 +1656,23 @@
     if (b.phase === 'enemy') {
       if (b.tell > 0) txt(D.BATTLE_UI.tell, W / 2, BOX.y + 76, 19, A.PAL.purpleLit, 'center');
       b.bullets.forEach(function (p) {
+        if (p.stamp) {
+          var h = p.s / 2;
+          if (p.warn > 0) {
+            // 예고: 테두리만. 남은 시간이 줄수록 진해져 언제 찍힐지 눈으로 읽힌다.
+            ctx.globalAlpha = Math.max(0.35, Math.min(1, 1.1 - p.warn * 0.6));
+            ctx.strokeStyle = A.PAL.purpleLit; ctx.lineWidth = 3;
+            ctx.strokeRect(p.x - h, p.y - h, p.s, p.s);
+            ctx.fillStyle = 'rgba(168,106,216,0.16)';
+            ctx.fillRect(p.x - h + 3, p.y - h + 3, p.s - 6, p.s - 6);
+            ctx.globalAlpha = 1;
+            return;
+          }
+          ctx.fillStyle = A.PAL.purple; ctx.fillRect(p.x - h, p.y - h, p.s, p.s);
+          ctx.fillStyle = A.PAL.red; ctx.fillRect(p.x - h + 5, p.y - h + 5, p.s - 10, p.s - 10);
+          ctx.fillStyle = A.PAL.white; ctx.fillRect(p.x - h + 11, p.y - h + 11, p.s - 22, p.s - 22);
+          return;
+        }
         if (p.stain) {
           // 마르기 직전의 자국은 옅어진다 — 언제 사라지는지 눈으로 읽히게.
           ctx.globalAlpha = Math.max(0.35, Math.min(1, p.hold * 1.6));
@@ -1707,6 +1992,8 @@
     openedCells: function (name) { return (S && S.opened && S.opened[name]) || []; },
     framesDone: function () { return !!S && framesAllDone(); },
     drawerOpen: function () { return !!S && drawerOpen(); },
+    // 5층 검사용 — 장치 개방·의존 감속·반짝임 표시를 밖에서 확인한다
+    lockOpen: lockOpen, moveSpeed: moveSpeed, glintOn: glintOn, SPEED: SPEED,
     pause: pause,
     press: function (k) { if (!keys[k]) edge[k] = true; keys[k] = true; },
     release: function (k) { keys[k] = false; }

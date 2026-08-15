@@ -1,5 +1,5 @@
 // 데이터 — 방과 후: 그림자 학교
-// 1층(개인정보) + 2층(필터버블) + 3층(가짜뉴스) + 4층(생성AI·저작권)
+// 1층(개인정보) + 2층(필터버블) + 3층(가짜뉴스) + 4층(생성AI·저작권) + 5층(AI 의존·책임)
 // 화면에 나오는 한글 문자열은 전부 이 파일에만 둔다. 엔진은 키만 참조한다.
 (function (g) {
   'use strict';
@@ -29,7 +29,16 @@
     'g': { solid: true, wall: true, prop: 'glass', look: 'glass' },
     'M': { solid: true, prop: 'bench', look: 'bench' },
     'V': { solid: true, prop: 'sample', look: 'sample' },
-    'J': { solid: true, prop: 'drawer', look: 'drawer' }
+    'J': { solid: true, prop: 'drawer', look: 'drawer' },
+    // 5층: 나비스 단말 / 캐비닛 / 서류함 / 복도 안쪽 문 / 서류 / 화분 / 시간표판
+    // (앞의 셋은 잠긴 장치 — 열리면 opened 오버레이가 통행을 뒤집는다)
+    'X': { solid: true, wall: true, prop: 'navis', look: 'navis' },
+    'Y': { solid: true, wall: true, prop: 'cabinet', look: 'cabinet' },
+    'Z': { solid: true, wall: true, prop: 'fileBox', look: 'fileBox' },
+    'I': { solid: true, wall: true, prop: 'innerDoor', look: 'innerDoor' },
+    'O': { solid: true, prop: 'paper', look: 'paper' },
+    'H': { solid: true, prop: 'plant', look: 'plant' },
+    'W': { solid: true, wall: true, prop: 'board', look: 'timetable' }
   };
 
   // ── 맵 ────────────────────────────────────────────────────────────────
@@ -362,7 +371,87 @@
         id: 'artTeacher', sheet: 'teacher', x: 17, y: 5, dir: 'left',
         battle: 'artTeacher', opens: 'gallery', needs: 'frames'
       },
-      stairs: { x: 19, y: 5, face: { x: 18, y: 5, dir: 'right' } }
+      stairs: { x: 19, y: 5, face: { x: 18, y: 5, dir: 'right' } },
+      stairsTo: { map: 'hall5', sx: 1, sy: 3, dir: 'right' }
+    },
+
+    // ── 5층: 교무실 복도 ─────────────────────────────────────────────────
+    // 위 통로(도착)는 언제나 열려 있고, 아래 안쪽 방은 「안쪽 문」이 잠근다.
+    // 문 옆 벽에 나비스 단말이 박혀 있다.
+    hall5: {
+      fl: 5, w: 20, h: 11,
+      floor: [19, 7], wallBase: [5, 6], fill: '#191d20',
+      tint: 'rgba(147,167,174,0.12)',   // 5층 무드: 서류회색
+      grid: [
+        '####################',
+        '#..................#',
+        '#..................d',
+        '#..................#',
+        '#..................#',
+        '#########XI#########',
+        '#..................#',
+        '#..................#',
+        '#..................#',
+        '#..................#',
+        '####################'
+      ],
+      spawn: { x: 1, y: 3, dir: 'right' },
+      warps: [{ x: 19, y: 2, to: 'office', sx: 1, sy: 8, dir: 'right' }],
+      decor: [
+        { kind: 'poster', x: 4, y: 0, tone: 'metal' },
+        { kind: 'window', x: 10, y: 0 },
+        { kind: 'pot', x: 18, y: 9 }
+      ]
+    },
+    // 교무실 — 시간표판·서류 세 장·나비스 단말. 캐비닛이 안쪽 방(교감·계단)을 막는다.
+    office: {
+      fl: 5, w: 15, h: 11,
+      floor: [12, 13], wallBase: [5, 6], fill: '#191d20',
+      tint: 'rgba(147,167,174,0.14)',
+      grid: [
+        '###############',
+        '#.W.....#.....#',
+        'd.......#.....#',
+        '#.O.O.O.#.....#',
+        '#.......X.....#',
+        '#.......Y....S#',
+        '#.......#.....#',
+        '#.......#.....#',
+        'd.......#.....#',
+        '#.......#.....#',
+        '###############'
+      ],
+      spawn: { x: 1, y: 8, dir: 'right' },
+      warps: [
+        { x: 0, y: 2, to: 'docroom', sx: 1, sy: 5, dir: 'right' },
+        { x: 0, y: 8, to: 'hall5', sx: 18, sy: 2, dir: 'left' }
+      ],
+      papers: [{ id: 'p2', x: 2, y: 3 }, { id: 'p3', x: 4, y: 3 }, { id: 'p1', x: 6, y: 3 }],
+      decor: [{ kind: 'pot', x: 1, y: 9 }],
+      npc: { id: 'vice', sheet: 'teacher', x: 11, y: 5, dir: 'left', battle: 'vice', opens: 'office' },
+      stairs: { x: 13, y: 5, face: { x: 12, y: 5, dir: 'right' } }
+    },
+    // 결재실 — 화분 밑 열쇠로 서류함을 연다. 서류함 뒤 골방에 낡은 도장이 있다.
+    docroom: {
+      fl: 5, w: 15, h: 11,
+      floor: [12, 13], wallBase: [5, 6], fill: '#191d20',
+      tint: 'rgba(147,167,174,0.12)',
+      grid: [
+        '###############',
+        '#........X....#',
+        '#........Z....#',
+        '#........#....#',
+        '#........######',
+        'd.............#',
+        '#.............#',
+        '#..H..........#',
+        '#.............#',
+        '#.............#',
+        '###############'
+      ],
+      spawn: { x: 1, y: 5, dir: 'right' },
+      warps: [{ x: 0, y: 5, to: 'office', sx: 1, sy: 2, dir: 'right' }],
+      decor: [{ kind: 'pot', x: 13, y: 9 }]
     }
   };
 
@@ -380,13 +469,22 @@
     { id: 'styleCard', floor: 4, label: '스타일 견본', tone: '#f0c86e', at: { map: 'artroom', x: 2, y: 5 } },
     // locked = 잠긴 서랍 안. 액자 한 점에 스티커를 붙이면 열린다.
     { id: 'aiReceipt', floor: 4, label: '생성 기록', tone: '#78bcd8', at: { map: 'artroom', x: 11, y: 8 }, locked: true },
-    { id: 'firstSketch', floor: 4, label: '첫 스케치', tone: '#5f8a4e', at: { map: 'gallery', x: 3, y: 8 } }
+    { id: 'firstSketch', floor: 4, label: '첫 스케치', tone: '#5f8a4e', at: { map: 'gallery', x: 3, y: 8 } },
+    // 5층 카드는 전부 잠긴 장치 뒤에 있다 — 맡기든 스스로 하든 열어야 손에 들어온다.
+    { id: 'handNote', floor: 5, label: '손글씨 가정통신문', tone: '#f4efe4', at: { map: 'office', x: 9, y: 5 } },
+    { id: 'oldStamp', floor: 5, label: '낡은 결재 도장', tone: '#d84a3c', at: { map: 'docroom', x: 11, y: 2 } },
+    { id: 'nameBook', floor: 5, label: '이름 수첩', tone: '#f0c86e', at: { map: 'hall5', x: 10, y: 8 } }
   ];
 
   D.MAX_EXPOSURE = 3;   // 1층 카드 수와 일치 — 전부 뺏기면 게이지 만땅
   D.MAX_BUBBLE = 3;     // 2층 추천 문을 세 번 따라가면 만땅
   D.MAX_POLLUTE = 3;    // 3층 소문 수와 일치 — 셋 다 확인 없이 내보내면 만땅
   D.MAX_HONEST = 3;     // 4층 액자 수와 일치 — 출처를 밝힐수록 올라가는 게이지
+  D.MAX_DEPEND = 3;     // 5층 장치 수와 일치 — 맡길수록 올라가는 의존 게이지
+  // 의존 한 칸당 이동 속도 감소분. 최대치에서도 1 - 0.15*3 = 0.55 > 0 (멈추지 않는다)
+  D.DEPEND_SLOW = 0.15;
+  D.DEPEND_DIM = 2;     // 이 값부터 반짝임 표시가 꺼진다
+  D.DEPEND_FOG = 3;     // 이 값부터 화면 가장자리에 회색 안개
 
   // ── 3층 소문 ──────────────────────────────────────────────────────────
   // 쪽지(방송실)를 읽고 → 콘솔에서 처리한다. 확인 없이 내보내면 fog 칸이 복도를
@@ -439,6 +537,60 @@
     { id: 'a3', sticker: 'AI · 가는 선 화풍', sample: [['「가는 선」 견본.', '가는 선을 겹쳐 그렸다.']] }
   ];
 
+  // ── 5층 잠긴 장치 ↔ 나비스 단말 ───────────────────────────────────────
+  // 장치마다 단말이 붙어 있다. [맡기기]는 즉시 열리고 의존 +1,
+  // [스스로 하기]는 작은 과제를 직접 풀되 게이지가 그대로다.
+  // 이미 맡긴 장치도 [내가 다시 해볼래]로 과제를 풀면 의존 -1 (회복 경로).
+  D.LOCKS = [
+    {
+      id: 'cabinet', label: '캐비닛', map: 'office', task: 'order',
+      at: { x: 8, y: 5 }, term: { x: 8, y: 4 }, card: 'handNote',
+      open: [{ x: 8, y: 5 }],
+      order: ['p1', 'p2', 'p3']          // 날짜 순서 (콘솔 목록은 맵에 놓인 순서)
+    },
+    {
+      id: 'fileBox', label: '서류함', map: 'docroom', task: 'key',
+      at: { x: 9, y: 2 }, term: { x: 9, y: 1 }, card: 'oldStamp',
+      open: [{ x: 9, y: 2 }],
+      clue: { map: 'docroom', x: 3, y: 7 }   // 화분 — 밑에 열쇠
+    },
+    {
+      id: 'innerDoor', label: '안쪽 문', map: 'hall5', task: 'quiz',
+      at: { x: 10, y: 5 }, term: { x: 9, y: 5 }, card: 'nameBook',
+      open: [{ x: 10, y: 5 }],
+      clue: { map: 'office', x: 2, y: 1 },    // 교무실 시간표판
+      quiz: [{ id: 't1', label: '국어' }, { id: 't2', label: '체육' }, { id: 't3', label: '미술' }],
+      answer: 't2'
+    }
+  ];
+  // 캐비닛 과제용 서류 — 조사 대사에 날짜가 적혀 있다(외우기가 아니라 대조).
+  D.PAPERS = [
+    { id: 'p1', label: '봄 가정통신문', look: [['서류 한 장.', '날짜는 3월 4일.']] },
+    { id: 'p2', label: '여름 안내문', look: [['서류 한 장.', '날짜는 5월 9일.']] },
+    { id: 'p3', label: '가을 계획서', look: [['서류 한 장.', '날짜는 9월 2일.']] }
+  ];
+
+  // 나비스 단말 — 방송 콘솔·제작대와 같은 커서 문법(새 UI 없음)
+  D.NAVIS = {
+    title: '나비스 단말',
+    trust: '나비스에게 맡기기',
+    self: '스스로 하기',
+    redo: '내가 다시 해볼래',
+    warn: [['「편해요. 대신… 조금씩, 제가 할게요.」']],
+    trusted: [['나비스가 대신 열었다.', '…내가 뭘 했는지 모르겠다.']],
+    selfDone: [['내 손으로 열었다.', '느렸지만 기억에 남는다.']],
+    recovered: [['이번엔 내가 해봤다.', '손끝 감각이 돌아온다.']],
+    orderAsk: [['서류를 날짜가 빠른 순서로.']],
+    orderOk: [['맞다. 다음 서류.']],
+    orderNo: [['순서가 아니다.', '날짜를 다시 보고 오자.']],
+    quizAsk: [['시간표 빈칸: 금요일 5교시.']],
+    quizNo: [['빈칸이 안 맞는다.', '교무실 시간표를 보고 오자.']],
+    needKey: [['열쇠 구멍이 비었다.', '결재실을 둘러보자.']],
+    gotKey: [['화분 밑에서 열쇠가 나왔다.']],
+    keyGone: [['젖은 자국만 남았다.']],
+    opened: [['이미 열린 장치다.']]
+  };
+
   // ── 화면 문자열 ───────────────────────────────────────────────────────
   D.T = {
     title: '방과 후: 그림자 학교',
@@ -466,6 +618,8 @@
     polHelp: '사실 카드를 찾아 정정 방송하면 안개가 걷혀요',
     honLabel: '정직',
     honHelp: '출처 스티커를 붙이면 유리문이 열려요',
+    depLabel: '의존',
+    depHelp: '단말에서 「내가 다시 해볼래」를 고르면 의존이 내려가요',
     bagLabel: '가진 카드',
     bagEmpty: '없음',
 
@@ -473,6 +627,7 @@
     gotCard2: '카드를 주웠다. 버블이 걷혔다.',
     gotCard3: '사실 카드를 찾았다.',
     gotCard4: '자료를 찾았다.',
+    gotCard5: '옛 물건을 찾았다.',
     firstCard: '내 정보 카드. 흘리면 그림자가 커진다.',
     taken: '광고 단말이 카드를 빨아들였다!',
     takenHelp: '떨어진 카드를 다시 주워 오자.',
@@ -502,8 +657,12 @@
     up: [['계단 문이 열렸다.', '4층으로 올라간다.']],
     enter: [['4층 복도. 물감 냄새가 난다.', '왼쪽은 미술실, 오른쪽은 전시 복도.']]
   };
+  D.FLOOR5 = {
+    up: [['계단 문이 열렸다.', '5층으로 올라간다.']],
+    enter: [['교무실 층. 종이 냄새가 난다.', '복도 안쪽에 잠긴 문이 있다.']]
+  };
   // 도착 맵으로 층 전환 대사를 고른다 — 층이 늘어도 엔진은 그대로.
-  D.FLOOR_UP = { lab: D.FLOOR2, hall3: D.FLOOR3, hall4: D.FLOOR4 };
+  D.FLOOR_UP = { lab: D.FLOOR2, hall3: D.FLOOR3, hall4: D.FLOOR4, hall5: D.FLOOR5 };
 
   // 조사 플레이버 (Z로 바라본 칸) — 재조사(LOOK2)는 다른 대사로, 세계가 살아있게.
   D.LOOK = {
@@ -519,6 +678,7 @@
     stairs2: ['3층으로 가는 계단 문.', '위에서 찬 바람이 내려온다.'],
     stairs3: ['4층으로 가는 계단 문.', '문틈으로 물감 냄새가 샌다.'],
     stairs4: ['5층으로 가는 계단 문.', '위에서 발소리가 들린다.'],
+    stairs5: ['옥상으로 가는 계단 문.', '문틈으로 밤바람이 샌다.'],
     console: ['방송 콘솔. 버튼이 두 줄이다.', '「바로」와 「확인 후」.'],
     note: ['접힌 소문 쪽지.'],
     noteRead: ['아까 읽은 쪽지다.'],
@@ -532,6 +692,17 @@
     sample: ['스타일 견본판.'],
     drawer: ['잠긴 서랍.', '그림 한 점이라도 밝혀야 열릴 것 같다.'],
     drawerOpen: ['서랍이 열려 있다.', '안에 종이 한 장이 남아 있다.'],
+    // 5층 — 잠긴 장치는 열린 뒤 대사가 바뀐다(문이 열렸음이 글로도 읽히게).
+    navis: ['나비스 단말. 눈 하나가 깜빡인다.'],
+    cabinet: ['잠긴 캐비닛.', '옆 단말이 나를 본다.'],
+    cabinetOpen: ['캐비닛이 열려 있다.'],
+    fileBox: ['잠긴 서류함. 열쇠 구멍이 있다.', '바닥 물자국이 화분 쪽으로 이어진다.'],
+    fileBoxOpen: ['서류함이 열려 있다.'],
+    innerDoor: ['안쪽 문. 시간표가 붙어 있다.', '한 칸이 비어 있다.'],
+    innerDoorOpen: ['안쪽 문이 열려 있다.'],
+    timetable: ['교무실 시간표.', '금요일 5교시에 「체육」이라고 적혀 있다.'],
+    plant: ['큰 화분. 밑이 젖어 있다.'],
+    paper: ['서류 한 장.'],
     nothing: ['아무것도 없다.']
   };
   D.LOOK2 = {
@@ -693,11 +864,41 @@
         { kind: 'paint', time: 6, every: 0.75, speed: 96, stay: 1.5, maxStain: 3 },
         { kind: 'mix', time: 6.5, every: 0.46, speed: 164 }
       ]
+    },
+    vice: {
+      name: '교감 선생님', sheet: 'teacher',
+      shadow: 3, hearts: 3,
+      evidence: 'nameBook',
+      approach: [['교감 선생님이 결재판을 안고 있다.', '도장 찍는 소리만 들린다.']],
+      reApproach: [['선생님은 아직 결재판을 놓지 않았다.']],
+      intro: [['「비켜라. 다음 결재가 밀렸다.」']],
+      reIntro: [['「…또 왔구나.」', '그림자가 아까 이야기를 기억한다.']],
+      talk: [['「선생님, 저예요.」', '그림자가 서류를 더 쌓는다.']],
+      talk2: [['「선생님!」', '도장이 잠깐 멈춘다.']],
+      talk3: [['내 말이 서류에 깔린다.', '…먼저 들어 보자.']],
+      listen: [['가만히 듣는다.', '「나비스가 다 해 주니까 편했어.」']],
+      listenAgain: [['「…그런데 오늘 내가 뭘 했는지 모르겠어.」']],
+      listenHint: [['그림자가 얇아졌다.', '나비스가 모르는 게 뭐였지?']],
+      showWrong: [['「그건 결재된 게 아니야.」']],
+      showRight: [['이름 수첩을 내민다.', '「이 이름들… 하나하나 내가 외웠었지.」']],
+      spare: [['선생님이 결재판을 내려놓는다.', '「도장은 내가 찍으마.」']],
+      promise: [
+        ['약속 카드⑤ 「맡겨도, 결정은 내가 한다」', '계단 문이 열렸다.'],
+        ['스피커가 지직거린다.', '「…올라오시게요? 기다렸어요.」']
+      ],
+      hint: [['「맡겨도 마지막 결정은 내가.」', '선생님이 계단 쪽을 가리킨다.']],
+      // stamp = 도장 찍힐 칸을 1초간 보여 준 뒤 내리찍는다.
+      // 랜덤 낙하가 아니라 '읽고 피하는' 형 — 저학년 배려, 동시 2칸 이하.
+      attacks: [
+        { kind: 'side', time: 5.5, every: 0.55, speed: 144 },
+        { kind: 'stamp', time: 6, every: 1.1, warn: 1.0, hit: 0.35, cells: 2, s: 44 },
+        { kind: 'mix', time: 6.5, every: 0.46, speed: 162 }
+      ]
     }
   };
 
   D.CLEAR = {
-    stairs: [['5층은 공사 중.', '오늘은 여기까지.']],
+    stairs: [['옥상 문에 불이 들어왔다.', '…다음에 올라가 보자.']],
     bannerFloor: '층 통과',
     statTime: '걸린 시간',
     statStolen: '뺏긴 카드',

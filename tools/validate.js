@@ -4,6 +4,8 @@
 // P3: fl:3 + 3층 카드 3장 + 소문-카드-안개 정합 + 오염 최악에서 전 칸 도달(BFS) + 3층 상자 예산.
 // P4: fl:4 + 4층 카드 3장 + 액자-견본-유리문 1:1 정합 + 유리문 전잠김 도달성(BFS) +
 //     paint 탄막 수치 상한 + 4층 상자 예산.
+// P5: fl:5 + 5층 카드 3장 + 장치-단말-단서 매핑 정합 + 전 장치 잠김 BFS(단말·단서·복귀는
+//     닿고 배틀·계단은 못 닿음) + stamp 예고 하한/동시 칸 상한 + 의존 최저 속도 > 0.
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -30,7 +32,8 @@ const ASSETS = [
 ];
 for (const p of ASSETS) if (!has(p)) err(`필수 에셋 없음: ${p}`);
 for (const p of ['docs/기준서-방과후-그림자학교-v1.md', 'docs/스펙-P1-1층-수직슬라이스.md',
-  'docs/스펙-P2-2층-필터버블.md', 'docs/스펙-P3-3층-가짜뉴스.md', 'docs/스펙-P4-4층-저작권.md']) {
+  'docs/스펙-P2-2층-필터버블.md', 'docs/스펙-P3-3층-가짜뉴스.md', 'docs/스펙-P4-4층-저작권.md',
+  'docs/스펙-P5-5층-AI의존.md']) {
   if (!has(p)) err(`필수 문서 없음: ${p}`);
 }
 for (const p of ['index.html', 'src/art.js', 'src/sound.js', 'src/data.js', 'src/engine.js']) {
@@ -110,14 +113,20 @@ if (D) {
     }
     return true;
   };
-  // 유리문 칸(잠김=솔리드). 전 칸 도달 검사는 '다 연 상태'를 기준으로 본다.
+  // 열리는 칸(4층 유리문 g / 5층 잠긴 장치 Y·Z·I). 전 칸 도달 검사는
+  // '다 연 상태'가 그 맵의 최종 형태이므로 이들을 뚫어 놓고 본다.
+  const OPENABLE = new Set(['g', 'Y', 'Z', 'I']);
   const glassOf = (m) => {
     const out = [];
     for (let y = 0; y < m.h; y++) {
-      for (let x = 0; x < m.w; x++) if (m.grid[y].charAt(x) === 'g') out.push({ x, y });
+      for (let x = 0; x < m.w; x++) if (OPENABLE.has(m.grid[y].charAt(x))) out.push({ x, y });
     }
     return out;
   };
+  // 어떤 칸에 인접해 설 수 있나 (막힌 칸은 앞에 서서 조사한다)
+  const nearSet = (set, x, y) =>
+    set.has(x + ',' + y) || set.has((x + 1) + ',' + y) || set.has((x - 1) + ',' + y)
+    || set.has(x + ',' + (y + 1)) || set.has(x + ',' + (y - 1));
 
   const mapNames = Object.keys(D.MAPS || {});
   if (mapNames.length < 2) err(`맵이 부족함: ${mapNames.length}개 (슬라이스는 교실+복도 2개)`);
@@ -168,7 +177,7 @@ if (D) {
       else if (!walkable(up, m.stairsTo.sx, m.stairsTo.sy)) err(at('위층 도착 칸이 막힘'));
       if (!m.stairs) err(at('stairsTo 가 있는데 stairs 타일이 없음'));
     }
-    if ([1, 2, 3, 4].indexOf(m.fl || 1) < 0) err(at(`층(fl) 값이 이상함: ${m.fl}`));
+    if ([1, 2, 3, 4, 5].indexOf(m.fl || 1) < 0) err(at(`층(fl) 값이 이상함: ${m.fl}`));
     // 소문 쪽지·자료실 표지는 조사할 수 있는 자리(막힌 칸)에 있어야 한다
     (m.notes || []).forEach((n) => {
       if (m.grid[n.y].charAt(n.x) !== 'N') err(at(`소문 쪽지 ${n.id} 자리에 쪽지 타일(N)이 없음`));
@@ -191,20 +200,21 @@ if (D) {
     if (ids.has(c.id)) err(`카드 id 중복: ${c.id}`);
     ids.add(c.id);
     const fl = c.floor;
-    if ([1, 2, 3, 4].indexOf(fl) < 0) { err(`카드 ${c.id}의 floor 태그가 없음/이상함: ${fl}`); return; }
+    if ([1, 2, 3, 4, 5].indexOf(fl) < 0) { err(`카드 ${c.id}의 floor 태그가 없음/이상함: ${fl}`); return; }
     byFloor[fl] = (byFloor[fl] || 0) + 1;
     const m = D.MAPS[c.at.map];
     if (!m) { err(`카드 ${c.id}의 맵 없음: ${c.at.map}`); return; }
     if ((m.fl || 1) !== fl) err(`카드 ${c.id}의 floor(${fl})와 맵 ${c.at.map}의 층(${m.fl})이 다름`);
     if (!walkable(m, c.at.x, c.at.y)) err(`카드 ${c.id}이 막힌 칸(${c.at.x},${c.at.y})`);
   });
-  for (const fl of [1, 2, 3, 4]) {
+  for (const fl of [1, 2, 3, 4, 5]) {
     if (byFloor[fl] !== 3) err(`${fl}층 증거 카드는 3장이어야 함 (현재 ${byFloor[fl] || 0}장)`);
   }
   if (!(D.MAX_EXPOSURE > 0)) err('MAX_EXPOSURE가 없음(노출도 게이지)');
   if (!(D.MAX_BUBBLE > 0)) err('MAX_BUBBLE이 없음(버블 게이지)');
   if (!(D.MAX_POLLUTE > 0)) err('MAX_POLLUTE가 없음(오염 게이지)');
   if (!(D.MAX_HONEST > 0)) err('MAX_HONEST가 없음(정직 게이지)');
+  if (!(D.MAX_DEPEND > 0)) err('MAX_DEPEND가 없음(의존 게이지)');
 
   // ── 배틀 프로필 (스펙 §4) ─────────────────────────────────────────────────
   const UI = D.BATTLE_UI || {};
@@ -212,7 +222,7 @@ if (D) {
   const used = new Set();
   Object.keys(D.MAPS || {}).forEach((n) => { if (D.MAPS[n].npc) used.add(D.MAPS[n].npc.battle); });
   const profiles = Object.keys(D.BATTLES || {});
-  if (profiles.length < 4) err(`배틀 프로필이 부족함: ${profiles.length}개 (짝꿍+형+선배+미술 선생님)`);
+  if (profiles.length < 5) err(`배틀 프로필이 부족함: ${profiles.length}개 (짝꿍+형+선배+미술+교감)`);
   for (const id of profiles) {
     const B = D.BATTLES[id];
     const at = (s) => `배틀 ${id}: ${s}`;
@@ -232,7 +242,9 @@ if (D) {
     }
     if (!Array.isArray(B.attacks) || !B.attacks.length) err(at('탄막 패턴이 없음'));
     (B.attacks || []).forEach((a, i) => {
-      if (!(a.time > 0) || !(a.every > 0) || !(a.speed > 0)) err(at(`탄막 ${i} 수치 이상`));
+      // stamp 는 날아오지 않고 제자리에 찍힌다 — 속도 대신 예고 시간이 난이도다.
+      const needSpeed = a.kind !== 'stamp';
+      if (!(a.time > 0) || !(a.every > 0) || (needSpeed && !(a.speed > 0))) err(at(`탄막 ${i} 수치 이상`));
       if (a.time < 5 || a.time > 7) err(at(`탄막 ${i} 길이 ${a.time}초 (5.5~6.5초 권장 범위 밖)`));
       // 3~4학년 기준: 하트를 쫓는 조각은 느려야 피할 수 있다 (스펙 §4)
       if (a.kind === 'chase' && a.speed > 120) err(at(`chase 탄막이 너무 빠름: ${a.speed}`));
@@ -360,7 +372,10 @@ if (D) {
       err('3층 계단이 4층 복도로 이어지지 않음');
     }
     if (gallery && !gallery.stairs) err('전시 복도에 계단이 없음');
-    if (gallery && gallery.stairsTo) err('4층 계단은 아직 위층이 없어야 함 (5층은 공사 중)');
+    // P5: 4층 계단은 이제 5층 복도로 이어진다.
+    if (gallery && (!gallery.stairsTo || gallery.stairsTo.map !== 'hall5')) {
+      err('4층 계단이 5층 복도로 이어지지 않음');
+    }
     if (artroom && !artroom.grid.some((row) => row.indexOf('M') >= 0)) err('미술실에 제작대 타일(M)이 없음');
     if (artroom && !artroom.grid.some((row) => row.indexOf('J') >= 0)) err('미술실에 잠긴 서랍 타일(J)이 없음');
 
@@ -455,6 +470,154 @@ if (D) {
     }
   }
 
+  // ── 5층 조작권 잠식 (스펙 P5 §2·§3·§4·§5·§6) ────────────────────────────
+  {
+    const locks = D.LOCKS || [];
+    const papers = D.PAPERS || [];
+    if (locks.length !== 3) err(`잠긴 장치는 3개여야 함 (현재 ${locks.length}개)`);
+    if (D.MAX_DEPEND !== locks.length) err('의존 게이지 최대치가 장치 수와 다름');
+    // 헌법 §3-3: 최대 의존에서도 멈추지 않는다 — 최저 속도가 0보다 커야 한다.
+    const slow = D.DEPEND_SLOW;
+    if (!(slow > 0)) err('의존 감속치(DEPEND_SLOW)가 없음');
+    const minRate = 1 - slow * D.MAX_DEPEND;
+    if (!(minRate > 0)) err(`의존 MAX에서 이동 속도가 0 이하가 됨 (배율 ${minRate})`);
+    else console.log(`의존 MAX 이동 속도 배율: ${minRate.toFixed(2)} (> 0)`);
+    if (!(D.DEPEND_DIM > 0) || D.DEPEND_DIM > D.MAX_DEPEND) err('반짝임이 꺼지는 단계가 이상함');
+    if (D.DEPEND_FOG !== D.MAX_DEPEND) err('회색 안개는 의존 MAX에서 나와야 함');
+
+    const hall5 = D.MAPS.hall5, office = D.MAPS.office, docroom = D.MAPS.docroom;
+    for (const [n, m] of [['hall5', hall5], ['office', office], ['docroom', docroom]]) {
+      if (!m) err(`5층 맵이 없음: ${n}`);
+      else if ((m.fl || 1) !== 5) err(`${n}의 층(fl)이 5가 아님`);
+    }
+    if (office && !office.stairs) err('교무실에 계단이 없음');
+    if (office && office.stairsTo) err('5층 계단은 옥상 전이라 위층 맵이 없어야 함');
+    if (office && (!office.npc || office.npc.battle !== 'vice')) err('교무실에 교감 선생님이 없음');
+
+    const lockIds = new Set();
+    const usedCards = new Set();
+    for (const k of locks) {
+      const at = (s) => `장치 ${k.id}: ${s}`;
+      if (lockIds.has(k.id)) err(at('id 중복'));
+      lockIds.add(k.id);
+      if (!k.label) err(at('이름(label)이 없음'));
+      const m = D.MAPS[k.map];
+      if (!m) { err(at(`맵이 없음: ${k.map}`)); continue; }
+      if ((m.fl || 1) !== 5) err(at('5층 맵이 아님'));
+      // 장치 칸·단말 칸은 막힌 칸이어야 하고(앞에 서서 조사), 서로 이웃해야 한다.
+      if (walkable(m, k.at.x, k.at.y)) err(at('장치 칸이 막힌 칸이 아님'));
+      if (walkable(m, k.term.x, k.term.y)) err(at('나비스 단말 칸이 막힌 칸이 아님'));
+      if (Math.abs(k.at.x - k.term.x) + Math.abs(k.at.y - k.term.y) !== 1) {
+        err(at('단말이 장치 옆에 붙어 있지 않음 (스펙 §2)'));
+      }
+      if (!(k.open || []).length) err(at('열릴 칸(open)이 없음'));
+      for (const c of k.open) {
+        if (!OPENABLE.has(m.grid[c.y].charAt(c.x))) err(at(`열릴 칸(${c.x},${c.y})이 장치 타일이 아님`));
+      }
+      // 장치마다 5층 카드 한 장이 짝지어야 한다 — 카드는 열린 뒤에야 닿는다.
+      const card = cards.find((c) => c.id === k.card);
+      if (!card) err(at(`증거 카드가 없음: ${k.card}`));
+      else {
+        if (card.floor !== 5) err(at('증거 카드가 5층 카드가 아님'));
+        if (usedCards.has(k.card)) err(at('증거 카드가 다른 장치와 겹침'));
+        usedCards.add(k.card);
+      }
+      // 과제 ↔ 단서 매핑 (스펙 §3)
+      if (['order', 'key', 'quiz'].indexOf(k.task) < 0) err(at(`과제 종류가 이상함: ${k.task}`));
+      if (k.task === 'order') {
+        const list = (m.papers || []).map((p) => p.id);
+        if (list.length !== papers.length) err(at('서류 수가 과제 정답 수와 다름'));
+        for (const id of k.order || []) {
+          if (list.indexOf(id) < 0) err(at(`정답 순서에 맵에 없는 서류: ${id}`));
+          if (!papers.some((p) => p.id === id)) err(at(`정답 순서에 대사 없는 서류: ${id}`));
+        }
+        if (new Set(k.order || []).size !== list.length) err(at('정답 순서가 서류와 1:1이 아님'));
+        // 콘솔 목록 순서(맵 배치)와 정답 순서가 같으면 대조 없이 풀린다 — 퍼즐이 죽는다.
+        if (JSON.stringify(list) === JSON.stringify(k.order)) err(at('서류 배치가 정답 순서 그대로'));
+        for (const p of m.papers || []) {
+          if (m.grid[p.y].charAt(p.x) !== 'O') err(at(`서류 ${p.id} 자리에 서류 타일(O)이 없음`));
+          if (!walkable(m, p.x, p.y + 1)) err(at(`서류 ${p.id} 앞에 설 자리가 없음`));
+        }
+      }
+      if (k.task === 'quiz') {
+        if (!Array.isArray(k.quiz) || k.quiz.length !== 3) err(at('시간표 빈칸은 3지선다여야 함'));
+        if (!(k.quiz || []).some((q) => q.id === k.answer)) err(at('정답이 선택지에 없음'));
+        for (const q of k.quiz || []) if (!q.label) err(at(`선택지 ${q.id} 이름이 없음`));
+      }
+      // 단서 오브젝트(화분·시간표판)는 그 층에서 조사할 수 있어야 한다.
+      if (k.clue) {
+        const cm = D.MAPS[k.clue.map];
+        if (!cm) err(at(`단서 맵이 없음: ${k.clue.map}`));
+        else if (walkable(cm, k.clue.x, k.clue.y)) err(at('단서 오브젝트가 막힌 칸이 아님'));
+      }
+    }
+    if (papers.length !== 3) err(`캐비닛 서류는 3장이어야 함 (현재 ${papers.length}장)`);
+    for (const p of papers) {
+      if (!p.label) err(`서류 ${p.id}: 콘솔 목록 이름이 없음`);
+      if (!Array.isArray(p.look) || !p.look.length) err(`서류 ${p.id}: 날짜 단서 대사가 없음`);
+    }
+    for (const key of ['trust', 'self', 'redo', 'title']) {
+      if (!(D.NAVIS || {})[key]) err(`나비스 단말 문구 누락: ${key}`);
+    }
+    for (const key of ['warn', 'trusted', 'selfDone', 'recovered', 'needKey', 'gotKey',
+      'orderAsk', 'orderOk', 'orderNo', 'quizAsk', 'quizNo', 'opened']) {
+      const v = (D.NAVIS || {})[key];
+      if (!Array.isArray(v) || !v.length) err(`나비스 단말 대사 누락: ${key}`);
+    }
+
+    // ── 전 장치 잠김 BFS (스펙 §6) ──────────────────────────────────────────
+    // 잠긴 상태에서 단말·단서·복귀 경로에는 닿아야 하고(소프트락 금지),
+    // 배틀 지점·계단에는 닿지 못해야 한다(장치가 진행을 실제로 막는다).
+    if (hall5 && office && docroom) {
+      const locked = {};
+      for (const n of ['hall5', 'office', 'docroom']) locked[n] = reachSet(D.MAPS[n], [], []);
+      for (const k of locks) {
+        const set = locked[k.map];
+        if (!nearSet(set, k.term.x, k.term.y)) err(`전 장치 잠김: ${k.id} 단말에 못 감 (소프트락)`);
+        if (k.clue && !nearSet(locked[k.clue.map], k.clue.x, k.clue.y)) {
+          err(`전 장치 잠김: ${k.id} 단서에 못 감 (소프트락)`);
+        }
+        if (k.task === 'order') {
+          for (const p of (D.MAPS[k.map].papers || [])) {
+            if (!nearSet(set, p.x, p.y)) err(`전 장치 잠김: 서류 ${p.id}에 못 감 (소프트락)`);
+          }
+        }
+        // 카드는 장치 뒤에 있어야 한다 — 안 열고도 주우면 장치가 의미를 잃는다.
+        const card = cards.find((c) => c.id === k.card);
+        if (card && locked[card.at.map] && locked[card.at.map].has(card.at.x + ',' + card.at.y)) {
+          err(`전 장치 잠김: 카드 ${k.card}를 장치를 안 열고도 주움`);
+        }
+      }
+      for (const n of ['hall5', 'office', 'docroom']) {
+        for (const wp of D.MAPS[n].warps || []) {
+          if (!locked[n].has(wp.x + ',' + wp.y)) err(`전 장치 잠김: ${n}의 복귀 문에 못 감 (소프트락)`);
+        }
+      }
+      const npc = office.npc;
+      if (npc && locked.office.has(npc.x + ',' + npc.y)) err('전 장치 잠김인데 배틀 지점에 닿음');
+      const face = office.stairs && office.stairs.face;
+      if (face && locked.office.has(face.x + ',' + face.y)) err('전 장치 잠김인데 계단 앞에 닿음');
+      console.log(`전 장치 잠김(장치 ${locks.length}개)에서도 단말·단서·복귀 경로 도달 가능`);
+    }
+
+    // ── 배틀: 정답 증거 + stamp 예고 수치 (스펙 §5·§6) ──────────────────────
+    const vice = (D.BATTLES || {}).vice;
+    if (!vice) err('교감 선생님 배틀 프로필이 없음');
+    else {
+      if (vice.evidence !== 'nameBook') err('교감 배틀 정답 증거가 이름 수첩이 아님');
+      const stamps = (vice.attacks || []).filter((a) => a.kind === 'stamp');
+      if (!stamps.length) err('교감 탄막에 stamp가 없음');
+      stamps.forEach((a, i) => {
+        // 예고를 읽고 피하는 형이라 예고 시간이 난이도의 전부다 (저학년 배려)
+        if (!(a.warn >= 0.8)) err(`stamp 예고 시간이 너무 짧음(${i}): ${a.warn}초 (0.8초 이상)`);
+        if (!(a.cells > 0) || a.cells > 2) err(`stamp 동시 칸 상한이 이상함(${i}): ${a.cells} (2 이하)`);
+        if (!(a.hit > 0)) err(`stamp 타격 지속이 없음(${i})`);
+        if (!(a.every > a.warn)) err(`stamp 간격이 예고보다 짧음(${i}) — 예고가 겹친다`);
+      });
+      console.log(`stamp 예고 ${stamps[0] ? stamps[0].warn : '?'}초 · 동시 ${stamps[0] ? stamps[0].cells : '?'}칸`);
+    }
+  }
+
   // ── 헌법 §3-2: 시작 ~ 첫 배틀까지 대화 상자 5개 이내 / 상자당 2줄 ─────────
   const mate = (D.BATTLES && D.BATTLES.mate) || {};
   const bro = (D.BATTLES && D.BATTLES.bro) || {};
@@ -478,6 +641,12 @@ if (D) {
     (artT.approach || []).length + (artT.intro || []).length;
   if (boxes4 > 5) err(`4층 진입~미술 선생님 배틀까지 대화 상자 ${boxes4}개 > 5개 (스펙 §5)`);
   else console.log(`4층 진입~미술 선생님 배틀까지 대화 상자: ${boxes4}/5개`);
+  // 5층도 같은 규칙 (스펙 P5 §6)
+  const vice = (D.BATTLES && D.BATTLES.vice) || {};
+  const boxes5 = ((D.FLOOR5 && D.FLOOR5.up) || []).length + ((D.FLOOR5 && D.FLOOR5.enter) || []).length +
+    (vice.approach || []).length + (vice.intro || []).length;
+  if (boxes5 > 5) err(`5층 진입~교감 배틀까지 대화 상자 ${boxes5}개 > 5개 (스펙 §6)`);
+  else console.log(`5층 진입~교감 배틀까지 대화 상자: ${boxes5}/5개`);
 
   const over = [];
   const walkBoxes = (v) => {
@@ -486,12 +655,16 @@ if (D) {
     v.forEach(walkBoxes);
   };
   // 목록·좌표라 2줄 규칙 밖
-  const NOT_DIALOG = new Set(['menu', 'attacks', 'adWords', 'fog', 'door', 'samples']);
-  [D.INTRO, D.LOOK, D.LOOK2, D.FLOOR2, D.FLOOR3, D.FLOOR4, D.BATTLE_UI, D.CONSOLE, D.STICKER, D.CLEAR]
+  const NOT_DIALOG = new Set(['menu', 'attacks', 'adWords', 'fog', 'door', 'samples',
+    'order', 'quiz', 'open', 'papers']);
+  [D.INTRO, D.LOOK, D.LOOK2, D.FLOOR2, D.FLOOR3, D.FLOOR4, D.FLOOR5,
+    D.BATTLE_UI, D.CONSOLE, D.STICKER, D.NAVIS, D.CLEAR]
     .concat(Object.keys(D.BATTLES || {}).map((k) => D.BATTLES[k]))
     .concat(D.RUMORS || [])
     .concat(D.FRAMES || [])
     .concat(D.AUTHORS || [])
+    .concat(D.LOCKS || [])
+    .concat(D.PAPERS || [])
     .forEach((o) => {
       if (Array.isArray(o)) walkBoxes(o);
       else Object.keys(o || {}).forEach((k) => { if (!NOT_DIALOG.has(k)) walkBoxes(o[k]); });
@@ -550,8 +723,8 @@ if (has('sw.js')) {
   if (cur !== tag) err(`sw 캐시 해시 불일치(${cur} != ${tag}) — npm run bump 실행`);
 } else err('sw.js 없음 (오프라인 캐시)');
 
-// 층당 1,800자 (기준서 총예산 15,000자 중 몫). 현재 구현은 1~4층 = 4개 층.
-const SLICE_BUDGET = 7200;
+// 층당 1,800자 (기준서 총예산 15,000자 중 몫). 현재 구현은 1~5층 = 5개 층.
+const SLICE_BUDGET = 9000;
 console.log(`텍스트 예산: ${totalKo}/${SLICE_BUDGET}자  ` +
   Object.keys(perFile).map((f) => `${f.replace('src/', '')}=${perFile[f]}`).join(' '));
 if (totalKo > SLICE_BUDGET) err(`텍스트 예산 초과: ${totalKo}자 > ${SLICE_BUDGET}자 (스펙 §4)`);

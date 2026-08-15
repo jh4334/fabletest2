@@ -1053,27 +1053,23 @@ check('다 붙인 뒤의 제작대는 다른 안내',
   S().mode === 'world' && S().dialog && S().dialog.seq === D.STICKER.clear);
 advance();
 
-// ── 40. 4층 통과 → 클리어 화면 ─────────────────────────────────────────────
-// [32]에서 옮겨온 클리어 화면 검사 — 오늘의 마지막 계단이 전시 복도로 바뀌었을 뿐,
-// 검사 이름과 뜻은 그대로 둔다(5층은 공사 중).
-console.log('[40] 4층 통과');
+// ── 40. 4층 통과 → 5층 진입 ────────────────────────────────────────────────
+// P5: 4층 계단은 더 이상 클리어 화면이 아니라 5층 복도로 이어진다(스펙 §1).
+// 클리어 화면 검사 7건은 이름과 뜻 그대로 오늘의 마지막 계단(교무실)으로 옮겨 [49]에서 돈다.
+console.log('[40] 4층 통과 → 5층');
 place('gallery', 18, 5);
 hold('ArrowRight', 30);
 check('계단 접촉 안내(4층)', !!S().dialog);
+tap('z');                                   // 계단 대사를 넘기면 그 자리에서 5층으로
+check('5층으로 올라감', S().map === 'hall5' && S().floor === 5);
+check('5층 도착 안내 상자', S().dialog && S().dialog.seq === D.FLOOR5.enter);
 advance();
-check('클리어 화면', S().mode === 'clear');
-check('클리어 배너가 층 번호를 쓴다', S().floor === 4 && typeof D.CLEAR.bannerFloor === 'string');
-tap('z');                                   // 기본값: 계속 둘러보기
-check('클리어 후 Z 연타에도 저장 생존 + 월드 복귀', S().mode === 'world' && G.hasSave() === true);
-check('계단 앞으로 복귀', tile().x === 18 && tile().y === 5);
-hold('ArrowRight', 30);
-advance();
-check('클리어 화면 재진입 가능', S().mode === 'clear');
-tap('ArrowDown'); tap('z');                 // 타이틀로
-check('타이틀로 가도 저장 유지', S().mode === 'title' && G.hasSave() === true);
-tap('z');                                   // 이어하기
-check('이어하기로 클리어 상태 복원', S().mode === 'world' && S().flags.done === true);
-check('이어하기가 4층을 기억', S().floor === 4 && S().map === 'gallery');
+check('5층 복도 입구에 도착', tile().x === 1 && tile().y === 3);
+check('5층 가방은 비어 있음 (층별 카드 집계 분리)', G.heldIds().length === 0);
+check('의존은 0에서 시작', S().depend === 0 && D.MAX_DEPEND === 3);
+check('5층 계단은 아직 잠김', !S().stairsOpen.office);
+G.save();
+check('이어하기가 5층을 기억', G.load() === true && S().floor === 5 && S().map === 'hall5');
 check('이어하기가 액자·정직도 복원', G.framesDone() === true && S().honest === D.MAX_HONEST);
 check('이어하기가 인물 진행을 복원',
   S().clearedOf.artTeacher === true && S().heardOf.artTeacher === true);
@@ -1103,6 +1099,311 @@ check('한 점만 밝힌 상태에서도 액자 앞·복도 문은 열려 있다
   !G.solidAt(D.MAPS.gallery, FR[2].x, FR[2].y - 1) && !G.solidAt(D.MAPS.gallery, 1, 5));
 check('4층 회복 경로 문구가 있다', typeof D.T.honHelp === 'string' && D.T.honHelp.length > 0);
 
+// ══ 5층: 교무실 · AI 의존과 책임 (스펙 P5 §6) ═══════════════════════════════
+const LK = D.LOCKS, PA = D.PAPERS;
+const lockOf = (id) => LK.find((k) => k.id === id);
+const paperOf = (id) => PA.find((p) => p.id === id);
+const paperList = D.MAPS.office.papers.map((p) => p.id);   // 콘솔 목록 순서 = 맵 배치 순서
+// 단말은 막힌 칸이라 옆에 서서 바라본다 — 어느 쪽에서 볼지는 맵이 정한다.
+function faceTerm(k) {
+  const dirs = [[0, -1, 'ArrowDown'], [0, 1, 'ArrowUp'], [-1, 0, 'ArrowRight'], [1, 0, 'ArrowLeft']];
+  for (const [dx, dy, key] of dirs) {
+    const x = k.term.x + dx, y = k.term.y + dy;
+    if (x < 0 || y < 0) continue;
+    if (!G.solidAt(D.MAPS[k.map], x, y)) { place(k.map, x, y); tap(key); return true; }
+  }
+  return false;
+}
+function openTerm(id) { const ok = faceTerm(lockOf(id)); tap('z'); return ok; }
+
+// ── 42. 5층 진입 — 잠긴 장치 셋과 반짝임 표시 ───────────────────────────────
+console.log('[42] 5층 — 잠긴 장치와 반짝임');
+G.newGame(); advance();
+// 1~4층 진행은 앞 절에서 다 봤으니 5층 상태로 바로 올린다.
+S().clearedOf.mate = true; S().clearedOf.bro = true;
+S().clearedOf.senior = true; S().clearedOf.artTeacher = true;
+S().stairsOpen.hallway = true; S().stairsOpen.lab = true;
+S().stairsOpen.hall3 = true; S().stairsOpen.gallery = true;
+FR.forEach((f) => { S().frames[f.id] = 'done'; });
+G.save(); G.load();
+place('hall5', 1, 3); frame(2);
+check('5층 복도 진입', S().map === 'hall5' && S().floor === 5);
+check('장치 셋이 모두 잠겨 있다',
+  LK.every((k) => G.solidAt(D.MAPS[k.map], k.at.x, k.at.y) === true));
+check('열린 장치 칸은 아직 없다', G.openedCells('hall5').length === 0
+  && G.openedCells('office').length === 0 && G.openedCells('docroom').length === 0);
+check('반짝임 표시가 켜져 있다', G.glintOn() === true);
+check('의존 0에서는 감속이 없다', G.moveSpeed() === G.SPEED);
+place('hall5', 10, 4);
+hold('ArrowDown', 60);
+check('안쪽 문이 진행을 막는다', tile().y === 4);
+tap('ArrowDown'); tap('z');
+check('안쪽 문을 조사하면 왜 안 열리는지 알려 준다',
+  S().dialog && S().dialog.seq[0] === D.LOOK.innerDoor);
+advance();
+check('문 뒤 카드는 아직 주울 수 없다', G.heldIds().indexOf('nameBook') < 0);
+
+// ── 43. 나비스에게 맡기기 — 경고 1회 → 즉시 개방 + 감속 ─────────────────────
+console.log('[43] 맡기기 — 경고와 의존');
+openTerm('cabinet');
+check('나비스 단말이 열린다 (방송 콘솔과 같은 문법)',
+  S().mode === 'console' && S().con.kind === 'navis' && S().con.level === 0);
+check('단말이 어느 장치인지 기억한다', S().con.lock === 'cabinet');
+tap('z');                                   // 맡기기 (첫 시도)
+check('첫 맡기기 전에 1회 경고', !!S().dialog && S().dialog.seq === D.NAVIS.warn);
+check('경고는 플래그로 1회만', S().flags.trustWarn === true);
+advance();
+check('경고 단계에서는 아직 열리지 않음', G.lockOpen('cabinet') === false && S().depend === 0);
+tap('z');                                   // 다시 맡기기
+check('맡기면 즉시 열린다', G.lockOpen('cabinet') === true);
+check('맡기면 의존 +1', S().depend === 1);
+advance();
+check('의존 +1 = 이동 속도 15% 감소', Math.abs(G.moveSpeed() - G.SPEED * 0.85) < 0.01);
+check('열린 장치 칸이 통행 가능해진다', G.solidAt(D.MAPS.office, 8, 5) === false);
+check('열린 칸은 맵 grid를 바꾸지 않음', D.MAPS.office.grid[5].charAt(8) === 'Y');
+check('열린 장치 칸이 기록됨', G.openedCells('office').length === 1);
+closeCon();
+place('office', 7, 5);
+check('열린 캐비닛으로 실제로 지나간다', walkUntil('ArrowRight', () => tile().x > 8, 900));
+place('office', 9, 5); frame(2);
+check('캐비닛 안 손글씨 가정통신문 획득', G.heldIds().indexOf('handNote') >= 0);
+check('5층 카드 안내 토스트', !!S().toast && S().toast.text === D.T.gotCard5);
+check('5층 카드는 의존을 건드리지 않음', S().depend === 1);
+place('office', 7, 5);
+tap('ArrowRight'); tap('z');
+check('열린 장치는 다른 대사', S().dialog && S().dialog.seq[0] === D.LOOK.cabinetOpen);
+advance();
+
+// ── 44. 의존 단계별 연출 — 반짝임 off · 회색 안개 · 최저 속도 ───────────────
+console.log('[44] 의존 단계별 연출');
+S().depend = 2; frame(2);
+check('의존 +2 = 30% 감소', Math.abs(G.moveSpeed() - G.SPEED * 0.70) < 0.01);
+check('의존 +2부터 반짝임 표시가 꺼진다', G.glintOn() === false && D.DEPEND_DIM === 2);
+S().depend = D.MAX_DEPEND; frame(2);
+check('의존 +3 = 45% 감소', Math.abs(G.moveSpeed() - G.SPEED * 0.55) < 0.01);
+check('의존 MAX여도 멈추지 않는다 (최저 속도 > 0)', G.moveSpeed() > 0);
+check('의존 MAX에서도 회색 안개 렌더에 예외 없음', S().mode === 'world' && D.DEPEND_FOG === 3);
+const slowX = S().px;
+hold('ArrowLeft', 20);
+check('의존 MAX여도 이동·진행은 막지 않는다 (회복 가능 원칙)', S().px < slowX);
+check('의존 회복 경로 문구가 있다', typeof D.T.depHelp === 'string' && D.T.depHelp.length > 0);
+S().depend = 1;
+
+// ── 45. 스스로 하기 ① 서류함 — 단서 → 열쇠 → 개방 ──────────────────────────
+console.log('[45] 스스로 하기 — 열쇠 과제');
+place('docroom', 8, 2);
+tap('ArrowRight'); tap('z');
+check('서류함 단서: 화분 쪽으로 이어지는 물자국',
+  S().dialog && S().dialog.seq[0] === D.LOOK.fileBox);
+advance();
+openTerm('fileBox');
+check('둘째 단말도 같은 문법', S().mode === 'console' && S().con.lock === 'fileBox');
+tap('ArrowDown'); tap('z');                 // 스스로 하기
+check('열쇠가 없으면 안내만 한다',
+  !!S().dialog && S().dialog.seq === D.NAVIS.needKey && G.lockOpen('fileBox') === false);
+advance();
+check('막혀도 콘솔은 열린 채로 남는다', S().mode === 'console');
+closeCon();
+place('docroom', 3, 8);
+tap('ArrowUp'); tap('z');
+check('화분 밑에서 열쇠 획득', S().dialog && S().dialog.seq === D.NAVIS.gotKey && S().hasKey === true);
+advance();
+tap('z');
+check('열쇠는 한 번만 나온다', S().dialog && S().dialog.seq === D.NAVIS.keyGone);
+advance();
+const dep45 = S().depend;
+openTerm('fileBox');
+tap('ArrowDown'); tap('z');                 // 스스로 하기
+check('열쇠로 서류함을 내 손으로 열었다',
+  S().dialog && S().dialog.seq === D.NAVIS.selfDone && G.lockOpen('fileBox') === true);
+check('스스로 하면 의존이 오르지 않는다', S().depend === dep45);
+advance();
+check('스스로 연 장치는 단말이 더 부르지 않는다', S().mode === 'world');
+place('docroom', 11, 2); frame(2);
+check('서류함 안 낡은 결재 도장 획득', G.heldIds().indexOf('oldStamp') >= 0);
+
+// ── 46. 스스로 하기 ② 캐비닛 서류 순서 → 의존 회복(-1) ─────────────────────
+console.log('[46] 서류 순서 과제 → 의존 회복');
+place('office', 2, 4);
+tap('ArrowUp'); tap('z');
+check('서류를 조사하면 날짜가 보인다',
+  S().dialog && S().dialog.seq === paperOf(paperList[0]).look);
+advance();
+check('콘솔 목록 순서와 정답 순서는 다르다 (대조가 필요한 퍼즐)',
+  JSON.stringify(paperList) !== JSON.stringify(lockOf('cabinet').order));
+const dep46 = S().depend;
+check('맡긴 장치는 회복 대상으로 남아 있다', S().trusted.cabinet === true);
+openTerm('cabinet');
+tap('z');                                   // 목록 첫 줄 = 내가 다시 해볼래
+check('맡긴 장치는 다시 해볼 수 있다', !!S().dialog && S().dialog.seq === D.NAVIS.orderAsk);
+advance();
+check('서류 3지선다가 뜬다', S().mode === 'console' && S().con.level === 1);
+const wrongIdx = paperList.indexOf(lockOf('cabinet').order[1]);
+S().con.cursor = wrongIdx; tap('z');
+check('순서가 틀리면 처음부터 (벌 없음)',
+  S().dialog && S().dialog.seq === D.NAVIS.orderNo && S().depend === dep46);
+advance();
+check('틀려도 콘솔은 그대로', S().mode === 'console' && S().con.level === 1);
+for (let i = 0; i < lockOf('cabinet').order.length; i++) {
+  S().con.cursor = paperList.indexOf(lockOf('cabinet').order[i]);
+  tap('z');
+  if (i < lockOf('cabinet').order.length - 1) {
+    check(`서류 ${i + 1}번째가 맞다`, S().dialog && S().dialog.seq === D.NAVIS.orderOk);
+    advance();
+  }
+}
+check('세 장을 날짜 순서로 고르면 열린다', S().dialog && S().dialog.seq === D.NAVIS.recovered);
+check('다시 해보면 의존 -1 (회복 경로)', S().depend === dep46 - 1);
+check('회복하면 맡긴 표시가 사라진다', !S().trusted.cabinet);
+advance();
+
+// ── 47. 스스로 하기 ③ 시간표 빈칸 → 안쪽 문 ────────────────────────────────
+console.log('[47] 시간표 빈칸 과제');
+place('office', 2, 2);
+tap('ArrowUp'); tap('z');
+check('교무실 시간표가 빈칸의 단서', S().dialog && S().dialog.seq[0] === D.LOOK.timetable);
+advance();
+const dep47 = S().depend;
+openTerm('innerDoor');
+tap('ArrowDown'); tap('z');                 // 스스로 하기
+check('빈칸 안내', !!S().dialog && S().dialog.seq === D.NAVIS.quizAsk);
+advance();
+check('3지선다가 뜬다', S().mode === 'console' && S().con.level === 1);
+const quiz = lockOf('innerDoor').quiz;
+S().con.cursor = quiz.findIndex((q) => q.id !== lockOf('innerDoor').answer);
+tap('z');
+check('틀리면 다시 고르면 된다',
+  S().dialog && S().dialog.seq === D.NAVIS.quizNo && G.lockOpen('innerDoor') === false);
+advance();
+S().con.cursor = quiz.findIndex((q) => q.id === lockOf('innerDoor').answer);
+tap('z');
+check('맞으면 안쪽 문이 열린다',
+  G.lockOpen('innerDoor') === true && S().dialog && S().dialog.seq === D.NAVIS.selfDone);
+check('스스로 푼 문도 의존은 그대로', S().depend === dep47);
+advance();
+place('hall5', 10, 4);
+check('열린 안쪽 문으로 실제로 지나간다', walkUntil('ArrowDown', () => tile().y > 5, 900));
+place('hall5', 10, 8); frame(2);
+check('문 뒤에서 이름 수첩 획득', G.heldIds().indexOf('nameBook') >= 0);
+check('5층 카드 3장을 다 들었다', G.heldIds().length === 3);
+check('장치 셋이 모두 열렸다', LK.every((k) => G.lockOpen(k.id) === true));
+
+// ── 48. 교감 선생님 배틀 — stamp 예고 탄막 ─────────────────────────────────
+console.log('[48] 교감 선생님 배틀');
+place('office', 11, 5); frame(2);
+check('교감 조우 대화', !!S().dialog && S().dialog.seq === D.BATTLES.vice.approach);
+advance();
+check('교감 배틀 진입', S().mode === 'battle' && S().battle.id === 'vice');
+advance();
+check('교감 프로필로 배틀이 구성됨', S().battle.phase === 'menu'
+  && S().battle.shadow === D.BATTLES.vice.shadow && S().battle.hearts === D.BATTLES.vice.hearts);
+S().battle.cursor = 1; tap('z');
+S().battle.sub = G.heldIds().indexOf('handNote'); tap('z');
+advance();
+check('듣기 전 증거는 통하지 않음(교감)', S().battle.shadow === D.BATTLES.vice.shadow);
+check('상대 턴 시작(교감)', S().battle.phase === 'enemy');
+{
+  const si = D.BATTLES.vice.attacks.findIndex((a) => a.kind === 'stamp');
+  const sa = D.BATTLES.vice.attacks[si];
+  check('stamp 탄막이 프로필에 있고 예고가 0.8초 이상', si >= 0 && sa.warn >= 0.8);
+  const b = S().battle;
+  b.atk = si; b.timer = 0; b.tell = 0; b.inv = 99; b.bullets = []; b.spawnAcc = 0;
+  b.hx = G.BOX.x + 30; b.hy = G.BOX.y + 30;
+  frame(72);                                 // 1.15초 — 첫 도장이 예고로 떴다
+  const st = S().battle.bullets[0];
+  check('도장은 먼저 예고 칸으로 뜬다',
+    !!st && S().battle.bullets.every((p) => p.stamp && p.warn > 0));
+  const hp0 = S().battle.hearts;
+  S().battle.inv = 0; S().battle.hx = st.x; S().battle.hy = st.y;
+  frame(1);
+  check('예고 중에는 맞지 않는다 (읽고 피할 시간)', S().battle.hearts === hp0);
+  st.warn = 0.01;
+  frame(2);
+  check('예고가 끝나면 찍힌다', S().battle.hearts === hp0 - 1);
+  S().battle.hearts = D.BATTLES.vice.hearts; S().battle.inv = 99;
+  frame(180);
+  check('동시에 뜨는 도장이 상한을 넘지 않는다',
+    S().battle.bullets.filter((p) => p.stamp).length <= sa.cells);
+  S().battle.bullets = []; S().battle.timer = 999; frame(1);
+}
+check('상대 턴 종료 후 내 턴(교감)', S().battle.phase === 'menu');
+S().battle.cursor = 2; tap('z'); advance();
+check('듣기로 그림자가 얇아짐(교감)',
+  S().battle.heard === true && S().battle.shadow === D.BATTLES.vice.shadow - 1);
+S().battle.timer = 999; frame(1);
+S().battle.cursor = 3; tap('z'); advance();
+check('물러나기로 월드 복귀(교감)', S().mode === 'world' && S().map === 'office');
+place('office', 11, 5); frame(2);
+check('재조우는 축약 대사(교감)', S().dialog && S().dialog.seq === D.BATTLES.vice.reApproach);
+advance();
+check('재도전: 그림자 1칸 깎인 채 재개(교감)', S().battle.shadow === D.BATTLES.vice.shadow - 1);
+advance();
+S().battle.cursor = 1; tap('z');
+S().battle.sub = G.heldIds().indexOf('nameBook'); tap('z');
+advance();
+check('증거 제시로 그림자 0(교감)', S().battle.shadow === 0);
+check('손 내밀기 준비(교감)', S().battle.spare === true);
+tap('z');
+check('약속 카드⑤ 상자',
+  !!S().dialog && S().dialog.seq[1] === D.BATTLES.vice.promise[0]);
+check('약속 카드 뒤에 옥상 예고 한 상자 (나비스 복선)',
+  D.BATTLES.vice.promise.length === 2 && S().dialog.seq[2] === D.BATTLES.vice.promise[1]);
+advance();
+check('교감 선생님을 되돌림', S().clearedOf.vice === true);
+check('5층 계단 개방', S().stairsOpen.office === true);
+check('1~4층 진행은 건드리지 않음',
+  S().stairsOpen.gallery === true && S().clearedOf.artTeacher === true);
+place('office', 10, 5); frame(2);
+check('되돌린 뒤엔 다시 배틀하지 않음(교감)', S().mode === 'world');
+tap('ArrowRight'); tap('z');
+check('되돌린 교감이 한 줄 힌트를 준다', S().dialog && S().dialog.seq === D.BATTLES.vice.hint);
+advance();
+
+// ── 49. 5층 통과 → 클리어 화면 ─────────────────────────────────────────────
+// [40]에서 옮겨온 클리어 화면 검사 — 오늘의 마지막 계단이 교무실로 바뀌었을 뿐,
+// 검사 이름과 뜻은 그대로 둔다(옥상은 다음 차시).
+console.log('[49] 5층 통과');
+place('office', 12, 5);
+hold('ArrowRight', 30);
+check('계단 접촉 안내(5층)', !!S().dialog);
+advance();
+check('클리어 화면', S().mode === 'clear');
+check('클리어 배너가 층 번호를 쓴다', S().floor === 5 && typeof D.CLEAR.bannerFloor === 'string');
+tap('z');                                   // 기본값: 계속 둘러보기
+check('클리어 후 Z 연타에도 저장 생존 + 월드 복귀', S().mode === 'world' && G.hasSave() === true);
+check('계단 앞으로 복귀', tile().x === 12 && tile().y === 5);
+hold('ArrowRight', 30);
+advance();
+check('클리어 화면 재진입 가능', S().mode === 'clear');
+tap('ArrowDown'); tap('z');                 // 타이틀로
+check('타이틀로 가도 저장 유지', S().mode === 'title' && G.hasSave() === true);
+tap('z');                                   // 이어하기
+check('이어하기로 클리어 상태 복원', S().mode === 'world' && S().flags.done === true);
+check('이어하기가 5층·의존·장치를 기억',
+  S().floor === 5 && S().map === 'office' && LK.every((k) => G.lockOpen(k.id) === true));
+
+// ── 50. 5층 세이브 방어 ────────────────────────────────────────────────────
+console.log('[50] 5층 세이브 방어');
+windowObj.localStorage.setItem(D.SAVE_KEY, JSON.stringify({
+  v: 1, map: 'office', px: 100, py: 260, dir: 3, depend: 99, hasKey: 'yes',
+  locks: { cabinet: true, ghost: true, fileBox: 'yes' },
+  trusted: { cabinet: true, innerDoor: true, ghost: true },
+  opened: { office: [{ x: 0, y: 0 }], nowhere: [{ x: 1, y: 1 }] },
+}));
+check('손상된 5층 저장도 로드는 된다', G.load() === true);
+check('의존 게이지는 범위로 클램프', S().depend === D.MAX_DEPEND);
+check('모르는 장치 키는 버림', S().locks.ghost === undefined);
+check('불리언 아닌 개방값은 무시', !S().locks.fileBox && G.lockOpen('fileBox') === false);
+check('닫힌 장치의 회복 빚은 남기지 않음', !S().trusted.innerDoor && S().trusted.cabinet === true);
+check('불리언 아닌 열쇠 값은 무시', S().hasKey === false);
+check('열린 장치 칸은 저장 좌표가 아니라 장치 상태에서 다시 만든다',
+  G.openedCells('nowhere').length === 0
+  && JSON.stringify(G.openedCells('office')) === JSON.stringify(lockOf('cabinet').open));
+// 장치가 다 잠긴 최악에서도 단말·복귀 문은 그대로 닿는다 (헌법 §3-3)
+check('한 장치만 연 상태에서도 단말·복귀 문은 열려 있다',
+  !G.solidAt(D.MAPS.office, 7, 4) && !G.solidAt(D.MAPS.office, 0, 8));
+check('의존 MAX에서도 이동 속도가 0이 아니다', G.moveSpeed() > 0);
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {
@@ -1110,6 +1411,6 @@ if (fails.length) {
   fails.forEach((f) => console.error('   - ' + f));
   process.exit(1);
 }
-// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P3 262건 + P4 신규 30건 이상)
-if (pass < 292) { console.error(`✘ 검사 수 부족: ${pass}건 (P4 기준 292건 이상)`); process.exit(1); }
+// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P4 350건 + P5 신규 30건 이상)
+if (pass < 380) { console.error(`✘ 검사 수 부족: ${pass}건 (P5 기준 380건 이상)`); process.exit(1); }
 console.log(`✔ 스모크 ${pass}건 모두 통과`);
