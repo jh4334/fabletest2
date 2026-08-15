@@ -58,7 +58,7 @@ vm.createContext(windowObj);
 let seed = 20260726;
 Math.random = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
 
-for (const f of ['src/art.js', 'src/data.js', 'src/engine.js']) {
+for (const f of ['src/art.js', 'src/sound.js', 'src/data.js', 'src/engine.js']) {
   vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), windowObj, { filename: f });
 }
 const G = windowObj.GAME;
@@ -174,9 +174,17 @@ frame(2);
 check('짝꿍 조우 대화', !!S().dialog);
 advance();
 check('배틀 진입', S().mode === 'battle');
+check('배틀이 시작 위치를 기억(하드코딩 제거)', S().battle.from === 'hallway'
+  && S().battle.npcX === D.MAPS.hallway.npc.x);
 advance();
 check('내 턴 메뉴', S().battle.phase === 'menu' && S().battle.shadow === D.BATTLE.shadow);
 
+tap('ArrowDown');                         // 그리드: 0(말 걸기) 아래는 2(가만히 듣기)
+check('그리드 내비: ↓ = 아랫줄', S().battle.cursor === 2);
+tap('ArrowRight');
+check('그리드 내비: → = 옆 칸', S().battle.cursor === 3);
+tap('ArrowUp'); tap('ArrowLeft');         // 3 → 1 → 0
+check('그리드 내비: ↑← 복귀', S().battle.cursor === 0);
 tap('ArrowRight');                        // 말 걸기 → 보여주기
 check('메뉴 커서 이동', S().battle.cursor === 1);
 tap('z');
@@ -248,6 +256,100 @@ advance();
 check('클리어 화면', S().mode === 'clear');
 tap('z');
 check('처음부터: 저장 삭제 후 타이틀', S().mode === 'title' && G.hasSave() === false);
+
+// ── 11. 세이브 무결성 (손상·조작 방어) ──────────────────────────────────────
+console.log('[11] 세이브 무결성');
+const K = D.SAVE_KEY;
+windowObj.localStorage.setItem(K, '{깨진 json');
+check('깨진 JSON → 로드 거부', G.load() === false);
+check('깨진 저장은 자동 폐기', G.hasSave() === false);
+windowObj.localStorage.setItem(K, JSON.stringify({ v: 1, map: 'no-such-map', px: 100, py: 100 }));
+check('없는 맵 → 로드 거부·폐기', G.load() === false && G.hasSave() === false);
+windowObj.localStorage.setItem(K, JSON.stringify({ v: 1, map: 'classroom', px: '백', py: 240 }));
+check('숫자 아닌 좌표 → 로드 거부', G.load() === false);
+windowObj.localStorage.setItem(K, JSON.stringify({ v: 2, map: 'classroom', px: 240, py: 240 }));
+check('스키마 버전 불일치 → 로드 거부', G.load() === false);
+windowObj.localStorage.setItem(K, JSON.stringify({
+  v: 1, map: 'classroom', px: 99999, py: -50, dir: 9, exposure: 99,
+  flags: { cleared: 'yes' }, cards: { nameTag: { held: false, map: 'ghost', x: 999, y: -3 } },
+}));
+check('범위 밖 값은 클램프해 살림', G.load() === true
+  && S().exposure <= D.MAX_EXPOSURE && S().px <= D.MAPS.classroom.w * 48 && S().py >= 0);
+check('불리언 아닌 플래그는 무시', S().flags.cleared === false);
+check('유령 맵의 카드는 원위치 복구', S().cards.nameTag.map === 'classroom');
+
+// ── 12. 입력 — 한글 IME · e.code 매핑 ───────────────────────────────────────
+console.log('[12] 한글 IME 입력');
+// 한글 모드: e.key='Process', e.code='KeyZ' — code 로 눌려야 한다.
+dispatch('keydown', { key: 'Process', code: 'KeyZ' });
+check('IME 상태에서 Z(code) 인식', G.keys.ok === true);
+dispatch('keyup', { key: 'Process', code: 'KeyZ' });
+check('IME 상태에서 keyup 해제', G.keys.ok === false);
+// code 미지원 구형: 한글 낱자 폴백
+dispatch('keydown', { key: 'ㅈ' });
+check('구형 폴백: ㅈ = 결정', G.keys.ok === true);
+dispatch('keyup', { key: 'ㅈ' });
+dispatch('keydown', { key: 'Process', code: 'ArrowLeft' });
+check('IME 상태에서 방향키 인식', G.keys.left === true);
+dispatch('keyup', { key: 'Process', code: 'ArrowLeft' });
+frame(2); S().dialog = null; S().toast = null;   // 잔류 엣지·부수 효과 청소(테스트 격리)
+
+// ── 13. 타이틀 — 이어하기/처음부터 (공유 태블릿) ────────────────────────────
+console.log('[13] 타이틀 이어하기·처음부터');
+G.save();                                   // [11]에서 로드된 유효 상태를 저장
+S().mode = 'title'; frame(1);
+check('저장 있음 → 타이틀 복귀', G.hasSave() === true);
+tap('ArrowDown');                           // 처음부터 선택
+tap('z');
+check('처음부터는 바로 지우지 않고 확인을 띄움', S().mode === 'title' && G.hasSave() === true);
+tap('x');                                   // 취소
+tap('z');                                   // (커서 유지) 다시 확인
+tap('z');                                   // 기본값 '아니요' 결정
+check('아니요 → 저장 유지', S().mode === 'title' && G.hasSave() === true);
+tap('z');                                   // 다시 확인
+tap('ArrowLeft');                           // '네, 처음부터'
+tap('z');
+check('네 → 저장 삭제 후 새 게임 인트로', !!S().dialog && G.hasSave() === false);
+advance();
+check('새 게임이 교실에서 시작', S().mode === 'world' && S().map === 'classroom');
+
+// ── 14. 단말 사전 경고 · 뺏김 피드백 ────────────────────────────────────────
+console.log('[14] 단말 경고 → 뺏김 피드백');
+// [13] 끝에서 새 게임 상태(termWarn 미소비). 카드를 들고 경고 반경까지만 접근.
+place('classroom', 12, 8); frame(2);
+check('카드 재획득', G.heldIds().length === 1);
+S().toast = null;                          // 직전 획득 토스트 제거(경고 토스트만 보이게)
+place('classroom', 4, 2); frame(2);
+check('경고 반경: 뺏기 전에 먼저 알려줌',
+  !!S().toast && S().toast.text === D.T.termWarn && G.heldIds().length === 1 && S().exposure === 0);
+check('경고는 플래그로 1회만', S().flags.termWarn === true);
+place('classroom', 2, 2); frame(2);
+check('접촉하면 뺏김 + 붉은 펄스', G.heldIds().length === 0 && S().exposure === 1 && S().flash > 0);
+check('노출도 최대 = 카드 수(3)', D.MAX_EXPOSURE === 3);
+
+// ── 15. 사운드 — 토글·저장·안전성 ──────────────────────────────────────────
+console.log('[15] 사운드');
+check('SFX 모듈: AudioContext 없어도 안전 로드', !!windowObj.SFX && windowObj.SFX.isOn() === true);
+windowObj.SFX.play('pick');               // 컨텍스트 없음 → 조용히 무시(예외 없음)
+check('재생 호출이 예외 없이 통과', true);
+dispatch('keydown', { key: 'm', code: 'KeyM' });
+dispatch('keyup', { key: 'm', code: 'KeyM' });
+check('M키 음소거 + 토스트', windowObj.SFX.isOn() === false && S().toast && S().toast.text === D.T.soundOff);
+check('음소거 설정이 저장됨', windowObj.localStorage.getItem('shadow-school-sound') === '0');
+dispatch('keydown', { key: 'm', code: 'KeyM' });
+dispatch('keyup', { key: 'm', code: 'KeyM' });
+check('다시 M = 소리 켬', windowObj.SFX.isOn() === true);
+frame(1); S().toast = null;
+
+// ── 16. 자리 비움 일시정지 ──────────────────────────────────────────────────
+console.log('[16] 자리 비움 일시정지');
+G.pause();
+check('월드에서 일시정지 진입', S().paused === true);
+const pausedX = S().px;
+hold('ArrowLeft', 5);
+check('일시정지 중엔 움직이지 않음', S().px === pausedX && S().paused === true);
+tap('z');
+check('확인으로 재개', S().paused === false);
 
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');

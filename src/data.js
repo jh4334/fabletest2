@@ -77,15 +77,25 @@
     { id: 'photo', label: '사진', tone: '#78bcd8', at: { map: 'hallway', x: 14, y: 2 } }
   ];
 
-  D.MAX_EXPOSURE = 5;
+  D.MAX_EXPOSURE = 3;   // 카드 수와 일치 — 전부 뺏기면 게이지 만땅
 
   // ── 화면 문자열 ───────────────────────────────────────────────────────
   D.T = {
     title: '방과 후: 그림자 학교',
     sub: '1층 · 교실',
     start: '시작',
-    keys: '이동 화살표 · 결정 Z · 취소 X',
+    resume: '이어하기',
+    restart: '처음부터',
+    confirmWipe: ['하던 이야기가 지워져요.', '정말 처음부터 할까요?'],
+    yes: '네, 처음부터',
+    no: '아니요',
+    keys: '이동 화살표 · 결정 Z · 취소 X · 소리 M',
+    keysTouch: '왼쪽 스틱으로 이동 · 오른쪽 확인 버튼으로 결정',
+    soundOn: '소리 켬',
+    soundOff: '소리 끔',
     loading: '불러오는 중',
+    paused: '잠깐 쉬는 중',
+    pausedHelp: 'Z(확인)를 누르면 이어서 해요',
 
     expLabel: '노출도',
     expHelp: '흘린 카드를 다시 주우면 노출도가 내려가요',
@@ -96,6 +106,7 @@
     firstCard: '내 정보 카드. 흘리면 그림자가 커진다.',
     taken: '광고 단말이 카드를 빨아들였다!',
     takenHelp: '떨어진 카드를 다시 주워 오자.',
+    termWarn: '빨간 불빛… 가까이 가면 카드를 뺏길 것 같다!',
     adWords: ['광고', '당첨', '무료', '알림', '추천']
   };
 
@@ -138,11 +149,13 @@
     tell: '그림자 조각이 쏟아진다',
     hurt: [['한 발 물러났다.', '숨 고르고 다시 가 보자.']],
     flee: [['일단 물러났다.']],
+    subHint: '취소 X (터치는 취소 버튼)',
     // 상대 턴 탄막 (기준서: 짧게, 하트는 0이 돼도 게임오버 없음)
+    // 3~4학년 손 기준: 첫 턴은 짧고 성기게, 뒤로 갈수록 조금씩만 어렵게.
     attacks: [
-      { kind: 'rain', time: 8, every: 0.42, speed: 150 },
-      { kind: 'side', time: 8, every: 0.5, speed: 165 },
-      { kind: 'mix', time: 8, every: 0.4, speed: 175 }
+      { kind: 'rain', time: 5.5, every: 0.52, speed: 140 },
+      { kind: 'side', time: 6, every: 0.5, speed: 158 },
+      { kind: 'mix', time: 6.5, every: 0.44, speed: 168 }
     ]
   };
 

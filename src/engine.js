@@ -27,8 +27,8 @@
       px: m.spawn.x * T + T / 2, py: m.spawn.y * T + T - 6,
       dir: A.DIR[m.spawn.dir] || 0, frame: 0, walkT: 0, moving: false,
       cam: { x: 0, y: 0 }, exposure: 0, cards: cards,
-      flags: { intro: false, firstCard: false, firstTake: false, cleared: false, stairsOpen: false, done: false },
-      dialog: null, battle: null, toast: null, cool: {}, time: 0
+      flags: { intro: false, firstCard: false, firstTake: false, termWarn: false, cleared: false, stairsOpen: false, done: false },
+      dialog: null, battle: null, toast: null, cool: {}, time: 0, flash: 0, paused: false
     };
   }
 
@@ -84,9 +84,10 @@
   }
   function tileCenter(tx, ty) { return { x: tx * T + T / 2, y: ty * T + T / 2 }; }
 
-  // ── 대사/토스트 ─────────────────────────────────────────────────────────
+  // ── 대사/토스트/효과음 ──────────────────────────────────────────────────
   function say(seq, then) { S.dialog = { seq: seq, i: 0, then: then || null }; }
   function toast(str) { S.toast = { text: str, t: 2.4 }; }
+  function sfx(name) { if (g.SFX) g.SFX.play(name); }
 
   // ── 진행 ────────────────────────────────────────────────────────────────
   function newGame() {
@@ -120,6 +121,7 @@
     var st = S.cards[id];
     st.held = true; st.map = null;
     setExposure(S.exposure - 1);
+    sfx('pick');
     if (!S.flags.firstCard) { S.flags.firstCard = true; toast(D.T.firstCard); }
     else toast(D.T.gotCard);
     save();
@@ -130,6 +132,8 @@
     var id = held[held.length - 1], st = S.cards[id];
     st.held = false; st.map = S.map; st.x = term.drop.x; st.y = term.drop.y;
     setExposure(S.exposure + 1);
+    S.flash = 0.7;                 // 뺏김을 몸으로 느끼는 붉은 펄스
+    sfx('steal');
     S.cool[key] = TERM_COOL;
     if (!S.flags.firstTake) { S.flags.firstTake = true; toast(D.T.taken + ' ' + D.T.takenHelp); }
     else toast(D.T.taken);
@@ -138,6 +142,16 @@
   }
 
   // ── 입력 ────────────────────────────────────────────────────────────────
+  // e.code(물리 키) 우선 — 한글 IME가 켜져 있으면 e.key 가 'Process'/'ㅈ' 로 와서
+  // Z·X가 죽는다. 교실 PC 기본값이 한글 모드라 code 매핑이 없으면 게임이 안 된다.
+  var CODEMAP = {
+    ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+    KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right',
+    KeyZ: 'ok', Enter: 'ok', NumpadEnter: 'ok', Space: 'ok',
+    KeyX: 'no', Escape: 'no', Backspace: 'no',
+    KeyM: 'mute'
+  };
+  // e.code 미지원(아주 구형)일 때만 쓰는 보조 매핑
   var KEYMAP = {
     ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
     w: 'up', s: 'down', a: 'left', d: 'right',
@@ -145,13 +159,26 @@
     z: 'ok', Z: 'ok', Enter: 'ok', ' ': 'ok', Spacebar: 'ok',
     x: 'no', X: 'no', Escape: 'no', Backspace: 'no'
   };
+  // 한글 낱자 폴백(ㅈ→결정, ㅌ→취소). 화면 문구가 아니라 키 코드라
+  // 엔진 한글 0자 린트를 지키기 위해 코드포인트로 적는다.
+  KEYMAP[String.fromCharCode(0x3148)] = 'ok';
+  KEYMAP[String.fromCharCode(0x314C)] = 'no';
+  function mapKey(e) {
+    return (e.code && CODEMAP[e.code]) || KEYMAP[e.key] || null;
+  }
   function onKeyDown(e) {
-    var k = KEYMAP[e.key]; if (!k) return;
+    var k = mapKey(e); if (!k) return;
+    if (g.SFX) g.SFX.unlock();   // 자동재생 정책: 첫 입력에서 오디오를 깨운다
+    if (k === 'mute') {
+      if (g.SFX && S) toast(g.SFX.toggle() ? D.T.soundOn : D.T.soundOff);
+      if (e.preventDefault) e.preventDefault();
+      return;
+    }
     if (!keys[k]) edge[k] = true;
     keys[k] = true;
     if (e.preventDefault) e.preventDefault();
   }
-  function onKeyUp(e) { var k = KEYMAP[e.key]; if (k) keys[k] = false; }
+  function onKeyUp(e) { var k = mapKey(e); if (k) keys[k] = false; }
   function tapped(k) { return !!edge[k]; }
   function clearEdges() { edge = {}; }
   function axis() {
@@ -213,12 +240,16 @@
       var p = tileCenter(st.x, st.y);
       if (Math.abs(p.x - S.px) < PICK_R && Math.abs(p.y - (S.py - 12)) < PICK_R) pickCard(c.id);
     });
-    // 광고 단말
+    // 광고 단말 — 뺏기 전에 한 번은 경고한다(가르치기 전에 벌주지 않기).
     (m.terminals || []).forEach(function (tm, idx) {
       var key = S.map + ':' + idx;
       if (S.cool[key] > 0) return;
       var p = tileCenter(tm.x, tm.y);
-      if (Math.abs(p.x - S.px) < TERM_R && Math.abs(p.y - (S.py - 12)) < TERM_R) stealCard(tm, key);
+      var ax = Math.abs(p.x - S.px), ay = Math.abs(p.y - (S.py - 12));
+      if (!S.flags.termWarn && heldIds().length && ax < TERM_R + 70 && ay < TERM_R + 70) {
+        S.flags.termWarn = true; toast(D.T.termWarn); sfx('warn'); save();
+      }
+      if (ax < TERM_R && ay < TERM_R) stealCard(tm, key);
     });
     // 짝꿍 조우
     if (m.npc && !S.flags.cleared) {
@@ -256,8 +287,11 @@
   var BOX = { x: 176, y: 244, w: 368, h: 136 };
 
   function battleBegin() {
+    var m = mapOf(S.map);
     S.mode = 'battle'; S.toast = null;   // 월드 토스트가 배틀 화면에 남지 않게
     S.battle = {
+      // 배틀이 시작된 곳을 기억한다 — 복귀 좌표를 맵 이름 하드코딩 없이 계산(2층+ 대비)
+      from: S.map, npcX: m.npc.x, npcY: m.npc.y,
       phase: 'text', shadow: D.BATTLE.shadow, hearts: D.BATTLE.hearts,
       cursor: 0, sub: 0, heard: false, turn: 0, spare: false,
       hx: BOX.x + BOX.w / 2, hy: BOX.y + BOX.h / 2,
@@ -283,6 +317,7 @@
 
   function readySpare() {
     var b = S.battle; b.spare = true; b.cursor = 0;
+    sfx('off');
     battleSay(D.BATTLE.ready, function () { b.phase = 'menu'; });
   }
 
@@ -297,6 +332,7 @@
     if (b.cursor === 2) {
       if (!b.heard) {
         b.heard = true; b.shadow = Math.max(0, b.shadow - 1);
+        sfx('listen');
         battleSay(D.BATTLE.listen.concat(D.BATTLE.listenHint), enemyTurn);
       } else battleSay(D.BATTLE.listenAgain, enemyTurn);
       return;
@@ -315,19 +351,20 @@
   }
 
   function doSpare() {
+    var b = S.battle;
     S.flags.cleared = true; S.flags.stairsOpen = true;
+    sfx('clear');
     battleSay(D.CLEAR.spare.concat(D.CLEAR.promise), function () {
-      S.battle = null; S.mode = 'world';
-      var m = mapOf('hallway');
-      S.px = (m.npc.x - 2) * T + T / 2; S.py = m.npc.y * T + T - 6;
+      S.battle = null; S.mode = 'world'; S.map = b.from;
+      S.px = (b.npcX - 2) * T + T / 2; S.py = b.npcY * T + T - 6;
       updateCam(); save();
     });
   }
 
   function leaveBattle(msg) {
-    S.battle = null; S.mode = 'world';
-    var m = mapOf('hallway');
-    S.px = (m.npc.x - 3) * T + T / 2; S.py = m.npc.y * T + T - 6;
+    var b = S.battle;
+    S.battle = null; S.mode = 'world'; S.map = b.from;
+    S.px = (b.npcX - 3) * T + T / 2; S.py = b.npcY * T + T - 6;
     S.dir = A.DIR.left; updateCam(); save();
     if (msg) say(msg);
   }
@@ -349,18 +386,22 @@
   function updateBattle(dt) {
     var b = S.battle;
     if (b.phase === 'menu') {
-      var n = b.spare ? 1 : D.BATTLE.menu.length;
-      if (tapped('right') || tapped('down')) b.cursor = (b.cursor + 1) % n;
-      if (tapped('left') || tapped('up')) b.cursor = (b.cursor + n - 1) % n;
-      if (tapped('ok')) battleMenuPick();
+      // 메뉴는 2x2 그리드로 그려진다 — 입력도 그리드와 일치시킨다.
+      // 0 1  좌우 = 열 토글(XOR 1), 상하 = 행 토글(XOR 2).
+      // 2 3
+      if (!b.spare) {
+        if (tapped('left') || tapped('right')) { b.cursor ^= 1; sfx('cursor'); }
+        if (tapped('up') || tapped('down')) { b.cursor ^= 2; sfx('cursor'); }
+      }
+      if (tapped('ok')) { sfx('ok'); battleMenuPick(); }
       return;
     }
     if (b.phase === 'sub') {
       var ids = heldIds();
       if (tapped('down') || tapped('right')) b.sub = (b.sub + 1) % ids.length;
       if (tapped('up') || tapped('left')) b.sub = (b.sub + ids.length - 1) % ids.length;
-      if (tapped('no')) { b.phase = 'menu'; return; }
-      if (tapped('ok')) battleSubPick();
+      if (tapped('no')) { b.phase = 'menu'; sfx('cancel'); return; }
+      if (tapped('ok')) { sfx('ok'); battleSubPick(); }
       return;
     }
     if (b.phase !== 'enemy') return;
@@ -386,7 +427,7 @@
       p.x += p.vx * dt; p.y += p.vy * dt;
       if (p.y > BOX.y + BOX.h + 30 || p.x < BOX.x - 30 || p.x > BOX.x + BOX.w + 30) { b.bullets.splice(i, 1); continue; }
       if (b.inv <= 0 && Math.abs(p.x - b.hx) < (p.s + 9) / 2 && Math.abs(p.y - b.hy) < (p.s + 9) / 2) {
-        b.hearts--; b.inv = 1.0;
+        b.hearts--; b.inv = 1.0; sfx('hit');
         if (b.hearts <= 0) { leaveBattle(D.BATTLE.hurt); return; }
       }
     }
@@ -414,18 +455,42 @@
       var raw = g.localStorage.getItem(D.SAVE_KEY);
       if (!raw) return false;
       var o = JSON.parse(raw);
-      if (!o || !D.MAPS[o.map]) return false;
+      // 손상·조작·구버전 세이브는 조용히 버린다 — NaN 좌표로 먹통이 되는 것보다
+      // 처음부터 다시가 낫다(슬라이스 분량 5분). 검증 실패 시 저장소도 비운다.
+      if (!o || o.v !== 1 || !D.MAPS[o.map]) return dropBadSave();
+      if (!isFinite(o.px) || !isFinite(o.py)) return dropBadSave();
+      var m = D.MAPS[o.map];
       S = blankState();
-      S.mode = 'world'; S.map = o.map; S.px = o.px; S.py = o.py; S.dir = o.dir | 0;
-      S.exposure = o.exposure | 0;
-      for (var k in o.flags) S.flags[k] = o.flags[k];
+      S.mode = 'world'; S.map = o.map;
+      S.px = Math.max(T / 2, Math.min(m.w * T - T / 2, +o.px));
+      S.py = Math.max(T, Math.min(m.h * T - 2, +o.py));
+      S.dir = [0, 1, 2, 3].indexOf(o.dir | 0) >= 0 ? (o.dir | 0) : 0;
+      S.exposure = Math.max(0, Math.min(D.MAX_EXPOSURE, o.exposure | 0));
+      for (var k in S.flags) if (o.flags && typeof o.flags[k] === 'boolean') S.flags[k] = o.flags[k];
       D.CARDS.forEach(function (c) {
         var st = o.cards && o.cards[c.id]; if (!st) return;
-        S.cards[c.id] = { held: !!st.held, map: st.map, x: st.x, y: st.y };
+        var map = st.map === null || D.MAPS[st.map] ? st.map : c.at.map;
+        var mm = map ? D.MAPS[map] : null;
+        S.cards[c.id] = {
+          held: !!st.held,
+          map: map,
+          x: mm ? Math.max(0, Math.min(mm.w - 1, st.x | 0)) : c.at.x,
+          y: mm ? Math.max(0, Math.min(mm.h - 1, st.y | 0)) : c.at.y
+        };
+      });
+      // 들고 있지도, 바닥에도 없는 카드가 생기면(반쪽 저장) 원위치로 복구한다.
+      D.CARDS.forEach(function (c) {
+        var st = S.cards[c.id];
+        if (!st.held && !st.map) { st.map = c.at.map; st.x = c.at.x; st.y = c.at.y; }
       });
       updateCam();
       return true;
-    } catch (e) { return false; }
+    } catch (e) { return dropBadSave(); }
+  }
+
+  function dropBadSave() {
+    try { g.localStorage.removeItem(D.SAVE_KEY); } catch (e) { /* 비워도 못 비워도 새 게임 */ }
+    return false;
   }
 
   function hasSave() {
@@ -448,31 +513,59 @@
     ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
   }
 
+  // 정적 레이어(바닥·벽·고정 소품)는 맵 진입 시 1회만 그린다 — 저사양 태블릿 프레임 확보.
+  // 계단 잠김/열림이 그림에 들어가므로 stairsOpen 도 캐시 키에 넣는다.
+  var mapCache = { map: null, stairsOpen: null, cv: null };
+
+  function mapLayer(m) {
+    if (mapCache.cv && mapCache.map === S.map && mapCache.stairsOpen === S.flags.stairsOpen) {
+      return mapCache.cv;
+    }
+    var doc = g.document;
+    if (!doc || !doc.createElement) return null;
+    var off = doc.createElement('canvas');
+    off.width = m.w * T; off.height = m.h * T;
+    var oc = off.getContext && off.getContext('2d');
+    if (!oc) return null;
+    if ('imageSmoothingEnabled' in oc) oc.imageSmoothingEnabled = false;
+    paintMap(oc, m, 0, 0, m.w - 1, m.h - 1);
+    mapCache.map = S.map; mapCache.stairsOpen = S.flags.stairsOpen; mapCache.cv = off;
+    return off;
+  }
+
   function drawMap(m) {
+    var layer = mapLayer(m);
+    if (layer) { ctx.drawImage(layer, S.cam.x, S.cam.y, W, H, 0, 0, W, H); return; }
+    // 오프스크린을 못 만들면(스텁 환경 등) 화면 범위만 직접 그린다.
     var x0 = Math.max(0, Math.floor(S.cam.x / T)), x1 = Math.min(m.w - 1, Math.ceil((S.cam.x + W) / T));
     var y0 = Math.max(0, Math.floor(S.cam.y / T)), y1 = Math.min(m.h - 1, Math.ceil((S.cam.y + H) / T));
+    paintMap(ctx, m, x0, y0, x1, y1, S.cam.x, S.cam.y);
+  }
+
+  function paintMap(c, m, x0, y0, x1, y1, camX, camY) {
+    camX = camX || 0; camY = camY || 0;
     for (var ty = y0; ty <= y1; ty++) {
       for (var tx = x0; tx <= x1; tx++) {
-        var dx = tx * T - S.cam.x, dy = ty * T - S.cam.y;
-        if (!A.drawTile(ctx, 'floor', m.floor[0], m.floor[1], dx, dy)) {
-          ctx.fillStyle = A.PAL.tan; ctx.fillRect(dx, dy, T, T);
+        var dx = tx * T - camX, dy = ty * T - camY;
+        if (!A.drawTile(c, 'floor', m.floor[0], m.floor[1], dx, dy)) {
+          c.fillStyle = A.PAL.tan; c.fillRect(dx, dy, T, T);
         }
         var ch = m.grid[ty].charAt(tx), L = legend(ch);
         if (L && L.wall) {
           var off = wallOffset(m, tx, ty);
-          if (off) A.drawTile(ctx, 'wall', m.wallBase[0] + off[0], m.wallBase[1] + off[1], dx, dy);
-          else { ctx.fillStyle = m.fill; ctx.fillRect(dx, dy, T, T); }
+          if (off) A.drawTile(c, 'wall', m.wallBase[0] + off[0], m.wallBase[1] + off[1], dx, dy);
+          else { c.fillStyle = m.fill; c.fillRect(dx, dy, T, T); }
         }
         if (L && L.prop) {
-          if (L.prop === 'stairs') A.drawProp(ctx, S.flags.stairsOpen ? 'stairsOpen' : 'stairsLocked', dx, dy, T);
-          else A.drawProp(ctx, L.prop, dx, dy, T);
+          if (L.prop === 'stairs') A.drawProp(c, S.flags.stairsOpen ? 'stairsOpen' : 'stairsLocked', dx, dy, T);
+          else A.drawProp(c, L.prop, dx, dy, T);
         }
       }
     }
     (m.decor || []).forEach(function (d) {
-      var dx = d.x * T - S.cam.x, dy = d.y * T - S.cam.y;
-      if (d.kind === 'pot') A.drawSprite(ctx, 'pot', 0, 0, 14, 16, dx + 12, dy + 10, 28, 32);
-      else A.drawProp(ctx, d.kind, dx, dy, T);
+      var dx = d.x * T - camX, dy = d.y * T - camY;
+      if (d.kind === 'pot') A.drawSprite(c, 'pot', 0, 0, 14, 16, dx + 12, dy + 10, 28, 32);
+      else A.drawProp(c, d.kind, dx, dy, T);
     });
   }
 
@@ -589,7 +682,17 @@
     drawEntities(m);
     ctx.fillStyle = m.tint; ctx.fillRect(0, 0, W, H);
     drawAds();
+    if (S.flash > 0) drawFlash();
     drawHud();
+  }
+
+  // 카드를 뺏긴 순간의 붉은 비네트 — 가장자리만 물들여 시야는 가리지 않는다.
+  function drawFlash() {
+    var a = Math.min(0.5, S.flash * 0.7);
+    var e = 46;
+    ctx.fillStyle = 'rgba(216,74,60,' + a.toFixed(2) + ')';
+    ctx.fillRect(0, 0, W, e); ctx.fillRect(0, H - e, W, e);
+    ctx.fillRect(0, e, e, H - e * 2); ctx.fillRect(W - e, e, e, H - e * 2);
   }
 
   function drawHearts(n, x, y) {
@@ -661,7 +764,33 @@
         txt((b.sub === i ? '▶ ' : '   ') + cardDef(id).label, x, y, 22,
           b.sub === i ? A.PAL.ribbon : A.PAL.white);
       });
+      txt(D.BATTLE.subHint, W - 44, 478, 15, A.PAL.blue, 'right', 500);
     }
+  }
+
+  // 타이틀 메뉴 — 저장이 있으면 [이어하기/처음부터], 처음부터는 확인 한 번.
+  var title = { cursor: 0, confirm: false, confirmCursor: 1 };
+
+  function titleOptions() {
+    return hasSave() ? [D.T.resume, D.T.restart] : [D.T.start];
+  }
+
+  function updateTitle() {
+    if (title.confirm) {
+      if (tapped('left') || tapped('right') || tapped('up') || tapped('down')) title.confirmCursor = 1 - title.confirmCursor;
+      if (tapped('no')) { title.confirm = false; return; }
+      if (tapped('ok')) {
+        title.confirm = false;
+        if (title.confirmCursor === 0) { clearSave(); title.cursor = 0; newGame(); }
+      }
+      return;
+    }
+    var n = titleOptions().length;
+    if (n > 1 && (tapped('up') || tapped('down'))) { title.cursor = 1 - title.cursor; sfx('cursor'); }
+    if (!tapped('ok')) return;
+    if (n === 1) { newGame(); return; }
+    if (title.cursor === 0) { if (!load()) newGame(); return; }
+    title.confirm = true; title.confirmCursor = 1; // 기본값은 거절 쪽 — 실수 방지
   }
 
   function drawTitle() {
@@ -673,9 +802,31 @@
     }
     txt(D.T.title, W / 2, 200, 46, A.PAL.cream, 'center');
     txt(D.T.sub, W / 2, 240, 20, A.PAL.tan, 'center', 500);
-    panel(W / 2 - 110, 300, 220, 56);
-    txt('▶ ' + D.T.start, W / 2, 337, 26, A.PAL.ribbon, 'center');
-    txt(D.T.keys, W / 2, 420, 17, A.PAL.blue, 'center', 500);
+    var opts = titleOptions();
+    panel(W / 2 - 130, 292, 260, 30 + opts.length * 40);
+    opts.forEach(function (label, i) {
+      var sel = opts.length === 1 || title.cursor === i;
+      txt((sel ? '▶ ' : '   ') + label, W / 2, 330 + i * 40, 24, sel ? A.PAL.ribbon : A.PAL.white, 'center');
+    });
+    txt(isTouch() ? D.T.keysTouch : D.T.keys, W / 2, 448, 17, A.PAL.blue, 'center', 500);
+    if (title.confirm) {
+      panel(W / 2 - 220, 180, 440, 150, 0.95);
+      txt(D.T.confirmWipe[0], W / 2, 222, 20, A.PAL.white, 'center');
+      txt(D.T.confirmWipe[1], W / 2, 252, 20, A.PAL.white, 'center');
+      [D.T.yes, D.T.no].forEach(function (label, i) {
+        var sel = title.confirmCursor === i;
+        txt((sel ? '▶ ' : '   ') + label, W / 2 - 110 + i * 220, 300, 21,
+          sel ? A.PAL.ribbon : A.PAL.white, 'center');
+      });
+    }
+  }
+
+  // 터치 기기 감지 — 조작 안내 문구를 고르는 용도로만 쓴다.
+  function isTouch() {
+    try {
+      return !!(g.matchMedia && g.matchMedia('(hover: none), (pointer: coarse)').matches)
+        || ('ontouchstart' in g);
+    } catch (e) { return false; }
   }
 
   function drawClear() {
@@ -693,9 +844,11 @@
   // ── 루프 ────────────────────────────────────────────────────────────────
   function update(dt) {
     S.time += dt;
+    if (S.paused) { if (tapped('ok')) S.paused = false; return; }
+    if (S.flash > 0) S.flash -= dt;
     if (S.toast) { S.toast.t -= dt; if (S.toast.t <= 0) S.toast = null; }
-    // 슬롯 UI는 P3. 지금은 단일 슬롯 자동 이어하기 — 저장이 있으면 그 지점부터.
-    if (S.mode === 'title') { if (tapped('ok') && !load()) newGame(); return; }
+    // 슬롯 UI는 P3. 단일 슬롯이되, 공유 태블릿을 위해 이어하기/처음부터를 고른다.
+    if (S.mode === 'title') { updateTitle(); return; }
     if (S.mode === 'clear') { if (tapped('ok')) { clearSave(); S = blankState(); } return; }
     if (S.dialog) {
       if (tapped('ok')) {
@@ -717,6 +870,19 @@
     if (S.mode === 'battle') drawBattle(); else drawWorld();
     if (S.dialog) drawDialog();
     if (S.toast) drawToast();
+    if (S.paused) drawPaused();
+  }
+
+  function drawPaused() {
+    ctx.fillStyle = 'rgba(8,6,12,0.72)'; ctx.fillRect(0, 0, W, H);
+    panel(W / 2 - 190, H / 2 - 62, 380, 116, 0.95);
+    txt(D.T.paused, W / 2, H / 2 - 12, 26, A.PAL.cream, 'center');
+    txt(D.T.pausedHelp, W / 2, H / 2 + 26, 17, A.PAL.blue, 'center', 500);
+  }
+
+  // 탄막 도중 자리를 비웠다 돌아오면 바로 맞지 않게 멈춰 준다.
+  function pause() {
+    if (S && (S.mode === 'battle' || S.mode === 'world') && !S.dialog) S.paused = true;
   }
 
   function loop(ts) {
@@ -755,23 +921,46 @@
         id = null; touchVec.x = 0; touchVec.y = 0;
         if (knob) knob.style.transform = 'translate(0,0)';
       };
-      stick.addEventListener('pointerdown', start);
-      stick.addEventListener('pointermove', move);
-      stick.addEventListener('pointerup', end);
-      stick.addEventListener('pointercancel', end);
-      stick.addEventListener('pointerleave', end);
+      if (g.PointerEvent) {
+        stick.addEventListener('pointerdown', start);
+        stick.addEventListener('pointermove', move);
+        stick.addEventListener('pointerup', end);
+        stick.addEventListener('pointercancel', end);
+        stick.addEventListener('pointerleave', end);
+      } else {
+        // 구형 태블릿(iOS 12 등)엔 PointerEvent가 없다 — TouchEvent로 같은 동작.
+        var wrapTouch = function (fn) {
+          return function (e) {
+            var t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+            if (t) fn({ pointerId: 1, clientX: t.clientX, clientY: t.clientY, preventDefault: function () { e.preventDefault(); } });
+            else fn({ pointerId: 1, clientX: cx, clientY: cy, preventDefault: function () { e.preventDefault(); } });
+          };
+        };
+        stick.addEventListener('touchstart', wrapTouch(start), { passive: false });
+        stick.addEventListener('touchmove', wrapTouch(move), { passive: false });
+        stick.addEventListener('touchend', end);
+        stick.addEventListener('touchcancel', end);
+      }
     }
     var hook = function (el, key) {
       if (!el || !el.addEventListener) return;
-      el.addEventListener('pointerdown', function (e) {
+      var on = function (e) {
+        if (g.SFX) g.SFX.unlock();
         if (!keys[key]) edge[key] = true;
         keys[key] = true;
         if (e.preventDefault) e.preventDefault();
-      });
+      };
       var off = function () { keys[key] = false; };
-      el.addEventListener('pointerup', off);
-      el.addEventListener('pointercancel', off);
-      el.addEventListener('pointerleave', off);
+      if (g.PointerEvent) {
+        el.addEventListener('pointerdown', on);
+        el.addEventListener('pointerup', off);
+        el.addEventListener('pointercancel', off);
+        el.addEventListener('pointerleave', off);
+      } else {
+        el.addEventListener('touchstart', on, { passive: false });
+        el.addEventListener('touchend', off);
+        el.addEventListener('touchcancel', off);
+      }
     };
     hook(btnA, 'ok'); hook(btnB, 'no');
   }
@@ -781,10 +970,19 @@
     var doc = g.document;
     cv = doc && doc.getElementById ? doc.getElementById('game') : null;
     ctx = cv && cv.getContext ? cv.getContext('2d') : null;
-    if (ctx) { ctx.imageSmoothingEnabled = false; ctx.textBaseline = 'alphabetic'; }
+    // 캔버스를 못 얻으면(구형 브라우저·렌더 차단) 검은 화면 대신 안내를 띄운다.
+    if (!ctx) {
+      var fb = doc && doc.getElementById ? doc.getElementById('fallback') : null;
+      if (fb && fb.style) fb.style.display = 'flex';
+      return;
+    }
+    ctx.imageSmoothingEnabled = false; ctx.textBaseline = 'alphabetic';
     S = blankState(); S.mode = 'load';
     g.addEventListener('keydown', onKeyDown);
     g.addEventListener('keyup', onKeyUp);
+    if (doc.addEventListener) {
+      doc.addEventListener('visibilitychange', function () { if (doc.hidden) pause(); });
+    }
     bindTouch();
     A.load(A.SHEETS, function () { S.mode = 'title'; });
     last = 0;
@@ -799,6 +997,7 @@
     blankState: blankState,
     heldIds: heldIds, playerTile: playerTile, wallOffset: wallOffset,
     solidAt: solidAt, BOX: BOX, keys: keys,
+    pause: pause,
     press: function (k) { if (!keys[k]) edge[k] = true; keys[k] = true; },
     release: function (k) { keys[k] = false; }
   };
