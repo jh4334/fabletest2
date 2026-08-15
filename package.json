@@ -6,7 +6,9 @@
   "scripts": {
     "validate": "node tools/validate.js",
     "test": "node tools/smoketest.js",
-    "test:browser": "node tools/browsertest.js"
+    "test:browser": "node tools/browsertest.js",
+    "bump": "node tools/bump-sw.js",
+    "icons": "node tools/icons.js"
   },
   "devDependencies": {
     "playwright": "^1.61.1"

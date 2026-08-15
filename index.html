@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#14101c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <title>방과 후: 그림자 학교</title>
 <style>
   html, body {
@@ -85,6 +88,10 @@
 <script>
 // 스크립트가 하나라도 못 떠서 시작이 불가능하면 검은 화면 대신 안내를 띄운다.
 window.addEventListener('load', function () {
+  // 오프라인 캐시 — file:// 실행은 SW가 불가하니 조용히 건너뛴다
+  if ('serviceWorker' in navigator && /^https?:/.test(location.protocol)) {
+    navigator.serviceWorker.register('./sw.js').catch(function () { /* 등록 실패 무해 */ });
+  }
   if (window.GAME && window.ART && window.DATA) { window.GAME.start(); return; }
   var fb = document.getElementById('fallback');
   if (fb) fb.style.display = 'flex';
