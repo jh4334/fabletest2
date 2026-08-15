@@ -653,6 +653,8 @@
       ctx.strokeStyle = A.PAL.ink; ctx.lineWidth = 2;
       ctx.strokeRect(bx + i * 22, y + 2, 18, 16);
     }
+    // 색약 학생을 위한 이중 부호화 — 색과 함께 숫자로도 알려 준다
+    txt(S.exposure + '/' + D.MAX_EXPOSURE, bx + D.MAX_EXPOSURE * 22 + 6, y + 16, 15, A.PAL.cream, 'left', 500);
   }
 
   function drawHud() {
@@ -738,6 +740,7 @@
     ctx.fillStyle = 'rgba(120,110,130,0.5)'; ctx.fillRect(gx, 218, gw, 10);
     ctx.fillStyle = A.PAL.purpleLit;
     ctx.fillRect(gx, 218, gw * Math.max(0, b.shadow) / D.BATTLE.shadow, 10);
+    txt(Math.max(0, b.shadow) + '/' + D.BATTLE.shadow, gx + gw + 10, 227, 14, A.PAL.white, 'left', 500);
 
     panel(8, 8, 222, 30, 0.62); drawGauge(16, 12); drawHelp();
     drawHearts(b.hearts, W - 108, 10);
@@ -912,7 +915,7 @@
     ctx.fillStyle = 'rgba(8,6,12,0.72)'; ctx.fillRect(0, 0, W, H);
     panel(W / 2 - 190, H / 2 - 62, 380, 116, 0.95);
     txt(D.T.paused, W / 2, H / 2 - 12, 26, A.PAL.cream, 'center');
-    txt(D.T.pausedHelp, W / 2, H / 2 + 26, 17, A.PAL.blue, 'center', 500);
+    txt(isTouch() ? D.T.pausedHelpTouch : D.T.pausedHelp, W / 2, H / 2 + 26, 17, A.PAL.blue, 'center', 500);
   }
 
   // 탄막 도중 자리를 비웠다 돌아오면 바로 맞지 않게 멈춰 준다.

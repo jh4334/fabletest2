@@ -378,6 +378,7 @@ check('월드에서 일시정지 진입', S().paused === true);
 tap('z');                                   // 일단 해제
 tap('x');                                   // 수동: X키로도 멈춘다
 check('X키 수동 일시정지', S().paused === true);
+check('일시정지 안내 기기별 문구 존재', typeof D.T.pausedHelpTouch === 'string' && D.T.pausedHelpTouch.length > 0);
 const pausedX = S().px;
 hold('ArrowLeft', 5);
 check('일시정지 중엔 움직이지 않음', S().px === pausedX && S().paused === true);
