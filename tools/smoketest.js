@@ -174,6 +174,8 @@ frame(2);
 check('짝꿍 조우 대화', !!S().dialog);
 advance();
 check('배틀 진입', S().mode === 'battle');
+check('배틀이 시작 위치를 기억(하드코딩 제거)', S().battle.from === 'hallway'
+  && S().battle.npcX === D.MAPS.hallway.npc.x);
 advance();
 check('내 턴 메뉴', S().battle.phase === 'menu' && S().battle.shadow === D.BATTLE.shadow);
 

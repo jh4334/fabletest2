@@ -287,8 +287,11 @@
   var BOX = { x: 176, y: 244, w: 368, h: 136 };
 
   function battleBegin() {
+    var m = mapOf(S.map);
     S.mode = 'battle'; S.toast = null;   // 월드 토스트가 배틀 화면에 남지 않게
     S.battle = {
+      // 배틀이 시작된 곳을 기억한다 — 복귀 좌표를 맵 이름 하드코딩 없이 계산(2층+ 대비)
+      from: S.map, npcX: m.npc.x, npcY: m.npc.y,
       phase: 'text', shadow: D.BATTLE.shadow, hearts: D.BATTLE.hearts,
       cursor: 0, sub: 0, heard: false, turn: 0, spare: false,
       hx: BOX.x + BOX.w / 2, hy: BOX.y + BOX.h / 2,
@@ -348,20 +351,20 @@
   }
 
   function doSpare() {
+    var b = S.battle;
     S.flags.cleared = true; S.flags.stairsOpen = true;
     sfx('clear');
     battleSay(D.CLEAR.spare.concat(D.CLEAR.promise), function () {
-      S.battle = null; S.mode = 'world';
-      var m = mapOf('hallway');
-      S.px = (m.npc.x - 2) * T + T / 2; S.py = m.npc.y * T + T - 6;
+      S.battle = null; S.mode = 'world'; S.map = b.from;
+      S.px = (b.npcX - 2) * T + T / 2; S.py = b.npcY * T + T - 6;
       updateCam(); save();
     });
   }
 
   function leaveBattle(msg) {
-    S.battle = null; S.mode = 'world';
-    var m = mapOf('hallway');
-    S.px = (m.npc.x - 3) * T + T / 2; S.py = m.npc.y * T + T - 6;
+    var b = S.battle;
+    S.battle = null; S.mode = 'world'; S.map = b.from;
+    S.px = (b.npcX - 3) * T + T / 2; S.py = b.npcY * T + T - 6;
     S.dir = A.DIR.left; updateCam(); save();
     if (msg) say(msg);
   }
