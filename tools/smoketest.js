@@ -1362,25 +1362,15 @@ advance();
 // ── 49. 5층 통과 → 클리어 화면 ─────────────────────────────────────────────
 // [40]에서 옮겨온 클리어 화면 검사 — 오늘의 마지막 계단이 교무실로 바뀌었을 뿐,
 // 검사 이름과 뜻은 그대로 둔다(옥상은 다음 차시).
-console.log('[49] 5층 통과');
+console.log('[49] 5층 통과 → 옥상');
 place('office', 12, 5);
 hold('ArrowRight', 30);
 check('계단 접촉 안내(5층)', !!S().dialog);
 advance();
-check('클리어 화면', S().mode === 'clear');
-check('클리어 배너가 층 번호를 쓴다', S().floor === 5 && typeof D.CLEAR.bannerFloor === 'string');
-tap('z');                                   // 기본값: 계속 둘러보기
-check('클리어 후 Z 연타에도 저장 생존 + 월드 복귀', S().mode === 'world' && G.hasSave() === true);
-check('계단 앞으로 복귀', tile().x === 12 && tile().y === 5);
-hold('ArrowRight', 30);
-advance();
-check('클리어 화면 재진입 가능', S().mode === 'clear');
-tap('ArrowDown'); tap('z');                 // 타이틀로
-check('타이틀로 가도 저장 유지', S().mode === 'title' && G.hasSave() === true);
-tap('z');                                   // 이어하기
-check('이어하기로 클리어 상태 복원', S().mode === 'world' && S().flags.done === true);
+check('옥상 진입', S().map === 'rooftop' && S().floor === 6);
+check('옥상은 내려갈 계단이 열려 있다', !!D.MAPS.rooftop.stairs);
 check('이어하기가 5층·의존·장치를 기억',
-  S().floor === 5 && S().map === 'office' && LK.every((k) => G.lockOpen(k.id) === true));
+  G.load() === true && S().map === 'rooftop' && LK.every((k) => G.lockOpen(k.id) === true));
 
 // ── 50. 5층 세이브 방어 ────────────────────────────────────────────────────
 console.log('[50] 5층 세이브 방어');
@@ -1403,6 +1393,100 @@ check('열린 장치 칸은 저장 좌표가 아니라 장치 상태에서 다�
 check('한 장치만 연 상태에서도 단말·복귀 문은 열려 있다',
   !G.solidAt(D.MAPS.office, 7, 4) && !G.solidAt(D.MAPS.office, 0, 8));
 check('의존 MAX에서도 이동 속도가 0이 아니다', G.moveSpeed() > 0);
+
+// ── 51. 옥상: 나비스의 다섯 질문 ────────────────────────────────────────────
+console.log('[51] 옥상 문답');
+// [50]이 최소 저장으로 로드해 진행이 비었다 — 다섯 층을 되돌린 상태로 되돌려 놓는다.
+D.PROMISES.forEach((p) => { S().clearedOf[p.who] = true; });
+S().ending = null; S().mode = 'world';
+const PR = D.PROMISES.map((p) => p.id);
+check('다섯 층을 되돌려 약속 5장 보유', G.promiseIds().length === 5);
+check('약속 순서가 층 순서', JSON.stringify(G.promiseIds()) === JSON.stringify(PR));
+
+place('rooftop', 9, 6);                        // 대면 지점 근처
+frame(3);
+check('나비스가 먼저 말을 건다', !!S().dialog);
+advance();
+check('문답 모드 진입(배틀 아님)', S().mode === 'finale' && S().battle === null);
+check('첫 질문에서 약속 고르기', S().fin.phase === 'pick' && S().fin.q === 0);
+check('남은 질문이 5개', D.FINALE.questions.length === 5);
+
+// 오답 — 벌 없이 다시 고른다
+S().fin.cursor = 1;                            // 1번 질문의 정답은 p1
+tap('z');
+check('오답은 그대로 되돌려 준다', S().dialog && S().dialog.seq === D.FINALE.wrong);
+advance();
+check('오답 뒤에도 같은 질문에 머문다', S().fin.phase === 'pick' && S().fin.q === 0);
+check('오답이 기록으로만 남는다', S().stats.missPromise === 1);
+
+// 정답 3개 — 세 번째 뒤에 딱 한 번 흔들린다
+for (let i = 0; i < 3; i++) {
+  S().fin.cursor = i;
+  tap('z');
+  advance(6);
+}
+check('세 질문을 넘김', S().fin.q === 3);
+check('세 번째 뒤 흔들림이 시작됨', S().fin.phase === 'shake');
+const heartsBefore = JSON.stringify(S().fin.hit);
+S().fin.bullets.push({ x: S().fin.hx, y: S().fin.hy, vx: 0, vy: 0, s: 13 });
+frame(1);
+check('스치기만 한다 — 진행이 멈추지 않음', S().mode === 'finale' && S().fin.phase === 'shake');
+S().fin.timer = 999; frame(1);
+check('흔들림은 시간이 지나면 끝난다', !!S().dialog || S().fin.phase !== 'shake');
+advance(6);
+check('흔들림 뒤 네 번째 질문으로', S().fin.phase === 'pick' && S().fin.q === 3);
+
+// 남은 두 질문 정답
+for (let i = 3; i < 5; i++) {
+  S().fin.cursor = i;
+  tap('z');
+  advance(6);
+}
+check('다섯 질문을 모두 넘김', S().fin.q === 5);
+check('고백 뒤 엔딩 선택', S().fin.phase === 'choose');
+
+// ── 52. 엔딩 선택 · 완결 화면 ───────────────────────────────────────────────
+console.log('[52] 엔딩');
+tap('z');
+check('선택 전 확인을 한 번 묻는다', S().fin.phase === 'confirm');
+check('확인 기본값은 되돌리기 쪽', S().fin.confirmCursor === 1);
+tap('x');
+check('취소하면 선택으로 돌아온다', S().fin.phase === 'choose');
+tap('z'); tap('ArrowLeft');                    // 확인 → '네'
+tap('z');
+advance(10);
+check('엔딩 A(함께 간다) 도달', S().ending === 'A');
+check('완결 화면', S().mode === 'clear' && S().flags.done === true);
+check('엔딩이 기록에 남는다', S().stats.ending === 'A');
+check('완결 화면 문구가 층 통과가 아니라 탈출', typeof D.CLEAR.escBanner === 'string');
+check('되돌린 사람 수를 셀 수 있다', G.promiseIds().length === 5);
+check('완결 뒤에도 저장은 남는다', G.hasSave() === true);
+check('이어하기가 엔딩을 기억', G.load() === true && S().ending === 'A');
+
+// 엔딩 B — 같은 자리에서 반대 선택
+S().ending = null; S().mode = 'world';
+place('rooftop', 9, 6); frame(3); advance();
+S().fin.q = 5; S().fin.phase = 'choose'; S().fin.cursor = 1;
+tap('z');                                      // 확인창
+tap('ArrowLeft'); tap('z');
+advance(10);
+check('엔딩 B(오늘은 끈다) 도달', S().ending === 'B');
+check('두 엔딩 모두 완결 화면으로', S().mode === 'clear');
+check('엔딩 B도 기록에 남는다', S().stats.ending === 'B');
+
+// 완결 화면 메뉴 — 타이틀로는 저장을 지우지 않는다
+tap('ArrowDown'); tap('z');
+check('타이틀로 가도 저장 유지', S().mode === 'title' && G.hasSave() === true);
+tap('z');
+check('이어하기로 완결 상태 복원', S().mode === 'world' && S().ending === 'B');
+
+// 약속이 없으면 문답이 열리지 않는다(되돌린 사람 0명)
+S().ending = null;
+D.PROMISES.forEach((p) => { S().clearedOf[p.who] = false; });
+place('rooftop', 9, 6); frame(3); advance();
+check('약속이 없으면 안내 후 물러난다', S().mode === 'world' || !!S().dialog);
+advance(6);
+check('가둬 두지 않는다 (월드 복귀)', S().mode === 'world');
 
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
