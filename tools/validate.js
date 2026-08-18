@@ -33,7 +33,8 @@ const ASSETS = [
 for (const p of ASSETS) if (!has(p)) err(`필수 에셋 없음: ${p}`);
 for (const p of ['docs/기준서-방과후-그림자학교-v1.md', 'docs/스펙-P1-1층-수직슬라이스.md',
   'docs/스펙-P2-2층-필터버블.md', 'docs/스펙-P3-3층-가짜뉴스.md', 'docs/스펙-P4-4층-저작권.md',
-  'docs/스펙-P5-5층-AI의존.md', 'docs/스펙-P6-옥상-나비스.md']) {
+  'docs/스펙-P5-5층-AI의존.md', 'docs/스펙-P6-옥상-나비스.md', 'docs/스펙-P7-교사도구.md',
+  'docs/차시-대응표.md']) {
   if (!has(p)) err(`필수 문서 없음: ${p}`);
 }
 for (const p of ['index.html', 'src/art.js', 'src/sound.js', 'src/data.js', 'src/engine.js']) {
@@ -771,6 +772,96 @@ if (D) {
     if (!D.CLEAR[k]) err(`CLEAR.${k} 가 없음(엔딩 화면)`);
   }
   if (!Array.isArray(D.CLEAR.endMenu) || D.CLEAR.endMenu.length !== 2) err('엔딩 메뉴는 2개여야 함');
+}
+
+// ── P7: 교사 도구 (스펙 §4) ─────────────────────────────────────────────────
+// 차시 6개 ↔ 층 매핑, 진입 좌표가 걸을 수 있는 칸, 해석 규칙 임계값, 문서 대조.
+if (D) {
+  const TE = D.TEACHER;
+  if (!TE) err('D.TEACHER가 없음 (교사 도구)');
+  else {
+    const walk = (m, x, y) => {
+      if (!m || x < 0 || y < 0 || x >= m.w || y >= m.h) return false;
+      const L = D.LEGEND[m.grid[y].charAt(x)];
+      return !!L && !L.solid;
+    };
+    for (const k of ['title', 'entry', 'hint', 'yes', 'no', 'startTitle', 'about', 'unitMin',
+      'repTitle', 'noSave', 'rowFloor', 'rowBack', 'rowTime', 'rowStolen', 'rowRetreat',
+      'rowSticker', 'rowPromise', 'rowEnding', 'endNone', 'hintLabel', 'wipe', 'wiped',
+      'hintOk', 'guideTitle', 'askMark']) {
+      if (typeof TE[k] !== 'string' || !TE[k]) err(`TEACHER.${k} 문구가 없음`);
+    }
+    if (!Array.isArray(TE.tabs) || TE.tabs.length !== 3) err('교사 화면 탭은 3개여야 함');
+    for (const k of ['confirmStart', 'confirmWipe']) {
+      const v = TE[k];
+      if (!Array.isArray(v) || v.length !== 2) err(`TEACHER.${k} 확인 문구는 2줄이어야 함`);
+    }
+
+    // 차시 6개 ↔ 층 6개 (1~5층 + 옥상), 진입 좌표는 실제 맵의 걸을 수 있는 칸
+    const lessons = TE.lessons || [];
+    if (lessons.length !== 6) err(`차시는 6개여야 함 (현재 ${lessons.length}개)`);
+    const seenFl = new Set();
+    lessons.forEach((L, i) => {
+      const at = (s) => `차시 ${i + 1}(${L.name || '?'}): ${s}`;
+      if (L.fl !== i + 1) err(at(`층 순서가 어긋남 (기대 ${i + 1}, 실제 ${L.fl})`));
+      if (seenFl.has(L.fl)) err(at('층이 중복됨'));
+      seenFl.add(L.fl);
+      for (const k of ['name', 'topic', 'mech', 'parts', 'ask']) {
+        if (typeof L[k] !== 'string' || !L[k]) err(at(`${k} 문구가 없음`));
+      }
+      if (!(L.min > 0)) err(at('소요 시간(min)이 없음'));
+      const m = D.MAPS[L.map];
+      if (!m) { err(at(`진입 맵이 없음: ${L.map}`)); return; }
+      if ((m.fl || 1) !== L.fl) err(at(`진입 맵 ${L.map}의 층(${m.fl})이 차시 층과 다름`));
+      if (!walk(m, L.x, L.y)) err(at(`진입 좌표(${L.x},${L.y})가 걸을 수 없는 칸`));
+      if (['up', 'down', 'left', 'right'].indexOf(L.dir) < 0) err(at(`진입 방향이 이상함: ${L.dir}`));
+      // 차시 시작은 '아래층 인물을 되돌린 상태'를 자동으로 채운다 —
+      // 그러려면 아래 각 층에 되돌릴 인물이 정확히 하나씩 있어야 한다.
+      if (L.fl > 1) {
+        for (let f = 1; f < L.fl; f++) {
+          const owners = Object.keys(D.MAPS).filter((n) => D.MAPS[n].npc && (D.MAPS[n].fl || 1) === f);
+          if (owners.length !== 1) err(at(`${f}층에 되돌릴 인물이 ${owners.length}명 (1명이어야 함)`));
+          const npc = owners.length ? D.MAPS[owners[0]].npc : null;
+          if (npc && !D.BATTLES[npc.battle]) err(at(`${f}층 인물 프로필이 없음: ${npc.battle}`));
+          if (npc && npc.opens && !D.MAPS[npc.opens]) err(at(`${f}층 인물이 여는 맵이 없음: ${npc.opens}`));
+        }
+      }
+    });
+    // 옥상 차시는 약속 5장이 다 모인 상태여야 문답이 열린다
+    const roofL = lessons.find((L) => L.fl === 6);
+    if (roofL && roofL.map !== 'rooftop') err('옥상 차시의 진입 맵이 옥상이 아님');
+    if (roofL && (D.PROMISES || []).length !== 5) err('옥상 차시인데 약속 카드가 5장이 아님');
+
+    // 해석 규칙 — 임계값과 대상 수치가 실제 계측 키여야 한다
+    const STATS = ['stolen', 'retreats', 'missSticker', 'missPromise'];
+    const rules = TE.rules || [];
+    if (rules.length !== 3) err(`해석 규칙은 3종이어야 함 (현재 ${rules.length}종)`);
+    const seenStat = new Set();
+    rules.forEach((r, i) => {
+      const at = (s) => `해석 규칙 ${i + 1}: ${s}`;
+      if (STATS.indexOf(r.stat) < 0) err(at(`계측 키가 아님: ${r.stat}`));
+      if (seenStat.has(r.stat)) err(at('같은 수치를 두 번 본다'));
+      seenStat.add(r.stat);
+      if (!(r.min >= 1)) err(at(`임계값이 없음/이상함: ${r.min}`));
+      if (typeof r.line !== 'string' || !r.line) err(at('해석 문구가 없음'));
+    });
+    for (const s of ['stolen', 'retreats', 'missPromise']) {
+      if (!seenStat.has(s)) err(`해석 규칙에 ${s} 임계값이 없음 (스펙 §2)`);
+    }
+
+    // 탭3은 문서(docs/차시-대응표.md)와 같은 내용이어야 한다
+    if (has('docs/차시-대응표.md')) {
+      const doc = read('docs/차시-대응표.md');
+      for (const L of lessons) {
+        for (const k of ['name', 'topic', 'mech', 'ask']) {
+          if (typeof L[k] === 'string' && doc.indexOf(L[k]) < 0) {
+            err(`차시 대응표 문서에 없는 내용(${L.name} ${k}): ${L[k]}`);
+          }
+        }
+      }
+      console.log(`차시 대응표: 게임 ${lessons.length}줄 ↔ 문서 일치`);
+    }
+  }
 }
 
 // 오프라인 캐시 정합 — sw.js의 ASSETS가 전부 실재하고, CACHE 해시가 자산과 일치해야 한다.
