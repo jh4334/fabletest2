@@ -669,6 +669,83 @@ const SHOTS = path.join(ROOT, 'shots');
     await ctx.close();
   }
 
+  // ── 교사 도구: T키 진입/복귀 · 3탭 스크린샷 ────────────────────────────────
+  {
+    console.log('[teacher] 교사 화면 3탭');
+    const { ctx, page, errors } = await newPage({ viewport: { width: 1280, height: 800 } });
+    check('타이틀 도달', await page.evaluate(() => window.GAME.state().mode === 'title'));
+    await page.screenshot({ path: path.join(SHOTS, 'rt-title-teacher-btn.png') });
+
+    // 실제 저장 1건을 심어 리포트 탭이 표로 채워지게 한다(교사 화면은 저장만 읽는다)
+    await page.evaluate(() => {
+      localStorage.setItem(window.DATA.SAVE_KEY, JSON.stringify({
+        v: 1, map: 'hall4', px: 100, py: 100, dir: 0,
+        visited: { classroom: true, hall3: true, hall4: true },
+        clearedOf: { mate: true, bro: true, senior: true },
+        stats: { sec: 512, stolen: 3, retreats: 2, missSticker: 1, missPromise: 1 },
+      }));
+    });
+
+    await page.keyboard.press('t');
+    await page.waitForTimeout(150);
+    check('T키로 교사 화면 진입', await page.evaluate(() => window.GAME.state().mode === 'teacher'));
+    const tab1 = await page.screenshot({ path: path.join(SHOTS, 'rt-teacher-tab1.png') });
+
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(150);
+    check('탭2(우리 반 기록)로 전환', await page.evaluate(() => window.GAME.teacherUi().tab === 1));
+    check('저장 1건을 읽어 표가 찬다',
+      await page.evaluate(() => (window.GAME.teacherReport() || {}).stolen === 3));
+    const tab2 = await page.screenshot({ path: path.join(SHOTS, 'rt-teacher-tab2.png') });
+    check('탭1과 탭2는 서로 다른 그림', Buffer.compare(tab1, tab2) !== 0);
+
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(150);
+    check('탭3(차시 안내)로 전환', await page.evaluate(() => window.GAME.teacherUi().tab === 2));
+    const tab3 = await page.screenshot({ path: path.join(SHOTS, 'rt-teacher-tab3.png') });
+    check('탭2와 탭3은 서로 다른 그림', Buffer.compare(tab2, tab3) !== 0);
+
+    await page.keyboard.press('x');
+    await page.waitForTimeout(150);
+    check('X로 타이틀 복귀', await page.evaluate(() => window.GAME.state().mode === 'title'));
+
+    // 터치 기기용 [선생님] 버튼 — 실제 마우스 클릭으로 같은 화면이 열린다
+    const box = await page.evaluate(() => {
+      const r = document.getElementById('game').getBoundingClientRect();
+      const b = window.GAME.TBTN;
+      return {
+        x: r.left + (b.x + b.w / 2) * (r.width / 720),
+        y: r.top + (b.y + b.h / 2) * (r.height / 528),
+      };
+    });
+    await page.mouse.click(box.x, box.y);
+    await page.waitForTimeout(150);
+    check('[선생님] 버튼 클릭으로 진입', await page.evaluate(() => window.GAME.state().mode === 'teacher'));
+
+    // 차시 시작 — 확인 1회 뒤 해당 층으로 바로 들어간다
+    await page.evaluate(() => { window.GAME.teacherUi().cursor = 2; });   // 3층
+    await page.keyboard.press('z');
+    await page.waitForTimeout(120);
+    check('차시 시작은 확인을 묻는다', await page.evaluate(() => !!window.GAME.teacherUi().confirm));
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('z');
+    await page.waitForTimeout(250);
+    check('3층 차시로 바로 진입', await page.evaluate(() => {
+      const S = window.GAME.state();
+      return S.mode === 'world' && S.map === 'hall3' && S.floor === 3 && S.clearedOf.bro === true;
+    }));
+    await page.screenshot({ path: path.join(SHOTS, 'rt-teacher-lesson3.png') });
+
+    // 본편 플레이 중에는 T가 무시된다 (수업 중 오조작 방지)
+    await page.keyboard.press('t');
+    await page.waitForTimeout(120);
+    check('본편 중 T는 무시된다', await page.evaluate(() => window.GAME.state().mode === 'world'));
+
+    check('콘솔·페이지 에러 0', errors.length === 0);
+    errors.slice(0, 5).forEach((e) => console.log('     · ' + e));
+    await ctx.close();
+  }
+
   await browser.close();
   srv.close();
   console.log(`\n브라우저 스모크: ${pass} 통과 / ${fail} 실패`);

@@ -1,4 +1,4 @@
-// 스모크 테스트 — 「방과 후: 그림자 학교」 1~4층
+// 스모크 테스트 — 「방과 후: 그림자 학교」 1~5층 + 옥상 + 교사 도구
 // DOM/Canvas/Image/localStorage를 스텁으로 대체하고 vm 샌드박스에서 실제 플레이
 // 경로를 시뮬레이션한다. 스펙 §6: 이동·충돌 / 카드·노출도 / 배틀 완주 / 세이브.
 const fs = require('fs');
@@ -1488,6 +1488,127 @@ check('약속이 없으면 안내 후 물러난다', S().mode === 'world' || !!S
 advance(6);
 check('가둬 두지 않는다 (월드 복귀)', S().mode === 'world');
 
+// ── 53. 교사 도구 (P7) ──────────────────────────────────────────────────────
+// 학생 화면은 그대로 두고 타이틀에서만 열리는 교실 운영 계층.
+console.log('[53] 교사 도구 — 진입 · 탭 · 차시 · 리포트');
+const TE = D.TEACHER;
+const TU = () => G.teacherUi();
+function toTitle() { G.setState(G.blankState()); frame(1); }
+function openTeacher() { toTitle(); tap('t'); return S().mode === 'teacher'; }
+
+check('교사 데이터가 있다', !!TE && (TE.lessons || []).length === 6);
+check('타이틀에서 T로 교사 화면 진입', openTeacher());
+check('진입 시 첫 탭은 수업 시작', TU().tab === 0 && TU().cursor === 0);
+tap('ArrowRight');
+check('오른쪽으로 탭 전환', TU().tab === 1);
+tap('ArrowRight'); tap('ArrowRight');
+check('탭은 한 바퀴 돈다', TU().tab === 0);
+tap('ArrowLeft');
+check('왼쪽으로도 돈다', TU().tab === 2);
+tap('x');
+check('X로 타이틀 복귀', S().mode === 'title');
+
+// 본편 플레이 중에는 어떤 경로로도 열리지 않는다 (수업 중 오조작 방지)
+place('classroom', 7, 8); S().mode = 'world'; frame(1);
+tap('t');
+check('월드에서 T는 무시된다', S().mode === 'world');
+check('월드에서 화면 탭도 무시된다', G.teacherTap(G.TBTN.x + 4, G.TBTN.y + 4) === false);
+S().mode = 'clear'; frame(1);
+tap('t');
+check('클리어 화면에서도 T는 무시된다', S().mode === 'clear');
+
+// 타이틀 우하단 [선생님] 버튼 — 터치 기기용 (같은 진입점)
+toTitle();
+check('버튼 밖을 누르면 안 열린다', G.teacherTap(10, 10) === false && S().mode === 'title');
+check('버튼을 누르면 열린다',
+  G.teacherTap(G.TBTN.x + G.TBTN.w / 2, G.TBTN.y + G.TBTN.h / 2) === true && S().mode === 'teacher');
+tap('x');
+
+// 저장이 없어도 안전하게 열리고, 빈 리포트를 보여 준다
+G.clearSave();
+check('저장 없이도 열린다', openTeacher());
+check('저장이 없으면 빈 리포트', G.teacherReport() === null && TU().rep === null);
+tap('x');
+
+// 해석 규칙 4종 분기 (임계값은 데이터에 있다)
+const RULE = (stat) => (TE.rules || []).find((r) => r.stat === stat);
+const repOf = (o) => Object.assign(
+  { stolen: 0, retreats: 0, missSticker: 0, missPromise: 0 }, o);
+check('해석 — 뺏김 임계값',
+  G.teacherHint(repOf({ stolen: RULE('stolen').min })) === RULE('stolen').line);
+check('해석 — 물러남 임계값',
+  G.teacherHint(repOf({ retreats: RULE('retreats').min })) === RULE('retreats').line);
+check('해석 — 약속 오답 임계값',
+  G.teacherHint(repOf({ missPromise: RULE('missPromise').min })) === RULE('missPromise').line);
+check('해석 — 해당 없음', G.teacherHint(repOf({ stolen: 2, retreats: 2, missPromise: 2 })) === TE.hintOk);
+check('해석 — 저장이 없어도 문구가 나온다', G.teacherHint(null) === TE.hintOk);
+
+// 리포트는 저장 1건을 읽는다 (엔진 상태가 아니라 저장소)
+windowObj.localStorage.setItem(D.SAVE_KEY, JSON.stringify({
+  v: 1, map: 'hall4', px: 100, py: 100, dir: 0,
+  visited: { classroom: true, hall3: true, hall4: true, nowhere: true },
+  clearedOf: { mate: true, bro: true, ghost: true },
+  stats: { sec: 754, stolen: 4, retreats: 1, missSticker: 2, missPromise: 3 },
+  ending: 'B',
+}));
+const rep = G.teacherReport();
+check('최고 도달 층을 읽는다', rep && rep.floor === 4);
+check('되돌린 사람 수를 읽는다(모르는 인물은 버림)', rep.back === 2);
+check('시간·뺏김·물러남을 읽는다', rep.sec === 754 && rep.stolen === 4 && rep.retreats === 1);
+check('스티커·약속 오답을 읽는다', rep.missSticker === 2 && rep.missPromise === 3);
+check('고른 엔딩을 읽는다', rep.ending === 'B');
+check('해석 한 줄이 뺏김 규칙으로 붙는다', G.teacherHint(rep) === RULE('stolen').line);
+windowObj.localStorage.setItem(D.SAVE_KEY, JSON.stringify({ v: 9, map: 'classroom' }));
+check('구버전 저장은 빈 리포트로 본다', G.teacherReport() === null);
+
+// 기록 지우기 — 확인 1회
+windowObj.localStorage.setItem(D.SAVE_KEY, JSON.stringify({
+  v: 1, map: 'classroom', px: 100, py: 100, stats: { sec: 10 },
+}));
+check('지우기 전 저장이 있다', openTeacher() && G.hasSave() === true);
+tap('ArrowRight'); tap('z');
+check('기록 지우기는 확인을 묻는다', !!TU().confirm && TU().confirm.kind === 'wipe');
+check('확인 기본값은 거절 쪽', TU().confirmCursor === 1);
+tap('z');
+check('거절하면 기록이 남는다', G.hasSave() === true && !TU().confirm);
+tap('z'); tap('ArrowLeft'); tap('z');
+check('확인하면 기록이 지워진다', G.hasSave() === false);
+check('지운 뒤 리포트도 비었다', TU().rep === null);
+tap('x');
+
+// 차시 시작 — 확인 → 상태 세팅 → 해당 맵 진입
+check('차시 화면 진입', openTeacher() && TU().tab === 0);
+tap('ArrowDown');
+check('커서가 아래로 움직인다', TU().cursor === 1);
+tap('z');
+check('차시 시작은 확인을 묻는다', !!TU().confirm && TU().confirm.kind === 'start');
+tap('z');
+check('거절하면 교사 화면에 머문다', S().mode === 'teacher' && G.hasSave() === false);
+
+const lessonIdx = (fl) => TE.lessons.findIndex((L) => L.fl === fl);
+function startLesson(fl) {
+  if (!openTeacher()) return false;
+  TU().cursor = lessonIdx(fl);
+  tap('z'); tap('ArrowLeft'); tap('z');
+  return S().mode === 'world';
+}
+check('1층 차시 시작', startLesson(1) && S().map === 'classroom' && S().floor === 1);
+check('1층 차시는 아무도 되돌아와 있지 않다', Object.keys(S().clearedOf).length === 0);
+check('3층 차시 시작', startLesson(3) && S().map === 'hall3' && S().floor === 3);
+check('아래층 인물이 되돌아온 상태로 채워진다',
+  S().clearedOf.mate === true && S().clearedOf.bro === true && !S().clearedOf.senior);
+check('아래층 계단이 열려 있다', S().stairsOpen.hallway === true && S().stairsOpen.lab === true);
+check('그 층 계단은 아직 잠겨 있다', !S().stairsOpen.hall3);
+check('게이지는 0에서 시작', S().exposure === 0 && S().bubble === 0 && S().pollute === 0);
+check('카드는 초기 배치', G.heldIds().length === 0
+  && S().cards.passNote.map === 'hallway' && S().cards.fullPhoto.map === 'archive');
+check('진입 좌표가 그 층 시작 지점', tile().x === TE.lessons[lessonIdx(3)].x && tile().y === TE.lessons[lessonIdx(3)].y);
+check('도입 대사를 다시 보여 주지 않는다', !S().dialog && S().flags.intro === true);
+check('차시 시작이 기록을 덮어쓴다', G.hasSave() === true && G.load() === true && S().map === 'hall3');
+check('옥상 차시 시작', startLesson(6) && S().map === 'rooftop' && S().floor === 6);
+check('옥상 차시는 약속 5장이 모여 있다', G.promiseIds().length === 5);
+check('학생 화면 문법은 그대로 (월드 복귀)', S().mode === 'world' && !S().paused);
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {
@@ -1495,6 +1616,6 @@ if (fails.length) {
   fails.forEach((f) => console.error('   - ' + f));
   process.exit(1);
 }
-// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P4 350건 + P5 신규 30건 이상)
-if (pass < 380) { console.error(`✘ 검사 수 부족: ${pass}건 (P5 기준 380건 이상)`); process.exit(1); }
+// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P6 482건 + P7 신규 25건 이상)
+if (pass < 507) { console.error(`✘ 검사 수 부족: ${pass}건 (P7 기준 507건 이상)`); process.exit(1); }
 console.log(`✔ 스모크 ${pass}건 모두 통과`);

@@ -1016,6 +1016,82 @@
     endNote: '오늘 배운 다섯 가지 약속, 내일도 기억해요.'
   };
 
+  // ── 교사 도구 (P7) ────────────────────────────────────────────────────
+  // 학생 화면과 완전히 분리된 교실 운영 계층. 타이틀에서만 열린다.
+  // 개인정보는 받지 않는다 — 이 기기의 저장 1건만 읽는다.
+  D.TEACHER = {
+    title: '선생님 화면',
+    entry: '선생님',                 // 타이틀 우하단 작은 버튼
+    tabs: ['수업 시작', '우리 반 기록', '차시 안내'],
+    hint: '← → 탭 · ↑ ↓ 고르기 · Z 결정 · X 나가기',
+    yes: '네, 시작해요',
+    no: '아니요',
+    // 탭1 — 차시 모드
+    startTitle: '어느 차시부터 시작할까요?',
+    confirmStart: ['이 기기의 기록을 덮어써요.', '이 차시로 시작할까요?'],
+    about: '약 ',
+    unitMin: '분',
+    // 탭2 — 진단 리포트
+    repTitle: '이 기기의 기록 1건',
+    noSave: '아직 기록이 없어요. 한 번 플레이하면 표가 채워져요.',
+    rowFloor: '최고 도달 층',
+    rowBack: '되돌린 사람',
+    rowTime: '걸린 시간',
+    rowStolen: '뺏긴 카드',
+    rowRetreat: '물러난 횟수',
+    rowSticker: '스티커 오답',
+    rowPromise: '약속 오답',
+    rowEnding: '고른 엔딩',
+    endNone: '아직 없음',
+    hintLabel: '한 줄 해석',
+    wipe: '기록 지우기',
+    confirmWipe: ['이 기기의 기록 1건을 지워요.', '다음 학생을 위해 지울까요?'],
+    wiped: '기록을 지웠어요.',
+    // 해석 규칙 — 수치가 아니라 지도 힌트. 위에서부터 먼저 걸리는 하나만 보여 준다.
+    rules: [
+      { stat: 'stolen', min: 3, line: '개인정보를 자주 흘렸어요. 1층 광고 단말 이야기를 함께.' },
+      { stat: 'retreats', min: 3, line: '배틀이 어려웠어요. 듣기 먼저를 다시 안내.' },
+      { stat: 'missPromise', min: 3, line: '층별 약속 연결이 헷갈려요. 다섯 약속을 함께 정리.' }
+    ],
+    hintOk: '고르게 잘 해냈어요.',
+    // 탭3 — 차시 대응표 (docs/차시-대응표.md 와 같은 내용)
+    guideTitle: '층 · 주제 · 핵심 메커닉 · 발문',
+    askMark: '발문',
+    // 차시 6개 ↔ 층 6개. map/x/y/dir = 그 층의 시작 지점(걸을 수 있는 칸).
+    lessons: [
+      {
+        fl: 1, map: 'classroom', x: 7, y: 8, dir: 'up',
+        name: '1층', topic: '개인정보', mech: '노출도 게이지', parts: '퍼즐2+배틀1', min: 12,
+        ask: '내 정보를 흘리면 무엇이 커졌나요?'
+      },
+      {
+        fl: 2, map: 'lab', x: 7, y: 8, dir: 'up',
+        name: '2층', topic: '필터버블', mech: '추천 복도 루프', parts: '퍼즐2+배틀1', min: 10,
+        ask: '추천만 따라가면 무엇을 못 보게 되나요?'
+      },
+      {
+        fl: 3, map: 'hall3', x: 1, y: 5, dir: 'right',
+        name: '3층', topic: '가짜뉴스', mech: '소문 오염', parts: '퍼즐2+배틀1', min: 12,
+        ask: '확인하지 않고 알리면 어떻게 되나요?'
+      },
+      {
+        fl: 4, map: 'hall4', x: 1, y: 5, dir: 'right',
+        name: '4층', topic: '생성AI·저작권', mech: '출처 스티커', parts: '퍼즐2+배틀1', min: 12,
+        ask: 'AI로 그린 그림에는 무엇을 밝혀야 하나요?'
+      },
+      {
+        fl: 5, map: 'hall5', x: 1, y: 3, dir: 'right',
+        name: '5층', topic: 'AI 의존·책임', mech: '조작권 잠식', parts: '퍼즐2+배틀1', min: 12,
+        ask: '다 맡기면 내가 잃는 것은 무엇인가요?'
+      },
+      {
+        fl: 6, map: 'rooftop', x: 3, y: 9, dir: 'up',
+        name: '옥상', topic: '종합·책임', mech: '약속 카드 문답', parts: '문답+엔딩', min: 10,
+        ask: '만든 것에 대한 책임은 누구에게 있나요?'
+      }
+    ]
+  };
+
   D.SAVE_KEY = 'shadow-school-p1';
 
   g.DATA = D;

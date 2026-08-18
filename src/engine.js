@@ -3,7 +3,7 @@
 (function (g) {
   'use strict';
 
-  var VERSION = '0.7.0';   // package.json 과 validate 가 대조한다 — 배포 캐시 문의 판별용
+  var VERSION = '0.8.0';   // package.json 과 validate 가 대조한다 — 배포 캐시 문의 판별용
   var A = g.ART, D = g.DATA;
   var W = 720, H = 528, T = 48;
   var FACE = '"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR","Nanum Gothic",sans-serif';
@@ -383,7 +383,8 @@
     KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right',
     KeyZ: 'ok', Enter: 'ok', NumpadEnter: 'ok', Space: 'ok',
     KeyX: 'no', Escape: 'no', Backspace: 'no',
-    KeyM: 'mute'
+    KeyM: 'mute',
+    KeyT: 'teacher'          // 교사 화면 — 타이틀에서만 읽는다(수업 중 오조작 방지)
   };
   // e.code 미지원(아주 구형)일 때만 쓰는 보조 매핑
   var KEYMAP = {
@@ -391,12 +392,14 @@
     w: 'up', s: 'down', a: 'left', d: 'right',
     W: 'up', S: 'down', A: 'left', D: 'right',
     z: 'ok', Z: 'ok', Enter: 'ok', ' ': 'ok', Spacebar: 'ok',
-    x: 'no', X: 'no', Escape: 'no', Backspace: 'no'
+    x: 'no', X: 'no', Escape: 'no', Backspace: 'no',
+    t: 'teacher', T: 'teacher'
   };
-  // 한글 낱자 폴백(ㅈ→결정, ㅌ→취소). 화면 문구가 아니라 키 코드라
+  // 한글 낱자 폴백(ㅈ→결정, ㅌ→취소, ㅅ→교사 화면). 화면 문구가 아니라 키 코드라
   // 엔진 한글 0자 린트를 지키기 위해 코드포인트로 적는다.
   KEYMAP[String.fromCharCode(0x3148)] = 'ok';
   KEYMAP[String.fromCharCode(0x314C)] = 'no';
+  KEYMAP[String.fromCharCode(0x3145)] = 'teacher';
   function mapKey(e) {
     return (e.code && CODEMAP[e.code]) || KEYMAP[e.key] || null;
   }
@@ -1995,6 +1998,7 @@
       }
       return;
     }
+    if (tapped('teacher') && openTeacher()) return;
     var n = titleOptions().length;
     if (n > 1 && (tapped('up') || tapped('down'))) { title.cursor = 1 - title.cursor; sfx('cursor'); }
     if (!tapped('ok')) return;
@@ -2020,6 +2024,11 @@
     });
     txt(isTouch() ? D.T.keysTouch : D.T.keys, W / 2, 448, 17, A.PAL.blue, 'center', 500);
     txt('v' + VERSION, 14, H - 12, 13, 'rgba(224,168,120,0.55)', 'left', 400);
+    // 교사 진입 — 아이 눈에 띄지 않게 작고 흐리게, 타이틀에만(같은 상자 문법).
+    ctx.globalAlpha = 0.45;
+    panel(TBTN.x, TBTN.y, TBTN.w, TBTN.h, 0.30);
+    txt(D.TEACHER.entry, TBTN.x + TBTN.w / 2, TBTN.y + 21, 15, A.PAL.tan, 'center', 500);
+    ctx.globalAlpha = 1;
     if (title.confirm) {
       panel(W / 2 - 220, 180, 440, 150, 0.95);
       txt(D.T.confirmWipe[0], W / 2, 222, 20, A.PAL.white, 'center');
@@ -2096,6 +2105,243 @@
     txt(end ? D.CLEAR.endNote : D.CLEAR.keepNote, W / 2, 452, 16, A.PAL.blue, 'center', 500);
   }
 
+  // ── 교사 화면 (P7) ──────────────────────────────────────────────────────
+  // 타이틀에서 T(또는 우하단 [선생님])로만 열린다. 본편 중에는 어떤 키로도 안 열린다.
+  // 학생 상태를 바꾸는 길은 두 곳뿐 — 차시 시작과 기록 지우기(둘 다 확인 1회).
+  var teacher = { tab: 0, cursor: 0, confirm: null, confirmCursor: 1, rep: null, note: 0 };
+  var TBTN = { x: W - 122, y: H - 46, w: 108, h: 30 };
+
+  function openTeacher() {
+    if (!S || S.mode !== 'title' || title.confirm) return false;
+    teacher.tab = 0; teacher.cursor = 0; teacher.confirm = null; teacher.confirmCursor = 1;
+    teacher.rep = readReport(); teacher.note = 0;
+    S.mode = 'teacher';
+    sfx('ok');
+    return true;
+  }
+  function closeTeacher() { S = blankState(); title.cursor = 0; }
+
+  // 저장 1건을 읽기만 한다 — 엔진 상태에 손대지 않으므로 진행 중 기록이 오염되지 않는다.
+  function readReport() {
+    var o = null;
+    try {
+      var raw = g.localStorage.getItem(D.SAVE_KEY);
+      if (raw) o = JSON.parse(raw);
+    } catch (e) { o = null; }
+    if (!o || typeof o !== 'object' || o.v !== 1) return null;
+    var st = (o.stats && typeof o.stats === 'object') ? o.stats : {};
+    var k, back = 0, top = 1;
+    for (k in (D.BATTLES || {})) if (o.clearedOf && o.clearedOf[k] === true) back++;
+    for (k in (o.visited || {})) {
+      if (o.visited[k] === true && D.MAPS[k]) top = Math.max(top, D.MAPS[k].fl || 1);
+    }
+    if (D.MAPS[o.map]) top = Math.max(top, D.MAPS[o.map].fl || 1);
+    var end = st.ending === 'A' || st.ending === 'B' ? st.ending
+      : (o.ending === 'A' || o.ending === 'B' ? o.ending : null);
+    return {
+      floor: top, back: back,
+      sec: Math.max(0, Math.round(+st.sec || 0)),
+      stolen: Math.max(0, st.stolen | 0),
+      retreats: Math.max(0, st.retreats | 0),
+      missSticker: Math.max(0, st.missSticker | 0),
+      missPromise: Math.max(0, st.missPromise | 0),
+      ending: end
+    };
+  }
+  // 해석은 수치가 아니라 지도 힌트. 임계값을 넘은 첫 규칙 하나만 고른다.
+  function reportHint(rep) {
+    var rules = D.TEACHER.rules || [];
+    for (var i = 0; i < rules.length; i++) {
+      if (rep && rep[rules[i].stat] >= rules[i].min) return rules[i].line;
+    }
+    return D.TEACHER.hintOk;
+  }
+
+  function lessonAt(i) {
+    var ls = D.TEACHER.lessons || [];
+    return ls[i] || null;
+  }
+  function floorName(fl) {
+    var ls = D.TEACHER.lessons || [];
+    for (var i = 0; i < ls.length; i++) if (ls[i].fl === fl) return ls[i].name;
+    return ls.length ? ls[0].name : '';
+  }
+  // 차시 시작 — 아래층 인물은 되돌아온 것으로 채우고 계단을 열어 둔다.
+  // 게이지·카드·퍼즐은 blankState 그대로(그 층의 퍼즐은 아이가 푼다).
+  function startLesson(L) {
+    if (!L || !mapOf(L.map)) return false;
+    S = blankState();
+    for (var n in D.MAPS) {
+      var m = D.MAPS[n];
+      if (!m.npc || (m.fl || 1) >= L.fl) continue;
+      S.clearedOf[m.npc.battle] = true;
+      if (m.npc.opens) S.stairsOpen[m.npc.opens] = true;
+    }
+    S.flags.intro = true;      // 수업 중엔 도입 대사를 다시 보여 주지 않는다
+    S.mode = 'world';
+    enterMap(L.map, L.x, L.y, L.dir);
+    return true;
+  }
+
+  function teacherRows() {
+    if (teacher.tab === 0) return (D.TEACHER.lessons || []).length;
+    if (teacher.tab === 1) return 1;     // [기록 지우기]
+    return 0;                            // 차시 안내는 읽기 전용
+  }
+
+  function updateTeacher(dt) {
+    if (teacher.note > 0) teacher.note -= dt;
+    if (teacher.confirm) {
+      if (tapped('left') || tapped('right') || tapped('up') || tapped('down')) {
+        teacher.confirmCursor = 1 - teacher.confirmCursor;
+      }
+      if (tapped('no')) { teacher.confirm = null; return; }
+      if (tapped('ok')) {
+        var c = teacher.confirm;
+        teacher.confirm = null;
+        if (teacher.confirmCursor !== 0) return;
+        sfx('ok');
+        if (c.kind === 'wipe') { clearSave(); teacher.rep = readReport(); teacher.note = 2.4; }
+        else startLesson(c.lesson);
+      }
+      return;
+    }
+    if (tapped('no')) { closeTeacher(); return; }
+    var tabs = (D.TEACHER.tabs || []).length || 1;
+    if (tapped('left')) { teacher.tab = (teacher.tab + tabs - 1) % tabs; teacher.cursor = 0; sfx('cursor'); }
+    if (tapped('right')) { teacher.tab = (teacher.tab + 1) % tabs; teacher.cursor = 0; sfx('cursor'); }
+    var n = teacherRows();
+    if (!n) return;
+    if (tapped('down')) { teacher.cursor = (teacher.cursor + 1) % n; sfx('cursor'); }
+    if (tapped('up')) { teacher.cursor = (teacher.cursor + n - 1) % n; sfx('cursor'); }
+    if (!tapped('ok')) return;
+    // 상태를 바꾸는 두 길 — 반드시 확인 1회(기본값은 거절 쪽)
+    teacher.confirm = teacher.tab === 0
+      ? { kind: 'start', lesson: lessonAt(teacher.cursor) }
+      : { kind: 'wipe' };
+    teacher.confirmCursor = 1;
+    sfx('ok');
+  }
+
+  function timeText(sec) {
+    var mm = Math.floor(sec / 60), ss = sec % 60;
+    return (mm ? mm + D.CLEAR.unitMin + ' ' : '') + ss + D.CLEAR.unitSec;
+  }
+
+  function drawTeacherStart() {
+    var TE = D.TEACHER, ls = TE.lessons || [];
+    txt(TE.startTitle, 52, 106, 19, A.PAL.ribbon);
+    ls.forEach(function (L, i) {
+      var x = 76 + (i % 2) * 330, y = 152 + Math.floor(i / 2) * 44;
+      var on = teacher.cursor === i;
+      txt((on ? '▶ ' : '   ') + L.name + ' ' + L.topic, x, y, 21, on ? A.PAL.ribbon : A.PAL.white);
+    });
+    var cur = lessonAt(teacher.cursor);
+    if (cur) {
+      txt(cur.name + ' · ' + cur.topic + ' · ' + cur.parts + ' · ' + TE.about + cur.min + TE.unitMin,
+        W / 2, 330, 18, A.PAL.tan, 'center', 500);
+    }
+    txt(TE.confirmStart[0], W / 2, 366, 16, A.PAL.blue, 'center', 500);
+  }
+
+  function drawTeacherReport() {
+    var TE = D.TEACHER, r = teacher.rep;
+    txt(TE.repTitle, 52, 106, 19, A.PAL.ribbon);
+    if (!r) {
+      txt(TE.noSave, 52, 152, 18, A.PAL.white, 'left', 500);
+    } else {
+      [[TE.rowFloor, floorName(r.floor)],
+      [TE.rowBack, r.back + D.CLEAR.unitPeople],
+      [TE.rowTime, timeText(r.sec)],
+      [TE.rowStolen, r.stolen + D.CLEAR.unitCnt],
+      [TE.rowRetreat, r.retreats + D.CLEAR.unitCnt],
+      [TE.rowSticker, r.missSticker + D.CLEAR.unitCnt]].forEach(function (row, i) {
+        var x = 60 + (i % 2) * 330, y = 146 + Math.floor(i / 2) * 34;
+        txt(row[0], x, y, 17, A.PAL.metal, 'left', 500);
+        txt(row[1], x + 132, y, 17, A.PAL.white);
+      });
+      // 약속 오답·고른 엔딩은 값이 길어 두 칸을 쓰지 않고 한 줄씩 놓는다.
+      txt(TE.rowPromise, 60, 248, 17, A.PAL.metal, 'left', 500);
+      txt(r.missPromise + D.CLEAR.unitCnt, 192, 248, 17, A.PAL.white);
+      txt(TE.rowEnding, 60, 282, 17, A.PAL.metal, 'left', 500);
+      txt(r.ending === 'A' ? D.FINALE.endLabelA
+        : (r.ending === 'B' ? D.FINALE.endLabelB : TE.endNone), 192, 282, 17, A.PAL.white);
+      txt(TE.hintLabel, 60, 328, 17, A.PAL.blue, 'left', 500);
+      txt(reportHint(r), 60, 356, 18, A.PAL.ribbon);
+    }
+    var on = teacher.cursor === 0;
+    txt((on ? '▶ ' : '   ') + TE.wipe, 60, 414, 20, on ? A.PAL.ribbon : A.PAL.white);
+  }
+
+  function drawTeacherGuide() {
+    var TE = D.TEACHER;
+    txt(TE.guideTitle, 52, 106, 19, A.PAL.ribbon);
+    (TE.lessons || []).forEach(function (L, i) {
+      var y = 144 + i * 52;
+      txt(L.name + ' · ' + L.topic + ' · ' + L.mech, 60, y, 18, A.PAL.white);
+      txt(TE.askMark + ' ' + L.ask, 78, y + 22, 16, A.PAL.blue, 'left', 500);
+    });
+  }
+
+  function drawTeacher() {
+    var TE = D.TEACHER;
+    ctx.fillStyle = '#14101c'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(60,90,160,0.12)'; ctx.fillRect(0, 0, W, H);
+    txt(TE.title, 28, 44, 21, A.PAL.cream);
+    (TE.tabs || []).forEach(function (name, i) {
+      var on = teacher.tab === i;
+      txt((on ? '▶ ' : '   ') + name, 208 + i * 170, 44, 18,
+        on ? A.PAL.ribbon : A.PAL.metal, 'left', on ? 700 : 500);
+    });
+    panel(24, 62, W - 48, H - 122, 0.72);
+    if (teacher.tab === 0) drawTeacherStart();
+    else if (teacher.tab === 1) drawTeacherReport();
+    else drawTeacherGuide();
+    txt(TE.hint, W / 2, H - 20, 15, A.PAL.blue, 'center', 500);
+    if (teacher.note > 0) {
+      panel(W / 2 - 190, 84, 380, 36, 0.92);
+      txt(TE.wiped, W / 2, 108, 18, A.PAL.ribbon, 'center');
+    }
+    if (teacher.confirm) {
+      var msg = teacher.confirm.kind === 'wipe' ? TE.confirmWipe : TE.confirmStart;
+      panel(W / 2 - 220, 180, 440, 150, 0.95);
+      txt(msg[0], W / 2, 222, 19, A.PAL.white, 'center');
+      txt(msg[1], W / 2, 252, 19, A.PAL.white, 'center');
+      [TE.yes, TE.no].forEach(function (label, i) {
+        var sel = teacher.confirmCursor === i;
+        txt((sel ? '▶ ' : '   ') + label, W / 2 - 110 + i * 220, 300, 21,
+          sel ? A.PAL.ribbon : A.PAL.white, 'center');
+      });
+    }
+  }
+
+  // 타이틀 우하단 작은 버튼 — 터치 기기에서 T 키를 대신한다(타이틀에서만 반응).
+  function canvasTap(x, y) {
+    if (!S || S.mode !== 'title' || title.confirm) return false;
+    if (x < TBTN.x || x > TBTN.x + TBTN.w || y < TBTN.y || y > TBTN.y + TBTN.h) return false;
+    return openTeacher();
+  }
+  function onCanvasPointer(e) {
+    if (!cv || !cv.getBoundingClientRect) return;
+    var r = cv.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    if (canvasTap((e.clientX - r.left) * (W / r.width), (e.clientY - r.top) * (H / r.height))
+      && e.preventDefault) e.preventDefault();
+  }
+  function bindCanvasTap() {
+    if (!cv || !cv.addEventListener) return;
+    if (g.PointerEvent) { cv.addEventListener('pointerdown', onCanvasPointer); return; }
+    cv.addEventListener('mousedown', onCanvasPointer);
+    cv.addEventListener('touchstart', function (e) {
+      var t = (e.changedTouches && e.changedTouches[0]) || (e.touches && e.touches[0]);
+      if (!t) return;
+      onCanvasPointer({
+        clientX: t.clientX, clientY: t.clientY,
+        preventDefault: function () { if (e.preventDefault) e.preventDefault(); }
+      });
+    }, { passive: false });
+  }
+
   function drawLoading() {
     ctx.fillStyle = '#14101c'; ctx.fillRect(0, 0, W, H);
     txt(D.T.loading, W / 2, H / 2, 22, A.PAL.cream, 'center');
@@ -2104,12 +2350,14 @@
   // ── 루프 ────────────────────────────────────────────────────────────────
   function update(dt) {
     S.time += dt;
-    if (S.mode !== 'title' && S.mode !== 'load' && !S.paused) S.stats.sec += dt;
+    // 교사 화면에 머문 시간은 아이의 기록이 아니다 — 시계를 세지 않는다.
+    if (S.mode !== 'title' && S.mode !== 'load' && S.mode !== 'teacher' && !S.paused) S.stats.sec += dt;
     if (S.paused) { if (tapped('ok')) S.paused = false; return; }
     if (S.flash > 0) S.flash -= dt;
     if (S.toast) { S.toast.t -= dt; if (S.toast.t <= 0) S.toast = null; }
     // 슬롯 UI는 P3. 단일 슬롯이되, 공유 태블릿을 위해 이어하기/처음부터를 고른다.
     if (S.mode === 'title') { updateTitle(); return; }
+    if (S.mode === 'teacher') { updateTeacher(dt); return; }
     if (S.mode === 'clear') { updateClear(); return; }
     if (S.dialog) {
       if (tapped('ok')) {
@@ -2129,6 +2377,7 @@
   function render() {
     if (S.mode === 'load') { drawLoading(); return; }
     if (S.mode === 'title') { drawTitle(); return; }
+    if (S.mode === 'teacher') { drawTeacher(); return; }
     if (S.mode === 'clear') { drawClear(); return; }
     if (S.mode === 'battle') drawBattle();
     else if (S.mode === 'finale') drawFinale();
@@ -2250,6 +2499,7 @@
       doc.addEventListener('visibilitychange', function () { if (doc.hidden) pause(); });
     }
     bindTouch();
+    bindCanvasTap();
     A.load(A.SHEETS, function () { S.mode = 'title'; });
     last = 0;
     raf = g.requestAnimationFrame(loop);
@@ -2274,6 +2524,10 @@
     // 5층 검사용 — 장치 개방·의존 감속·반짝임 표시를 밖에서 확인한다
     lockOpen: lockOpen, moveSpeed: moveSpeed, glintOn: glintOn, SPEED: SPEED,
     promiseIds: promiseIds, promiseDef: promiseDef,
+    // 교사 도구 검사용 — 화면 상태·리포트·해석 규칙·차시 시작을 밖에서 확인한다
+    teacherUi: function () { return teacher; },
+    teacherReport: readReport, teacherHint: reportHint,
+    teacherTap: canvasTap, TBTN: TBTN,
     pause: pause,
     press: function (k) { if (!keys[k]) edge[k] = true; keys[k] = true; },
     release: function (k) { keys[k] = false; }
