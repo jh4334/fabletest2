@@ -417,6 +417,24 @@
       px(ctx, tone || PAL.cream, x + s / 2 - c * 2, y + c * 2, c * 4, c);
       px(ctx, tone || PAL.cream, x + s / 2 - c / 2, y, c, c * 4);
     }
+,
+    // ── 옥상 ──────────────────────────────────────────────────────────────
+    antenna: function (ctx, x, y, s) {        // 안테나 탑(나비스의 몸) — 타일 단위 조각
+      px(ctx, PAL.ink, x, y, s, s);
+      px(ctx, PAL.metalDark, x + 4, y, s - 8, s);
+      px(ctx, PAL.metal, x + 8, y, s - 20, s);
+      px(ctx, PAL.metalDark, x + 4, y + 10, s - 8, 3);
+      px(ctx, PAL.metalDark, x + 4, y + 30, s - 8, 3);
+    },
+    star: function (ctx, x, y, s) {
+      px(ctx, PAL.cream, x + s / 2 - 2, y + s / 2 - 2, 4, 4);
+      px(ctx, 'rgba(247,224,189,0.5)', x + s / 2 - 6, y + s / 2 - 1, 12, 2);
+      px(ctx, 'rgba(247,224,189,0.5)', x + s / 2 - 1, y + s / 2 - 6, 2, 12);
+    },
+    moon: function (ctx, x, y, s) {
+      px(ctx, PAL.ribbon, x + 8, y + 6, s - 18, s - 18);
+      px(ctx, PAL.cream, x + 12, y + 10, s - 28, s - 28);
+    }
   };
 
   function drawProp(ctx, kind, x, y, size, tone) {

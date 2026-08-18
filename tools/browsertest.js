@@ -582,6 +582,93 @@ const SHOTS = path.join(ROOT, 'shots');
     await ctx.close();
   }
 
+  // ── 옥상: 나비스 문답 · 엔딩 ──────────────────────────────────────────────
+  {
+    console.log('[rooftop] 옥상 · 나비스');
+    const { ctx, page, errors } = await newPage({ viewport: { width: 1280, height: 800 } });
+    await page.keyboard.press('z');
+    for (let i = 0; i < 8; i++) { await page.keyboard.press('z'); await page.waitForTimeout(40); }
+    // 다섯 층을 되돌린 상태로 옥상에 올린다
+    await page.evaluate(() => {
+      const S = window.GAME.state();
+      window.DATA.PROMISES.forEach((p) => { S.clearedOf[p.who] = true; });
+      window.GAME.enterMap('rooftop', 9, 8, 'up');
+      S.dialog = null; S.toast = null;
+    });
+    await page.waitForTimeout(250);
+    check('옥상 진입', await page.evaluate(() => {
+      const S = window.GAME.state(); return S.map === 'rooftop' && S.floor === 6;
+    }));
+    await page.screenshot({ path: path.join(SHOTS, 'rt-roof.png') });
+
+    // 안테나 앞으로 걸어가면 나비스가 말을 건다
+    await page.keyboard.down('ArrowUp');
+    await page.waitForTimeout(900);
+    await page.keyboard.up('ArrowUp');
+    await page.waitForTimeout(150);
+    check('나비스가 먼저 말을 건다', await page.evaluate(() => !!window.GAME.state().dialog));
+    // 대사가 남아 있는 동안만 넘긴다 — 넘치면 다음 선택을 눌러 버린다
+    const clearDialog = async (max = 12) => {
+      for (let i = 0; i < max; i++) {
+        if (!await page.evaluate(() => !!window.GAME.state().dialog)) return;
+        await page.keyboard.press('z');
+        await page.waitForTimeout(70);
+      }
+    };
+    await clearDialog();
+    check('문답 모드 진입', await page.evaluate(() => window.GAME.state().mode === 'finale'));
+    check('약속 고르기 화면', await page.evaluate(() => window.GAME.state().fin.phase === 'pick'));
+    const qShot = await page.screenshot({ path: path.join(SHOTS, 'rt-roof-ask.png') });
+
+    // 다섯 질문을 순서대로 답한다 (중간에 한 번 흔들림)
+    // 흔들림이 시작돼 있으면 스크린샷을 남기고 시간을 넘긴다
+    const passShake = async () => {
+      if (!await page.evaluate(() => {
+        const f = window.GAME.state().fin; return !!f && f.phase === 'shake';
+      })) return false;
+      await page.screenshot({ path: path.join(SHOTS, 'rt-roof-shake.png') });
+      await page.evaluate(() => { window.GAME.state().fin.timer = 999; });
+      await page.waitForTimeout(120);
+      await clearDialog();
+      return true;
+    };
+    for (let q = 0; q < 5; q++) {
+      await clearDialog();
+      await passShake();
+      const ready = await page.evaluate((i) => {
+        const S = window.GAME.state();
+        if (!S.fin || S.fin.phase !== 'pick') return { phase: S.fin && S.fin.phase, q: S.fin && S.fin.q };
+        S.fin.cursor = i;
+        return { phase: 'pick', q: S.fin.q };
+      }, q);
+      if (ready.phase !== 'pick') { console.log(`     · q${q} 진입 실패: ${ready.phase} (q=${ready.q})`); }
+      await page.keyboard.press('z');
+      await page.waitForTimeout(120);
+      await clearDialog();
+      await passShake();
+    }
+    check('다섯 질문을 모두 답함', await page.evaluate(() => window.GAME.state().fin.q === 5));
+    check('엔딩 선택 화면', await page.evaluate(() => window.GAME.state().fin.phase === 'choose'));
+    await page.screenshot({ path: path.join(SHOTS, 'rt-roof-choose.png') });
+    check('문답 화면이 서로 다른 그림', Buffer.compare(qShot,
+      await page.screenshot()) !== 0);
+
+    // 엔딩 A 선택 → 확인 → 완결
+    await page.keyboard.press('z');
+    await page.waitForTimeout(100);
+    check('확인을 한 번 묻는다', await page.evaluate(() => window.GAME.state().fin.phase === 'confirm'));
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('z');
+    await page.waitForTimeout(100);
+    await clearDialog(16);
+    check('엔딩 A 도달', await page.evaluate(() => window.GAME.state().ending === 'A'));
+    check('완결 화면', await page.evaluate(() => window.GAME.state().mode === 'clear'));
+    await page.screenshot({ path: path.join(SHOTS, 'rt-roof-end.png') });
+    check('콘솔·페이지 에러 0', errors.length === 0);
+    errors.slice(0, 5).forEach((e) => console.log('     · ' + e));
+    await ctx.close();
+  }
+
   await browser.close();
   srv.close();
   console.log(`\n브라우저 스모크: ${pass} 통과 / ${fail} 실패`);

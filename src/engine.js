@@ -3,7 +3,7 @@
 (function (g) {
   'use strict';
 
-  var VERSION = '0.6.0';   // package.json 과 validate 가 대조한다 — 배포 캐시 문의 판별용
+  var VERSION = '0.7.0';   // package.json 과 validate 가 대조한다 — 배포 캐시 문의 판별용
   var A = g.ART, D = g.DATA;
   var W = 720, H = 528, T = 48;
   var FACE = '"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR","Nanum Gothic",sans-serif';
@@ -48,6 +48,8 @@
       // 5층: 잠긴 장치 개방 여부 + 맡긴 장치(회복 대상) + 의존 게이지 + 열쇠
       // 열린 장치 칸은 유리문과 같은 opened 합성 지점에 얹힌다.
       locks: {}, trusted: {}, depend: 0, hasKey: false,
+      // 옥상: 나비스 문답(질문 인덱스·단계) + 고른 엔딩
+      fin: null, ending: null,
       dialog: null, battle: null, toast: null, cool: {}, time: 0, flash: 0, paused: false,
       stats: { sec: 0, stolen: 0, retreats: 0, missSticker: 0 },  // 교사 관찰·아이 성취감용 계측
       looked: {}                                   // 재조사 대사 분기(세션 한정, 저장 안 함)
@@ -220,6 +222,17 @@
   function glintOn() { return !!S && S.floor === 5 && S.depend < D.DEPEND_DIM; }
 
   // 가방·게이지·보여주기 목록은 전부 현재 층 카드만 본다 (층 분리).
+  // 약속 카드는 되돌린 인물에서 파생한다 — 따로 모으는 시스템을 두지 않는다.
+  function promiseIds() {
+    return (D.PROMISES || []).filter(function (p) { return !!S.clearedOf[p.who]; })
+      .map(function (p) { return p.id; });
+  }
+  function promiseDef(id) {
+    var list = D.PROMISES || [];
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  }
+
   function heldIds() {
     var out = [];
     D.CARDS.forEach(function (c) {
@@ -481,6 +494,15 @@
       }
       if (ax < TERM_R && ay < TERM_R) stealCard(tm, key);
     });
+    // 옥상 — 나비스 대면 (아직 끝내지 않았다면)
+    if (m.finale && !S.ending) {
+      // 안테나 앞 두 칸 안에 들어서면 나비스가 먼저 말을 건다(타일 기준이라 확실하다)
+      var pt0 = playerTile();
+      if (Math.abs(pt0.x - m.finale.x) <= 2 && Math.abs(pt0.y - m.finale.y) <= 2) {
+        say(D.FINALE.meet, finaleBegin);
+        return;
+      }
+    }
     // 씌인 인물 조우
     if (npcHere(m) && !S.clearedOf[m.npc.battle]) {
       var np = tileCenter(m.npc.x, m.npc.y);
@@ -1154,6 +1176,236 @@
     }
   }
 
+  // ── 옥상: 나비스의 다섯 질문 ────────────────────────────────────────────
+  // 배틀이 아니다 — 하트도 물러나기도 없다. 묻고, 약속으로 답한다.
+  // 상태: phase = 'text'(대사 중) | 'pick'(약속 고르기) | 'shake'(잠깐 쏟아짐)
+  //              | 'choose'(엔딩 선택) | 'confirm'(확인)
+  function finaleBegin() {
+    S.mode = 'finale'; S.toast = null;
+    S.fin = {
+      q: 0, phase: 'text', cursor: 0, confirmCursor: 1, shaken: false, wrongs: 0,
+      bullets: [], timer: 0, spawnAcc: 0,
+      hx: BOX.x + BOX.w / 2, hy: BOX.y + BOX.h / 2, hit: 0
+    };
+    say(D.FINALE.intro, askQuestion);
+  }
+
+  function finaleSay(seq, then) {
+    S.fin.phase = 'text';
+    say(seq, then);
+  }
+
+  function askQuestion() {
+    var f = S.fin, qs = D.FINALE.questions;
+    if (f.q >= qs.length) { finaleSay(D.FINALE.confess, function () { f.phase = 'choose'; f.cursor = 0; }); return; }
+    finaleSay(qs[f.q].ask, function () {
+      if (!promiseIds().length) { finaleSay(D.FINALE.none, function () { leaveFinale(); }); return; }
+      f.phase = 'pick'; f.cursor = 0;
+    });
+  }
+
+  function pickPromise() {
+    var f = S.fin, ids = promiseIds(), id = ids[f.cursor];
+    var qs = D.FINALE.questions, cur = qs[f.q];
+    if (id !== cur.answer) {
+      f.wrongs++;
+      S.stats.missPromise = (S.stats.missPromise || 0) + 1;
+      sfx('cancel');
+      finaleSay(D.FINALE.wrong, function () { f.phase = 'pick'; });
+      return;
+    }
+    sfx('off');
+    f.q++;
+    save();
+    // 셋째 질문을 넘긴 순간 딱 한 번, 나비스가 흔들린다(감정 표현)
+    if (f.q === 3 && !f.shaken) {
+      finaleSay(cur.ok.concat(D.FINALE.shake), startShake);
+      return;
+    }
+    finaleSay(cur.ok, askQuestion);
+  }
+
+  function startShake() {
+    var f = S.fin;
+    f.shaken = true; f.phase = 'shake';
+    f.bullets = []; f.timer = 0; f.spawnAcc = 0; f.hit = 0;
+    f.hx = BOX.x + BOX.w / 2; f.hy = BOX.y + BOX.h / 2;
+  }
+
+  function updateShake(dt) {
+    var f = S.fin, a = D.FINALE.shakeAtk;
+    f.timer += dt;
+    if (f.hit > 0) f.hit -= dt;
+    if (f.timer >= a.time) { f.bullets = []; finaleSay(D.FINALE.shakeEnd, askQuestion); return; }
+    var v = axis();
+    if (v.x || v.y) {
+      var len = Math.sqrt(v.x * v.x + v.y * v.y) || 1;
+      f.hx += (v.x / len) * 168 * dt; f.hy += (v.y / len) * 168 * dt;
+    }
+    f.hx = Math.max(BOX.x + 12, Math.min(BOX.x + BOX.w - 12, f.hx));
+    f.hy = Math.max(BOX.y + 12, Math.min(BOX.y + BOX.h - 12, f.hy));
+    f.spawnAcc += dt;
+    while (f.spawnAcc >= a.every) {
+      f.spawnAcc -= a.every;
+      f.bullets.push({
+        x: BOX.x + 12 + Math.random() * (BOX.w - 24), y: BOX.y - 10,
+        vx: 0, vy: a.speed, s: 13
+      });
+    }
+    for (var i = f.bullets.length - 1; i >= 0; i--) {
+      var b = f.bullets[i];
+      b.y += b.vy * dt;
+      if (b.y > BOX.y + BOX.h + 30) { f.bullets.splice(i, 1); continue; }
+      // 스치기만 한다 — 하트가 줄지 않는다(게임오버 없음, 헌법 §3-3)
+      if (f.hit <= 0 && Math.abs(b.x - f.hx) < 11 && Math.abs(b.y - f.hy) < 11) {
+        f.hit = 0.6; sfx('hit');
+      }
+    }
+  }
+
+  function chooseEnding(idx) {
+    var f = S.fin;
+    S.ending = idx === 0 ? 'A' : 'B';
+    S.stats.ending = S.ending;
+    sfx('clear');
+    finaleSay((idx === 0 ? D.FINALE.endA : D.FINALE.endB).concat(D.FINALE.gate), function () {
+      S.mode = 'clear'; S.flags.done = true; S.fin = null;
+      clearUi.cursor = 0;
+      save();
+    });
+  }
+
+  // 약속이 하나도 없어 문답을 못 여는 경우에만 쓰인다(되돌린 사람 0명).
+  function leaveFinale() {
+    S.mode = 'world'; S.fin = null;
+    var m = mapOf(S.map);
+    if (m.finale) { S.px = m.finale.x * T + T / 2; S.py = (m.finale.y + 2) * T + T - 6; }
+    S.dir = A.DIR.down; updateCam(); save();
+  }
+
+  function updateFinale(dt) {
+    var f = S.fin;
+    if (!f) { S.mode = 'world'; return; }
+    if (f.phase === 'shake') { updateShake(dt); return; }
+    if (f.phase === 'pick') {
+      var ids = promiseIds(), n = ids.length;
+      if (!n) { leaveFinale(); return; }
+      if (f.cursor >= n) f.cursor = n - 1;
+      if (tapped('left') || tapped('up')) { f.cursor = (f.cursor + n - 1) % n; sfx('cursor'); }
+      if (tapped('right') || tapped('down')) { f.cursor = (f.cursor + 1) % n; sfx('cursor'); }
+      if (tapped('ok')) { sfx('ok'); pickPromise(); }
+      return;
+    }
+    if (f.phase === 'choose') {
+      if (tapped('up') || tapped('down') || tapped('left') || tapped('right')) {
+        f.cursor = 1 - f.cursor; sfx('cursor');
+      }
+      if (tapped('ok')) { sfx('ok'); f.phase = 'confirm'; f.confirmCursor = 1; }
+      return;
+    }
+    if (f.phase === 'confirm') {
+      if (tapped('left') || tapped('right') || tapped('up') || tapped('down')) {
+        f.confirmCursor = 1 - f.confirmCursor; sfx('cursor');
+      }
+      if (tapped('no')) { f.phase = 'choose'; sfx('cancel'); return; }
+      if (tapped('ok')) {
+        sfx('ok');
+        if (f.confirmCursor === 0) chooseEnding(f.cursor);
+        else f.phase = 'choose';
+      }
+    }
+  }
+
+  function drawFinale() {
+    var f = S.fin;
+    ctx.fillStyle = '#0c1020'; ctx.fillRect(0, 0, W, H);
+    // 밤하늘 — 별 몇 점
+    for (var i = 0; i < 22; i++) {
+      var sx = (i * 137) % W, sy = (i * 61) % 200;
+      ctx.fillStyle = 'rgba(247,224,189,' + (0.2 + ((i * 7) % 5) * 0.1).toFixed(2) + ')';
+      ctx.fillRect(sx, sy, 2, 2);
+    }
+    // 나비스 = 안테나 탑 + 눈 하나 (그림자가 아니라 본체 — 씌임 틴트를 쓰지 않는다)
+    var gr = ctx.createRadialGradient && ctx.createRadialGradient(W / 2, 130, 10, W / 2, 130, 150);
+    if (gr && gr.addColorStop) {
+      var glow = f && f.phase === 'shake' ? 0.42 : 0.26;
+      gr.addColorStop(0, 'rgba(120,188,216,' + glow + ')');
+      gr.addColorStop(1, 'rgba(120,188,216,0)');
+      ctx.fillStyle = gr; ctx.fillRect(W / 2 - 150, 0, 300, 280);
+    }
+    ctx.fillStyle = A.PAL.metalDark; ctx.fillRect(W / 2 - 26, 46, 52, 150);
+    ctx.fillStyle = A.PAL.metal; ctx.fillRect(W / 2 - 14, 46, 28, 150);
+    ctx.fillStyle = A.PAL.ink; ctx.fillRect(W / 2 - 30, 92, 60, 8);
+    ctx.fillStyle = A.PAL.ink; ctx.fillRect(W / 2 - 30, 150, 60, 8);
+    // 눈 하나 — 흔들릴 땐 깜빡인다
+    var open2 = !(f && f.phase === 'shake' && Math.floor(S.time * 8) % 2);
+    ctx.fillStyle = open2 ? A.PAL.blue : A.PAL.metalDark;
+    ctx.fillRect(W / 2 - 16, 112, 32, 20);
+    ctx.fillStyle = A.PAL.ink; ctx.fillRect(W / 2 - 6, 118, 12, 8);
+    txt(D.FINALE.name, W / 2, 224, 20, A.PAL.white, 'center');
+    // 남은 질문 — 배틀 게이지와 같은 자리·문법(숫자 병기)
+    var qs = D.FINALE.questions, left = qs.length - ((f && f.q) || 0);
+    var gw = 150, gx = W / 2 - gw / 2;
+    ctx.fillStyle = 'rgba(120,110,130,0.5)'; ctx.fillRect(gx, 232, gw, 10);
+    ctx.fillStyle = A.PAL.blue;
+    ctx.fillRect(gx, 232, gw * left / qs.length, 10);
+    txt(left + '/' + qs.length, gx + gw + 10, 241, 14, A.PAL.white, 'left', 500);
+
+    if (!f) return;
+    if (f.phase === 'shake') {
+      ctx.strokeStyle = A.PAL.white; ctx.lineWidth = 4;
+      ctx.strokeRect(BOX.x, BOX.y, BOX.w, BOX.h);
+      ctx.fillStyle = 'rgba(8,6,12,0.6)'; ctx.fillRect(BOX.x + 2, BOX.y + 2, BOX.w - 4, BOX.h - 4);
+      f.bullets.forEach(function (b) {
+        ctx.fillStyle = A.PAL.blue; ctx.fillRect(b.x - b.s / 2, b.y - b.s / 2, b.s, b.s);
+      });
+      ctx.globalAlpha = f.hit > 0 ? 0.45 : 1;
+      if (!A.drawSprite(ctx, 'heart', 64, 0, 16, 16, f.hx - 11, f.hy - 11, 22, 22)) {
+        ctx.fillStyle = A.PAL.red; ctx.fillRect(f.hx - 8, f.hy - 8, 16, 16);
+      }
+      ctx.globalAlpha = 1;
+      txt(D.FINALE.shakeNote, W / 2, H - 16, 15, A.PAL.blue, 'center', 500);
+      return;
+    }
+    if (f.phase === 'pick') {
+      // 고르는 동안에도 질문이 화면에 남아 있어야 한다 — 무엇에 답하는지 잊지 않게.
+      var cur = D.FINALE.questions[f.q];
+      if (cur && cur.ask[0]) {
+        cur.ask[0].forEach(function (ln, i) {
+          txt(ln, W / 2, 288 + i * 28, 19, A.PAL.white, 'center');
+        });
+      }
+      panel(24, 344, W - 48, 144);
+      txt(D.FINALE.title, 48, 370, 17, A.PAL.ribbon);
+      promiseIds().forEach(function (id, i) {
+        var x = 60 + (i % 2) * 320, y = 404 + Math.floor(i / 2) * 34;
+        var on = f.cursor === i, pd = promiseDef(id);
+        txt((on ? '▶ ' : '   ') + pd.label, x, y, 18, on ? A.PAL.ribbon : A.PAL.white);
+      });
+      txt(D.FINALE.hint, W - 44, 480, 14, A.PAL.blue, 'right', 500);
+      return;
+    }
+    if (f.phase === 'choose' || f.phase === 'confirm') {
+      panel(24, 372, W - 48, 116);
+      txt(D.FINALE.choose, W / 2, 402, 20, A.PAL.ribbon, 'center');
+      D.FINALE.options.forEach(function (label, i) {
+        var on = f.cursor === i;
+        txt((on ? '▶ ' : '   ') + label, W / 2, 440 + i * 34, 21,
+          on ? A.PAL.ribbon : A.PAL.white, 'center');
+      });
+      if (f.phase === 'confirm') {
+        panel(W / 2 - 230, 150, 460, 150, 0.95);
+        txt(D.FINALE.confirm[0], W / 2, 192, 19, A.PAL.white, 'center');
+        txt(D.FINALE.confirm[1], W / 2, 222, 19, A.PAL.white, 'center');
+        [D.FINALE.yes, D.FINALE.no].forEach(function (label, i) {
+          var on = f.confirmCursor === i;
+          txt((on ? '▶ ' : '   ') + label, W / 2 - 110 + i * 220, 270, 17,
+            on ? A.PAL.ribbon : A.PAL.white, 'center');
+        });
+      }
+    }
+  }
+
   // ── 저장 ────────────────────────────────────────────────────────────────
   function save() {
     if (!S) return false;
@@ -1164,11 +1416,13 @@
         pollute: S.pollute, rumors: S.rumors, fog: S.fog,
         honest: S.honest, frames: S.frames, stickers: S.stickers,
         depend: S.depend, locks: S.locks, trusted: S.trusted, hasKey: S.hasKey,
+        ending: S.ending, finQ: (S.fin && S.fin.q) || 0,
         flags: S.flags, heardOf: S.heardOf, clearedOf: S.clearedOf,
         stairsOpen: S.stairsOpen, visited: S.visited, cards: {},
         stats: {
           sec: Math.round(S.stats.sec), stolen: S.stats.stolen,
-          retreats: S.stats.retreats, missSticker: S.stats.missSticker
+          retreats: S.stats.retreats, missSticker: S.stats.missSticker,
+          missPromise: S.stats.missPromise || 0, ending: S.stats.ending || null
         }
       };
       D.CARDS.forEach(function (c) {
@@ -1249,7 +1503,11 @@
         S.stats.stolen = Math.max(0, o.stats.stolen | 0);
         S.stats.retreats = Math.max(0, o.stats.retreats | 0);
         S.stats.missSticker = Math.max(0, o.stats.missSticker | 0);
+        S.stats.missPromise = Math.max(0, o.stats.missPromise | 0);
+        S.stats.ending = o.stats.ending === 'A' || o.stats.ending === 'B' ? o.stats.ending : null;
       }
+      // 엔딩은 A/B만 인정 — 그 밖의 값은 아직 안 끝난 것으로 본다
+      S.ending = o.ending === 'A' || o.ending === 'B' ? o.ending : null;
       // 들고 있지도, 바닥에도 없는 카드가 생기면(반쪽 저장) 원위치로 복구한다.
       D.CARDS.forEach(function (c) {
         var st = S.cards[c.id];
@@ -1790,6 +2048,12 @@
     if (tapped('up') || tapped('down')) { clearUi.cursor = 1 - clearUi.cursor; sfx('cursor'); }
     if (!tapped('ok')) return;
     sfx('ok');
+    // 엔딩 화면 — [처음부터 다시 / 타이틀로]. 저장은 어느 쪽이든 지우지 않는다.
+    if (S.ending) {
+      if (clearUi.cursor === 0) { clearSave(); S = blankState(); title.cursor = 0; newGame(); }
+      else { S = blankState(); title.cursor = 0; }
+      return;
+    }
     if (clearUi.cursor === 0) {          // 계속 둘러보기 — 계단 앞으로 복귀
       S.mode = 'world';
       var m = mapOf(S.map), f = m.stairs && m.stairs.face;
@@ -1805,19 +2069,31 @@
 
   function drawClear() {
     ctx.fillStyle = '#14101c'; ctx.fillRect(0, 0, W, H);
-    txt(S.floor + D.CLEAR.bannerFloor, W / 2, 210, 44, A.PAL.ribbon, 'center');
-    txt(D.CLEAR.stairs[0][0], W / 2, 262, 20, A.PAL.white, 'center', 500);
+    var end = !!S.ending;
+    if (end) {
+      // 본편 완결 화면 — 새벽 하늘빛 한 겹
+      ctx.fillStyle = 'rgba(60,90,160,0.16)'; ctx.fillRect(0, 0, W, H);
+      txt(D.CLEAR.escBanner, W / 2, 190, 42, A.PAL.ribbon, 'center');
+      txt(S.ending === 'A' ? D.FINALE.endLabelA : D.FINALE.endLabelB,
+        W / 2, 236, 19, A.PAL.blue, 'center', 500);
+    } else {
+      txt(S.floor + D.CLEAR.bannerFloor, W / 2, 210, 44, A.PAL.ribbon, 'center');
+      txt(D.CLEAR.stairs[0][0], W / 2, 262, 20, A.PAL.white, 'center', 500);
+    }
     // 내 기록 — 아이에겐 성취, 교사에겐 관찰 데이터
     var sec = Math.round(S.stats.sec), mm = Math.floor(sec / 60), ss = sec % 60;
     var line = D.CLEAR.statTime + ' ' + (mm ? mm + D.CLEAR.unitMin + ' ' : '') + ss + D.CLEAR.unitSec
       + ' · ' + D.CLEAR.statStolen + ' ' + S.stats.stolen + D.CLEAR.unitCnt
       + ' · ' + D.CLEAR.statRetreat + ' ' + S.stats.retreats + D.CLEAR.unitCnt;
-    txt(line, W / 2, 300, 17, A.PAL.tan, 'center', 500);
-    D.CLEAR.menu.forEach(function (label, i) {
+    if (end) {
+      line += ' · ' + D.CLEAR.statBack + ' ' + promiseIds().length + D.CLEAR.unitPeople;
+    }
+    txt(line, W / 2, end ? 282 : 300, 17, A.PAL.tan, 'center', 500);
+    (end ? D.CLEAR.endMenu : D.CLEAR.menu).forEach(function (label, i) {
       var sel = clearUi.cursor === i;
       txt((sel ? '▶ ' : '   ') + label, W / 2, 342 + i * 42, 23, sel ? A.PAL.ribbon : A.PAL.white, 'center');
     });
-    txt(D.CLEAR.keepNote, W / 2, 452, 16, A.PAL.blue, 'center', 500);
+    txt(end ? D.CLEAR.endNote : D.CLEAR.keepNote, W / 2, 452, 16, A.PAL.blue, 'center', 500);
   }
 
   function drawLoading() {
@@ -1847,13 +2123,16 @@
     if (S.mode === 'world') updateWorld(dt);
     else if (S.mode === 'battle') updateBattle(dt);
     else if (S.mode === 'console') updateConsole(dt);
+    else if (S.mode === 'finale') updateFinale(dt);
   }
 
   function render() {
     if (S.mode === 'load') { drawLoading(); return; }
     if (S.mode === 'title') { drawTitle(); return; }
     if (S.mode === 'clear') { drawClear(); return; }
-    if (S.mode === 'battle') drawBattle(); else drawWorld();
+    if (S.mode === 'battle') drawBattle();
+    else if (S.mode === 'finale') drawFinale();
+    else drawWorld();
     if (S.mode === 'console') drawConsole();
     if (S.dialog) drawDialog();
     if (S.toast) drawToast();
@@ -1994,6 +2273,7 @@
     drawerOpen: function () { return !!S && drawerOpen(); },
     // 5층 검사용 — 장치 개방·의존 감속·반짝임 표시를 밖에서 확인한다
     lockOpen: lockOpen, moveSpeed: moveSpeed, glintOn: glintOn, SPEED: SPEED,
+    promiseIds: promiseIds, promiseDef: promiseDef,
     pause: pause,
     press: function (k) { if (!keys[k]) edge[k] = true; keys[k] = true; },
     release: function (k) { keys[k] = false; }

@@ -33,7 +33,7 @@ const ASSETS = [
 for (const p of ASSETS) if (!has(p)) err(`필수 에셋 없음: ${p}`);
 for (const p of ['docs/기준서-방과후-그림자학교-v1.md', 'docs/스펙-P1-1층-수직슬라이스.md',
   'docs/스펙-P2-2층-필터버블.md', 'docs/스펙-P3-3층-가짜뉴스.md', 'docs/스펙-P4-4층-저작권.md',
-  'docs/스펙-P5-5층-AI의존.md']) {
+  'docs/스펙-P5-5층-AI의존.md', 'docs/스펙-P6-옥상-나비스.md']) {
   if (!has(p)) err(`필수 문서 없음: ${p}`);
 }
 for (const p of ['index.html', 'src/art.js', 'src/sound.js', 'src/data.js', 'src/engine.js']) {
@@ -177,7 +177,7 @@ if (D) {
       else if (!walkable(up, m.stairsTo.sx, m.stairsTo.sy)) err(at('위층 도착 칸이 막힘'));
       if (!m.stairs) err(at('stairsTo 가 있는데 stairs 타일이 없음'));
     }
-    if ([1, 2, 3, 4, 5].indexOf(m.fl || 1) < 0) err(at(`층(fl) 값이 이상함: ${m.fl}`));
+    if ([1, 2, 3, 4, 5, 6].indexOf(m.fl || 1) < 0) err(at(`층(fl) 값이 이상함: ${m.fl}`));
     // 소문 쪽지·자료실 표지는 조사할 수 있는 자리(막힌 칸)에 있어야 한다
     (m.notes || []).forEach((n) => {
       if (m.grid[n.y].charAt(n.x) !== 'N') err(at(`소문 쪽지 ${n.id} 자리에 쪽지 타일(N)이 없음`));
@@ -491,7 +491,7 @@ if (D) {
       else if ((m.fl || 1) !== 5) err(`${n}의 층(fl)이 5가 아님`);
     }
     if (office && !office.stairs) err('교무실에 계단이 없음');
-    if (office && office.stairsTo) err('5층 계단은 옥상 전이라 위층 맵이 없어야 함');
+    if (office && !office.stairsTo) err('5층 계단이 옥상으로 이어지지 않음');
     if (office && (!office.npc || office.npc.battle !== 'vice')) err('교무실에 교감 선생님이 없음');
 
     const lockIds = new Set();
@@ -704,6 +704,73 @@ for (const f of ['src/engine.js', 'src/art.js', 'src/sound.js']) {
   if (!m) err('engine.js에 VERSION 상수가 없음');
   else if (m[1] !== pkg.version) err(`버전 불일치: engine ${m[1]} != package.json ${pkg.version}`);
   if (!read('index.html').includes('shadow-school-errlog')) err('index.html 오류 링버퍼 누락');
+}
+
+// ── P6: 옥상 최종전 (스펙 §4) ───────────────────────────────────────────────
+if (D) {
+  const roof = D.MAPS.rooftop;
+  const F = D.FINALE || {};
+  const proms = D.PROMISES || [];
+  if (!roof) err('옥상 맵(rooftop)이 없음');
+  else {
+    if ((roof.fl || 1) !== 6) err(`옥상 층(fl)이 6이 아님: ${roof.fl}`);
+    if (!roof.finale) err('옥상에 나비스 대면 좌표(finale)가 없음');
+    if (!roof.stairs) err('옥상에 내려가는 계단이 없음');
+    const walk = (m, x, y) => {
+      if (x < 0 || y < 0 || x >= m.w || y >= m.h) return false;
+      const L = D.LEGEND[m.grid[y].charAt(x)];
+      return !!L && !L.solid;
+    };
+    // 스폰에서 대면 지점·계단 앞이 모두 걸어서 닿아야 한다(가두지 않기)
+    const seen = new Set([`${roof.spawn.x},${roof.spawn.y}`]);
+    const q = [[roof.spawn.x, roof.spawn.y]];
+    while (q.length) {
+      const [x, y] = q.shift();
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy, k = `${nx},${ny}`;
+        if (seen.has(k) || !walk(roof, nx, ny)) continue;
+        seen.add(k); q.push([nx, ny]);
+      }
+    }
+    if (!walk(roof, roof.spawn.x, roof.spawn.y)) err('옥상 스폰이 막힌 칸');
+    if (roof.finale && !seen.has(`${roof.finale.x},${roof.finale.y}`)) {
+      err('옥상 대면 지점에 걸어서 닿을 수 없음');
+    }
+    const sf = roof.stairs && roof.stairs.face;
+    if (sf && !seen.has(`${sf.x},${sf.y}`)) err('옥상 계단 앞에 닿을 수 없음(내려갈 길)');
+  }
+  // 질문 5개 ↔ 약속 5개 1:1, 층 순서
+  if (proms.length !== 5) err(`약속 카드는 5장이어야 함 (현재 ${proms.length})`);
+  const order = ['mate', 'bro', 'senior', 'artTeacher', 'vice'];
+  proms.forEach((pr, i) => {
+    if (!D.BATTLES[pr.who]) err(`약속 ${pr.id}의 인물 프로필이 없음: ${pr.who}`);
+    if (pr.who !== order[i]) err(`약속 ${pr.id} 순서가 층 순서와 다름 (기대 ${order[i]})`);
+    if (!pr.label) err(`약속 ${pr.id}에 문구가 없음`);
+  });
+  const qs = F.questions || [];
+  if (qs.length !== proms.length) err(`질문 수(${qs.length})와 약속 수(${proms.length})가 다름`);
+  const ansSeen = new Set();
+  qs.forEach((qq, i) => {
+    if (!proms.some((pr) => pr.id === qq.answer)) err(`질문 ${i + 1}의 정답 약속이 없음: ${qq.answer}`);
+    if (ansSeen.has(qq.answer)) err(`질문 정답이 중복됨: ${qq.answer}`);
+    ansSeen.add(qq.answer);
+    if (qq.answer !== proms[i].id) err(`질문 ${i + 1}이 층 순서와 어긋남`);
+    if (!Array.isArray(qq.ask) || !qq.ask.length) err(`질문 ${i + 1}에 물음 대사가 없음`);
+    if (!Array.isArray(qq.ok) || !qq.ok.length) err(`질문 ${i + 1}에 정답 반응이 없음`);
+  });
+  // 엔딩 2종과 필수 문구
+  for (const k of ['meet', 'intro', 'wrong', 'none', 'shake', 'confess', 'endA', 'endB', 'gate']) {
+    if (!Array.isArray(F[k]) || !F[k].length) err(`FINALE.${k} 대사가 없음`);
+  }
+  for (const k of ['choose', 'yes', 'no', 'endLabelA', 'endLabelB', 'title']) {
+    if (typeof F[k] !== 'string' || !F[k]) err(`FINALE.${k} 문구가 없음`);
+  }
+  if (!Array.isArray(F.options) || F.options.length !== 2) err('엔딩 선택지는 2개여야 함');
+  if (!Array.isArray(F.confirm) || !F.confirm.length) err('엔딩 확인 문구가 없음');
+  for (const k of ['escBanner', 'statBack', 'unitPeople', 'endNote']) {
+    if (!D.CLEAR[k]) err(`CLEAR.${k} 가 없음(엔딩 화면)`);
+  }
+  if (!Array.isArray(D.CLEAR.endMenu) || D.CLEAR.endMenu.length !== 2) err('엔딩 메뉴는 2개여야 함');
 }
 
 // 오프라인 캐시 정합 — sw.js의 ASSETS가 전부 실재하고, CACHE 해시가 자산과 일치해야 한다.
