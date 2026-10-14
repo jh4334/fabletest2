@@ -458,6 +458,8 @@
       ],
       spawn: { x: 3, y: 9, dir: 'up' },
       stairs: { x: 1, y: 9, face: { x: 2, y: 9, dir: 'left' } },
+      // 내려가는 계단 — 잠그는 인물이 없다. down 이면 엔진이 늘 열린 것으로 본다.
+      stairsTo: { map: 'office', sx: 12, sy: 5, dir: 'left', down: true },
       decor: [
         { kind: 'star', x: 3, y: 1 }, { kind: 'star', x: 5, y: 3 },
         { kind: 'star', x: 15, y: 1 }, { kind: 'star', x: 17, y: 4 },
@@ -656,6 +658,8 @@
     depHelp: '단말에서 「내가 다시 해볼래」를 고르면 의존이 내려가요',
     bagLabel: '가진 카드',
     bagEmpty: '없음',
+    bagUnit: '장',                     // 이름이 패널을 넘치면 「3장」으로 줄인다
+    oops: '문제가 생겼어요. 안 되면 새로고침(F5)',
 
     gotCard: '카드를 주웠다. 노출도가 내려갔다.',
     gotCard2: '카드를 주웠다. 버블이 걷혔다.',
@@ -703,6 +707,11 @@
   D.FLOOR_UP = {
     lab: D.FLOOR2, hall3: D.FLOOR3, hall4: D.FLOOR4, hall5: D.FLOOR5, rooftop: D.FLOOR6
   };
+  // 옥상 → 교무실 (늘 열린 하산 경로)
+  D.FLOOR_DOWN = {
+    up: [['계단을 내려간다.']],
+    enter: [['교무실로 돌아왔다.', '옥상 계단은 늘 열려 있다.']]
+  };
 
   // 조사 플레이버 (Z로 바라본 칸) — 재조사(LOOK2)는 다른 대사로, 세계가 살아있게.
   D.LOOK = {
@@ -719,6 +728,7 @@
     stairs3: ['4층으로 가는 계단 문.', '문틈으로 물감 냄새가 샌다.'],
     stairs4: ['5층으로 가는 계단 문.', '위에서 발소리가 들린다.'],
     stairs5: ['옥상으로 가는 계단 문.', '문틈으로 밤바람이 샌다.'],
+    stairs6: ['아래층으로 가는 계단.', '교무실로 이어진다.'],
     console: ['방송 콘솔. 버튼이 두 줄이다.', '「바로」와 「확인 후」.'],
     note: ['접힌 소문 쪽지.'],
     noteRead: ['아까 읽은 쪽지다.'],

@@ -90,6 +90,11 @@ const SHOTS = path.join(ROOT, 'shots');
     await page.waitForTimeout(150);
     for (let i = 0; i < 6; i++) { await page.keyboard.press('z'); await page.waitForTimeout(80); }
     check('배틀 진입', await page.evaluate(() => window.GAME.state().mode === 'battle'));
+    // 남은 대사를 넘기고 메뉴 입력 유예(0.25초)를 기다린다
+    for (let i = 0; i < 12 && await page.evaluate(() => !!window.GAME.state().dialog); i++) {
+      await page.keyboard.press('z'); await page.waitForTimeout(80);
+    }
+    await page.waitForTimeout(300);
     await page.screenshot({ path: path.join(SHOTS, 'rt-battle.png') });
 
     // 일시정지 → 재개
@@ -436,6 +441,18 @@ const SHOTS = path.join(ROOT, 'shots');
       window.DATA.LOCKS.every((k) =>
         window.GAME.solidAt(window.DATA.MAPS[k.map], k.at.x, k.at.y) === true)));
     check('반짝임 표시가 켜져 있다', await page.evaluate(() => window.GAME.glintOn() === true));
+    // 회귀(v0.9.0): 5층 카드 셋을 다 들면 상단 '가진 카드' 글자가 패널 밖으로 넘쳤다(97px)
+    const bag = await page.evaluate(() => {
+      const S = window.GAME.state();
+      window.DATA.CARDS.forEach((c) => { if (c.floor === 5) { S.cards[c.id].held = true; S.cards[c.id].map = null; } });
+      const fit = window.GAME.bagFit ? window.GAME.bagFit() : null;
+      ['handNote', 'oldStamp', 'nameBook'].forEach((id) => {
+        const c = window.DATA.CARDS.find((x) => x.id === id);
+        S.cards[id] = { held: false, map: c.at.map, x: c.at.x, y: c.at.y };
+      });
+      return fit;
+    });
+    check('카드 셋을 들어도 상단 패널 안에 들어간다', !!bag && bag.width <= bag.max);
     const lit = await page.screenshot({ path: path.join(SHOTS, 'rt-f5-hall-glint.png') });
 
     // 감속 실측 — 같은 시간 동안 실제로 얼마나 갔나(상수가 아니라 화면에서 잰다)
@@ -577,8 +594,171 @@ const SHOTS = path.join(ROOT, 'shots');
     check('회전 안내 숨김', (await disp(page, '#rotate')) === 'none');
     check('터치 UI 표시', (await disp(page, '#touch')) !== 'none');
     check('버튼 라벨이 한글(확인)', (await page.$eval('#btnA', (el) => el.textContent)) === '확인');
+    // 회귀(v0.9.0): 터치 버튼은 레터박스 여백에 — 대사·배틀 메뉴 글자를 가리지 않는다
+    const lay = await page.evaluate(() => {
+      const c = document.getElementById('game').getBoundingClientRect();
+      const hit = (id) => {
+        const r = document.getElementById(id).getBoundingClientRect();
+        return r.right > c.left + 1 && r.left < c.right - 1 && r.bottom > c.top + 1 && r.top < c.bottom - 1;
+      };
+      const b = window.GAME.TBTN, sx = c.width / 720, sy = c.height / 528;
+      const tb = document.elementFromPoint(c.left + (b.x + b.w / 2) * sx, c.top + (b.y + b.h / 2) * sy);
+      const cs = getComputedStyle(document.getElementById('btnA'));
+      return {
+        stick: hit('stick'), a: hit('btnA'), b: hit('btnB'),
+        tbtn: tb && tb.id, size: cs.fontSize, weight: cs.fontWeight,
+      };
+    });
+    check('스틱이 캔버스를 가리지 않는다(좌측 여백)', !lay.stick);
+    check('확인 버튼이 캔버스를 가리지 않는다(우측 여백)', !lay.a);
+    check('취소 버튼이 캔버스를 가리지 않는다(우측 여백)', !lay.b);
+    check('타이틀 [선생님] 버튼이 가려지지 않는다', lay.tbtn === 'game');
+    check('터치 버튼 글꼴 선언이 유효(19px·굵게)', lay.size === '19px' && String(lay.weight) === '700');
     check('에러 0', errors.length === 0);
     await page.screenshot({ path: path.join(SHOTS, 'rt-landscape.png') });
+    await ctx.close();
+  }
+
+  // ── 태블릿 4:3 — 여백이 없으면 줄이고 반투명, 글자 줄을 피한다 ─────────────
+  {
+    console.log('[tablet] 1024x768 터치');
+    const { ctx, page, errors } = await newPage({
+      viewport: { width: 1024, height: 768 }, hasTouch: true, isMobile: true,
+    });
+    const lay = await page.evaluate(() => {
+      const c = document.getElementById('game').getBoundingClientRect(), sy = c.height / 528;
+      const textTop = c.top + 384 * sy;           // 대사·배틀 메뉴 상자 윗변
+      const info = (id) => {
+        const el = document.getElementById(id), r = el.getBoundingClientRect();
+        return { bottom: r.bottom, w: r.width, op: +getComputedStyle(el).opacity };
+      };
+      const b = window.GAME.TBTN, sx = c.width / 720;
+      const tb = document.elementFromPoint(c.left + (b.x + b.w / 2) * sx, c.top + (b.y + b.h / 2) * sy);
+      return { textTop, stick: info('stick'), a: info('btnA'), b: info('btnB'), tbtn: tb && tb.id };
+    });
+    check('여백이 없으면 버튼이 줄어든다', lay.a.w < 82 && lay.stick.w < 108);
+    check('여백이 없으면 반투명', lay.a.op < 1 && lay.b.op < 1 && lay.stick.op < 1);
+    check('버튼이 대사·메뉴 상자 위에 있다(글자를 덮지 않음)',
+      lay.a.bottom <= lay.textTop && lay.b.bottom <= lay.textTop && lay.stick.bottom <= lay.textTop);
+    check('태블릿에서도 [선생님] 버튼이 가려지지 않는다', lay.tbtn === 'game');
+    check('에러 0', errors.length === 0);
+    await page.screenshot({ path: path.join(SHOTS, 'rt-tablet.png') });
+    await ctx.close();
+  }
+
+  // ── 터치 실입력 (회귀 v0.9.0) ─────────────────────────────────────────────
+  // 키보드·상태 주입만으로는 못 잡는다 — 스틱이 메뉴 커서를 못 움직이던 결함.
+  // CDP 터치 이벤트로 실제 손가락 경로(포인터 이벤트 합성)를 그대로 탄다.
+  {
+    console.log('[touch] 844x390 CDP 터치 — 메뉴·배틀·엔딩·타이틀·교사');
+    const { ctx, page, errors } = await newPage({
+      viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true,
+    });
+    const cdp = await ctx.newCDPSession(page);
+    const center = (sel) => page.$eval(sel, (el) => {
+      const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    const touchTap = async (x, y) => {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      await page.waitForTimeout(50);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await page.waitForTimeout(90);
+    };
+    const pressA = async () => { const c = await center('#btnA'); await touchTap(c.x, c.y); };
+    // 스틱을 한 방향으로 밀었다 놓는다 (dx,dy는 CSS px)
+    const flick = async (dx, dy) => {
+      const c = await center('#stick');
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: c.x, y: c.y }] });
+      await page.waitForTimeout(30);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: c.x + dx / 2, y: c.y + dy / 2 }] });
+      await page.waitForTimeout(30);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: c.x + dx, y: c.y + dy }] });
+      await page.waitForTimeout(120);              // 밀고 있는 동안 여러 프레임 — 반복 입력이 생기면 안 된다
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await page.waitForTimeout(90);
+    };
+    const st = (fn) => page.evaluate(fn);
+    // 대사가 남아 있는 동안 A만 누른다 — 끝나면 메뉴 입력 유예를 기다린다
+    const clearDialogA = async (max = 14) => {
+      for (let i = 0; i < max && await st(() => !!window.GAME.state().dialog); i++) await pressA();
+      await page.waitForTimeout(350);
+    };
+
+    await pressA();
+    check('터치 A로 새 게임 시작', await st(() => window.GAME.state().mode === 'world'));
+    await clearDialogA();
+    check('터치 A로 인트로를 넘긴다', await st(() => !window.GAME.state().dialog));
+
+    // 1층 배틀 — 짝꿍 앞으로 옮긴 뒤 대사를 터치로 넘긴다
+    await st(() => { window.GAME.enterMap('hallway', 15, 5); });
+    await page.waitForTimeout(150);
+    await clearDialogA();
+    check('배틀 메뉴 도달', await st(() => {
+      const S = window.GAME.state(); return S.mode === 'battle' && S.battle.phase === 'menu';
+    }));
+    const cur = () => st(() => window.GAME.state().battle.cursor);
+    const c0 = await cur();
+    await flick(40, 0);
+    check('스틱 오른쪽 → 배틀 커서가 옆 칸으로', (await cur()) === (c0 ^ 1));
+    await flick(0, 40);
+    check('스틱 아래 → 배틀 커서가 아래 칸으로', (await cur()) === (c0 ^ 3));
+    await flick(-40, 0);
+    check('스틱 왼쪽 → 가만히 듣기 칸', (await cur()) === 2);
+    check('한 번 밀면 한 칸만 (누르고 있어도 반복 없음)', (await cur()) === 2);
+    await pressA();
+    check('터치로 가만히 듣기를 고른다', await st(() => window.GAME.state().battle.heard === true));
+
+    // 옥상 — 엔딩 선택과 확인창을 스틱·A로만 확정한다
+    await st(() => {
+      const S = window.GAME.state();
+      S.battle = null; S.mode = 'world'; S.dialog = null;
+      window.DATA.PROMISES.forEach((p) => { S.clearedOf[p.who] = true; });
+      window.GAME.enterMap('rooftop', 9, 6, 'up');
+    });
+    await page.waitForTimeout(150);
+    await clearDialogA();
+    await st(() => {                                  // 다섯 질문은 [rooftop]이 키보드로 본다
+      const f = window.GAME.state().fin; f.q = 5; f.phase = 'choose'; f.cursor = 0;
+    });
+    await flick(0, 40);
+    check('스틱으로 엔딩 선택 커서 이동', await st(() => window.GAME.state().fin.cursor === 1));
+    await pressA();
+    check('터치 A로 확인창', await st(() => window.GAME.state().fin.phase === 'confirm'));
+    await flick(-40, 0);
+    check('스틱으로 확인창 [네]', await st(() => window.GAME.state().fin.confirmCursor === 0));
+    await pressA();
+    await clearDialogA(20);
+    check('터치만으로 엔딩 확정', await st(() => {
+      const S = window.GAME.state(); return S.ending === 'B' && S.mode === 'clear';
+    }));
+
+    // 완결 화면 → 타이틀 → 처음부터(확인창) — 전부 스틱·A
+    const want = 1;                                   // [타이틀로]
+    if (await st(() => window.GAME.clearUi().cursor) !== want) await flick(0, 40);
+    check('스틱으로 완결 화면 메뉴 이동', await st(() => window.GAME.clearUi().cursor === 1));
+    await pressA();
+    check('터치로 타이틀 복귀(저장 유지)', await st(() =>
+      window.GAME.state().mode === 'title' && window.GAME.hasSave()));
+    await flick(0, 40);
+    await pressA();
+    check('스틱으로 타이틀 [처음부터] → 확인창', await st(() => window.GAME.titleUi().confirm === true));
+    await flick(-40, 0);
+    await pressA();
+    check('확인창 [네]로 새로 시작', await st(() => window.GAME.state().mode === 'world'));
+
+    // 교사 화면 — 캔버스 [선생님] 버튼 터치 → 스틱으로 탭 이동
+    await st(() => { window.GAME.setState(window.GAME.blankState()); });
+    await page.waitForTimeout(120);
+    const tb = await page.evaluate(() => {
+      const r = document.getElementById('game').getBoundingClientRect(), b = window.GAME.TBTN;
+      return { x: r.left + (b.x + b.w / 2) * (r.width / 720), y: r.top + (b.y + b.h / 2) * (r.height / 528) };
+    });
+    await touchTap(tb.x, tb.y);
+    check('터치로 [선생님] 버튼 진입', await st(() => window.GAME.state().mode === 'teacher'));
+    await flick(40, 0);
+    check('스틱으로 교사 화면 탭 이동', await st(() => window.GAME.teacherUi().tab === 1));
+    check('콘솔·페이지 에러 0', errors.length === 0);
+    errors.slice(0, 5).forEach((e) => console.log('     · ' + e));
     await ctx.close();
   }
 
@@ -608,12 +788,14 @@ const SHOTS = path.join(ROOT, 'shots');
     await page.waitForTimeout(150);
     check('나비스가 먼저 말을 건다', await page.evaluate(() => !!window.GAME.state().dialog));
     // 대사가 남아 있는 동안만 넘긴다 — 넘치면 다음 선택을 눌러 버린다
+    // 끝나면 메뉴 입력 유예(0.25초)를 기다린다 — 사람이 읽고 고르는 속도
     const clearDialog = async (max = 12) => {
       for (let i = 0; i < max; i++) {
-        if (!await page.evaluate(() => !!window.GAME.state().dialog)) return;
+        if (!await page.evaluate(() => !!window.GAME.state().dialog)) break;
         await page.keyboard.press('z');
         await page.waitForTimeout(70);
       }
+      await page.waitForTimeout(300);
     };
     await clearDialog();
     check('문답 모드 진입', await page.evaluate(() => window.GAME.state().mode === 'finale'));

@@ -8,10 +8,13 @@ const vm = require('vm');
 const ROOT = path.resolve(__dirname, '..');
 
 // ── DOM 스텁 ────────────────────────────────────────────────────────────────
+// 화면에 그린 글자를 모은다 — 그려졌는지(토스트 등)를 상태가 아니라 출력으로 확인한다.
+const drawn = [];
 function makeCtx() {
   return new Proxy({}, {
     get(t, p) {
-      if (p === 'measureText') return () => ({ width: 40 });
+      if (p === 'measureText') return (s) => ({ width: String(s).length * 15 });
+      if (p === 'fillText') return (s) => { drawn.push(String(s)); };
       if (p in t) return t[p];
       return () => {};
     },
@@ -81,10 +84,14 @@ function dispatch(ev, obj) {
 function tap(key) { dispatch('keydown', { key }); frame(1); dispatch('keyup', { key }); }
 function hold(key, n) { dispatch('keydown', { key }); frame(n); dispatch('keyup', { key }); frame(1); }
 function S() { return G.state(); }
+// 대사를 넘긴 뒤 메뉴 입력 유예(약 0.25초)가 지나기를 기다린다 — 사람이 읽고 고르는 속도.
+// 유예 자체를 검사할 때는 advance 대신 mash()로 연타한다.
 function advance(max = 20) {
   for (let i = 0; i < max && S().dialog; i++) tap('z');
+  frame(18);
   return !S().dialog;
 }
+function mash(max = 40) { for (let i = 0; i < max && S().dialog; i++) tap('z'); }
 function place(map, tx, ty) { G.enterMap(map, tx, ty); frame(1); }
 function tile() { return G.playerTile(); }
 // 문을 밟는 순간 멈춘다 — hold(n)로 프레임 수를 세면 워프 뒤에도 계속 걸어가 버린다.
@@ -637,7 +644,8 @@ check('첫 바로 방송 전에 1회 경고', !!S().dialog && S().dialog.seq ===
 check('경고는 플래그로 1회만', S().flags.airWarn === true);
 advance();
 check('경고 단계에서는 아직 방송하지 않음', S().rumors[R[0].id] === 'read' && S().pollute === 0);
-tap('z');                                   // 다시 바로 방송
+check('경고 뒤 커서는 안전한 쪽(확인 후 방송)', S().con.cursor === 1);
+tap('ArrowUp'); tap('z');                   // 직접 바로 방송으로 옮겨 다시 고른다
 check('소문 상태: read → aired', S().rumors[R[0].id] === 'aired');
 check('방송 순간 붉은 펄스', S().flash > 0);
 advance();
@@ -1154,7 +1162,8 @@ check('첫 맡기기 전에 1회 경고', !!S().dialog && S().dialog.seq === D.N
 check('경고는 플래그로 1회만', S().flags.trustWarn === true);
 advance();
 check('경고 단계에서는 아직 열리지 않음', G.lockOpen('cabinet') === false && S().depend === 0);
-tap('z');                                   // 다시 맡기기
+check('경고 뒤 커서는 안전한 쪽(스스로 하기)', S().con.cursor === 1);
+tap('ArrowUp'); tap('z');                   // 직접 맡기기로 옮겨 다시 고른다
 check('맡기면 즉시 열린다', G.lockOpen('cabinet') === true);
 check('맡기면 의존 +1', S().depend === 1);
 advance();
@@ -1371,6 +1380,20 @@ check('옥상 진입', S().map === 'rooftop' && S().floor === 6);
 check('옥상은 내려갈 계단이 열려 있다', !!D.MAPS.rooftop.stairs);
 check('이어하기가 5층·의존·장치를 기억',
   G.load() === true && S().map === 'rooftop' && LK.every((k) => G.lockOpen(k.id) === true));
+// 회귀(v0.9.0): 옥상 계단은 실제로 내려가는 길이어야 한다 — 빈 상자([null])로 막히면 안 된다.
+place('rooftop', 2, 9);
+hold('ArrowLeft', 20);
+check('옥상 계단에 닿으면 빈 상자가 아닌 대사가 뜬다',
+  !!S().dialog && S().dialog.seq.every((b) => Array.isArray(b) && b.length > 0));
+advance();
+check('옥상 계단으로 교무실에 내려간다', S().map === 'office' && S().floor === 5 && S().mode === 'world');
+place('rooftop', 2, 9);
+hold('ArrowLeft', 4); advance();
+place('rooftop', 2, 9); S().dir = ART.DIR.left; tap('z');
+check('옥상 계단을 조사(Z)해도 빈 상자가 아니다',
+  !!S().dialog && S().dialog.seq.every((b) => Array.isArray(b) && b.length > 0));
+advance();
+check('조사로도 교무실에 내려간다', S().map === 'office');
 
 // ── 50. 5층 세이브 방어 ────────────────────────────────────────────────────
 console.log('[50] 5층 세이브 방어');
@@ -1474,14 +1497,26 @@ check('엔딩 B(오늘은 끈다) 도달', S().ending === 'B');
 check('두 엔딩 모두 완결 화면으로', S().mode === 'clear');
 check('엔딩 B도 기록에 남는다', S().stats.ending === 'B');
 
-// 완결 화면 메뉴 — 타이틀로는 저장을 지우지 않는다
-tap('ArrowDown'); tap('z');
+// 완결 화면 메뉴 — 기본 커서가 [타이틀로], 저장을 지우지 않는다
+check('완결 화면 기본 커서는 타이틀로', G.clearUi().cursor === 1);
+tap('z');
 check('타이틀로 가도 저장 유지', S().mode === 'title' && G.hasSave() === true);
 tap('z');
-check('이어하기로 완결 상태 복원', S().mode === 'world' && S().ending === 'B');
+// 회귀(v0.9.0): 엔딩 뒤 이어하기는 옥상(문답이 다시 안 열리는 막다른 곳)이 아니라 엔딩 화면으로.
+check('이어하기로 완결 상태 복원', S().mode === 'clear' && S().ending === 'B');
+check('복원된 엔딩 화면에서 타이틀로 나갈 수 있다', (() => {
+  if (S().mode !== 'clear') return false;
+  for (let i = 0; i < 2 && S().mode === 'clear'; i++) {
+    if (G.clearUi().cursor !== 1) tap('ArrowDown');
+    tap('z');
+  }
+  return S().mode === 'title' && G.hasSave() === true;
+})());
+tap('z');
+S().mode = 'world'; S().ending = 'B';
 
 // 약속이 없으면 문답이 열리지 않는다(되돌린 사람 0명)
-S().ending = null;
+S().ending = null; S().finQ = 0;            // 엔딩 저장의 문답 진행도(5)를 비운 새 대면
 D.PROMISES.forEach((p) => { S().clearedOf[p.who] = false; });
 place('rooftop', 9, 6); frame(3); advance();
 check('약속이 없으면 안내 후 물러난다', S().mode === 'world' || !!S().dialog);
@@ -1609,6 +1644,140 @@ check('옥상 차시 시작', startLesson(6) && S().map === 'rooftop' && S().flo
 check('옥상 차시는 약속 5장이 모여 있다', G.promiseIds().length === 5);
 check('학생 화면 문법은 그대로 (월드 복귀)', S().mode === 'world' && !S().paused);
 
+// ── 54. 회귀 v0.9.0 — 적대적 검토에서 재현된 결함 ───────────────────────────
+// 전부 실제 입력 경로(키 이벤트·창 이벤트)로 재현한다. 상태 주입은 전제 조건 세팅에만.
+console.log('[54] 회귀 v0.9.0');
+function fresh() { G.clearSave(); G.setState(G.blankState()); S().mode = 'world'; S().flags.intro = true; }
+// 옥상 대면 → 첫 질문 고르기까지 연타로 간다(유예를 기다리지 않는다)
+function freshRoof() {
+  fresh();
+  D.PROMISES.forEach((p) => { S().clearedOf[p.who] = true; });
+  place('rooftop', 9, 6); frame(3);
+  mash();
+}
+
+// P2-3 엔딩 직후 Z 연타 — 저장·교사 기록이 지워지면 안 된다
+freshRoof();
+S().fin.q = 5; S().fin.phase = 'choose'; S().fin.cursor = 0; frame(20);
+tap('z'); tap('ArrowLeft'); tap('z');            // 엔딩 A 확정
+for (let i = 0; i < 40; i++) tap('z');           // 대사 넘기던 Z 연타가 완결 화면까지 이어진다
+const savedEnd = JSON.parse(windowObj.localStorage.getItem(D.SAVE_KEY) || '{}');
+check('엔딩 직후 Z 연타로 저장이 지워지지 않는다', savedEnd.ending === 'A' && savedEnd.stats.ending === 'A');
+check('엔딩 완결 화면 기본 커서는 타이틀로', (() => {
+  G.load(); frame(1); return S().mode === 'clear' && G.clearUi().cursor === 1;
+})());
+frame(20);
+tap('ArrowUp'); tap('z');
+check('처음부터 다시는 확인을 묻는다', G.clearUi().confirm === true && G.hasSave() === true);
+check('확인 기본값은 거절 쪽', G.clearUi().confirmCursor === 1);
+tap('z');
+check('거절하면 완결 화면·저장 그대로', S().mode === 'clear' && !G.clearUi().confirm && G.hasSave());
+tap('z'); tap('ArrowLeft'); tap('z');
+check('확인하면 처음부터 시작', S().mode === 'world' && !S().ending && !!S().dialog);
+mash();
+
+// P2-4/5 3층 경고 직후 — 넘기던 Z 한 번에 바로 방송되면 안 된다
+fresh();
+S().rumors[R[0].id] = 'read';
+place('studio', 6, 2);
+tap('ArrowUp'); tap('z'); frame(20); tap('z');   // 콘솔 → 첫 소문
+tap('z');                                        // 바로 방송 → 첫 경고
+check('3층 첫 바로 방송은 경고', !!S().dialog && S().dialog.seq === D.CONSOLE.warn);
+mash(); tap('z');                                // 경고 연타 + 관성 Z
+check('3층 경고 직후 관성 Z로 방송되지 않는다', S().rumors[R[0].id] === 'read' && S().pollute === 0);
+check('3층 경고 뒤 커서는 확인 후 방송', S().con && S().con.cursor === 1);
+closeCon();
+
+// P2-4/5 5층 경고 직후 — 넘기던 Z 한 번에 맡겨지면 안 된다
+fresh();
+openTerm('cabinet'); frame(20);
+tap('z');                                        // 맡기기 → 첫 경고
+check('5층 첫 맡기기는 경고', !!S().dialog && S().dialog.seq === D.NAVIS.warn);
+mash(); tap('z');
+check('5층 경고 직후 관성 Z로 맡겨지지 않는다', G.lockOpen('cabinet') === false && S().depend === 0);
+check('5층 경고 뒤 커서는 스스로 하기', S().con && S().con.cursor === 1);
+closeCon();
+
+// P2-5 옥상 — 질문 대사를 넘기던 Z가 오답으로 기록되면 안 된다
+freshRoof();
+frame(20); tap('z');                              // 1번 질문 정답(p1, 커서 0)
+check('1번 질문 통과', S().fin.q === 1);
+mash(); tap('z');                                 // ok 대사 + 2번 질문을 연타, 관성 Z
+check('질문 직후 관성 Z가 오답으로 기록되지 않는다',
+  (S().stats.missPromise || 0) === 0 && S().fin.wrongs === 0 && S().fin.phase === 'pick');
+
+// P2-5 배틀 — 말 걸기 대사 직후 관성 Z가 메뉴를 다시 고르면 안 된다
+fresh();
+place('hallway', 15, 5); frame(2);
+mash();
+check('배틀 메뉴 도달(연타)', S().mode === 'battle');
+const turn0 = S().battle.talks;
+check('대사 직후 관성 Z는 메뉴를 고르지 않는다', (() => { tap('z'); return S().battle.talks === turn0; })());
+
+// P2-6 키 고착 — 방향키를 누른 채 창을 벗어나면 keyup 이 사라진다
+fresh();
+place('classroom', 7, 8);
+dispatch('keydown', { key: 'ArrowRight', code: 'ArrowRight' }); frame(3);
+dispatch('blur', {});
+const ghostX = S().px; frame(12);
+check('창을 벗어나면 눌린 키가 풀린다(유령 걷기 없음)', S().px === ghostX);
+dispatch('keyup', { key: 'ArrowRight', code: 'ArrowRight' }); frame(1);
+
+// P3-9 옥상 문답 진행도 — 새로고침해도 넘긴 질문은 다시 묻지 않는다
+freshRoof();
+frame(20); tap('z'); advance(8);                 // 1번 정답
+tap('ArrowRight'); tap('z'); advance(8);         // 2번 정답(p2)
+check('두 질문을 넘김', S().fin.q === 2);
+G.load(); frame(3); advance(8);
+check('이어하기 뒤 문답이 넘긴 질문부터 이어진다', S().mode === 'finale' && S().fin.q === 2);
+
+// P3-10 광고 단말에 뺏긴 직후 새로고침 — 한 장 더 뺏기면 안 된다
+fresh();
+S().cards.passNote.held = true; S().cards.passNote.map = null;
+place('classroom', 12, 8); frame(2);              // 이름표 줍기 → 2장
+place('classroom', 2, 2); frame(2);               // 단말 위 → 1장 뺏김(저장됨)
+check('단말이 한 장 뺏음', G.heldIds().length === 1);
+G.load(); frame(4);
+check('뺏긴 직후 새로고침해도 한 장 더 뺏기지 않는다', G.heldIds().length === 1 && S().exposure === 1);
+
+// P3-11 손상·조작 세이브 — 계단 개방은 그 계단을 여는 인물과 대조한다
+windowObj.localStorage.setItem(D.SAVE_KEY, JSON.stringify({
+  v: 1, map: 'classroom', px: 340, py: 420, dir: 0,
+  stairsOpen: { hallway: true, lab: true }, clearedOf: { bro: true },
+}));
+check('조작 세이브도 로드는 된다', G.load() === true);
+check('되돌리지 않은 인물의 계단은 잠긴다', !S().stairsOpen.hallway);
+check('되돌린 인물의 계단은 열린다', S().stairsOpen.lab === true);
+// 약속이 없어 물러날 때 — 판정 반경 밖으로 내보내야 같은 대사가 반복되지 않는다
+fresh();
+place('rooftop', 9, 6); frame(3);
+advance(10);
+frame(10);
+check('약속 없이 물러난 뒤 나비스 대사가 반복되지 않는다', S().mode === 'world' && !S().dialog);
+
+// P3-13 타이틀·교사·클리어 화면에서도 M(음소거) 토스트가 그려진다
+for (const md of ['title', 'teacher', 'clear']) {
+  G.setState(G.blankState()); S().mode = md; frame(1);
+  drawn.length = 0;
+  dispatch('keydown', { key: 'm', code: 'KeyM' }); dispatch('keyup', { key: 'm', code: 'KeyM' });
+  frame(1);
+  const on = windowObj.SFX.isOn();
+  check(`${md} 화면에서 음소거 토스트가 그려진다`, drawn.indexOf(on ? D.T.soundOn : D.T.soundOff) >= 0);
+}
+if (!windowObj.SFX.isOn()) { dispatch('keydown', { key: 'm', code: 'KeyM' }); dispatch('keyup', { key: 'm', code: 'KeyM' }); }
+G.setState(G.blankState()); frame(1);
+
+// P3-12 루프 예외 — 한 프레임이 터져도 게임이 영구 정지하면 안 된다
+fresh();
+const keepS = S();
+G.setState(Object.assign(G.blankState(), { mode: 'world', map: 'nowhere' }));
+let loopThrew = false;
+try { frame(1); } catch (e) { loopThrew = true; }
+check('프레임 예외 뒤에도 다음 프레임이 예약된다', !loopThrew && rafCb !== null);
+check('오류 안내가 뜬다', (() => { try { return !!S().toast && S().toast.text === D.T.oops; } catch (e) { return false; } })());
+G.setState(keepS);
+check('정상 상태로 돌아오면 그대로 이어진다', (() => { try { frame(2); return S().mode === 'world'; } catch (e) { return false; } })());
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {
@@ -1616,6 +1785,6 @@ if (fails.length) {
   fails.forEach((f) => console.error('   - ' + f));
   process.exit(1);
 }
-// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P6 482건 + P7 신규 25건 이상)
-if (pass < 507) { console.error(`✘ 검사 수 부족: ${pass}건 (P7 기준 507건 이상)`); process.exit(1); }
+// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P7 532건 + v0.9.0 회귀 39건)
+if (pass < 571) { console.error(`✘ 검사 수 부족: ${pass}건 (v0.9.0 기준 571건 이상)`); process.exit(1); }
 console.log(`✔ 스모크 ${pass}건 모두 통과`);

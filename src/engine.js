@@ -3,7 +3,7 @@
 (function (g) {
   'use strict';
 
-  var VERSION = '0.8.0';   // package.json 과 validate 가 대조한다 — 배포 캐시 문의 판별용
+  var VERSION = '0.9.0';   // package.json 과 validate 가 대조한다 — 배포 캐시 문의 판별용
   var A = g.ART, D = g.DATA;
   var W = 720, H = 528, T = 48;
   var FACE = '"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR","Nanum Gothic",sans-serif';
@@ -13,6 +13,7 @@
   var TERM_COOL = 4.5;      // 단말이 다시 뺏기까지 쉬는 시간
   var NPC_R = 58;
   var WARN_R = 104;         // 추천 문 사전 경고 반경 (밟기 두 칸 전)
+  var MENU_GRACE = 0.25;    // 대사 → 메뉴 전환 직후 입력 유예(초)
 
   var cv = null, ctx = null, S = null, last = 0, raf = null;
   var keys = {}, edge = {}, touchVec = { x: 0, y: 0 };
@@ -48,8 +49,9 @@
       // 5층: 잠긴 장치 개방 여부 + 맡긴 장치(회복 대상) + 의존 게이지 + 열쇠
       // 열린 장치 칸은 유리문과 같은 opened 합성 지점에 얹힌다.
       locks: {}, trusted: {}, depend: 0, hasKey: false,
-      // 옥상: 나비스 문답(질문 인덱스·단계) + 고른 엔딩
-      fin: null, ending: null,
+      // 옥상: 나비스 문답(질문 인덱스·단계) + 넘긴 질문 수(저장·복원용) + 고른 엔딩
+      fin: null, finQ: 0, ending: null,
+      grace: 0,                                    // 대사 직후 메뉴 입력 유예(초) — 관성 입력 방지
       dialog: null, battle: null, toast: null, cool: {}, time: 0, flash: 0, paused: false,
       stats: { sec: 0, stolen: 0, retreats: 0, missSticker: 0 },  // 교사 관찰·아이 성취감용 계측
       looked: {}                                   // 재조사 대사 분기(세션 한정, 저장 안 함)
@@ -557,13 +559,20 @@
     return S.floor > 1 ? 'stairs' + S.floor : 'stairs';
   }
 
+  // 내려가는 계단(stairsTo.down)은 잠그는 인물이 없다 — 늘 열려 있다(가두지 않는다).
+  function stairsOpenAt(name) {
+    var m = mapOf(name);
+    return !!S.stairsOpen[name] || !!(m && m.stairsTo && m.stairsTo.down);
+  }
+
   function stairsBump() {
     if (S.dialog) return;
     var m = mapOf(S.map);
-    if (!S.stairsOpen[S.map]) { say([D.LOOK[stairsKey()]]); return; }
+    if (!stairsOpenAt(S.map)) { say([D.LOOK[stairsKey()] || D.LOOK.nothing]); return; }
     // 위층이 있으면 올라간다. 없으면 오늘 수업은 여기까지.
     if (m.stairsTo) {
-      var up = m.stairsTo, txt2 = (D.FLOOR_UP && D.FLOOR_UP[up.map]) || D.FLOOR2;
+      var up = m.stairsTo;
+      var txt2 = up.down ? D.FLOOR_DOWN : ((D.FLOOR_UP && D.FLOOR_UP[up.map]) || D.FLOOR2);
       sfx('clear');
       say(txt2.up, function () {
         enterMap(up.map, up.sx, up.sy, up.dir);
@@ -728,7 +737,8 @@
       // 처음 한 번은 벌 대신 경고 — 1층 단말·2층 추천 문과 같은 문법.
       if (!S.flags.airWarn) {
         S.flags.airWarn = true; sfx('warn'); save();
-        say(D.CONSOLE.warn, function () { if (S.con) S.con.cursor = 0; });
+        // 경고 뒤 커서는 안전한 쪽(확인 후 방송)에 둔다 — 벌받는 선택지로 되돌리지 않는다.
+        say(D.CONSOLE.warn, function () { if (S.con) S.con.cursor = Math.max(0, conList().indexOf('check')); });
         return;
       }
       S.rumors[id] = 'aired'; save();
@@ -858,7 +868,8 @@
       // 처음 한 번은 벌 대신 경고 — 1층 단말·2층 추천 문·3층 콘솔과 같은 문법.
       if (!S.flags.trustWarn) {
         S.flags.trustWarn = true; sfx('warn'); save();
-        say(D.NAVIS.warn, function () { if (S.con) S.con.cursor = 0; });
+        // 경고 뒤 커서는 안전한 쪽(스스로 하기)에 둔다.
+        say(D.NAVIS.warn, function () { if (S.con) S.con.cursor = Math.max(0, conList().indexOf('self')); });
         return;
       }
       openLock(k);
@@ -1185,8 +1196,10 @@
   //              | 'choose'(엔딩 선택) | 'confirm'(확인)
   function finaleBegin() {
     S.mode = 'finale'; S.toast = null;
+    // 넘긴 질문부터 잇는다(새로고침해도 다시 묻지 않는다). 흔들림은 셋째 뒤 한 번뿐.
+    var q0 = Math.max(0, Math.min(D.FINALE.questions.length, S.finQ | 0));
     S.fin = {
-      q: 0, phase: 'text', cursor: 0, confirmCursor: 1, shaken: false, wrongs: 0,
+      q: q0, phase: 'text', cursor: 0, confirmCursor: 1, shaken: q0 >= 3, wrongs: 0,
       bullets: [], timer: 0, spawnAcc: 0,
       hx: BOX.x + BOX.w / 2, hy: BOX.y + BOX.h / 2, hit: 0
     };
@@ -1218,7 +1231,7 @@
       return;
     }
     sfx('off');
-    f.q++;
+    f.q++; S.finQ = f.q;
     save();
     // 셋째 질문을 넘긴 순간 딱 한 번, 나비스가 흔들린다(감정 표현)
     if (f.q === 3 && !f.shaken) {
@@ -1273,16 +1286,17 @@
     sfx('clear');
     finaleSay((idx === 0 ? D.FINALE.endA : D.FINALE.endB).concat(D.FINALE.gate), function () {
       S.mode = 'clear'; S.flags.done = true; S.fin = null;
-      clearUi.cursor = 0;
+      clearUi.cursor = 1; clearUi.confirm = false;   // 기본은 [타이틀로] — 연타로 기록이 지워지지 않게
       save();
     });
   }
 
   // 약속이 하나도 없어 문답을 못 여는 경우에만 쓰인다(되돌린 사람 0명).
+  // 대면 판정 반경(2칸) 밖으로 내보낸다 — 안쪽이면 같은 대사가 끝없이 반복된다.
   function leaveFinale() {
     S.mode = 'world'; S.fin = null;
     var m = mapOf(S.map);
-    if (m.finale) { S.px = m.finale.x * T + T / 2; S.py = (m.finale.y + 2) * T + T - 6; }
+    if (m.finale) { S.px = m.finale.x * T + T / 2; S.py = (m.finale.y + 3) * T + T - 6; }
     S.dir = A.DIR.down; updateCam(); save();
   }
 
@@ -1419,7 +1433,7 @@
         pollute: S.pollute, rumors: S.rumors, fog: S.fog,
         honest: S.honest, frames: S.frames, stickers: S.stickers,
         depend: S.depend, locks: S.locks, trusted: S.trusted, hasKey: S.hasKey,
-        ending: S.ending, finQ: (S.fin && S.fin.q) || 0,
+        ending: S.ending, finQ: S.finQ | 0,
         flags: S.flags, heardOf: S.heardOf, clearedOf: S.clearedOf,
         stairsOpen: S.stairsOpen, visited: S.visited, cards: {},
         stats: {
@@ -1487,7 +1501,13 @@
       for (var k in S.flags) if (o.flags && typeof o.flags[k] === 'boolean') S.flags[k] = o.flags[k];
       S.heardOf = trueKeys(o.heardOf, D.BATTLES);
       S.clearedOf = trueKeys(o.clearedOf, D.BATTLES);
-      S.stairsOpen = trueKeys(o.stairsOpen, D.MAPS);
+      // 계단 개방은 저장값을 믿지 않고 그 계단을 여는 인물(npc.opens)에서 다시 구한다
+      // — 되돌리지 않은 인물의 계단이 열려 있는 조작 세이브를 막는다.
+      S.stairsOpen = {};
+      for (var mn in D.MAPS) {
+        var nm = D.MAPS[mn].npc;
+        if (nm && nm.opens && S.clearedOf[nm.battle]) S.stairsOpen[nm.opens] = true;
+      }
       S.visited = trueKeys(o.visited, D.MAPS);
       S.visited[S.map] = true;
       D.CARDS.forEach(function (c) {
@@ -1511,6 +1531,11 @@
       }
       // 엔딩은 A/B만 인정 — 그 밖의 값은 아직 안 끝난 것으로 본다
       S.ending = o.ending === 'A' || o.ending === 'B' ? o.ending : null;
+      S.finQ = Math.max(0, Math.min(D.FINALE.questions.length, o.finQ | 0));
+      // 끝난 이야기는 엔딩 화면으로 연다 — 옥상(문답이 다시 안 열림)에 가두지 않는다.
+      if (S.ending) { S.mode = 'clear'; S.flags.done = true; clearUi.cursor = 1; clearUi.confirm = false; }
+      // 단말 위에서 새로고침하면 곧바로 한 장 더 뺏긴다 — 로드 직후엔 단말이 쉰다.
+      (m.terminals || []).forEach(function (tm, i) { S.cool[S.map + ':' + i] = TERM_COOL; });
       // 들고 있지도, 바닥에도 없는 카드가 생기면(반쪽 저장) 원위치로 복구한다.
       D.CARDS.forEach(function (c) {
         var st = S.cards[c.id];
@@ -1564,7 +1589,7 @@
 
   function mapLayer(m) {
     if (mapCache.cv && mapCache.map === S.map && mapCache.loopN === S.loopN
-      && mapCache.stairsOpen === !!S.stairsOpen[S.map]) {
+      && mapCache.stairsOpen === stairsOpenAt(S.map)) {
       return mapCache.cv;
     }
     var doc = g.document;
@@ -1575,7 +1600,7 @@
     if (!oc) return null;
     if ('imageSmoothingEnabled' in oc) oc.imageSmoothingEnabled = false;
     paintMap(oc, m, 0, 0, m.w - 1, m.h - 1);
-    mapCache.map = S.map; mapCache.stairsOpen = !!S.stairsOpen[S.map];
+    mapCache.map = S.map; mapCache.stairsOpen = stairsOpenAt(S.map);
     mapCache.loopN = S.loopN; mapCache.cv = off;
     return off;
   }
@@ -1604,7 +1629,7 @@
           else { c.fillStyle = m.fill; c.fillRect(dx, dy, T, T); }
         }
         if (L && L.prop) {
-          if (L.prop === 'stairs') A.drawProp(c, S.stairsOpen[S.map] ? 'stairsOpen' : 'stairsLocked', dx, dy, T);
+          if (L.prop === 'stairs') A.drawProp(c, stairsOpenAt(S.map) ? 'stairsOpen' : 'stairsLocked', dx, dy, T);
           else A.drawProp(c, L.prop, dx, dy, T);
         }
       }
@@ -1735,12 +1760,20 @@
     // 칠판(윗벽 가운데)을 가리지 않도록 좌우 끝으로 붙인다.
     panel(8, 8, 222, 30, 0.62);
     drawGauge(16, 12);
-    var ids = heldIds();
     panel(490, 8, 222, 30, 0.62);
-    var labels = ids.length ? ids.map(function (id) { return cardDef(id).label; }).join(' · ') : D.T.bagEmpty;
     txt(D.T.bagLabel, 498, 30, 15, A.PAL.cream);
-    txt(labels, 706, 30, 15, A.PAL.ribbon, 'right');
+    txt(bagFit().text, 706, 30, 15, A.PAL.ribbon, 'right');
     drawHelp();
+  }
+
+  // 상단 가진 카드 글자 — 패널 폭을 넘으면 장수로 줄인다(5층 카드 셋이면 97px 넘쳤다).
+  function bagFit() {
+    var ids = heldIds();
+    ctx.font = '700 15px ' + FACE;
+    var max = 706 - 498 - ctx.measureText(D.T.bagLabel).width - 12;
+    var text = ids.length ? ids.map(function (id) { return cardDef(id).label; }).join(' · ') : D.T.bagEmpty;
+    if (ids.length && ctx.measureText(text).width > max) text = ids.length + D.T.bagUnit;
+    return { text: text, width: ctx.measureText(text).width, max: max };
   }
 
   // 회복 경로는 항상 화면에 보인다 (기준서 §3-3)
@@ -2029,16 +2062,7 @@
     panel(TBTN.x, TBTN.y, TBTN.w, TBTN.h, 0.30);
     txt(D.TEACHER.entry, TBTN.x + TBTN.w / 2, TBTN.y + 21, 15, A.PAL.tan, 'center', 500);
     ctx.globalAlpha = 1;
-    if (title.confirm) {
-      panel(W / 2 - 220, 180, 440, 150, 0.95);
-      txt(D.T.confirmWipe[0], W / 2, 222, 20, A.PAL.white, 'center');
-      txt(D.T.confirmWipe[1], W / 2, 252, 20, A.PAL.white, 'center');
-      [D.T.yes, D.T.no].forEach(function (label, i) {
-        var sel = title.confirmCursor === i;
-        txt((sel ? '▶ ' : '   ') + label, W / 2 - 110 + i * 220, 300, 21,
-          sel ? A.PAL.ribbon : A.PAL.white, 'center');
-      });
-    }
+    if (title.confirm) drawWipeConfirm(title.confirmCursor);
   }
 
   // 터치 기기 감지 — 조작 안내 문구를 고르는 용도로만 쓴다.
@@ -2049,17 +2073,28 @@
     } catch (e) { return false; }
   }
 
-  var clearUi = { cursor: 0 };
+  var clearUi = { cursor: 0, confirm: false, confirmCursor: 1 };
 
-  // 클리어 화면에서 저장을 지우지 않는다 — 삭제는 타이틀의 확인 경로 하나로 일원화.
-  // (대화 넘기던 Z 연타 관성으로 기록이 증발하는 사고 방지)
+  // 클리어 화면에서 저장을 함부로 지우지 않는다 — 대화 넘기던 Z 연타 관성으로
+  // 기록(교사 화면이 읽는 1건)이 증발하는 사고 방지. 엔딩 화면의 [처음부터 다시]만
+  // 지우고, 그때도 타이틀과 같은 확인창(기본값은 거절 쪽)을 한 번 거친다.
   function updateClear() {
+    if (clearUi.confirm) {
+      if (tapped('left') || tapped('right') || tapped('up') || tapped('down')) {
+        clearUi.confirmCursor = 1 - clearUi.confirmCursor; sfx('cursor');
+      }
+      if (tapped('no')) { clearUi.confirm = false; sfx('cancel'); return; }
+      if (!tapped('ok')) return;
+      clearUi.confirm = false; sfx('ok');
+      if (clearUi.confirmCursor === 0) { clearSave(); S = blankState(); title.cursor = 0; newGame(); }
+      return;
+    }
     if (tapped('up') || tapped('down')) { clearUi.cursor = 1 - clearUi.cursor; sfx('cursor'); }
     if (!tapped('ok')) return;
     sfx('ok');
-    // 엔딩 화면 — [처음부터 다시 / 타이틀로]. 저장은 어느 쪽이든 지우지 않는다.
+    // 엔딩 화면 — [처음부터 다시 / 타이틀로]. 타이틀로는 저장을 그대로 둔다.
     if (S.ending) {
-      if (clearUi.cursor === 0) { clearSave(); S = blankState(); title.cursor = 0; newGame(); }
+      if (clearUi.cursor === 0) { clearUi.confirm = true; clearUi.confirmCursor = 1; }
       else { S = blankState(); title.cursor = 0; }
       return;
     }
@@ -2103,6 +2138,19 @@
       txt((sel ? '▶ ' : '   ') + label, W / 2, 342 + i * 42, 23, sel ? A.PAL.ribbon : A.PAL.white, 'center');
     });
     txt(end ? D.CLEAR.endNote : D.CLEAR.keepNote, W / 2, 452, 16, A.PAL.blue, 'center', 500);
+    if (clearUi.confirm) drawWipeConfirm(clearUi.confirmCursor);
+  }
+
+  // 기록 지우기 확인창 — 타이틀·완결 화면이 같은 상자·같은 문구를 쓴다.
+  function drawWipeConfirm(cur) {
+    panel(W / 2 - 220, 180, 440, 150, 0.95);
+    txt(D.T.confirmWipe[0], W / 2, 222, 20, A.PAL.white, 'center');
+    txt(D.T.confirmWipe[1], W / 2, 252, 20, A.PAL.white, 'center');
+    [D.T.yes, D.T.no].forEach(function (label, i) {
+      var sel = cur === i;
+      txt((sel ? '▶ ' : '   ') + label, W / 2 - 110 + i * 220, 300, 21,
+        sel ? A.PAL.ribbon : A.PAL.white, 'center');
+    });
   }
 
   // ── 교사 화면 (P7) ──────────────────────────────────────────────────────
@@ -2355,6 +2403,15 @@
     if (S.paused) { if (tapped('ok')) S.paused = false; return; }
     if (S.flash > 0) S.flash -= dt;
     if (S.toast) { S.toast.t -= dt; if (S.toast.t <= 0) S.toast = null; }
+    // 대사가 끝나고 메뉴가 열린 직후엔 잠깐 입력을 먹는다 — 대사를 넘기던 Z 관성이
+    // 바로 선택(방송·맡기기·오답·처음부터)으로 먹히지 않게. 걷기(월드)는 막지 않는다.
+    if (S.grace > 0) {
+      S.grace -= dt;
+      if (!S.dialog && S.mode !== 'world') {
+        delete edge.ok; delete edge.no;
+        delete edge.up; delete edge.down; delete edge.left; delete edge.right;
+      }
+    }
     // 슬롯 UI는 P3. 단일 슬롯이되, 공유 태블릿을 위해 이어하기/처음부터를 고른다.
     if (S.mode === 'title') { updateTitle(); return; }
     if (S.mode === 'teacher') { updateTeacher(dt); return; }
@@ -2363,7 +2420,7 @@
       if (tapped('ok')) {
         S.dialog.i++;
         if (S.dialog.i >= S.dialog.seq.length) {
-          var then = S.dialog.then; S.dialog = null; if (then) then();
+          var then = S.dialog.then; S.dialog = null; S.grace = MENU_GRACE; if (then) then();
         }
       }
       return;
@@ -2376,9 +2433,14 @@
 
   function render() {
     if (S.mode === 'load') { drawLoading(); return; }
-    if (S.mode === 'title') { drawTitle(); return; }
-    if (S.mode === 'teacher') { drawTeacher(); return; }
-    if (S.mode === 'clear') { drawClear(); return; }
+    // 전체 화면(타이틀·교사·완결)에서도 토스트는 그린다 — M 음소거 안내가 보이게.
+    if (S.mode === 'title' || S.mode === 'teacher' || S.mode === 'clear') {
+      if (S.mode === 'title') drawTitle();
+      else if (S.mode === 'teacher') drawTeacher();
+      else drawClear();
+      if (S.toast) drawToast();
+      return;
+    }
     if (S.mode === 'battle') drawBattle();
     else if (S.mode === 'finale') drawFinale();
     else drawWorld();
@@ -2400,17 +2462,61 @@
     if (S && (S.mode === 'battle' || S.mode === 'world') && !S.dialog) S.paused = true;
   }
 
+  // 한 프레임이 예외로 터져도 다음 프레임은 반드시 예약한다 — 예약 전에 끝나면
+  // 게임이 영구 정지한다. 첫 오류는 기록하고 안내하며, 계속 터지면 복구 안내를 띄운다.
+  var errRun = 0;
   function loop(ts) {
-    var t = typeof ts === 'number' ? ts : 0;
-    var dt = last ? Math.min(0.05, (t - last) / 1000) : 1 / 60;
-    last = t;
-    update(dt);
-    render();
-    clearEdges();
-    raf = g.requestAnimationFrame(loop);
+    try {
+      var t = typeof ts === 'number' ? ts : 0;
+      var dt = last ? Math.min(0.05, (t - last) / 1000) : 1 / 60;
+      last = t;
+      update(dt);
+      render();
+      errRun = 0;
+    } catch (e) {
+      loopError(e);
+    } finally {
+      clearEdges();
+      raf = g.requestAnimationFrame(loop);
+    }
+  }
+  function loopError(e) {
+    errRun++;
+    if (errRun === 1) {
+      try {
+        var K = 'shadow-school-errlog';
+        var log = JSON.parse(g.localStorage.getItem(K) || '[]');
+        log.push({ v: VERSION, at: new Date().toISOString(), msg: String((e && e.message) || e).slice(0, 200) });
+        g.localStorage.setItem(K, JSON.stringify(log.slice(-5)));
+      } catch (err) { /* 기록 실패는 무해 */ }
+    }
+    try { if (S && (!S.toast || S.toast.text !== D.T.oops)) toast(D.T.oops); } catch (err) { /* 상태가 깨졌으면 아래 안내로 */ }
+    if (errRun >= 30) {
+      var doc = g.document, fb = doc && doc.getElementById ? doc.getElementById('fallback') : null;
+      if (fb && fb.style) fb.style.display = 'flex';
+    }
+  }
+
+  // 창·탭을 벗어나면 keyup 이 오지 않는다 — 눌린 키·엣지·스틱을 모두 놓아 유령 걷기를 막는다.
+  function releaseInput() {
+    for (var k in keys) keys[k] = false;
+    edge = {};
+    touchVec.x = 0; touchVec.y = 0; stickArmed = true;
   }
 
   // ── 터치 (index.html의 DOM 스틱/버튼) ───────────────────────────────────
+  // 스틱 → 방향 엣지. 메뉴·콘솔·확인창은 edge 만 읽으므로 touchVec 만으로는 커서가
+  // 안 움직인다. 임계값을 넘는 순간 1회만 내고, 중앙으로 돌아와야 다시 낸다
+  // (키보드처럼 한 번 밀면 한 칸 — 누르고 있어도 반복하지 않는다).
+  var STICK_ON = 0.5, STICK_REARM = 0.3, stickArmed = true;
+  function stickEdge(x, y) {
+    var ax = Math.abs(x), ay = Math.abs(y), m = Math.max(ax, ay);
+    if (m < STICK_REARM) { stickArmed = true; return; }
+    if (!stickArmed || m < STICK_ON) return;
+    stickArmed = false;
+    edge[ax >= ay ? (x > 0 ? 'right' : 'left') : (y > 0 ? 'down' : 'up')] = true;
+  }
+
   function bindTouch() {
     var doc = g.document; if (!doc || !doc.getElementById) return;
     var stick = doc.getElementById('stick'), knob = doc.getElementById('knob');
@@ -2429,11 +2535,12 @@
         var dx = e.clientX - cx, dy = e.clientY - cy;
         var len = Math.sqrt(dx * dx + dy * dy) || 1, k = Math.min(1, len / R);
         touchVec.x = (dx / len) * k; touchVec.y = (dy / len) * k;
+        stickEdge(touchVec.x, touchVec.y);
         if (knob) knob.style.transform = 'translate(' + (touchVec.x * R) + 'px,' + (touchVec.y * R) + 'px)';
         if (e.preventDefault) e.preventDefault();
       };
       var end = function () {
-        id = null; touchVec.x = 0; touchVec.y = 0;
+        id = null; touchVec.x = 0; touchVec.y = 0; stickArmed = true;
         if (knob) knob.style.transform = 'translate(0,0)';
       };
       if (g.PointerEvent) {
@@ -2480,6 +2587,40 @@
     hook(btnA, 'ok'); hook(btnB, 'no');
   }
 
+  // 터치 버튼 배치 — 캔버스 밖 레터박스 여백에 둔다(대사·배틀 메뉴 글자를 가리지 않게).
+  // 여백이 버튼보다 좁으면(4:3 태블릿 등) 줄이고 반투명하게, 대사 상자보다 위로 올린다.
+  var TPAD = 12;
+  function putTouch(el, pos, size, alpha, font) {
+    var s = el.style;
+    s.left = ''; s.right = ''; s.top = ''; s.bottom = '';
+    if (pos.left !== undefined) s.left = 'max(' + Math.round(pos.left) + 'px, env(safe-area-inset-left, 0px))';
+    if (pos.right !== undefined) s.right = 'max(' + Math.round(pos.right) + 'px, env(safe-area-inset-right, 0px))';
+    if (pos.top !== undefined) s.top = Math.round(pos.top) + 'px';
+    if (pos.bottom !== undefined) s.bottom = 'calc(' + Math.round(pos.bottom) + 'px + env(safe-area-inset-bottom, 0px))';
+    s.width = size + 'px'; s.height = size + 'px';
+    s.opacity = String(alpha);
+    if (font) s.fontSize = font + 'px';
+  }
+  function layoutTouch() {
+    var doc = g.document;
+    if (!doc || !doc.getElementById || !cv || !cv.getBoundingClientRect) return;
+    var st = doc.getElementById('stick'), a = doc.getElementById('btnA'), b = doc.getElementById('btnB');
+    if (!st || !a || !b || !st.style) return;
+    var r = cv.getBoundingClientRect(), vw = g.innerWidth || 0;
+    if (!r.width || !r.height || !vw) return;
+    var left = r.left, right = vw - r.right;
+    var textTop = r.top + 384 * (r.height / H);     // 대사·배틀 메뉴 상자 윗변(화면 좌표)
+    if (left >= 108 + TPAD * 2) putTouch(st, { left: (left - 108) / 2, bottom: TPAD }, 108, 1);
+    else putTouch(st, { left: TPAD, top: textTop - 80 - TPAD }, 80, 0.5);
+    if (right >= 82 + TPAD * 2) {
+      putTouch(a, { right: (right - 82) / 2, bottom: TPAD * 2 + 64 }, 82, 1, 19);
+      putTouch(b, { right: (right - 64) / 2, bottom: TPAD }, 64, 1, 15);
+    } else {
+      putTouch(b, { right: TPAD, top: textTop - 46 - TPAD }, 46, 0.5, 12);
+      putTouch(a, { right: TPAD, top: textTop - 46 - 58 - TPAD * 2 }, 58, 0.5, 15);
+    }
+  }
+
   // ── 시작 ────────────────────────────────────────────────────────────────
   function start() {
     var doc = g.document;
@@ -2495,11 +2636,15 @@
     S = blankState(); S.mode = 'load';
     g.addEventListener('keydown', onKeyDown);
     g.addEventListener('keyup', onKeyUp);
+    g.addEventListener('blur', releaseInput);
     if (doc.addEventListener) {
-      doc.addEventListener('visibilitychange', function () { if (doc.hidden) pause(); });
+      doc.addEventListener('visibilitychange', function () { if (doc.hidden) { releaseInput(); pause(); } });
     }
     bindTouch();
     bindCanvasTap();
+    layoutTouch();
+    g.addEventListener('resize', layoutTouch);
+    g.addEventListener('orientationchange', layoutTouch);
     A.load(A.SHEETS, function () { S.mode = 'title'; });
     last = 0;
     raf = g.requestAnimationFrame(loop);
@@ -2528,6 +2673,9 @@
     teacherUi: function () { return teacher; },
     teacherReport: readReport, teacherHint: reportHint,
     teacherTap: canvasTap, TBTN: TBTN,
+    clearUi: function () { return clearUi; },
+    bagFit: function () { return ctx && S ? bagFit() : null; },
+    titleUi: function () { return title; },
     pause: pause,
     press: function (k) { if (!keys[k]) edge[k] = true; keys[k] = true; },
     release: function (k) { keys[k] = false; }

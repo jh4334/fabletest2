@@ -873,6 +873,20 @@ if (has('sw.js')) {
   for (const f of ['src/art.js', 'src/sound.js', 'src/data.js', 'src/engine.js']) {
     if (!assets.includes(f)) err(`sw.js ASSETS에 런타임 파일 누락: ${f}`);
   }
+  // 회귀(v0.9.0): 설치 캐시는 HTTP 캐시를 우회해야 배포 직후 구버전이 새 캐시에 고착되지 않는다.
+  if (!/cache:\s*'reload'/.test(sw)) err("sw.js install이 HTTP 캐시를 거친다 — new Request(u, { cache: 'reload' })");
+  // 같은 출처의 다른 앱 캐시를 지우지 않는다 — 우리 접두어만 정리.
+  if (!/startsWith\('shadow-school-'\)/.test(sw)) err('sw.js activate가 다른 앱 캐시까지 지운다 — shadow-school- 접두어만 삭제');
+  // 쓰지 않는 자산을 캐시·저장소에 두지 않는다 — 팩 파일은 art.js가 실제로 쓰는 것만.
+  const artSrc = read('src/art.js');
+  for (const a of assets.filter((x) => x.startsWith('assets/pack/'))) {
+    if (!artSrc.includes(a)) err(`sw.js ASSETS에 쓰지 않는 자산: ${a}`);
+  }
+  const walk = (d) => fs.readdirSync(path.join(ROOT, d), { withFileTypes: true })
+    .flatMap((e) => (e.isDirectory() ? walk(d + '/' + e.name) : [d + '/' + e.name]));
+  for (const f of walk('assets/pack')) {
+    if (!assets.includes(f)) err(`assets/pack에 캐시 목록 밖 파일(미사용?): ${f}`);
+  }
   const h = crypto.createHash('sha1');
   h.update(read('index.html'));
   for (const a of assets.filter((x) => has(x)).sort()) h.update(fs.readFileSync(path.join(ROOT, a)));
