@@ -492,7 +492,7 @@ check('낯선 문은 처음 보는 방으로', S().map === 'roomA');
 check('낯선 문 통과로 버블 -1', S().bubble === bubMax - 1);
 place('roomA', 7, 3); frame(2);
 check('roomA 카드 획득', G.heldIds().indexOf('watchLog') >= 0);
-check('2층 카드 획득도 버블을 걷는다', S().bubble === bubMax - 2);
+check('2층 카드는 좁아짐 게이지를 건드리지 않는다(모으기로 풀리지 않음)', S().bubble === bubMax - 1);
 check('1층 카드는 2층 가방에 안 보인다', G.heldIds().indexOf('nameTag') < 0);
 place('roomA', 1, 5);
 check('방에서 복도로 복귀', walkUntil('ArrowLeft', () => S().map === 'loop'));

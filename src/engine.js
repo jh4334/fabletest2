@@ -350,9 +350,9 @@
   function pickCard(id) {
     var st = S.cards[id], c = cardDef(id);
     st.held = true; st.map = null;
-    // 3층 오염·4층 정직은 카드를 줍는다고 움직이지 않는다 — 방송/스티커로만 바뀐다.
-    if (c.floor === 2) setBubble(S.bubble - 1);
-    else if (c.floor === 1) setExposure(S.exposure - 1);
+    // 2층 좁아짐·3층 오염·4층 정직은 카드를 줍는다고 움직이지 않는다 — 문 선택/방송/스티커로만
+    // 바뀐다(모으기로 풀린다는 인상 금지). 1층만 되찾기가 곧 회복이다.
+    if (c.floor === 1) setExposure(S.exposure - 1);
     sfx('pick');
     if (c.floor === 1 && !S.flags.firstCard) { S.flags.firstCard = true; toast(D.T.firstCard); }
     else if (c.floor === 3) toast(D.T.gotCard3);
@@ -599,7 +599,7 @@
     if (npcHere(m) && m.npc.x === f.x && m.npc.y === f.y && S.clearedOf[m.npc.battle]) {
       say(D.BATTLES[m.npc.battle].hint); return;
     }
-    // 안개를 바라보면 걷는 법(정정 방송)을 그 자리에서 알려 준다 (헌법 §3-3)
+    // 안개를 바라보면 걷는 법(바로잡는 방송)을 그 자리에서 알려 준다 (헌법 §3-3)
     if (fogAt(m, f.x, f.y)) { say([D.LOOK.fog]); return; }
     var note = noteAt(m, f.x, f.y);
     if (note) { readNote(note.id); return; }
@@ -1813,7 +1813,7 @@
     ctx.globalAlpha = 1;
   }
 
-  // 소문 안개 — 맵 그리드는 그대로 두고 오버레이로 얹는다(정정 방송이면 바로 걷힌다).
+  // 소문 안개 — 맵 그리드는 그대로 두고 오버레이로 얹는다(바로잡는 방송이면 바로 걷힌다).
   function drawFog(m) {
     var list = fogOf(m); if (!list.length) return;
     var a = 0.88 + Math.sin(S.time * 2) * 0.10;
