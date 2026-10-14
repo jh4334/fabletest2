@@ -43,8 +43,24 @@ const windowObj = {
 };
 windowObj.window = windowObj;
 windowObj.Image = ImageStub;
+// 터치 UI 스텁 — PointerEvent 가 없는 구형 태블릿(TouchEvent 폴백) 경로를 실제 이벤트로 재현한다.
+function makeEl(rect) {
+  const ls = {};
+  return {
+    style: {}, ls,
+    addEventListener(ev, fn) { (ls[ev] = ls[ev] || []).push(fn); },
+    getBoundingClientRect: () => Object.assign({ right: rect.left + rect.width, bottom: rect.top + rect.height }, rect),
+    fire(ev, obj) { (ls[ev] || []).forEach((fn) => fn(Object.assign({ preventDefault() {} }, obj))); },
+  };
+}
+const touchEls = {
+  stick: makeEl({ left: 20, top: 300, width: 108, height: 108 }),   // 중심 (74, 354)
+  knob: makeEl({ left: 52, top: 332, width: 44, height: 44 }),
+  btnA: makeEl({ left: 700, top: 250, width: 82, height: 82 }),     // 중심 (741, 291)
+  btnB: makeEl({ left: 720, top: 350, width: 64, height: 64 }),
+};
 windowObj.document = {
-  getElementById: (id) => (id === 'game' ? makeCanvas(720, 528) : null),
+  getElementById: (id) => (id === 'game' ? makeCanvas(720, 528) : (touchEls[id] || null)),
   createElement: () => makeCanvas(16, 16),
 };
 windowObj.localStorage = {
@@ -331,10 +347,15 @@ dispatch('keydown', { key: 'Process', code: 'KeyZ' });
 check('IME 상태에서 Z(code) 인식', G.keys.ok === true);
 dispatch('keyup', { key: 'Process', code: 'KeyZ' });
 check('IME 상태에서 keyup 해제', G.keys.ok === false);
-// code 미지원 구형: 한글 낱자 폴백
+// code 미지원 구형: 한글 낱자 폴백 — 두벌식에서 Z 자리는 ㅋ, W 자리는 ㅈ(회귀 v0.9.0, Codex 검토)
+dispatch('keydown', { key: 'ㅋ' });
+check('구형 폴백: ㅋ(Z 자리) = 결정', G.keys.ok === true);
+dispatch('keyup', { key: 'ㅋ' });
+check('구형 폴백: ㅋ keyup 해제', G.keys.ok === false);
 dispatch('keydown', { key: 'ㅈ' });
-check('구형 폴백: ㅈ = 결정', G.keys.ok === true);
+check('구형 폴백: ㅈ(W 자리)은 결정이 아니라 위로', G.keys.ok !== true && G.keys.up === true);
 dispatch('keyup', { key: 'ㅈ' });
+check('구형 폴백: ㅈ keyup 해제', G.keys.up === false);
 dispatch('keydown', { key: 'Process', code: 'ArrowLeft' });
 check('IME 상태에서 방향키 인식', G.keys.left === true);
 dispatch('keyup', { key: 'Process', code: 'ArrowLeft' });
@@ -1778,6 +1799,64 @@ check('오류 안내가 뜬다', (() => { try { return !!S().toast && S().toast.
 G.setState(keepS);
 check('정상 상태로 돌아오면 그대로 이어진다', (() => { try { frame(2); return S().mode === 'world'; } catch (e) { return false; } })());
 
+// ── 55. 회귀 v0.9.0 — Codex 적대적 검토에서 재현된 결함 ──────────────────────
+console.log('[55] 회귀 v0.9.0 (Codex 검토)');
+// 손상 좌표가 벽·안개 안으로 복원되면 영구히 갇힌다 — 실제 방향 입력으로 빠져나올 수 있어야 한다
+function canEscape() {
+  for (const k of ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft']) {
+    const x0 = S().px, y0 = S().py;
+    hold(k, 30);
+    if (S().px !== x0 || S().py !== y0) return true;
+  }
+  return false;
+}
+windowObj.localStorage.setItem(D.SAVE_KEY, JSON.stringify({ v: 1, map: 'classroom', px: 99999, py: -50 }));
+check('벽 속 손상 좌표도 로드는 된다', G.load() === true);
+frame(1);
+check('벽 속 좌표는 갈 수 있는 칸으로 옮긴다(방향키로 움직인다)', S().mode === 'world' && canEscape());
+const fogC = R[0].fog[0];
+windowObj.localStorage.setItem(D.SAVE_KEY, JSON.stringify({
+  v: 1, map: 'hall3', px: fogC.x * 48 + 24, py: fogC.y * 48 + 42, rumors: { [R[0].id]: 'polluted' },
+}));
+check('안개 칸 위 저장도 로드는 된다', G.load() === true && G.fogCells('hall3').length > 0);
+frame(1);
+check('안개 속 좌표는 갈 수 있는 칸으로 옮긴다', canEscape());
+
+// 자동 저장 실패(용량 초과·저장 차단)를 숨기면 수업 기록을 잃는다 — 계속 보이는 안내가 떠야 한다
+fresh(); place('classroom', 7, 8);
+const realSet = windowObj.localStorage.setItem;
+windowObj.localStorage.setItem = () => { const e = new Error('QuotaExceededError'); e.name = 'QuotaExceededError'; throw e; };
+place('classroom', 8, 8);                          // 맵 진입은 자동 저장한다
+drawn.length = 0; frame(1);
+check('저장 실패가 화면에 안내된다', drawn.indexOf(D.T.saveFail) >= 0);
+frame(200); drawn.length = 0; frame(1);
+check('저장 실패 안내는 사라지지 않고 남는다', drawn.indexOf(D.T.saveFail) >= 0);
+windowObj.localStorage.setItem = realSet;
+place('classroom', 7, 8);                          // 다음 저장이 성공하면
+drawn.length = 0; frame(1);
+check('저장이 다시 되면 안내가 사라진다', drawn.indexOf(D.T.saveFail) < 0);
+
+// 구형 태블릿(TouchEvent 폴백): 확인 버튼을 누른 채 스틱을 대면 스틱은 자기 손가락만 따라야 한다
+fresh(); place('classroom', 7, 8); frame(1);
+const tA = { identifier: 1, clientX: 741, clientY: 291 };
+const tS = { identifier: 2, clientX: 74, clientY: 354 };          // 스틱 정중앙
+touchEls.btnA.fire('touchstart', { touches: [tA], changedTouches: [tA] });
+frame(1); S().dialog = null;                       // 월드에서 A는 조사 — 뜬 상자는 전제 정리로 닫는다
+touchEls.stick.fire('touchstart', { touches: [tA, tS], changedTouches: [tS] });
+const mx0 = S().px, my0 = S().py; frame(12);
+check('버튼 손가락이 스틱 방향을 가로채지 않는다(중앙이면 안 움직임)', S().px === mx0 && S().py === my0);
+const tS2 = { identifier: 2, clientX: 74 + 40, clientY: 354 };
+touchEls.stick.fire('touchmove', { touches: [tA, tS2], changedTouches: [tS2] });
+const mx1 = S().px; frame(12);
+check('스틱 손가락을 밀면 그 방향으로 움직인다', S().px > mx1);
+touchEls.btnA.fire('touchend', { touches: [tS2], changedTouches: [tA] });
+touchEls.stick.fire('touchend', { touches: [tS2], changedTouches: [tA] });   // 다른 손가락이 떨어져도
+const mx2 = S().px; frame(6);
+check('다른 손가락이 떨어져도 스틱은 놓이지 않는다', S().px > mx2);
+touchEls.stick.fire('touchend', { touches: [], changedTouches: [tS2] });
+const mx3 = S().px; frame(6);
+check('스틱 손가락이 떨어지면 멈춘다', S().px === mx3);
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {
@@ -1785,6 +1864,6 @@ if (fails.length) {
   fails.forEach((f) => console.error('   - ' + f));
   process.exit(1);
 }
-// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P7 532건 + v0.9.0 회귀 39건)
-if (pass < 571) { console.error(`✘ 검사 수 부족: ${pass}건 (v0.9.0 기준 571건 이상)`); process.exit(1); }
+// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P7 532건 + v0.9.0 회귀 39건 + Codex 검토 14건)
+if (pass < 585) { console.error(`✘ 검사 수 부족: ${pass}건 (v0.9.0 기준 585건 이상)`); process.exit(1); }
 console.log(`✔ 스모크 ${pass}건 모두 통과`);

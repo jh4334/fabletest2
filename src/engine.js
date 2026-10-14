@@ -52,6 +52,7 @@
       // 옥상: 나비스 문답(질문 인덱스·단계) + 넘긴 질문 수(저장·복원용) + 고른 엔딩
       fin: null, finQ: 0, ending: null,
       grace: 0,                                    // 대사 직후 메뉴 입력 유예(초) — 관성 입력 방지
+      saveFail: false,                             // 마지막 자동 저장 실패 여부(안내용, 저장 안 함)
       dialog: null, battle: null, toast: null, cool: {}, time: 0, flash: 0, paused: false,
       stats: { sec: 0, stolen: 0, retreats: 0, missSticker: 0 },  // 교사 관찰·아이 성취감용 계측
       looked: {}                                   // 재조사 대사 분기(세션 한정, 저장 안 함)
@@ -397,11 +398,18 @@
     x: 'no', X: 'no', Escape: 'no', Backspace: 'no',
     t: 'teacher', T: 'teacher'
   };
-  // 한글 낱자 폴백(ㅈ→결정, ㅌ→취소, ㅅ→교사 화면). 화면 문구가 아니라 키 코드라
-  // 엔진 한글 0자 린트를 지키기 위해 코드포인트로 적는다.
-  KEYMAP[String.fromCharCode(0x3148)] = 'ok';
+  KEYMAP.m = 'mute'; KEYMAP.M = 'mute';
+  // 한글 낱자 폴백 — 두벌식 자리 그대로: Z=ㅋ 결정, X=ㅌ 취소, T=ㅅ 교사 화면, M=ㅡ 소리,
+  // W/A/S/D=ㅈ/ㅁ/ㄴ/ㅇ 이동. 화면 문구가 아니라 키 코드라 엔진 한글 0자 린트를 지키기
+  // 위해 코드포인트로 적는다.
+  KEYMAP[String.fromCharCode(0x314B)] = 'ok';
   KEYMAP[String.fromCharCode(0x314C)] = 'no';
   KEYMAP[String.fromCharCode(0x3145)] = 'teacher';
+  KEYMAP[String.fromCharCode(0x3161)] = 'mute';
+  KEYMAP[String.fromCharCode(0x3148)] = 'up';
+  KEYMAP[String.fromCharCode(0x3141)] = 'left';
+  KEYMAP[String.fromCharCode(0x3134)] = 'down';
+  KEYMAP[String.fromCharCode(0x3147)] = 'right';
   function mapKey(e) {
     return (e.code && CODEMAP[e.code]) || KEYMAP[e.key] || null;
   }
@@ -1447,8 +1455,13 @@
         o.cards[c.id] = { held: st.held, map: st.map, x: st.x, y: st.y };
       });
       g.localStorage.setItem(D.SAVE_KEY, JSON.stringify(o));
+      S.saveFail = false;
       return true;
-    } catch (e) { return false; }
+    } catch (e) {
+      // 용량 초과·저장 차단 — 숨기면 학생은 저장된 줄 알고 수업을 이어 간다. 다음 성공까지 안내를 띄운다.
+      S.saveFail = true;
+      return false;
+    }
   }
 
   function load() {
@@ -1541,9 +1554,29 @@
         var st = S.cards[c.id];
         if (!st.held && !st.map) { st.map = c.at.map; st.x = c.at.x; st.y = c.at.y; }
       });
+      // 손상·조작 좌표가 벽·안개·닫힌 장치 안이면 영구히 갇힌다(새로고침해도 같은 자리).
+      // 안개·장치 상태를 다시 만든 뒤 발밑을 보고, 막혔으면 그 맵의 시작 칸(늘 닿는 입구)으로.
+      if (blockedTile(m, S.px, S.py)) placeFree(m);
       updateCam();
       return true;
     } catch (e) { return dropBadSave(); }
+  }
+
+  function placeFree(m) {
+    var free = function (tx, ty) {
+      var x = tx * T + T / 2, y = ty * T + T - 6;
+      if (blockedTile(m, x, y)) return false;
+      S.px = x; S.py = y; return true;
+    };
+    if (m.spawn && free(m.spawn.x, m.spawn.y)) { S.dir = A.DIR[m.spawn.dir] || 0; return; }
+    var p = playerTile();
+    for (var r = 1; r < m.w + m.h; r++) {
+      for (var ty = p.y - r; ty <= p.y + r; ty++) {
+        for (var tx = p.x - r; tx <= p.x + r; tx++) {
+          if (Math.max(Math.abs(tx - p.x), Math.abs(ty - p.y)) === r && free(tx, ty)) return;
+        }
+      }
+    }
   }
 
   var RUMOR_STATES = ['unread', 'read', 'aired', 'polluted', 'fixed', 'verified'];
@@ -2439,6 +2472,7 @@
       else if (S.mode === 'teacher') drawTeacher();
       else drawClear();
       if (S.toast) drawToast();
+      if (S.saveFail) drawSaveFail();
       return;
     }
     if (S.mode === 'battle') drawBattle();
@@ -2447,7 +2481,14 @@
     if (S.mode === 'console') drawConsole();
     if (S.dialog) drawDialog();
     if (S.toast) drawToast();
+    if (S.saveFail) drawSaveFail();
     if (S.paused) drawPaused();
+  }
+
+  // 저장 실패 안내 — 상단 HUD 사이 가운데에 다음 저장이 성공할 때까지 남는다.
+  function drawSaveFail() {
+    panel(W / 2 - 122, 8, 244, 30, 0.92);
+    txt(D.T.saveFail, W / 2, 29, 14, A.PAL.red, 'center');
   }
 
   function drawPaused() {
@@ -2551,17 +2592,26 @@
         stick.addEventListener('pointerleave', end);
       } else {
         // 구형 태블릿(iOS 12 등)엔 PointerEvent가 없다 — TouchEvent로 같은 동작.
-        var wrapTouch = function (fn) {
-          return function (e) {
-            var t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
-            if (t) fn({ pointerId: 1, clientX: t.clientX, clientY: t.clientY, preventDefault: function () { e.preventDefault(); } });
-            else fn({ pointerId: 1, clientX: cx, clientY: cy, preventDefault: function () { e.preventDefault(); } });
-          };
+        // touches[0] 은 화면 전체의 첫 손가락이다 — 확인 버튼을 먼저 누르고 있으면 그 좌표로
+        // 방향을 잰다. 스틱에 닿은 손가락의 identifier 만 따라간다.
+        var tid = null;
+        var mine = function (list) {
+          for (var i = 0; list && i < list.length; i++) if (list[i].identifier === tid) return list[i];
+          return null;
         };
-        stick.addEventListener('touchstart', wrapTouch(start), { passive: false });
-        stick.addEventListener('touchmove', wrapTouch(move), { passive: false });
-        stick.addEventListener('touchend', end);
-        stick.addEventListener('touchcancel', end);
+        var wrapTouch = function (fn, t, e) {
+          fn({ pointerId: 1, clientX: t.clientX, clientY: t.clientY, preventDefault: function () { if (e.preventDefault) e.preventDefault(); } });
+        };
+        stick.addEventListener('touchstart', function (e) {
+          var t = e.changedTouches && e.changedTouches[0]; if (!t) return;
+          tid = t.identifier; wrapTouch(start, t, e);
+        }, { passive: false });
+        stick.addEventListener('touchmove', function (e) {
+          var t = mine(e.changedTouches) || mine(e.touches); if (t) wrapTouch(move, t, e);
+        }, { passive: false });
+        var tend = function (e) { if (tid === null || mine(e.changedTouches)) { tid = null; end(); } };
+        stick.addEventListener('touchend', tend);
+        stick.addEventListener('touchcancel', tend);
       }
     }
     var hook = function (el, key) {
