@@ -1,7 +1,7 @@
 // 오프라인 서비스워커 — 방과 후: 그림자 학교
 // 처음 방문에서 전부 캐시해 교실 와이파이가 끊겨도 수업이 계속되게 한다.
 // CACHE 해시는 npm run bump 가 자산에서 계산해 갱신한다(validate가 대조).
-const CACHE = 'shadow-school-574bb420';
+const CACHE = 'shadow-school-a2dfd762';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest',
   './src/art.js', './src/sound.js', './src/data.js', './src/engine.js',
@@ -9,7 +9,13 @@ const ASSETS = [
   './assets/pack/char/teacher_green.png', './assets/pack/char/drop_shadow.png',
   './assets/pack/map/interior_floor.png', './assets/pack/map/wall_simple.png',
   './assets/pack/props/crate.png', './assets/pack/props/heart.png', './assets/pack/props/pot.png',
-  './icons/icon-192.png', './icons/icon-512.png'
+  './icons/icon-192.png', './icons/icon-512.png',
+  // 생성형 AI 에셋 (assets/ai/PROMPTS.md)
+  './assets/ai/bg_f1.png', './assets/ai/bg_f2.png', './assets/ai/bg_f3.png',
+  './assets/ai/bg_f4.png', './assets/ai/bg_f5.png', './assets/ai/bg_roof.png',
+  './assets/ai/bg_title.png', './assets/ai/ch_artTeacher.png', './assets/ai/ch_bro.png',
+  './assets/ai/ch_mate.png', './assets/ai/ch_senior.png', './assets/ai/ch_vice.png',
+  './assets/ai/grounds.png', './assets/ai/props.png'
 ];
 
 // 설치는 HTTP 캐시를 우회한다 — 배포 직후 브라우저 캐시의 구버전 자산이 새 캐시 이름으로

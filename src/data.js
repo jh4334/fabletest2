@@ -49,7 +49,7 @@
   // wallBase 는 wall_simple 의 5x5 링 블록 좌상단.
   D.MAPS = {
     classroom: {
-      fl: 1, w: 15, h: 11,
+      fl: 1, w: 15, h: 11, ground: 'wood',
       floor: [1, 7], wallBase: [5, 0], fill: '#241a2c',
       tint: 'rgba(232,120,60,0.16)',   // 1층 무드: 노을주황
       grid: [
@@ -71,7 +71,7 @@
       decor: [{ kind: 'pot', x: 13, y: 1 }, { kind: 'pot', x: 1, y: 9 }]
     },
     hallway: {
-      fl: 1, w: 20, h: 11,
+      fl: 1, w: 20, h: 11, ground: 'corridor',
       floor: [1, 2], wallBase: [0, 6], fill: '#241a2c',
       tint: 'rgba(232,120,60,0.10)',
       grid: [
@@ -101,7 +101,7 @@
 
     // ── 2층: 컴퓨터실 허브 ──────────────────────────────────────────────
     lab: {
-      fl: 2, w: 15, h: 11,
+      fl: 2, w: 15, h: 11, ground: 'lab',
       floor: [12, 13], wallBase: [5, 6], fill: '#141c22',
       tint: 'rgba(60,190,190,0.14)',   // 2층 무드: 모니터청록
       grid: [
@@ -125,7 +125,7 @@
     },
     // 추천 복도 — 끝에 문 두 개가 나란히. r=추천 문(제자리 복귀), u=낯선 문(전진)
     loop: {
-      fl: 2, w: 20, h: 11,
+      fl: 2, w: 20, h: 11, ground: 'corridor',
       floor: [19, 7], wallBase: [5, 6], fill: '#141c22',
       tint: 'rgba(60,190,190,0.10)',
       grid: [
@@ -160,7 +160,7 @@
       ]
     },
     roomA: {
-      fl: 2, w: 15, h: 11,
+      fl: 2, w: 15, h: 11, ground: 'wood',
       floor: [12, 2], wallBase: [5, 6], fill: '#1c1a18',
       tint: 'rgba(60,190,190,0.07)',
       grid: [
@@ -181,7 +181,7 @@
       decor: [{ kind: 'pot', x: 13, y: 9 }]
     },
     roomB: {
-      fl: 2, w: 15, h: 11,
+      fl: 2, w: 15, h: 11, ground: 'wood',
       floor: [12, 2], wallBase: [5, 6], fill: '#1c1a18',
       tint: 'rgba(60,190,190,0.07)',
       grid: [
@@ -208,7 +208,7 @@
     // 위(y=1)·아래(y=9) 길은 언제나 열려 있다. 안개는 지름길만 끊는다
     // — 오갈 때마다 멀리 돌게 되지만 갇히지는 않는다(소프트락 금지).
     hall3: {
-      fl: 3, w: 20, h: 11,
+      fl: 3, w: 20, h: 11, ground: 'corridor',
       floor: [19, 7], wallBase: [5, 6], fill: '#1c1218',
       tint: 'rgba(216,74,60,0.10)',   // 3층 무드: 방송빨강
       grid: [
@@ -239,7 +239,7 @@
     },
     // 방송실 — 소문 쪽지 3장 + 방송 콘솔. 선배는 소문 3개를 다 처리해야 나타난다.
     studio: {
-      fl: 3, w: 15, h: 11,
+      fl: 3, w: 15, h: 11, ground: 'carpet',
       floor: [12, 13], wallBase: [5, 6], fill: '#1c1218',
       tint: 'rgba(216,74,60,0.16)',
       grid: [
@@ -268,7 +268,7 @@
     },
     // 자료실 — 표지 셋 아래 사실 카드가 한 장씩.
     archive: {
-      fl: 3, w: 15, h: 11,
+      fl: 3, w: 15, h: 11, ground: 'carpet',
       floor: [12, 2], wallBase: [5, 6], fill: '#1c1218',
       tint: 'rgba(216,74,60,0.07)',
       grid: [
@@ -295,7 +295,7 @@
     // ── 4층: 복도 ────────────────────────────────────────────────────────
     // 왼쪽 끝이 미술실(제작대·견본·서랍), 오른쪽 끝이 전시 복도(액자·유리문).
     hall4: {
-      fl: 4, w: 20, h: 11,
+      fl: 4, w: 20, h: 11, ground: 'corridor',
       floor: [19, 7], wallBase: [5, 6], fill: '#1a1424',
       tint: 'rgba(168,106,216,0.10)',   // 4층 무드: 물감보라
       grid: [
@@ -324,7 +324,7 @@
     },
     // 미술실 — 스타일 견본 3장 + 스티커 제작대 + 잠긴 서랍.
     artroom: {
-      fl: 4, w: 15, h: 11,
+      fl: 4, w: 15, h: 11, ground: 'art',
       floor: [12, 2], wallBase: [5, 6], fill: '#1a1424',
       tint: 'rgba(168,106,216,0.14)',
       grid: [
@@ -348,7 +348,7 @@
     // 전시 복도 — 위쪽 통로(항상 열림)에서 액자 3점을 볼 수 있고,
     // 아래 통로는 유리문 셋이 차례로 막는다. 문을 다 열어야 복도 끝에 닿는다.
     gallery: {
-      fl: 4, w: 20, h: 11,
+      fl: 4, w: 20, h: 11, ground: 'corridor',
       floor: [1, 2], wallBase: [5, 6], fill: '#1a1424',
       tint: 'rgba(168,106,216,0.14)',
       grid: [
@@ -382,7 +382,7 @@
     // 위 통로(도착)는 언제나 열려 있고, 아래 안쪽 방은 「안쪽 문」이 잠근다.
     // 문 옆 벽에 나비스 단말이 박혀 있다.
     hall5: {
-      fl: 5, w: 20, h: 11,
+      fl: 5, w: 20, h: 11, ground: 'corridor',
       floor: [19, 7], wallBase: [5, 6], fill: '#191d20',
       tint: 'rgba(147,167,174,0.12)',   // 5층 무드: 서류회색
       grid: [
@@ -408,7 +408,7 @@
     },
     // 교무실 — 시간표판·서류 세 장·나비스 단말. 캐비닛이 안쪽 방(교감·계단)을 막는다.
     office: {
-      fl: 5, w: 15, h: 11,
+      fl: 5, w: 15, h: 11, ground: 'office',
       floor: [12, 13], wallBase: [5, 6], fill: '#191d20',
       tint: 'rgba(147,167,174,0.14)',
       grid: [
@@ -440,7 +440,7 @@
     // 난간(R)으로 둘러싸인 밤하늘 아래. 위쪽 가운데가 안테나 탑(T)=나비스의 몸.
     // 계단(S)은 왼쪽 아래 — 내려갈 길은 늘 열려 있다(가두지 않는다).
     rooftop: {
-      fl: 6, w: 20, h: 11,
+      fl: 6, w: 20, h: 11, ground: 'roof',
       floor: [19, 7], wallBase: [5, 6], fill: '#101426',
       tint: 'rgba(40,60,140,0.12)',   // 옥상 무드: 밤하늘남색
       grid: [
@@ -469,7 +469,7 @@
     },
     // 서류실 — 화분 밑 열쇠로 서류함을 연다. 서류함 뒤 골방에 낡은 도장이 있다.
     docroom: {
-      fl: 5, w: 15, h: 11,
+      fl: 5, w: 15, h: 11, ground: 'office',
       floor: [12, 13], wallBase: [5, 6], fill: '#191d20',
       tint: 'rgba(147,167,174,0.12)',
       grid: [
@@ -660,6 +660,7 @@
     bagEmpty: '없음',
     bagUnit: '장',                     // 이름이 패널을 넘치면 「3장」으로 줄인다
     oops: '문제가 생겼어요. 안 되면 새로고침(F5)',
+    artCredit: '그림: 생성형 AI(GPT Image)로 만듦 · 캐릭터 팩 Ninja Adventure(CC0)',
     saveFail: '저장 안 됨 · 선생님께 알리기',
 
     gotCard: '카드를 주웠다. 노출도가 내려갔다.',

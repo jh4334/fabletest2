@@ -1344,6 +1344,21 @@
   function drawFinale() {
     var f = S.fin;
     ctx.fillStyle = '#0c1020'; ctx.fillRect(0, 0, W, H);
+    // 생성형 AI 장면(옥상과 안테나)이 있으면 그 위에 빛만 얹는다. 없으면 코드로 그린 탑.
+    if (A.drawScene && A.drawScene(ctx, 'bg_roof', W, H)) {
+      ctx.fillStyle = 'rgba(6,8,20,0.28)'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(6,8,20,0.55)'; ctx.fillRect(0, 206, W, H - 206);
+      var eye = ctx.createRadialGradient && ctx.createRadialGradient(358, 64, 4, 358, 64, 90);
+      if (eye && eye.addColorStop) {
+        var shaking = f && f.phase === 'shake';
+        var a0 = shaking ? (Math.floor(S.time * 8) % 2 ? 0.15 : 0.6) : 0.32 + Math.sin(S.time * 2) * 0.08;
+        eye.addColorStop(0, 'rgba(120,220,240,' + a0.toFixed(2) + ')');
+        eye.addColorStop(1, 'rgba(120,220,240,0)');
+        ctx.fillStyle = eye; ctx.fillRect(268, 0, 180, 160);
+      }
+      drawFinaleUi(f);
+      return;
+    }
     // 밤하늘 — 별 몇 점
     for (var i = 0; i < 22; i++) {
       var sx = (i * 137) % W, sy = (i * 61) % 200;
@@ -1367,6 +1382,10 @@
     ctx.fillStyle = open2 ? A.PAL.blue : A.PAL.metalDark;
     ctx.fillRect(W / 2 - 16, 112, 32, 20);
     ctx.fillStyle = A.PAL.ink; ctx.fillRect(W / 2 - 6, 118, 12, 8);
+    drawFinaleUi(f);
+  }
+
+  function drawFinaleUi(f) {
     txt(D.FINALE.name, W / 2, 224, 20, A.PAL.white, 'center');
     // 남은 질문 — 배틀 게이지와 같은 자리·문법(숫자 병기)
     var qs = D.FINALE.questions, left = qs.length - ((f && f.q) || 0);
@@ -1609,11 +1628,22 @@
     ctx.fillStyle = color; ctx.textAlign = align || 'left'; ctx.textBaseline = 'alphabetic';
     ctx.fillText(str, x, y);
   }
+  // 상자 — 어두운 바깥 테 + 크림색 안쪽 선 + 위쪽 옅은 광(같은 문법을 모든 화면이 쓴다)
   function panel(x, y, w, h, alpha) {
-    ctx.fillStyle = 'rgba(18,14,24,' + (alpha === undefined ? 0.88 : alpha) + ')';
+    var a = alpha === undefined ? 0.88 : alpha;
+    var edge = 'rgba(8,6,12,' + Math.min(1, a + 0.1).toFixed(2) + ')';
+    ctx.fillStyle = 'rgba(18,14,24,' + a + ')';
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = A.PAL.cream; ctx.lineWidth = 3;
-    ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
+    ctx.fillStyle = 'rgba(247,224,189,' + (0.06 * a).toFixed(3) + ')';
+    ctx.fillRect(x + 5, y + 5, w - 10, Math.min(16, Math.max(0, h / 3)));
+    ctx.strokeStyle = edge; ctx.lineWidth = 2;
+    ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+    ctx.strokeStyle = A.PAL.cream; ctx.lineWidth = 2;
+    ctx.strokeRect(x + 3, y + 3, w - 6, h - 6);
+    // 픽셀 모서리 — 네 귀퉁이를 한 칸씩 깎아 둥근 상자처럼 보이게
+    ctx.fillStyle = edge;
+    ctx.fillRect(x + 2, y + 2, 3, 3); ctx.fillRect(x + w - 5, y + 2, 3, 3);
+    ctx.fillRect(x + 2, y + h - 5, 3, 3); ctx.fillRect(x + w - 5, y + h - 5, 3, 3);
   }
 
   // 정적 레이어(바닥·벽·고정 소품)는 맵 진입 시 1회만 그린다 — 저사양 태블릿 프레임 확보.
@@ -1647,14 +1677,18 @@
     paintMap(ctx, m, x0, y0, x1, y1, S.cam.x, S.cam.y);
   }
 
+  // 바닥 — 맵의 ground(생성형 AI 질감)가 있으면 그것, 없으면 팩 타일.
+  function drawFloor(c, m, dx, dy) {
+    return (m.ground && A.drawGround && A.drawGround(c, m.ground, dx, dy, T))
+      || A.drawTile(c, 'floor', m.floor[0], m.floor[1], dx, dy);
+  }
+
   function paintMap(c, m, x0, y0, x1, y1, camX, camY) {
     camX = camX || 0; camY = camY || 0;
     for (var ty = y0; ty <= y1; ty++) {
       for (var tx = x0; tx <= x1; tx++) {
         var dx = tx * T - camX, dy = ty * T - camY;
-        if (!A.drawTile(c, 'floor', m.floor[0], m.floor[1], dx, dy)) {
-          c.fillStyle = A.PAL.tan; c.fillRect(dx, dy, T, T);
-        }
+        if (!drawFloor(c, m, dx, dy)) { c.fillStyle = A.PAL.tan; c.fillRect(dx, dy, T, T); }
         var ch = m.grid[ty].charAt(tx), L = legend(ch);
         if (L && L.wall) {
           var off = wallOffset(m, tx, ty);
@@ -1865,9 +1899,7 @@
     var list = openedOf(m); if (!list.length) return;
     list.forEach(function (c) {
       var dx = c.x * T - S.cam.x, dy = c.y * T - S.cam.y;
-      if (!A.drawTile(ctx, 'floor', m.floor[0], m.floor[1], dx, dy)) {
-        ctx.fillStyle = A.PAL.tan; ctx.fillRect(dx, dy, T, T);
-      }
+      if (!drawFloor(ctx, m, dx, dy)) { ctx.fillStyle = A.PAL.tan; ctx.fillRect(dx, dy, T, T); }
       A.drawProp(ctx, OPEN_PROP[chAt(m, c.x, c.y)] || 'glassOpen', dx, dy, T);
     });
   }
@@ -1954,17 +1986,26 @@
   function drawBattle() {
     var b = S.battle, P = prof();
     ctx.fillStyle = '#14101c'; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = 'rgba(58,43,74,0.55)';
-    ctx.fillRect(0, 40, W, 158);
-    // 씌인 실루엣이 배경에 묻히지 않게 뒤에서 옅게 비춰 준다
+    // 층마다 다른 배경(생성형 AI 장면). 아래쪽 글자 영역은 어둡게 눌러 읽기 쉽게 한다.
+    var scene = A.drawScene && A.drawScene(ctx, 'bg_f' + S.floor, W, H);
+    if (scene) {
+      ctx.fillStyle = 'rgba(12,8,18,0.30)'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(12,8,18,0.62)'; ctx.fillRect(0, 236, W, H - 236);
+    } else {
+      ctx.fillStyle = 'rgba(58,43,74,0.55)'; ctx.fillRect(0, 40, W, 158);
+    }
+    // 그림자가 달라붙은 인물이 배경에 묻히지 않게 뒤에서 옅게 비춰 준다
     var gr = ctx.createRadialGradient && ctx.createRadialGradient(W / 2, 138, 10, W / 2, 138, 130);
     if (gr && gr.addColorStop) {
-      gr.addColorStop(0, 'rgba(168,106,216,0.30)');
+      gr.addColorStop(0, b.spare ? 'rgba(240,200,110,0.28)' : 'rgba(168,106,216,0.34)');
       gr.addColorStop(1, 'rgba(168,106,216,0)');
       ctx.fillStyle = gr; ctx.fillRect(W / 2 - 130, 8, 260, 260);
     }
-
-    A.drawChar(ctx, P.sheet, A.DIR.down, 0, W / 2, 184, { scale: 6, possessed: !b.spare, shadow: false });
+    ctx.fillStyle = 'rgba(8,6,12,0.45)';
+    if (ctx.beginPath && ctx.ellipse) { ctx.beginPath(); ctx.ellipse(W / 2, 194, 46, 9, 0, 0, Math.PI * 2); ctx.fill(); }
+    if (!(A.drawPortrait && A.drawPortrait(ctx, 'ch_' + b.id, W / 2, 196, 2, !b.spare))) {
+      A.drawChar(ctx, P.sheet, A.DIR.down, 0, W / 2, 184, { scale: 6, possessed: !b.spare, shadow: false });
+    }
 
     txt(P.name, W / 2, 210, 20, b.spare ? A.PAL.ribbon : A.PAL.white, 'center');
     var gw = 150, gx = W / 2 - gw / 2;
@@ -2075,10 +2116,17 @@
 
   function drawTitle() {
     ctx.fillStyle = '#14101c'; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = 'rgba(232,120,60,0.10)'; ctx.fillRect(0, 0, W, H);
-    for (var i = 0; i < 5; i++) {
-      ctx.fillStyle = 'rgba(58,43,74,' + (0.5 - i * 0.08) + ')';
-      ctx.fillRect(0, 120 + i * 60, W, 30);
+    if (A.drawScene && A.drawScene(ctx, 'bg_title', W, H)) {
+      // 노을 진 학교(생성형 AI 장면) 위에 글자가 읽히도록 가운데 띠만 어둡게
+      ctx.fillStyle = 'rgba(20,12,28,0.35)'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(20,12,28,0.55)'; ctx.fillRect(0, 140, W, 128);
+      ctx.fillStyle = 'rgba(20,12,28,0.45)'; ctx.fillRect(0, 430, W, H - 430);
+    } else {
+      ctx.fillStyle = 'rgba(232,120,60,0.10)'; ctx.fillRect(0, 0, W, H);
+      for (var i = 0; i < 5; i++) {
+        ctx.fillStyle = 'rgba(58,43,74,' + (0.5 - i * 0.08) + ')';
+        ctx.fillRect(0, 120 + i * 60, W, 30);
+      }
     }
     txt(D.T.title, W / 2, 200, 46, A.PAL.cream, 'center');
     txt(D.T.sub, W / 2, 240, 20, A.PAL.tan, 'center', 500);
@@ -2090,6 +2138,8 @@
     });
     txt(isTouch() ? D.T.keysTouch : D.T.keys, W / 2, 448, 17, A.PAL.blue, 'center', 500);
     txt('v' + VERSION, 14, H - 12, 13, 'rgba(224,168,120,0.55)', 'left', 400);
+    // 그림 출처 — 4층에서 가르치는 「AI로 만들면 밝히기」를 게임 스스로 지킨다
+    txt(D.T.artCredit, W / 2, H - 12, 12, 'rgba(247,224,189,0.62)', 'center', 400);
     // 교사 진입 — 아이 눈에 띄지 않게 작고 흐리게, 타이틀에만(같은 상자 문법).
     ctx.globalAlpha = 0.45;
     panel(TBTN.x, TBTN.y, TBTN.w, TBTN.h, 0.30);

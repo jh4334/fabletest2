@@ -78,6 +78,9 @@ const SHOTS = path.join(ROOT, 'shots');
     check('터치 UI 숨김', (await disp(page, '#touch')) === 'none');
     check('회전 안내 숨김', (await disp(page, '#rotate')) === 'none');
     check('실패 안내 숨김', (await disp(page, '#fallback')) === 'none');
+    // 생성형 AI 에셋(assets/ai/) — 시트가 하나라도 빠지면 코드 그림으로 조용히 바뀌므로 직접 확인한다
+    check('생성형 AI 에셋 전부 로드', await page.evaluate(() => window.ART.SHEETS
+      .filter((s) => s.src.indexOf('assets/ai/') === 0).every((s) => window.ART.ready(s.id))));
     await page.screenshot({ path: path.join(SHOTS, 'rt-title.png') });
 
     await page.keyboard.press('z');                       // 시작
