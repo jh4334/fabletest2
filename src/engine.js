@@ -2572,8 +2572,20 @@
       return pickLine(S.ending ? D.CLEAR.escBanner : '', menu[clearUi.cursor]);
     }
     if (S.mode === 'teacher') {
-      var tabs = D.TEACHER.tabs || [];
-      return pickLine(D.TEACHER.title, tabs[teacher.tab] || '');
+      var TE = D.TEACHER, tabs = TE.tabs || [];
+      // 되돌릴 수 없는 동작(기록 지우기·차시 시작 덮어쓰기)은 경고와 지금 고른 예/아니요를 먼저
+      if (teacher.confirm) {
+        var msg = teacher.confirm.kind === 'wipe' ? TE.confirmWipe : TE.confirmStart;
+        return msg.join(' ') + ' ' + (teacher.confirmCursor === 0 ? TE.yes : TE.no);
+      }
+      if (teacher.note > 0) return TE.wiped;
+      var head = pickLine(TE.title, tabs[teacher.tab] || '');
+      if (teacher.tab === 0) {
+        var L = lessonAt(teacher.cursor);
+        return L ? head + ' ' + L.name + ' ' + L.topic : head;
+      }
+      if (teacher.tab === 1) return head + ' ' + TE.wipe;
+      return head;
     }
     if (S.mode === 'battle' && S.battle) {
       var b = S.battle;

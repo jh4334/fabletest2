@@ -1945,6 +1945,25 @@ check('배틀 메뉴 선택 항목이 낭독된다', typeof G.srText === 'functi
 tap('ArrowRight');
 check('커서를 옮기면 낭독 문구도 바뀐다', typeof G.srText === 'function' && G.srText().indexOf(D.BATTLE_UI.menu[1]) >= 0);
 
+// ── 59. 재귀개선 4라운드 (Codex 검토) ───────────────────────────────────────
+console.log('[59] 재귀개선 4라운드');
+// 교사 화면 — 선택한 차시·기록 지우기·삭제/덮어쓰기 경고와 예/아니요를 낭독해야 한다
+windowObj.localStorage.setItem(D.SAVE_KEY, JSON.stringify({ v: 1, map: 'classroom', px: 340, py: 420, stats: { sec: 5 } }));
+openTeacher(); frame(1);
+const L0 = TE.lessons[TU().cursor];
+check('교사 화면: 선택한 차시를 낭독', G.srText().indexOf(L0.name) >= 0 && G.srText().indexOf(L0.topic) >= 0);
+tap('z'); frame(1);
+check('교사 화면: 차시 시작(덮어쓰기) 경고를 낭독', G.srText().indexOf(TE.confirmStart[0]) >= 0 && G.srText().indexOf(TE.no) >= 0);
+tap('x'); tap('ArrowRight'); frame(1);
+check('교사 화면: 기록 지우기 항목을 낭독', G.srText().indexOf(TE.wipe) >= 0);
+tap('z'); frame(1);
+check('교사 화면: 기록 삭제 경고와 기본값(아니요)을 낭독', G.srText().indexOf(TE.confirmWipe[0]) >= 0 && G.srText().indexOf(TE.no) >= 0);
+tap('ArrowLeft'); frame(1);
+check('교사 화면: 예로 옮기면 낭독도 예', G.srText().indexOf(TE.yes) >= 0);
+tap('z'); frame(1);
+check('교사 화면: 지운 뒤 완료 안내를 낭독', G.hasSave() === false && G.srText().indexOf(TE.wiped) >= 0);
+tap('x');
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {
@@ -1952,6 +1971,6 @@ if (fails.length) {
   fails.forEach((f) => console.error('   - ' + f));
   process.exit(1);
 }
-// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P7 532건 + v0.9.0 회귀 39건 + Codex 검토 14건 + 재귀개선 26건)
-if (pass < 611) { console.error(`✘ 검사 수 부족: ${pass}건 (v0.9.0 기준 611건 이상)`); process.exit(1); }
+// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P7 532건 + v0.9.0 회귀 39건 + Codex 검토 14건 + 재귀개선 32건)
+if (pass < 617) { console.error(`✘ 검사 수 부족: ${pass}건 (v0.9.0 기준 617건 이상)`); process.exit(1); }
 console.log(`✔ 스모크 ${pass}건 모두 통과`);
