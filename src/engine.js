@@ -1021,6 +1021,7 @@
     var b = S.battle, P = prof();
     S.clearedOf[b.id] = true;
     if (b.opens) S.stairsOpen[b.opens] = true;
+    save();          // 승리는 확정 순간에 저장 — 승리 대사 중 새로고침해도 다시 싸우지 않게
     sfx('clear');
     battleSay(P.spare.concat(P.promise), function () {
       S.battle = null; S.mode = 'world'; S.map = b.from;
@@ -1234,6 +1235,7 @@
     if (id !== cur.answer) {
       f.wrongs++;
       S.stats.missPromise = (S.stats.missPromise || 0) + 1;
+      save();        // 오답도 바로 저장 — 틀린 채 새로고침하면 교사 진단이 뒤집힌다
       sfx('cancel');
       finaleSay(D.FINALE.wrong, function () { f.phase = 'pick'; });
       return;
@@ -1291,6 +1293,7 @@
     var f = S.fin;
     S.ending = idx === 0 ? 'A' : 'B';
     S.stats.ending = S.ending;
+    save();          // 확정 순간 저장 — 엔딩 대사 중 새로고침·수업 종료에도 선택과 교사 기록이 남게
     sfx('clear');
     finaleSay((idx === 0 ? D.FINALE.endA : D.FINALE.endB).concat(D.FINALE.gate), function () {
       S.mode = 'clear'; S.flags.done = true; S.fin = null;
@@ -1546,12 +1549,14 @@
         var st = o.cards && o.cards[c.id]; if (!st) return;
         var map = st.map === null || D.MAPS[st.map] ? st.map : c.at.map;
         var mm = map ? D.MAPS[map] : null;
-        S.cards[c.id] = {
-          held: !!st.held,
-          map: map,
-          x: mm ? Math.max(0, Math.min(mm.w - 1, st.x | 0)) : c.at.x,
-          y: mm ? Math.max(0, Math.min(mm.h - 1, st.y | 0)) : c.at.y
-        };
+        // 바닥 카드 좌표는 정수·맵 안·통행 칸이어야 주울 수 있다. 빠졌거나 벽 속이면
+        // (손상 저장) 그 카드의 원래 자리로 — 필수 증거가 벽에 묻혀 진행이 막히지 않게.
+        var x = st.x, y = st.y;
+        var okXY = !!mm && typeof x === 'number' && typeof y === 'number'
+          && x === Math.floor(x) && y === Math.floor(y)
+          && x >= 0 && y >= 0 && x < mm.w && y < mm.h && !solidAt(mm, x, y);
+        if (mm && !okXY) { map = c.at.map; x = c.at.x; y = c.at.y; }
+        S.cards[c.id] = { held: !!st.held, map: map, x: mm ? x : c.at.x, y: mm ? y : c.at.y };
       });
       if (o.stats) {
         S.stats.sec = Math.max(0, +o.stats.sec || 0);
@@ -2548,6 +2553,71 @@
     txt(isTouch() ? D.T.pausedHelpTouch : D.T.pausedHelp, W / 2, H / 2 + 26, 17, A.PAL.blue, 'center', 500);
   }
 
+  // ── 스크린리더 낭독(접근성) ─────────────────────────────────────────────
+  // 캔버스 글자는 보조공학이 못 읽는다. 지금 화면의 대사·선택 항목·안내를 한 줄로 만들어
+  // index.html 의 #sr(aria-live) 에 옮긴다. 바뀔 때만 써서 같은 말을 되풀이하지 않는다.
+  function pickLine(prefix, label) { return (prefix ? prefix + ' ' : '') + label; }
+  function srText() {
+    if (!S) return '';
+    if (S.paused) return D.T.paused + ' ' + (isTouch() ? D.T.pausedHelpTouch : D.T.pausedHelp);
+    if (S.dialog) return (S.dialog.seq[S.dialog.i] || []).join(' ');
+    if (S.mode === 'title') {
+      if (title.confirm) return D.T.confirmWipe.join(' ') + ' ' + (title.confirmCursor === 0 ? D.T.yes : D.T.no);
+      var opts = titleOptions();
+      return pickLine(D.T.title, opts[opts.length === 1 ? 0 : title.cursor]);
+    }
+    if (S.mode === 'clear') {
+      if (clearUi.confirm) return D.T.confirmWipe.join(' ') + ' ' + (clearUi.confirmCursor === 0 ? D.T.yes : D.T.no);
+      var menu = S.ending ? D.CLEAR.endMenu : D.CLEAR.menu;
+      return pickLine(S.ending ? D.CLEAR.escBanner : '', menu[clearUi.cursor]);
+    }
+    if (S.mode === 'teacher') {
+      var TE = D.TEACHER, tabs = TE.tabs || [];
+      // 되돌릴 수 없는 동작(기록 지우기·차시 시작 덮어쓰기)은 경고와 지금 고른 예/아니요를 먼저
+      if (teacher.confirm) {
+        var msg = teacher.confirm.kind === 'wipe' ? TE.confirmWipe : TE.confirmStart;
+        return msg.join(' ') + ' ' + (teacher.confirmCursor === 0 ? TE.yes : TE.no);
+      }
+      if (teacher.note > 0) return TE.wiped;
+      var head = pickLine(TE.title, tabs[teacher.tab] || '');
+      if (teacher.tab === 0) {
+        var L = lessonAt(teacher.cursor);
+        return L ? head + ' ' + L.name + ' ' + L.topic : head;
+      }
+      if (teacher.tab === 1) return head + ' ' + TE.wipe;
+      return head;
+    }
+    if (S.mode === 'battle' && S.battle) {
+      var b = S.battle;
+      if (b.phase === 'menu') return pickLine(prof().name, b.spare ? D.BATTLE_UI.spareLabel : D.BATTLE_UI.menu[b.cursor]);
+      if (b.phase === 'sub') { var hid = heldIds()[b.sub]; return hid ? cardDef(hid).label : ''; }
+      if (b.phase === 'enemy') return D.BATTLE_UI.tell;
+    }
+    if (S.mode === 'console' && S.con) {
+      var list = conList();
+      return list.length ? conLabel(list[Math.min(S.con.cursor, list.length - 1)]) : '';
+    }
+    if (S.mode === 'finale' && S.fin) {
+      var f = S.fin;
+      if (f.phase === 'pick') {
+        var ids = promiseIds(), pd = ids.length ? promiseDef(ids[Math.min(f.cursor, ids.length - 1)]) : null;
+        return pickLine(D.FINALE.title, pd ? pd.label : '');
+      }
+      if (f.phase === 'choose') return pickLine(D.FINALE.choose, D.FINALE.options[f.cursor]);
+      if (f.phase === 'confirm') return D.FINALE.confirm.join(' ') + ' ' + (f.confirmCursor === 0 ? D.FINALE.yes : D.FINALE.no);
+      if (f.phase === 'shake') return D.FINALE.shakeNote;
+    }
+    if (S.toast) return S.toast.text;
+    return '';
+  }
+  var srEl = null, srLast = null;
+  function syncSr() {
+    if (!srEl) return;
+    var t = srText();
+    if (t === srLast) return;
+    srLast = t; srEl.textContent = t;
+  }
+
   // 탄막 도중 자리를 비웠다 돌아오면 바로 맞지 않게 멈춰 준다.
   function pause() {
     if (S && (S.mode === 'battle' || S.mode === 'world') && !S.dialog) S.paused = true;
@@ -2563,6 +2633,7 @@
       last = t;
       update(dt);
       render();
+      syncSr();
       errRun = 0;
     } catch (e) {
       loopError(e);
@@ -2586,6 +2657,17 @@
       var doc = g.document, fb = doc && doc.getElementById ? doc.getElementById('fallback') : null;
       if (fb && fb.style) fb.style.display = 'flex';
     }
+  }
+
+  // 세로 회전 안내(index.html #rotate)와 같은 조건. 안내가 화면과 터치를 덮는 동안
+  // 배틀이 뒤에서 흘러 하트가 깎이지 않게 입력을 놓고 멈춘다(돌아와 확인으로 이어짐).
+  var ROTATE_MQ = '(orientation: portrait) and (hover: none) and (pointer: coarse)';
+  function rotateBlocked() {
+    try { return !!(g.matchMedia && g.matchMedia(ROTATE_MQ).matches); } catch (e) { return false; }
+  }
+  function onViewport() {
+    layoutTouch();
+    if (S && rotateBlocked()) { releaseInput(); pause(); }
   }
 
   // 창·탭을 벗어나면 keyup 이 오지 않는다 — 눌린 키·엣지·스틱을 모두 놓아 유령 걷기를 막는다.
@@ -2725,6 +2807,7 @@
   function start() {
     var doc = g.document;
     cv = doc && doc.getElementById ? doc.getElementById('game') : null;
+    srEl = doc && doc.getElementById ? doc.getElementById('sr') : null;
     ctx = cv && cv.getContext ? cv.getContext('2d') : null;
     // 캔버스를 못 얻으면(구형 브라우저·렌더 차단) 검은 화면 대신 안내를 띄운다.
     if (!ctx) {
@@ -2742,9 +2825,9 @@
     }
     bindTouch();
     bindCanvasTap();
-    layoutTouch();
-    g.addEventListener('resize', layoutTouch);
-    g.addEventListener('orientationchange', layoutTouch);
+    onViewport();
+    g.addEventListener('resize', onViewport);
+    g.addEventListener('orientationchange', onViewport);
     A.load(A.SHEETS, function () { S.mode = 'title'; });
     last = 0;
     raf = g.requestAnimationFrame(loop);
@@ -2776,6 +2859,7 @@
     clearUi: function () { return clearUi; },
     bagFit: function () { return ctx && S ? bagFit() : null; },
     titleUi: function () { return title; },
+    srText: srText,
     pause: pause,
     press: function (k) { if (!keys[k]) edge[k] = true; keys[k] = true; },
     release: function (k) { keys[k] = false; }

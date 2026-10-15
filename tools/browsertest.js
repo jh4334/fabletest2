@@ -86,6 +86,10 @@ const SHOTS = path.join(ROOT, 'shots');
     await page.keyboard.press('z');                       // 시작
     for (let i = 0; i < 8; i++) { await page.keyboard.press('z'); await page.waitForTimeout(60); }
     check('인트로 넘기고 월드 진입', await page.evaluate(() => window.GAME.state().mode === 'world'));
+    // 회귀(재귀개선 3): 스크린리더 낭독 영역 — 캔버스 글자를 aria-live 로도 전한다
+    check('낭독 영역(aria-live)이 있다', await page.evaluate(() => {
+      const el = document.getElementById('sr'); return !!el && el.getAttribute('aria-live') === 'polite';
+    }));
     await page.screenshot({ path: path.join(SHOTS, 'rt-world.png') });
 
     // 배틀 진입 (짝꿍 앞으로 이동)
@@ -93,6 +97,9 @@ const SHOTS = path.join(ROOT, 'shots');
     await page.waitForTimeout(150);
     for (let i = 0; i < 6; i++) { await page.keyboard.press('z'); await page.waitForTimeout(80); }
     check('배틀 진입', await page.evaluate(() => window.GAME.state().mode === 'battle'));
+    check('배틀 대사가 낭독 영역에 나온다', await page.evaluate(() => {
+      const el = document.getElementById('sr'); return !!el && el.textContent.length > 0;
+    }));
     // 남은 대사를 넘기고 메뉴 입력 유예(0.25초)를 기다린다
     for (let i = 0; i < 12 && await page.evaluate(() => !!window.GAME.state().dialog); i++) {
       await page.keyboard.press('z'); await page.waitForTimeout(80);
@@ -617,6 +624,29 @@ const SHOTS = path.join(ROOT, 'shots');
     check('취소 버튼이 캔버스를 가리지 않는다(우측 여백)', !lay.b);
     check('타이틀 [선생님] 버튼이 가려지지 않는다', lay.tbtn === 'game');
     check('터치 버튼 글꼴 선언이 유효(19px·굵게)', lay.size === '19px' && String(lay.weight) === '700');
+    // 회귀(재귀개선 1): 배틀 상대 턴 중 세로로 돌리면 회전 안내 뒤에서 멈춰야 한다
+    await page.evaluate(() => {
+      window.GAME.newGame(); const S = window.GAME.state(); S.dialog = null;
+      window.GAME.enterMap('hallway', 15, 5);
+    });
+    for (let i = 0; i < 14 && !(await page.evaluate(() => {
+      const S = window.GAME.state(); return S.mode === 'battle' && S.battle.phase === 'menu' && !S.dialog;
+    })); i++) { await page.keyboard.press('z'); await page.waitForTimeout(90); }
+    await page.waitForTimeout(320);
+    await page.keyboard.press('z');                    // 말 걸기
+    await page.waitForTimeout(150);                   // 다음 프레임이 처리할 때까지
+    for (let i = 0; i < 8 && await page.evaluate(() => !!window.GAME.state().dialog); i++) {
+      await page.keyboard.press('z'); await page.waitForTimeout(90);
+    }
+    const inEnemy = await page.evaluate(() => window.GAME.state().battle && window.GAME.state().battle.phase === 'enemy');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(250);
+    const t0 = await page.evaluate(() => window.GAME.state().battle && window.GAME.state().battle.timer);
+    await page.waitForTimeout(1200);
+    const rot = await page.evaluate(() => ({ p: window.GAME.state().paused, t: window.GAME.state().battle && window.GAME.state().battle.timer }));
+    check('상대 턴에서 세로로 돌리면 배틀이 멈춘다', inEnemy && rot.p === true && rot.t === t0);
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.waitForTimeout(200);
     check('에러 0', errors.length === 0);
     await page.screenshot({ path: path.join(SHOTS, 'rt-landscape.png') });
     await ctx.close();

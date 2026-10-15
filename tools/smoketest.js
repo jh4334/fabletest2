@@ -59,6 +59,12 @@ const touchEls = {
   btnA: makeEl({ left: 700, top: 250, width: 82, height: 82 }),     // 중심 (741, 291)
   btnB: makeEl({ left: 720, top: 350, width: 64, height: 64 }),
 };
+// 세로 회전 안내(index.html #rotate)와 같은 미디어 조건을 테스트가 켜고 끈다.
+let portraitTouch = false;
+windowObj.matchMedia = (q) => ({
+  matches: portraitTouch && q.indexOf('orientation: portrait') >= 0,
+  addListener() {}, addEventListener() {},
+});
 windowObj.document = {
   getElementById: (id) => (id === 'game' ? makeCanvas(720, 528) : (touchEls[id] || null)),
   createElement: () => makeCanvas(16, 16),
@@ -1857,6 +1863,107 @@ touchEls.stick.fire('touchend', { touches: [], changedTouches: [tS2] });
 const mx3 = S().px; frame(6);
 check('스틱 손가락이 떨어지면 멈춘다', S().px === mx3);
 
+// ── 56. 재귀개선 1라운드 (Codex 검토) ───────────────────────────────────────
+console.log('[56] 재귀개선 1라운드');
+// 세로로 돌리면 회전 안내가 화면·터치를 덮는다 — 그 뒤에서 배틀이 흘러 하트가 깎이면 안 된다
+fresh(); place('hallway', 15, 5); frame(2);
+advance();                                         // 접근·도입 대사 → 배틀 메뉴
+check('배틀 메뉴 도달', S().mode === 'battle' && S().battle.phase === 'menu');
+tap('z'); advance();                               // 말 걸기 → 대사 → 상대 턴
+check('상대 턴 시작', S().battle.phase === 'enemy');
+const hearts0 = S().battle.hearts, timer0 = S().battle.timer;
+portraitTouch = true; dispatch('orientationchange', {}); dispatch('resize', {});
+for (let i = 0; i < 40; i++) { S().battle && S().battle.bullets.push({ x: S().battle.hx, y: S().battle.hy, vx: 0, vy: 0, s: 13 }); frame(6); }
+check('세로 회전 안내 중엔 배틀이 멈춘다(하트 보존)', S().battle && S().battle.hearts === hearts0);
+check('세로 회전 안내 중엔 상대 턴 시간이 흐르지 않는다', S().battle && S().battle.timer === timer0);
+check('세로로 돌리면 일시정지 상태가 된다', S().paused === true);
+portraitTouch = false; dispatch('orientationchange', {}); dispatch('resize', {}); frame(2);
+tap('z'); frame(2);
+check('가로로 돌아와 확인을 누르면 이어진다', S().paused === false && S().mode === 'battle');
+if (S().battle) S().battle.bullets = [];
+
+// 손상 저장 — 필수 카드 좌표가 빠지거나 벽 속이면 원래 자리로 되돌린다(3층 진행 차단 방지)
+windowObj.localStorage.setItem(D.SAVE_KEY, JSON.stringify({
+  v: 1, map: 'archive', px: 7 * 48 + 24, py: 6 * 48 + 42,
+  cards: { fullPhoto: { held: false, map: 'archive' }, oldDate: { held: false, map: 'archive', x: 0, y: 0 } },
+}));
+check('좌표 빠진 카드 저장도 로드는 된다', G.load() === true);
+const fp = S().cards.fullPhoto, cFP = D.CARDS.find((c) => c.id === 'fullPhoto');
+check('좌표가 빠진 카드는 원래 자리로', fp.map === cFP.at.map && fp.x === cFP.at.x && fp.y === cFP.at.y);
+const od = S().cards.oldDate;
+check('벽 속 좌표의 카드도 주울 수 있는 칸으로', !G.solidAt(D.MAPS[od.map], od.x, od.y));
+place(cFP.at.map, cFP.at.x, cFP.at.y); frame(2);
+check('복원된 카드를 실제로 주울 수 있다', G.heldIds().indexOf('fullPhoto') >= 0);
+
+// ── 57. 재귀개선 2라운드 (Codex 검토) ───────────────────────────────────────
+console.log('[57] 재귀개선 2라운드');
+// 승리 대사가 떠 있는 동안 새로고침해도 되돌린 인물·열린 계단은 남아야 한다
+fresh();
+S().cards.passNote.held = true; S().cards.passNote.map = null;
+place('hallway', 15, 5); frame(2);
+advance();                                          // 접근·도입 → 메뉴
+tap('ArrowDown'); tap('z'); advance();              // 가만히 듣기 → 대사 → 상대 턴
+if (S().battle && S().battle.phase === 'enemy') { S().battle.timer = 999; frame(1); }   // 상대 턴 시간 건너뛰기
+frame(18);
+tap('ArrowRight'); tap('z'); frame(2); tap('z');    // 보여주기 → 비밀번호 쪽지
+advance();                                          // 증거 대사 → 그림자 벗겨짐
+check('손 내밀기 차례', S().battle && S().battle.spare === true && S().battle.phase === 'menu');
+tap('z'); frame(1);                                 // 손 내밀기 → 승리·약속 대사 시작
+check('승리 대사가 떠 있다', !!S().dialog && S().clearedOf.mate === true);
+check('승리 대사 중 새로고침해도 되돌린 인물이 남는다', G.load() === true && S().clearedOf.mate === true);
+check('승리 대사 중 새로고침해도 계단이 열려 있다', S().stairsOpen.hallway === true);
+
+// 옥상에서 틀린 횟수는 바로 저장 — 새로고침해도 교사 화면 진단이 뒤집히지 않게
+freshRoof();
+frame(20);
+for (let i = 0; i < 3; i++) {                       // 1번 질문(p1)에 p2를 세 번
+  S().fin.cursor = 1; tap('z'); advance(6);
+}
+check('세 번 틀림', S().stats.missPromise === 3 && S().fin.q === 0);
+check('틀린 직후 새로고침해도 교사 기록에 오답이 남는다', (G.teacherReport() || {}).missPromise === 3);
+
+// ── 58. 재귀개선 3라운드 (Codex 검토) ───────────────────────────────────────
+console.log('[58] 재귀개선 3라운드');
+// 확정한 엔딩은 엔딩 대사 중 새로고침해도 남아야 한다(교사 기록·완결 화면)
+for (const pickB of [false, true]) {
+  freshRoof();
+  S().fin.q = 5; S().fin.phase = 'choose'; S().fin.cursor = pickB ? 1 : 0; frame(20);
+  tap('z'); tap('ArrowLeft'); tap('z');              // 확인창 → [네]
+  const want = pickB ? 'B' : 'A';
+  check(`엔딩 ${want} 대사가 떠 있다`, !!S().dialog && S().ending === want);
+  check(`엔딩 ${want} 대사 중 새로고침해도 교사 기록에 엔딩이 남는다`, (G.teacherReport() || {}).ending === want);
+  check(`엔딩 ${want} 대사 중 새로고침하면 완결 화면으로`, G.load() === true && S().mode === 'clear' && S().ending === want);
+}
+
+// 스크린리더 — 캔버스 글자를 낭독 영역(aria-live)에도 옮긴다
+check('낭독 문구 함수가 있다', typeof G.srText === 'function');
+fresh(); G.newGame(); frame(1);
+check('대사는 낭독 문구로 나온다', typeof G.srText === 'function' && G.srText().indexOf(D.INTRO[0][0]) >= 0);
+mash();
+place('hallway', 15, 5); frame(2); advance();
+check('배틀 메뉴 선택 항목이 낭독된다', typeof G.srText === 'function' && G.srText().indexOf(D.BATTLE_UI.menu[S().battle.cursor]) >= 0);
+tap('ArrowRight');
+check('커서를 옮기면 낭독 문구도 바뀐다', typeof G.srText === 'function' && G.srText().indexOf(D.BATTLE_UI.menu[1]) >= 0);
+
+// ── 59. 재귀개선 4라운드 (Codex 검토) ───────────────────────────────────────
+console.log('[59] 재귀개선 4라운드');
+// 교사 화면 — 선택한 차시·기록 지우기·삭제/덮어쓰기 경고와 예/아니요를 낭독해야 한다
+windowObj.localStorage.setItem(D.SAVE_KEY, JSON.stringify({ v: 1, map: 'classroom', px: 340, py: 420, stats: { sec: 5 } }));
+openTeacher(); frame(1);
+const L0 = TE.lessons[TU().cursor];
+check('교사 화면: 선택한 차시를 낭독', G.srText().indexOf(L0.name) >= 0 && G.srText().indexOf(L0.topic) >= 0);
+tap('z'); frame(1);
+check('교사 화면: 차시 시작(덮어쓰기) 경고를 낭독', G.srText().indexOf(TE.confirmStart[0]) >= 0 && G.srText().indexOf(TE.no) >= 0);
+tap('x'); tap('ArrowRight'); frame(1);
+check('교사 화면: 기록 지우기 항목을 낭독', G.srText().indexOf(TE.wipe) >= 0);
+tap('z'); frame(1);
+check('교사 화면: 기록 삭제 경고와 기본값(아니요)을 낭독', G.srText().indexOf(TE.confirmWipe[0]) >= 0 && G.srText().indexOf(TE.no) >= 0);
+tap('ArrowLeft'); frame(1);
+check('교사 화면: 예로 옮기면 낭독도 예', G.srText().indexOf(TE.yes) >= 0);
+tap('z'); frame(1);
+check('교사 화면: 지운 뒤 완료 안내를 낭독', G.hasSave() === false && G.srText().indexOf(TE.wiped) >= 0);
+tap('x');
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {
@@ -1864,6 +1971,6 @@ if (fails.length) {
   fails.forEach((f) => console.error('   - ' + f));
   process.exit(1);
 }
-// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P7 532건 + v0.9.0 회귀 39건 + Codex 검토 14건)
-if (pass < 585) { console.error(`✘ 검사 수 부족: ${pass}건 (v0.9.0 기준 585건 이상)`); process.exit(1); }
+// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P7 532건 + v0.9.0 회귀 39건 + Codex 검토 14건 + 재귀개선 32건)
+if (pass < 617) { console.error(`✘ 검사 수 부족: ${pass}건 (v0.9.0 기준 617건 이상)`); process.exit(1); }
 console.log(`✔ 스모크 ${pass}건 모두 통과`);
