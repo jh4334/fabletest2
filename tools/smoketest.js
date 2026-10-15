@@ -1895,6 +1895,33 @@ check('벽 속 좌표의 카드도 주울 수 있는 칸으로', !G.solidAt(D.MA
 place(cFP.at.map, cFP.at.x, cFP.at.y); frame(2);
 check('복원된 카드를 실제로 주울 수 있다', G.heldIds().indexOf('fullPhoto') >= 0);
 
+// ── 57. 재귀개선 2라운드 (Codex 검토) ───────────────────────────────────────
+console.log('[57] 재귀개선 2라운드');
+// 승리 대사가 떠 있는 동안 새로고침해도 되돌린 인물·열린 계단은 남아야 한다
+fresh();
+S().cards.passNote.held = true; S().cards.passNote.map = null;
+place('hallway', 15, 5); frame(2);
+advance();                                          // 접근·도입 → 메뉴
+tap('ArrowDown'); tap('z'); advance();              // 가만히 듣기 → 대사 → 상대 턴
+if (S().battle && S().battle.phase === 'enemy') { S().battle.timer = 999; frame(1); }   // 상대 턴 시간 건너뛰기
+frame(18);
+tap('ArrowRight'); tap('z'); frame(2); tap('z');    // 보여주기 → 비밀번호 쪽지
+advance();                                          // 증거 대사 → 그림자 벗겨짐
+check('손 내밀기 차례', S().battle && S().battle.spare === true && S().battle.phase === 'menu');
+tap('z'); frame(1);                                 // 손 내밀기 → 승리·약속 대사 시작
+check('승리 대사가 떠 있다', !!S().dialog && S().clearedOf.mate === true);
+check('승리 대사 중 새로고침해도 되돌린 인물이 남는다', G.load() === true && S().clearedOf.mate === true);
+check('승리 대사 중 새로고침해도 계단이 열려 있다', S().stairsOpen.hallway === true);
+
+// 옥상에서 틀린 횟수는 바로 저장 — 새로고침해도 교사 화면 진단이 뒤집히지 않게
+freshRoof();
+frame(20);
+for (let i = 0; i < 3; i++) {                       // 1번 질문(p1)에 p2를 세 번
+  S().fin.cursor = 1; tap('z'); advance(6);
+}
+check('세 번 틀림', S().stats.missPromise === 3 && S().fin.q === 0);
+check('틀린 직후 새로고침해도 교사 기록에 오답이 남는다', (G.teacherReport() || {}).missPromise === 3);
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {
@@ -1902,6 +1929,6 @@ if (fails.length) {
   fails.forEach((f) => console.error('   - ' + f));
   process.exit(1);
 }
-// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P7 532건 + v0.9.0 회귀 39건 + Codex 검토 14건 + 재귀개선 10건)
-if (pass < 595) { console.error(`✘ 검사 수 부족: ${pass}건 (v0.9.0 기준 595건 이상)`); process.exit(1); }
+// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P7 532건 + v0.9.0 회귀 39건 + Codex 검토 14건 + 재귀개선 16건)
+if (pass < 601) { console.error(`✘ 검사 수 부족: ${pass}건 (v0.9.0 기준 601건 이상)`); process.exit(1); }
 console.log(`✔ 스모크 ${pass}건 모두 통과`);

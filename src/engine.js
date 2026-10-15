@@ -1021,6 +1021,7 @@
     var b = S.battle, P = prof();
     S.clearedOf[b.id] = true;
     if (b.opens) S.stairsOpen[b.opens] = true;
+    save();          // 승리는 확정 순간에 저장 — 승리 대사 중 새로고침해도 다시 싸우지 않게
     sfx('clear');
     battleSay(P.spare.concat(P.promise), function () {
       S.battle = null; S.mode = 'world'; S.map = b.from;
@@ -1234,6 +1235,7 @@
     if (id !== cur.answer) {
       f.wrongs++;
       S.stats.missPromise = (S.stats.missPromise || 0) + 1;
+      save();        // 오답도 바로 저장 — 틀린 채 새로고침하면 교사 진단이 뒤집힌다
       sfx('cancel');
       finaleSay(D.FINALE.wrong, function () { f.phase = 'pick'; });
       return;
