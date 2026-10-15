@@ -59,6 +59,12 @@ const touchEls = {
   btnA: makeEl({ left: 700, top: 250, width: 82, height: 82 }),     // 중심 (741, 291)
   btnB: makeEl({ left: 720, top: 350, width: 64, height: 64 }),
 };
+// 세로 회전 안내(index.html #rotate)와 같은 미디어 조건을 테스트가 켜고 끈다.
+let portraitTouch = false;
+windowObj.matchMedia = (q) => ({
+  matches: portraitTouch && q.indexOf('orientation: portrait') >= 0,
+  addListener() {}, addEventListener() {},
+});
 windowObj.document = {
   getElementById: (id) => (id === 'game' ? makeCanvas(720, 528) : (touchEls[id] || null)),
   createElement: () => makeCanvas(16, 16),
@@ -1857,6 +1863,38 @@ touchEls.stick.fire('touchend', { touches: [], changedTouches: [tS2] });
 const mx3 = S().px; frame(6);
 check('스틱 손가락이 떨어지면 멈춘다', S().px === mx3);
 
+// ── 56. 재귀개선 1라운드 (Codex 검토) ───────────────────────────────────────
+console.log('[56] 재귀개선 1라운드');
+// 세로로 돌리면 회전 안내가 화면·터치를 덮는다 — 그 뒤에서 배틀이 흘러 하트가 깎이면 안 된다
+fresh(); place('hallway', 15, 5); frame(2);
+advance();                                         // 접근·도입 대사 → 배틀 메뉴
+check('배틀 메뉴 도달', S().mode === 'battle' && S().battle.phase === 'menu');
+tap('z'); advance();                               // 말 걸기 → 대사 → 상대 턴
+check('상대 턴 시작', S().battle.phase === 'enemy');
+const hearts0 = S().battle.hearts, timer0 = S().battle.timer;
+portraitTouch = true; dispatch('orientationchange', {}); dispatch('resize', {});
+for (let i = 0; i < 40; i++) { S().battle && S().battle.bullets.push({ x: S().battle.hx, y: S().battle.hy, vx: 0, vy: 0, s: 13 }); frame(6); }
+check('세로 회전 안내 중엔 배틀이 멈춘다(하트 보존)', S().battle && S().battle.hearts === hearts0);
+check('세로 회전 안내 중엔 상대 턴 시간이 흐르지 않는다', S().battle && S().battle.timer === timer0);
+check('세로로 돌리면 일시정지 상태가 된다', S().paused === true);
+portraitTouch = false; dispatch('orientationchange', {}); dispatch('resize', {}); frame(2);
+tap('z'); frame(2);
+check('가로로 돌아와 확인을 누르면 이어진다', S().paused === false && S().mode === 'battle');
+if (S().battle) S().battle.bullets = [];
+
+// 손상 저장 — 필수 카드 좌표가 빠지거나 벽 속이면 원래 자리로 되돌린다(3층 진행 차단 방지)
+windowObj.localStorage.setItem(D.SAVE_KEY, JSON.stringify({
+  v: 1, map: 'archive', px: 7 * 48 + 24, py: 6 * 48 + 42,
+  cards: { fullPhoto: { held: false, map: 'archive' }, oldDate: { held: false, map: 'archive', x: 0, y: 0 } },
+}));
+check('좌표 빠진 카드 저장도 로드는 된다', G.load() === true);
+const fp = S().cards.fullPhoto, cFP = D.CARDS.find((c) => c.id === 'fullPhoto');
+check('좌표가 빠진 카드는 원래 자리로', fp.map === cFP.at.map && fp.x === cFP.at.x && fp.y === cFP.at.y);
+const od = S().cards.oldDate;
+check('벽 속 좌표의 카드도 주울 수 있는 칸으로', !G.solidAt(D.MAPS[od.map], od.x, od.y));
+place(cFP.at.map, cFP.at.x, cFP.at.y); frame(2);
+check('복원된 카드를 실제로 주울 수 있다', G.heldIds().indexOf('fullPhoto') >= 0);
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {
@@ -1864,6 +1902,6 @@ if (fails.length) {
   fails.forEach((f) => console.error('   - ' + f));
   process.exit(1);
 }
-// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P7 532건 + v0.9.0 회귀 39건 + Codex 검토 14건)
-if (pass < 585) { console.error(`✘ 검사 수 부족: ${pass}건 (v0.9.0 기준 585건 이상)`); process.exit(1); }
+// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P7 532건 + v0.9.0 회귀 39건 + Codex 검토 14건 + 재귀개선 10건)
+if (pass < 595) { console.error(`✘ 검사 수 부족: ${pass}건 (v0.9.0 기준 595건 이상)`); process.exit(1); }
 console.log(`✔ 스모크 ${pass}건 모두 통과`);

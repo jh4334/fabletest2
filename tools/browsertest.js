@@ -617,6 +617,29 @@ const SHOTS = path.join(ROOT, 'shots');
     check('취소 버튼이 캔버스를 가리지 않는다(우측 여백)', !lay.b);
     check('타이틀 [선생님] 버튼이 가려지지 않는다', lay.tbtn === 'game');
     check('터치 버튼 글꼴 선언이 유효(19px·굵게)', lay.size === '19px' && String(lay.weight) === '700');
+    // 회귀(재귀개선 1): 배틀 상대 턴 중 세로로 돌리면 회전 안내 뒤에서 멈춰야 한다
+    await page.evaluate(() => {
+      window.GAME.newGame(); const S = window.GAME.state(); S.dialog = null;
+      window.GAME.enterMap('hallway', 15, 5);
+    });
+    for (let i = 0; i < 14 && !(await page.evaluate(() => {
+      const S = window.GAME.state(); return S.mode === 'battle' && S.battle.phase === 'menu' && !S.dialog;
+    })); i++) { await page.keyboard.press('z'); await page.waitForTimeout(90); }
+    await page.waitForTimeout(320);
+    await page.keyboard.press('z');                    // 말 걸기
+    await page.waitForTimeout(150);                   // 다음 프레임이 처리할 때까지
+    for (let i = 0; i < 8 && await page.evaluate(() => !!window.GAME.state().dialog); i++) {
+      await page.keyboard.press('z'); await page.waitForTimeout(90);
+    }
+    const inEnemy = await page.evaluate(() => window.GAME.state().battle && window.GAME.state().battle.phase === 'enemy');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(250);
+    const t0 = await page.evaluate(() => window.GAME.state().battle && window.GAME.state().battle.timer);
+    await page.waitForTimeout(1200);
+    const rot = await page.evaluate(() => ({ p: window.GAME.state().paused, t: window.GAME.state().battle && window.GAME.state().battle.timer }));
+    check('상대 턴에서 세로로 돌리면 배틀이 멈춘다', inEnemy && rot.p === true && rot.t === t0);
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.waitForTimeout(200);
     check('에러 0', errors.length === 0);
     await page.screenshot({ path: path.join(SHOTS, 'rt-landscape.png') });
     await ctx.close();

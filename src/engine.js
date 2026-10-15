@@ -1546,12 +1546,14 @@
         var st = o.cards && o.cards[c.id]; if (!st) return;
         var map = st.map === null || D.MAPS[st.map] ? st.map : c.at.map;
         var mm = map ? D.MAPS[map] : null;
-        S.cards[c.id] = {
-          held: !!st.held,
-          map: map,
-          x: mm ? Math.max(0, Math.min(mm.w - 1, st.x | 0)) : c.at.x,
-          y: mm ? Math.max(0, Math.min(mm.h - 1, st.y | 0)) : c.at.y
-        };
+        // 바닥 카드 좌표는 정수·맵 안·통행 칸이어야 주울 수 있다. 빠졌거나 벽 속이면
+        // (손상 저장) 그 카드의 원래 자리로 — 필수 증거가 벽에 묻혀 진행이 막히지 않게.
+        var x = st.x, y = st.y;
+        var okXY = !!mm && typeof x === 'number' && typeof y === 'number'
+          && x === Math.floor(x) && y === Math.floor(y)
+          && x >= 0 && y >= 0 && x < mm.w && y < mm.h && !solidAt(mm, x, y);
+        if (mm && !okXY) { map = c.at.map; x = c.at.x; y = c.at.y; }
+        S.cards[c.id] = { held: !!st.held, map: map, x: mm ? x : c.at.x, y: mm ? y : c.at.y };
       });
       if (o.stats) {
         S.stats.sec = Math.max(0, +o.stats.sec || 0);
@@ -2588,6 +2590,17 @@
     }
   }
 
+  // 세로 회전 안내(index.html #rotate)와 같은 조건. 안내가 화면과 터치를 덮는 동안
+  // 배틀이 뒤에서 흘러 하트가 깎이지 않게 입력을 놓고 멈춘다(돌아와 확인으로 이어짐).
+  var ROTATE_MQ = '(orientation: portrait) and (hover: none) and (pointer: coarse)';
+  function rotateBlocked() {
+    try { return !!(g.matchMedia && g.matchMedia(ROTATE_MQ).matches); } catch (e) { return false; }
+  }
+  function onViewport() {
+    layoutTouch();
+    if (S && rotateBlocked()) { releaseInput(); pause(); }
+  }
+
   // 창·탭을 벗어나면 keyup 이 오지 않는다 — 눌린 키·엣지·스틱을 모두 놓아 유령 걷기를 막는다.
   function releaseInput() {
     for (var k in keys) keys[k] = false;
@@ -2742,9 +2755,9 @@
     }
     bindTouch();
     bindCanvasTap();
-    layoutTouch();
-    g.addEventListener('resize', layoutTouch);
-    g.addEventListener('orientationchange', layoutTouch);
+    onViewport();
+    g.addEventListener('resize', onViewport);
+    g.addEventListener('orientationchange', onViewport);
     A.load(A.SHEETS, function () { S.mode = 'title'; });
     last = 0;
     raf = g.requestAnimationFrame(loop);
