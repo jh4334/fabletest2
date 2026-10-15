@@ -1,6 +1,6 @@
 """AI 생성 원본 → 게임 에셋(assets/ai/) 변환 — 방과 후: 그림자 학교
 
-생성형 AI(GPT Image 2.5)로 만든 1024px 원본을 게임의 픽셀 격자에 맞춰 줄이고
+생성형 AI(OpenAI Codex 이미지 생성)로 만든 원본을 게임의 픽셀 격자에 맞춰 줄이고
 색 수를 줄여 assets/ai/ 에 쓴다. 원본은 용량이 커서 저장소에 넣지 않는다
 (무엇을 어떤 프롬프트로 만들었는지는 assets/ai/PROMPTS.md).
 
@@ -28,13 +28,16 @@ PROPS = [
 ]
 # 열림/닫힘 짝은 한 장(왼쪽=닫힘, 오른쪽=열림)으로 만들었다.
 PAIRS = {'cabinet': 'cabinetOpen', 'fileBox': 'fileBoxOpen', 'innerDoor': 'innerOpen'}
+# 테두리 안쪽까지 투명하게 나와 버린 소품 — 테두리 안을 이 색으로 채운다(칠판 면이 빠지는 경우).
+FILL = {'board': (36, 66, 52, 255)}
 SCENES = ['bg_f1', 'bg_f2', 'bg_f3', 'bg_f4', 'bg_f5', 'bg_roof', 'bg_title']
 CHARS = ['mate', 'bro', 'senior', 'artTeacher', 'vice']
 
 GROUND_PX = 16      # 바닥: 팩 타일과 같은 16px (화면 3배)
 PROP_PX = 24        # 소품: 24px (화면 2배) — 16px 로 줄이면 형태가 뭉개진다
 SCENE_W, SCENE_H = 360, 264   # 장면: 캔버스 720x528 의 절반 (화면 2배)
-CHAR_H = 72         # 배틀 인물: 높이 72px (화면 2배)
+CHAR_REF_H = 60     # 배틀 인물: 짝꿍 키를 60px 로 두고 나머지는 원본 키 비율대로(어른은 더 크게)
+CHAR_MAX_H = 90     # 화면 2배로 180px — 배틀 상단 게이지를 가리지 않는 한도
 
 
 def quantize(im, colors):
@@ -61,7 +64,18 @@ def fit(im, size):
 
 
 def load(src, name):
-    return Image.open(os.path.join(src, name + '.png')).convert('RGBA')
+    """원본을 읽는다. 투명 배경 대신 단색 마젠타(#FF00FF)로 나온 그림은 마젠타를 투명으로 바꾼다."""
+    im = Image.open(os.path.join(src, name + '.png')).convert('RGBA')
+    px = im.load()
+    w, h = im.size
+    corners = [px[0, 0], px[w - 1, 0], px[0, h - 1], px[w - 1, h - 1]]
+    if all(a > 200 and r > 200 and g < 80 and b > 200 for r, g, b, a in corners):
+        for y in range(h):
+            for x in range(w):
+                r, g, b, a = px[x, y]
+                if r > 180 and g < 110 and b > 180:
+                    px[x, y] = (0, 0, 0, 0)
+    return im
 
 
 def main(src):
@@ -90,7 +104,14 @@ def main(src):
             cells[name] = load(src, name)
     atlas = Image.new('RGBA', (PROP_PX * len(PROPS), PROP_PX), (0, 0, 0, 0))
     for i, name in enumerate(PROPS):
-        atlas.paste(quantize(fit(cells[name], PROP_PX), 16), (i * PROP_PX, 0))
+        im = cells[name]
+        if name in FILL:
+            box = im.getchannel('A').point(lambda a: 255 if a >= 128 else 0).getbbox()
+            im = im.crop(box)
+            base = Image.new('RGBA', im.size, FILL[name])
+            base.alpha_composite(im)
+            im = base
+        atlas.paste(quantize(fit(im, PROP_PX), 16), (i * PROP_PX, 0))
     atlas.save(os.path.join(OUT, 'props.png'), optimize=True)
 
     # 장면 — 캔버스 비율로 가운데를 잘라 절반 크기로.
@@ -105,13 +126,16 @@ def main(src):
         im = im.resize((SCENE_W, SCENE_H), Image.Resampling.BOX)
         quantize(im, 64).convert('RGB').save(os.path.join(OUT, name + '.png'), optimize=True)
 
-    # 배틀 인물 — 알파 경계로 잘라 높이 CHAR_H 로.
+    # 배틀 인물 — 알파 경계로 자르고, 원본끼리 같은 배율로 줄여 키 차이(아이/어른)를 살린다.
+    crops = {}
     for name in CHARS:
         im = load(src, 'ch_' + name)
-        box = im.getchannel('A').point(lambda a: 255 if a >= 128 else 0).getbbox()
-        im = im.crop(box)
-        w = max(1, round(im.width * CHAR_H / im.height))
-        im = im.resize((w, CHAR_H), Image.Resampling.BOX)
+        crops[name] = im.crop(im.getchannel('A').point(lambda a: 255 if a >= 128 else 0).getbbox())
+    k = CHAR_REF_H / crops['mate'].height
+    for name, im in crops.items():
+        h = min(CHAR_MAX_H, max(1, round(im.height * k)))
+        w = max(1, round(im.width * h / im.height))
+        im = im.resize((w, h), Image.Resampling.BOX)
         quantize(im, 24).save(os.path.join(OUT, 'ch_' + name + '.png'), optimize=True)
 
     total = sum(os.path.getsize(os.path.join(OUT, f)) for f in os.listdir(OUT) if f.endswith('.png'))

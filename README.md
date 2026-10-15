@@ -7,7 +7,7 @@ AI 윤리를 어겨 그림자가 달라붙은 친구들과 선생님을 설득�
 - 대상: 초등 3~6학년 · 인공지능윤리 디지털연구대회 출품작
 - 순수 HTML5 Canvas · 설치 불필요 · `index.html` 더블클릭으로 실행
 - 설계 기준: `docs/기준서-방과후-그림자학교-v1.md`
-- 아트: Ninja Adventure (CC0) + 생성형 AI 그림(GPT Image 2.5, `assets/ai/PROMPTS.md`) — `assets/ATTRIBUTION.md`
+- 아트: Ninja Adventure (CC0) + 생성형 AI 그림(OpenAI Codex 이미지 생성, `assets/ai/PROMPTS.md`) — `assets/ATTRIBUTION.md`
 
 ## 구성 (본편 완결)
 

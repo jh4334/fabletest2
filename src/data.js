@@ -660,7 +660,7 @@
     bagEmpty: '없음',
     bagUnit: '장',                     // 이름이 패널을 넘치면 「3장」으로 줄인다
     oops: '문제가 생겼어요. 안 되면 새로고침(F5)',
-    artCredit: '그림: 생성형 AI(GPT Image)로 만듦 · 캐릭터 팩 Ninja Adventure(CC0)',
+    artCredit: '그림: 생성형 AI(OpenAI Codex)로 만듦 · 캐릭터 팩 Ninja Adventure(CC0)',
     saveFail: '저장 안 됨 · 선생님께 알리기',
 
     gotCard: '카드를 주웠다. 노출도가 내려갔다.',

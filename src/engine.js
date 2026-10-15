@@ -1348,7 +1348,7 @@
     if (A.drawScene && A.drawScene(ctx, 'bg_roof', W, H)) {
       ctx.fillStyle = 'rgba(6,8,20,0.28)'; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = 'rgba(6,8,20,0.55)'; ctx.fillRect(0, 206, W, H - 206);
-      var eye = ctx.createRadialGradient && ctx.createRadialGradient(358, 64, 4, 358, 64, 90);
+      var eye = ctx.createRadialGradient && ctx.createRadialGradient(358, 78, 4, 358, 78, 90);
       if (eye && eye.addColorStop) {
         var shaking = f && f.phase === 'shake';
         var a0 = shaking ? (Math.floor(S.time * 8) % 2 ? 0.15 : 0.6) : 0.32 + Math.sin(S.time * 2) * 0.08;

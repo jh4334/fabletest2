@@ -38,7 +38,7 @@
     { id: 'crate', src: 'assets/pack/props/crate.png' },
     { id: 'heart', src: 'assets/pack/props/heart.png' },
     { id: 'pot', src: 'assets/pack/props/pot.png' },
-    // 생성형 AI 에셋(GPT Image 2.5) — 출처·프롬프트는 assets/ai/PROMPTS.md, 변환은 tools/art-ai.py
+    // 생성형 AI 에셋(OpenAI Codex 이미지 생성) — 출처·프롬프트는 assets/ai/PROMPTS.md, 변환은 tools/art-ai.py
     { id: 'aiGrounds', src: 'assets/ai/grounds.png' },
     { id: 'aiProps', src: 'assets/ai/props.png' },
     { id: 'bg_f1', src: 'assets/ai/bg_f1.png' }, { id: 'bg_f2', src: 'assets/ai/bg_f2.png' },

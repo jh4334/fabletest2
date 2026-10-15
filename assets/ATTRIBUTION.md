@@ -11,7 +11,7 @@
   - `props/`: crate.png, heart.png, pot.png
 
 ## assets/ai/ — 생성형 AI 그림 (v0.9.0)
-- 도구: OpenAI GPT Image 2.5 (Higgsfield 웹 서비스에서 생성, 2026-10-15)
+- 도구: OpenAI Codex(CLI v0.155.1)의 내장 이미지 생성 (2026-10-15)
 - 배틀·타이틀·옥상 배경, 배틀 인물 5명, 맵 바닥 7종·소품 30종
 - 참고 이미지는 이 게임의 CC0 팩 화면 캡처뿐. 실존 작가 이름·화풍은 프롬프트에 넣지 않았다.
 - 파일별 프롬프트·설정·가공: `assets/ai/PROMPTS.md`, 변환 도구 `tools/art-ai.py`
