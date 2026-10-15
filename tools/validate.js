@@ -873,6 +873,30 @@ if (has('sw.js')) {
   for (const f of ['src/art.js', 'src/sound.js', 'src/data.js', 'src/engine.js']) {
     if (!assets.includes(f)) err(`sw.js ASSETS에 런타임 파일 누락: ${f}`);
   }
+  // 회귀(v0.9.0): 설치 캐시는 HTTP 캐시를 우회해야 배포 직후 구버전이 새 캐시에 고착되지 않는다.
+  if (!/cache:\s*'reload'/.test(sw)) err("sw.js install이 HTTP 캐시를 거친다 — new Request(u, { cache: 'reload' })");
+  // 같은 출처의 다른 앱 캐시를 지우지 않는다 — 우리 접두어만 정리.
+  if (!/startsWith\('shadow-school-'\)/.test(sw)) err('sw.js activate가 다른 앱 캐시까지 지운다 — shadow-school- 접두어만 삭제');
+  // 쓰지 않는 자산을 캐시·저장소에 두지 않는다 — 팩 파일은 art.js가 실제로 쓰는 것만.
+  const artSrc = read('src/art.js');
+  for (const a of assets.filter((x) => x.startsWith('assets/pack/'))) {
+    if (!artSrc.includes(a)) err(`sw.js ASSETS에 쓰지 않는 자산: ${a}`);
+  }
+  // 생성형 AI 에셋도 같은 규칙 — art.js 가 쓰는 것만, 그리고 전부 오프라인 캐시에.
+  for (const a of assets.filter((x) => x.startsWith('assets/ai/'))) {
+    if (!artSrc.includes(a)) err(`sw.js ASSETS에 쓰지 않는 AI 자산: ${a}`);
+  }
+  const walk = (d) => fs.readdirSync(path.join(ROOT, d), { withFileTypes: true })
+    .flatMap((e) => (e.isDirectory() ? walk(d + '/' + e.name) : [d + '/' + e.name]));
+  for (const f of walk('assets/pack')) {
+    if (!assets.includes(f)) err(`assets/pack에 캐시 목록 밖 파일(미사용?): ${f}`);
+  }
+  if (fs.existsSync(path.join(ROOT, 'assets/ai'))) {
+    for (const f of walk('assets/ai').filter((x) => x.endsWith('.png'))) {
+      if (!assets.includes(f)) err(`assets/ai에 캐시 목록 밖 그림: ${f}`);
+    }
+    if (!has('assets/ai/PROMPTS.md')) err('assets/ai/PROMPTS.md 없음 — AI 그림의 도구·프롬프트를 밝혀야 한다');
+  }
   const h = crypto.createHash('sha1');
   h.update(read('index.html'));
   for (const a of assets.filter((x) => has(x)).sort()) h.update(fs.readFileSync(path.join(ROOT, a)));

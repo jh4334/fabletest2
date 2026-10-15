@@ -43,8 +43,9 @@
   #btnA, #btnB {
     right: calc(5vw + env(safe-area-inset-right, 0px));
     width: 82px; height: 82px; border-radius: 50%;
-    color: #f7e0bd; font: 700 19px inherit;
+    color: #f7e0bd; font-weight: 700; font-size: 19px; font-family: inherit;
   }
+  /* 실제 자리는 engine.js layoutTouch 가 레터박스 여백에 맞춰 다시 잡는다. */
   #btnA { bottom: calc(12vh + env(safe-area-inset-bottom, 0px)); }
   #btnB {
     bottom: calc(2vh + env(safe-area-inset-bottom, 0px));

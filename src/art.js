@@ -37,8 +37,30 @@
     { id: 'dropShadow', src: 'assets/pack/char/drop_shadow.png' },
     { id: 'crate', src: 'assets/pack/props/crate.png' },
     { id: 'heart', src: 'assets/pack/props/heart.png' },
-    { id: 'pot', src: 'assets/pack/props/pot.png' }
+    { id: 'pot', src: 'assets/pack/props/pot.png' },
+    // 생성형 AI 에셋(OpenAI Codex 이미지 생성) — 출처·프롬프트는 assets/ai/PROMPTS.md, 변환은 tools/art-ai.py
+    { id: 'aiGrounds', src: 'assets/ai/grounds.png' },
+    { id: 'aiProps', src: 'assets/ai/props.png' },
+    { id: 'bg_f1', src: 'assets/ai/bg_f1.png' }, { id: 'bg_f2', src: 'assets/ai/bg_f2.png' },
+    { id: 'bg_f3', src: 'assets/ai/bg_f3.png' }, { id: 'bg_f4', src: 'assets/ai/bg_f4.png' },
+    { id: 'bg_f5', src: 'assets/ai/bg_f5.png' }, { id: 'bg_roof', src: 'assets/ai/bg_roof.png' },
+    { id: 'bg_title', src: 'assets/ai/bg_title.png' },
+    { id: 'ch_mate', src: 'assets/ai/ch_mate.png' }, { id: 'ch_bro', src: 'assets/ai/ch_bro.png' },
+    { id: 'ch_senior', src: 'assets/ai/ch_senior.png' },
+    { id: 'ch_artTeacher', src: 'assets/ai/ch_artTeacher.png' },
+    { id: 'ch_vice', src: 'assets/ai/ch_vice.png' }
   ];
+
+  // 아틀라스 칸 순서 — tools/art-ai.py 의 GROUNDS / PROPS 와 같아야 한다.
+  var AI_GROUNDS = ['wood', 'corridor', 'lab', 'carpet', 'office', 'roof', 'art'];
+  var AI_PROPS = [
+    'desk', 'board', 'locker', 'door', 'stairsLocked', 'stairsOpen', 'stickerBoard',
+    'pc', 'box', 'window', 'doorReco', 'doorPlain', 'console', 'note', 'sign', 'frame',
+    'glass', 'glassOpen', 'bench', 'sample', 'drawer', 'navis',
+    'cabinet', 'cabinetOpen', 'fileBox', 'fileBoxOpen', 'innerDoor', 'innerOpen',
+    'paper', 'plant'
+  ];
+  var AI_GPX = 16, AI_PPX = 24;
 
   var imgs = {}, tintCv = null, tintCx = null;
 
@@ -111,6 +133,47 @@
     if (col === 1) return; // 뒤통수는 눈이 안 보인다
     ctx.fillRect(dx + size / 2 - gap + ox - sc, ey, sc * 2, sc * 2);
     ctx.fillRect(dx + size / 2 + gap + ox - sc, ey, sc * 2, sc * 2);
+  }
+
+  // ── 생성형 AI 에셋 그리기 — 시트가 없으면 false 를 돌려 팩 타일·코드 그림으로 넘긴다 ──
+  function drawGround(ctx, kind, dx, dy, size) {
+    var im = imgs.aiGrounds, i = AI_GROUNDS.indexOf(kind);
+    if (!im || i < 0) return false;
+    ctx.drawImage(im, i * AI_GPX, 0, AI_GPX, AI_GPX, dx, dy, size || T, size || T);
+    return true;
+  }
+  function drawScene(ctx, id, w, h) {
+    var im = imgs[id]; if (!im) return false;
+    ctx.drawImage(im, 0, 0, im.width, im.height, 0, 0, w, h);
+    return true;
+  }
+  // 배틀 인물. 발 중심(cx, fy) 기준, sc 배. 그림자가 달라붙은 동안은 팩 스프라이트와 같은
+  // 보라-검정 틴트를 얹는다(되돌아오면 원래 색).
+  var pCv = null, pCx = null;
+  function drawPortrait(ctx, id, cx, fy, sc, possessed) {
+    var im = imgs[id]; if (!im) return false;
+    var w = im.width * sc, h = im.height * sc;
+    var dx = Math.round(cx - w / 2), dy = Math.round(fy - h);
+    if (!possessed) { ctx.drawImage(im, dx, dy, w, h); return true; }
+    if (!pCx) {
+      if (typeof document === 'undefined' || !document.createElement) { ctx.drawImage(im, dx, dy, w, h); return true; }
+      pCv = document.createElement('canvas');
+      pCx = pCv.getContext && pCv.getContext('2d');
+      if (!pCx) { ctx.drawImage(im, dx, dy, w, h); return true; }
+    }
+    pCv.width = im.width; pCv.height = im.height;
+    pCx.clearRect(0, 0, im.width, im.height);
+    pCx.drawImage(im, 0, 0);
+    pCx.globalCompositeOperation = 'source-atop';
+    pCx.fillStyle = 'rgba(40,20,60,0.78)';
+    pCx.fillRect(0, 0, im.width, im.height);
+    pCx.globalCompositeOperation = 'source-over';
+    // 보라 그림자가 몸에서 번져 나오는 빛 — 팩 스프라이트의 보라 눈과 같은 색
+    var blur = 'shadowBlur' in ctx;
+    if (blur) { ctx.shadowColor = 'rgba(168,106,216,0.95)'; ctx.shadowBlur = 22; }
+    ctx.drawImage(pCv, 0, 0, im.width, im.height, dx, dy, w, h);
+    if (blur) { ctx.shadowBlur = 0; ctx.shadowColor = 'rgba(0,0,0,0)'; }
+    return true;
   }
 
   function ensureTint() {
@@ -438,6 +501,11 @@
   };
 
   function drawProp(ctx, kind, x, y, size, tone) {
+    var ai = AI_PROPS.indexOf(kind), sheet = imgs.aiProps;
+    if (ai >= 0 && sheet) {
+      ctx.drawImage(sheet, ai * AI_PPX, 0, AI_PPX, AI_PPX, x, y, size || T, size || T);
+      return true;
+    }
     var f = PROPS[kind]; if (!f) return false;
     f(ctx, x, y, size || T, tone); return true;
   }
@@ -447,6 +515,8 @@
     PAL: PAL, SHEETS: SHEETS,
     load: load, img: img, ready: ready,
     drawTile: drawTile, drawSprite: drawSprite, drawChar: drawChar,
-    drawDropShadow: drawDropShadow, drawProp: drawProp, propKinds: PROPS
+    drawDropShadow: drawDropShadow, drawProp: drawProp, propKinds: PROPS,
+    drawGround: drawGround, drawScene: drawScene, drawPortrait: drawPortrait,
+    AI_GROUNDS: AI_GROUNDS, AI_PROPS: AI_PROPS
   };
 })(typeof window !== 'undefined' ? window : this);

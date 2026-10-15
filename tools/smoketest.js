@@ -8,10 +8,13 @@ const vm = require('vm');
 const ROOT = path.resolve(__dirname, '..');
 
 // ── DOM 스텁 ────────────────────────────────────────────────────────────────
+// 화면에 그린 글자를 모은다 — 그려졌는지(토스트 등)를 상태가 아니라 출력으로 확인한다.
+const drawn = [];
 function makeCtx() {
   return new Proxy({}, {
     get(t, p) {
-      if (p === 'measureText') return () => ({ width: 40 });
+      if (p === 'measureText') return (s) => ({ width: String(s).length * 15 });
+      if (p === 'fillText') return (s) => { drawn.push(String(s)); };
       if (p in t) return t[p];
       return () => {};
     },
@@ -40,8 +43,24 @@ const windowObj = {
 };
 windowObj.window = windowObj;
 windowObj.Image = ImageStub;
+// 터치 UI 스텁 — PointerEvent 가 없는 구형 태블릿(TouchEvent 폴백) 경로를 실제 이벤트로 재현한다.
+function makeEl(rect) {
+  const ls = {};
+  return {
+    style: {}, ls,
+    addEventListener(ev, fn) { (ls[ev] = ls[ev] || []).push(fn); },
+    getBoundingClientRect: () => Object.assign({ right: rect.left + rect.width, bottom: rect.top + rect.height }, rect),
+    fire(ev, obj) { (ls[ev] || []).forEach((fn) => fn(Object.assign({ preventDefault() {} }, obj))); },
+  };
+}
+const touchEls = {
+  stick: makeEl({ left: 20, top: 300, width: 108, height: 108 }),   // 중심 (74, 354)
+  knob: makeEl({ left: 52, top: 332, width: 44, height: 44 }),
+  btnA: makeEl({ left: 700, top: 250, width: 82, height: 82 }),     // 중심 (741, 291)
+  btnB: makeEl({ left: 720, top: 350, width: 64, height: 64 }),
+};
 windowObj.document = {
-  getElementById: (id) => (id === 'game' ? makeCanvas(720, 528) : null),
+  getElementById: (id) => (id === 'game' ? makeCanvas(720, 528) : (touchEls[id] || null)),
   createElement: () => makeCanvas(16, 16),
 };
 windowObj.localStorage = {
@@ -81,10 +100,14 @@ function dispatch(ev, obj) {
 function tap(key) { dispatch('keydown', { key }); frame(1); dispatch('keyup', { key }); }
 function hold(key, n) { dispatch('keydown', { key }); frame(n); dispatch('keyup', { key }); frame(1); }
 function S() { return G.state(); }
+// 대사를 넘긴 뒤 메뉴 입력 유예(약 0.25초)가 지나기를 기다린다 — 사람이 읽고 고르는 속도.
+// 유예 자체를 검사할 때는 advance 대신 mash()로 연타한다.
 function advance(max = 20) {
   for (let i = 0; i < max && S().dialog; i++) tap('z');
+  frame(18);
   return !S().dialog;
 }
+function mash(max = 40) { for (let i = 0; i < max && S().dialog; i++) tap('z'); }
 function place(map, tx, ty) { G.enterMap(map, tx, ty); frame(1); }
 function tile() { return G.playerTile(); }
 // 문을 밟는 순간 멈춘다 — hold(n)로 프레임 수를 세면 워프 뒤에도 계속 걸어가 버린다.
@@ -324,10 +347,15 @@ dispatch('keydown', { key: 'Process', code: 'KeyZ' });
 check('IME 상태에서 Z(code) 인식', G.keys.ok === true);
 dispatch('keyup', { key: 'Process', code: 'KeyZ' });
 check('IME 상태에서 keyup 해제', G.keys.ok === false);
-// code 미지원 구형: 한글 낱자 폴백
+// code 미지원 구형: 한글 낱자 폴백 — 두벌식에서 Z 자리는 ㅋ, W 자리는 ㅈ(회귀 v0.9.0, Codex 검토)
+dispatch('keydown', { key: 'ㅋ' });
+check('구형 폴백: ㅋ(Z 자리) = 결정', G.keys.ok === true);
+dispatch('keyup', { key: 'ㅋ' });
+check('구형 폴백: ㅋ keyup 해제', G.keys.ok === false);
 dispatch('keydown', { key: 'ㅈ' });
-check('구형 폴백: ㅈ = 결정', G.keys.ok === true);
+check('구형 폴백: ㅈ(W 자리)은 결정이 아니라 위로', G.keys.ok !== true && G.keys.up === true);
 dispatch('keyup', { key: 'ㅈ' });
+check('구형 폴백: ㅈ keyup 해제', G.keys.up === false);
 dispatch('keydown', { key: 'Process', code: 'ArrowLeft' });
 check('IME 상태에서 방향키 인식', G.keys.left === true);
 dispatch('keyup', { key: 'Process', code: 'ArrowLeft' });
@@ -485,7 +513,7 @@ check('낯선 문은 처음 보는 방으로', S().map === 'roomA');
 check('낯선 문 통과로 버블 -1', S().bubble === bubMax - 1);
 place('roomA', 7, 3); frame(2);
 check('roomA 카드 획득', G.heldIds().indexOf('watchLog') >= 0);
-check('2층 카드 획득도 버블을 걷는다', S().bubble === bubMax - 2);
+check('2층 카드는 좁아짐 게이지를 건드리지 않는다(모으기로 풀리지 않음)', S().bubble === bubMax - 1);
 check('1층 카드는 2층 가방에 안 보인다', G.heldIds().indexOf('nameTag') < 0);
 place('roomA', 1, 5);
 check('방에서 복도로 복귀', walkUntil('ArrowLeft', () => S().map === 'loop'));
@@ -637,7 +665,8 @@ check('첫 바로 방송 전에 1회 경고', !!S().dialog && S().dialog.seq ===
 check('경고는 플래그로 1회만', S().flags.airWarn === true);
 advance();
 check('경고 단계에서는 아직 방송하지 않음', S().rumors[R[0].id] === 'read' && S().pollute === 0);
-tap('z');                                   // 다시 바로 방송
+check('경고 뒤 커서는 안전한 쪽(확인 후 방송)', S().con.cursor === 1);
+tap('ArrowUp'); tap('z');                   // 직접 바로 방송으로 옮겨 다시 고른다
 check('소문 상태: read → aired', S().rumors[R[0].id] === 'aired');
 check('방송 순간 붉은 펄스', S().flash > 0);
 advance();
@@ -1154,7 +1183,8 @@ check('첫 맡기기 전에 1회 경고', !!S().dialog && S().dialog.seq === D.N
 check('경고는 플래그로 1회만', S().flags.trustWarn === true);
 advance();
 check('경고 단계에서는 아직 열리지 않음', G.lockOpen('cabinet') === false && S().depend === 0);
-tap('z');                                   // 다시 맡기기
+check('경고 뒤 커서는 안전한 쪽(스스로 하기)', S().con.cursor === 1);
+tap('ArrowUp'); tap('z');                   // 직접 맡기기로 옮겨 다시 고른다
 check('맡기면 즉시 열린다', G.lockOpen('cabinet') === true);
 check('맡기면 의존 +1', S().depend === 1);
 advance();
@@ -1371,6 +1401,20 @@ check('옥상 진입', S().map === 'rooftop' && S().floor === 6);
 check('옥상은 내려갈 계단이 열려 있다', !!D.MAPS.rooftop.stairs);
 check('이어하기가 5층·의존·장치를 기억',
   G.load() === true && S().map === 'rooftop' && LK.every((k) => G.lockOpen(k.id) === true));
+// 회귀(v0.9.0): 옥상 계단은 실제로 내려가는 길이어야 한다 — 빈 상자([null])로 막히면 안 된다.
+place('rooftop', 2, 9);
+hold('ArrowLeft', 20);
+check('옥상 계단에 닿으면 빈 상자가 아닌 대사가 뜬다',
+  !!S().dialog && S().dialog.seq.every((b) => Array.isArray(b) && b.length > 0));
+advance();
+check('옥상 계단으로 교무실에 내려간다', S().map === 'office' && S().floor === 5 && S().mode === 'world');
+place('rooftop', 2, 9);
+hold('ArrowLeft', 4); advance();
+place('rooftop', 2, 9); S().dir = ART.DIR.left; tap('z');
+check('옥상 계단을 조사(Z)해도 빈 상자가 아니다',
+  !!S().dialog && S().dialog.seq.every((b) => Array.isArray(b) && b.length > 0));
+advance();
+check('조사로도 교무실에 내려간다', S().map === 'office');
 
 // ── 50. 5층 세이브 방어 ────────────────────────────────────────────────────
 console.log('[50] 5층 세이브 방어');
@@ -1474,14 +1518,26 @@ check('엔딩 B(오늘은 끈다) 도달', S().ending === 'B');
 check('두 엔딩 모두 완결 화면으로', S().mode === 'clear');
 check('엔딩 B도 기록에 남는다', S().stats.ending === 'B');
 
-// 완결 화면 메뉴 — 타이틀로는 저장을 지우지 않는다
-tap('ArrowDown'); tap('z');
+// 완결 화면 메뉴 — 기본 커서가 [타이틀로], 저장을 지우지 않는다
+check('완결 화면 기본 커서는 타이틀로', G.clearUi().cursor === 1);
+tap('z');
 check('타이틀로 가도 저장 유지', S().mode === 'title' && G.hasSave() === true);
 tap('z');
-check('이어하기로 완결 상태 복원', S().mode === 'world' && S().ending === 'B');
+// 회귀(v0.9.0): 엔딩 뒤 이어하기는 옥상(문답이 다시 안 열리는 막다른 곳)이 아니라 엔딩 화면으로.
+check('이어하기로 완결 상태 복원', S().mode === 'clear' && S().ending === 'B');
+check('복원된 엔딩 화면에서 타이틀로 나갈 수 있다', (() => {
+  if (S().mode !== 'clear') return false;
+  for (let i = 0; i < 2 && S().mode === 'clear'; i++) {
+    if (G.clearUi().cursor !== 1) tap('ArrowDown');
+    tap('z');
+  }
+  return S().mode === 'title' && G.hasSave() === true;
+})());
+tap('z');
+S().mode = 'world'; S().ending = 'B';
 
 // 약속이 없으면 문답이 열리지 않는다(되돌린 사람 0명)
-S().ending = null;
+S().ending = null; S().finQ = 0;            // 엔딩 저장의 문답 진행도(5)를 비운 새 대면
 D.PROMISES.forEach((p) => { S().clearedOf[p.who] = false; });
 place('rooftop', 9, 6); frame(3); advance();
 check('약속이 없으면 안내 후 물러난다', S().mode === 'world' || !!S().dialog);
@@ -1609,6 +1665,198 @@ check('옥상 차시 시작', startLesson(6) && S().map === 'rooftop' && S().flo
 check('옥상 차시는 약속 5장이 모여 있다', G.promiseIds().length === 5);
 check('학생 화면 문법은 그대로 (월드 복귀)', S().mode === 'world' && !S().paused);
 
+// ── 54. 회귀 v0.9.0 — 적대적 검토에서 재현된 결함 ───────────────────────────
+// 전부 실제 입력 경로(키 이벤트·창 이벤트)로 재현한다. 상태 주입은 전제 조건 세팅에만.
+console.log('[54] 회귀 v0.9.0');
+function fresh() { G.clearSave(); G.setState(G.blankState()); S().mode = 'world'; S().flags.intro = true; }
+// 옥상 대면 → 첫 질문 고르기까지 연타로 간다(유예를 기다리지 않는다)
+function freshRoof() {
+  fresh();
+  D.PROMISES.forEach((p) => { S().clearedOf[p.who] = true; });
+  place('rooftop', 9, 6); frame(3);
+  mash();
+}
+
+// P2-3 엔딩 직후 Z 연타 — 저장·교사 기록이 지워지면 안 된다
+freshRoof();
+S().fin.q = 5; S().fin.phase = 'choose'; S().fin.cursor = 0; frame(20);
+tap('z'); tap('ArrowLeft'); tap('z');            // 엔딩 A 확정
+for (let i = 0; i < 40; i++) tap('z');           // 대사 넘기던 Z 연타가 완결 화면까지 이어진다
+const savedEnd = JSON.parse(windowObj.localStorage.getItem(D.SAVE_KEY) || '{}');
+check('엔딩 직후 Z 연타로 저장이 지워지지 않는다', savedEnd.ending === 'A' && savedEnd.stats.ending === 'A');
+check('엔딩 완결 화면 기본 커서는 타이틀로', (() => {
+  G.load(); frame(1); return S().mode === 'clear' && G.clearUi().cursor === 1;
+})());
+frame(20);
+tap('ArrowUp'); tap('z');
+check('처음부터 다시는 확인을 묻는다', G.clearUi().confirm === true && G.hasSave() === true);
+check('확인 기본값은 거절 쪽', G.clearUi().confirmCursor === 1);
+tap('z');
+check('거절하면 완결 화면·저장 그대로', S().mode === 'clear' && !G.clearUi().confirm && G.hasSave());
+tap('z'); tap('ArrowLeft'); tap('z');
+check('확인하면 처음부터 시작', S().mode === 'world' && !S().ending && !!S().dialog);
+mash();
+
+// P2-4/5 3층 경고 직후 — 넘기던 Z 한 번에 바로 방송되면 안 된다
+fresh();
+S().rumors[R[0].id] = 'read';
+place('studio', 6, 2);
+tap('ArrowUp'); tap('z'); frame(20); tap('z');   // 콘솔 → 첫 소문
+tap('z');                                        // 바로 방송 → 첫 경고
+check('3층 첫 바로 방송은 경고', !!S().dialog && S().dialog.seq === D.CONSOLE.warn);
+mash(); tap('z');                                // 경고 연타 + 관성 Z
+check('3층 경고 직후 관성 Z로 방송되지 않는다', S().rumors[R[0].id] === 'read' && S().pollute === 0);
+check('3층 경고 뒤 커서는 확인 후 방송', S().con && S().con.cursor === 1);
+closeCon();
+
+// P2-4/5 5층 경고 직후 — 넘기던 Z 한 번에 맡겨지면 안 된다
+fresh();
+openTerm('cabinet'); frame(20);
+tap('z');                                        // 맡기기 → 첫 경고
+check('5층 첫 맡기기는 경고', !!S().dialog && S().dialog.seq === D.NAVIS.warn);
+mash(); tap('z');
+check('5층 경고 직후 관성 Z로 맡겨지지 않는다', G.lockOpen('cabinet') === false && S().depend === 0);
+check('5층 경고 뒤 커서는 스스로 하기', S().con && S().con.cursor === 1);
+closeCon();
+
+// P2-5 옥상 — 질문 대사를 넘기던 Z가 오답으로 기록되면 안 된다
+freshRoof();
+frame(20); tap('z');                              // 1번 질문 정답(p1, 커서 0)
+check('1번 질문 통과', S().fin.q === 1);
+mash(); tap('z');                                 // ok 대사 + 2번 질문을 연타, 관성 Z
+check('질문 직후 관성 Z가 오답으로 기록되지 않는다',
+  (S().stats.missPromise || 0) === 0 && S().fin.wrongs === 0 && S().fin.phase === 'pick');
+
+// P2-5 배틀 — 말 걸기 대사 직후 관성 Z가 메뉴를 다시 고르면 안 된다
+fresh();
+place('hallway', 15, 5); frame(2);
+mash();
+check('배틀 메뉴 도달(연타)', S().mode === 'battle');
+const turn0 = S().battle.talks;
+check('대사 직후 관성 Z는 메뉴를 고르지 않는다', (() => { tap('z'); return S().battle.talks === turn0; })());
+
+// P2-6 키 고착 — 방향키를 누른 채 창을 벗어나면 keyup 이 사라진다
+fresh();
+place('classroom', 7, 8);
+dispatch('keydown', { key: 'ArrowRight', code: 'ArrowRight' }); frame(3);
+dispatch('blur', {});
+const ghostX = S().px; frame(12);
+check('창을 벗어나면 눌린 키가 풀린다(유령 걷기 없음)', S().px === ghostX);
+dispatch('keyup', { key: 'ArrowRight', code: 'ArrowRight' }); frame(1);
+
+// P3-9 옥상 문답 진행도 — 새로고침해도 넘긴 질문은 다시 묻지 않는다
+freshRoof();
+frame(20); tap('z'); advance(8);                 // 1번 정답
+tap('ArrowRight'); tap('z'); advance(8);         // 2번 정답(p2)
+check('두 질문을 넘김', S().fin.q === 2);
+G.load(); frame(3); advance(8);
+check('이어하기 뒤 문답이 넘긴 질문부터 이어진다', S().mode === 'finale' && S().fin.q === 2);
+
+// P3-10 광고 단말에 뺏긴 직후 새로고침 — 한 장 더 뺏기면 안 된다
+fresh();
+S().cards.passNote.held = true; S().cards.passNote.map = null;
+place('classroom', 12, 8); frame(2);              // 이름표 줍기 → 2장
+place('classroom', 2, 2); frame(2);               // 단말 위 → 1장 뺏김(저장됨)
+check('단말이 한 장 뺏음', G.heldIds().length === 1);
+G.load(); frame(4);
+check('뺏긴 직후 새로고침해도 한 장 더 뺏기지 않는다', G.heldIds().length === 1 && S().exposure === 1);
+
+// P3-11 손상·조작 세이브 — 계단 개방은 그 계단을 여는 인물과 대조한다
+windowObj.localStorage.setItem(D.SAVE_KEY, JSON.stringify({
+  v: 1, map: 'classroom', px: 340, py: 420, dir: 0,
+  stairsOpen: { hallway: true, lab: true }, clearedOf: { bro: true },
+}));
+check('조작 세이브도 로드는 된다', G.load() === true);
+check('되돌리지 않은 인물의 계단은 잠긴다', !S().stairsOpen.hallway);
+check('되돌린 인물의 계단은 열린다', S().stairsOpen.lab === true);
+// 약속이 없어 물러날 때 — 판정 반경 밖으로 내보내야 같은 대사가 반복되지 않는다
+fresh();
+place('rooftop', 9, 6); frame(3);
+advance(10);
+frame(10);
+check('약속 없이 물러난 뒤 나비스 대사가 반복되지 않는다', S().mode === 'world' && !S().dialog);
+
+// P3-13 타이틀·교사·클리어 화면에서도 M(음소거) 토스트가 그려진다
+for (const md of ['title', 'teacher', 'clear']) {
+  G.setState(G.blankState()); S().mode = md; frame(1);
+  drawn.length = 0;
+  dispatch('keydown', { key: 'm', code: 'KeyM' }); dispatch('keyup', { key: 'm', code: 'KeyM' });
+  frame(1);
+  const on = windowObj.SFX.isOn();
+  check(`${md} 화면에서 음소거 토스트가 그려진다`, drawn.indexOf(on ? D.T.soundOn : D.T.soundOff) >= 0);
+}
+if (!windowObj.SFX.isOn()) { dispatch('keydown', { key: 'm', code: 'KeyM' }); dispatch('keyup', { key: 'm', code: 'KeyM' }); }
+G.setState(G.blankState()); frame(1);
+
+// P3-12 루프 예외 — 한 프레임이 터져도 게임이 영구 정지하면 안 된다
+fresh();
+const keepS = S();
+G.setState(Object.assign(G.blankState(), { mode: 'world', map: 'nowhere' }));
+let loopThrew = false;
+try { frame(1); } catch (e) { loopThrew = true; }
+check('프레임 예외 뒤에도 다음 프레임이 예약된다', !loopThrew && rafCb !== null);
+check('오류 안내가 뜬다', (() => { try { return !!S().toast && S().toast.text === D.T.oops; } catch (e) { return false; } })());
+G.setState(keepS);
+check('정상 상태로 돌아오면 그대로 이어진다', (() => { try { frame(2); return S().mode === 'world'; } catch (e) { return false; } })());
+
+// ── 55. 회귀 v0.9.0 — Codex 적대적 검토에서 재현된 결함 ──────────────────────
+console.log('[55] 회귀 v0.9.0 (Codex 검토)');
+// 손상 좌표가 벽·안개 안으로 복원되면 영구히 갇힌다 — 실제 방향 입력으로 빠져나올 수 있어야 한다
+function canEscape() {
+  for (const k of ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft']) {
+    const x0 = S().px, y0 = S().py;
+    hold(k, 30);
+    if (S().px !== x0 || S().py !== y0) return true;
+  }
+  return false;
+}
+windowObj.localStorage.setItem(D.SAVE_KEY, JSON.stringify({ v: 1, map: 'classroom', px: 99999, py: -50 }));
+check('벽 속 손상 좌표도 로드는 된다', G.load() === true);
+frame(1);
+check('벽 속 좌표는 갈 수 있는 칸으로 옮긴다(방향키로 움직인다)', S().mode === 'world' && canEscape());
+const fogC = R[0].fog[0];
+windowObj.localStorage.setItem(D.SAVE_KEY, JSON.stringify({
+  v: 1, map: 'hall3', px: fogC.x * 48 + 24, py: fogC.y * 48 + 42, rumors: { [R[0].id]: 'polluted' },
+}));
+check('안개 칸 위 저장도 로드는 된다', G.load() === true && G.fogCells('hall3').length > 0);
+frame(1);
+check('안개 속 좌표는 갈 수 있는 칸으로 옮긴다', canEscape());
+
+// 자동 저장 실패(용량 초과·저장 차단)를 숨기면 수업 기록을 잃는다 — 계속 보이는 안내가 떠야 한다
+fresh(); place('classroom', 7, 8);
+const realSet = windowObj.localStorage.setItem;
+windowObj.localStorage.setItem = () => { const e = new Error('QuotaExceededError'); e.name = 'QuotaExceededError'; throw e; };
+place('classroom', 8, 8);                          // 맵 진입은 자동 저장한다
+drawn.length = 0; frame(1);
+check('저장 실패가 화면에 안내된다', drawn.indexOf(D.T.saveFail) >= 0);
+frame(200); drawn.length = 0; frame(1);
+check('저장 실패 안내는 사라지지 않고 남는다', drawn.indexOf(D.T.saveFail) >= 0);
+windowObj.localStorage.setItem = realSet;
+place('classroom', 7, 8);                          // 다음 저장이 성공하면
+drawn.length = 0; frame(1);
+check('저장이 다시 되면 안내가 사라진다', drawn.indexOf(D.T.saveFail) < 0);
+
+// 구형 태블릿(TouchEvent 폴백): 확인 버튼을 누른 채 스틱을 대면 스틱은 자기 손가락만 따라야 한다
+fresh(); place('classroom', 7, 8); frame(1);
+const tA = { identifier: 1, clientX: 741, clientY: 291 };
+const tS = { identifier: 2, clientX: 74, clientY: 354 };          // 스틱 정중앙
+touchEls.btnA.fire('touchstart', { touches: [tA], changedTouches: [tA] });
+frame(1); S().dialog = null;                       // 월드에서 A는 조사 — 뜬 상자는 전제 정리로 닫는다
+touchEls.stick.fire('touchstart', { touches: [tA, tS], changedTouches: [tS] });
+const mx0 = S().px, my0 = S().py; frame(12);
+check('버튼 손가락이 스틱 방향을 가로채지 않는다(중앙이면 안 움직임)', S().px === mx0 && S().py === my0);
+const tS2 = { identifier: 2, clientX: 74 + 40, clientY: 354 };
+touchEls.stick.fire('touchmove', { touches: [tA, tS2], changedTouches: [tS2] });
+const mx1 = S().px; frame(12);
+check('스틱 손가락을 밀면 그 방향으로 움직인다', S().px > mx1);
+touchEls.btnA.fire('touchend', { touches: [tS2], changedTouches: [tA] });
+touchEls.stick.fire('touchend', { touches: [tS2], changedTouches: [tA] });   // 다른 손가락이 떨어져도
+const mx2 = S().px; frame(6);
+check('다른 손가락이 떨어져도 스틱은 놓이지 않는다', S().px > mx2);
+touchEls.stick.fire('touchend', { touches: [], changedTouches: [tS2] });
+const mx3 = S().px; frame(6);
+check('스틱 손가락이 떨어지면 멈춘다', S().px === mx3);
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {
@@ -1616,6 +1864,6 @@ if (fails.length) {
   fails.forEach((f) => console.error('   - ' + f));
   process.exit(1);
 }
-// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P6 482건 + P7 신규 25건 이상)
-if (pass < 507) { console.error(`✘ 검사 수 부족: ${pass}건 (P7 기준 507건 이상)`); process.exit(1); }
+// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P7 532건 + v0.9.0 회귀 39건 + Codex 검토 14건)
+if (pass < 585) { console.error(`✘ 검사 수 부족: ${pass}건 (v0.9.0 기준 585건 이상)`); process.exit(1); }
 console.log(`✔ 스모크 ${pass}건 모두 통과`);
