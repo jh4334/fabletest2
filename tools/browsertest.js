@@ -86,6 +86,10 @@ const SHOTS = path.join(ROOT, 'shots');
     await page.keyboard.press('z');                       // 시작
     for (let i = 0; i < 8; i++) { await page.keyboard.press('z'); await page.waitForTimeout(60); }
     check('인트로 넘기고 월드 진입', await page.evaluate(() => window.GAME.state().mode === 'world'));
+    // 회귀(재귀개선 3): 스크린리더 낭독 영역 — 캔버스 글자를 aria-live 로도 전한다
+    check('낭독 영역(aria-live)이 있다', await page.evaluate(() => {
+      const el = document.getElementById('sr'); return !!el && el.getAttribute('aria-live') === 'polite';
+    }));
     await page.screenshot({ path: path.join(SHOTS, 'rt-world.png') });
 
     // 배틀 진입 (짝꿍 앞으로 이동)
@@ -93,6 +97,9 @@ const SHOTS = path.join(ROOT, 'shots');
     await page.waitForTimeout(150);
     for (let i = 0; i < 6; i++) { await page.keyboard.press('z'); await page.waitForTimeout(80); }
     check('배틀 진입', await page.evaluate(() => window.GAME.state().mode === 'battle'));
+    check('배틀 대사가 낭독 영역에 나온다', await page.evaluate(() => {
+      const el = document.getElementById('sr'); return !!el && el.textContent.length > 0;
+    }));
     // 남은 대사를 넘기고 메뉴 입력 유예(0.25초)를 기다린다
     for (let i = 0; i < 12 && await page.evaluate(() => !!window.GAME.state().dialog); i++) {
       await page.keyboard.press('z'); await page.waitForTimeout(80);

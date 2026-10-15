@@ -1922,6 +1922,29 @@ for (let i = 0; i < 3; i++) {                       // 1번 질문(p1)에 p2를 
 check('세 번 틀림', S().stats.missPromise === 3 && S().fin.q === 0);
 check('틀린 직후 새로고침해도 교사 기록에 오답이 남는다', (G.teacherReport() || {}).missPromise === 3);
 
+// ── 58. 재귀개선 3라운드 (Codex 검토) ───────────────────────────────────────
+console.log('[58] 재귀개선 3라운드');
+// 확정한 엔딩은 엔딩 대사 중 새로고침해도 남아야 한다(교사 기록·완결 화면)
+for (const pickB of [false, true]) {
+  freshRoof();
+  S().fin.q = 5; S().fin.phase = 'choose'; S().fin.cursor = pickB ? 1 : 0; frame(20);
+  tap('z'); tap('ArrowLeft'); tap('z');              // 확인창 → [네]
+  const want = pickB ? 'B' : 'A';
+  check(`엔딩 ${want} 대사가 떠 있다`, !!S().dialog && S().ending === want);
+  check(`엔딩 ${want} 대사 중 새로고침해도 교사 기록에 엔딩이 남는다`, (G.teacherReport() || {}).ending === want);
+  check(`엔딩 ${want} 대사 중 새로고침하면 완결 화면으로`, G.load() === true && S().mode === 'clear' && S().ending === want);
+}
+
+// 스크린리더 — 캔버스 글자를 낭독 영역(aria-live)에도 옮긴다
+check('낭독 문구 함수가 있다', typeof G.srText === 'function');
+fresh(); G.newGame(); frame(1);
+check('대사는 낭독 문구로 나온다', typeof G.srText === 'function' && G.srText().indexOf(D.INTRO[0][0]) >= 0);
+mash();
+place('hallway', 15, 5); frame(2); advance();
+check('배틀 메뉴 선택 항목이 낭독된다', typeof G.srText === 'function' && G.srText().indexOf(D.BATTLE_UI.menu[S().battle.cursor]) >= 0);
+tap('ArrowRight');
+check('커서를 옮기면 낭독 문구도 바뀐다', typeof G.srText === 'function' && G.srText().indexOf(D.BATTLE_UI.menu[1]) >= 0);
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log('');
 if (fails.length) {
@@ -1929,6 +1952,6 @@ if (fails.length) {
   fails.forEach((f) => console.error('   - ' + f));
   process.exit(1);
 }
-// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P7 532건 + v0.9.0 회귀 39건 + Codex 검토 14건 + 재귀개선 16건)
-if (pass < 601) { console.error(`✘ 검사 수 부족: ${pass}건 (v0.9.0 기준 601건 이상)`); process.exit(1); }
+// 회귀망이 조용히 얇아지는 것을 막는 하한선 (P7 532건 + v0.9.0 회귀 39건 + Codex 검토 14건 + 재귀개선 26건)
+if (pass < 611) { console.error(`✘ 검사 수 부족: ${pass}건 (v0.9.0 기준 611건 이상)`); process.exit(1); }
 console.log(`✔ 스모크 ${pass}건 모두 통과`);

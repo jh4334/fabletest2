@@ -1293,6 +1293,7 @@
     var f = S.fin;
     S.ending = idx === 0 ? 'A' : 'B';
     S.stats.ending = S.ending;
+    save();          // 확정 순간 저장 — 엔딩 대사 중 새로고침·수업 종료에도 선택과 교사 기록이 남게
     sfx('clear');
     finaleSay((idx === 0 ? D.FINALE.endA : D.FINALE.endB).concat(D.FINALE.gate), function () {
       S.mode = 'clear'; S.flags.done = true; S.fin = null;
@@ -2552,6 +2553,59 @@
     txt(isTouch() ? D.T.pausedHelpTouch : D.T.pausedHelp, W / 2, H / 2 + 26, 17, A.PAL.blue, 'center', 500);
   }
 
+  // ── 스크린리더 낭독(접근성) ─────────────────────────────────────────────
+  // 캔버스 글자는 보조공학이 못 읽는다. 지금 화면의 대사·선택 항목·안내를 한 줄로 만들어
+  // index.html 의 #sr(aria-live) 에 옮긴다. 바뀔 때만 써서 같은 말을 되풀이하지 않는다.
+  function pickLine(prefix, label) { return (prefix ? prefix + ' ' : '') + label; }
+  function srText() {
+    if (!S) return '';
+    if (S.paused) return D.T.paused + ' ' + (isTouch() ? D.T.pausedHelpTouch : D.T.pausedHelp);
+    if (S.dialog) return (S.dialog.seq[S.dialog.i] || []).join(' ');
+    if (S.mode === 'title') {
+      if (title.confirm) return D.T.confirmWipe.join(' ') + ' ' + (title.confirmCursor === 0 ? D.T.yes : D.T.no);
+      var opts = titleOptions();
+      return pickLine(D.T.title, opts[opts.length === 1 ? 0 : title.cursor]);
+    }
+    if (S.mode === 'clear') {
+      if (clearUi.confirm) return D.T.confirmWipe.join(' ') + ' ' + (clearUi.confirmCursor === 0 ? D.T.yes : D.T.no);
+      var menu = S.ending ? D.CLEAR.endMenu : D.CLEAR.menu;
+      return pickLine(S.ending ? D.CLEAR.escBanner : '', menu[clearUi.cursor]);
+    }
+    if (S.mode === 'teacher') {
+      var tabs = D.TEACHER.tabs || [];
+      return pickLine(D.TEACHER.title, tabs[teacher.tab] || '');
+    }
+    if (S.mode === 'battle' && S.battle) {
+      var b = S.battle;
+      if (b.phase === 'menu') return pickLine(prof().name, b.spare ? D.BATTLE_UI.spareLabel : D.BATTLE_UI.menu[b.cursor]);
+      if (b.phase === 'sub') { var hid = heldIds()[b.sub]; return hid ? cardDef(hid).label : ''; }
+      if (b.phase === 'enemy') return D.BATTLE_UI.tell;
+    }
+    if (S.mode === 'console' && S.con) {
+      var list = conList();
+      return list.length ? conLabel(list[Math.min(S.con.cursor, list.length - 1)]) : '';
+    }
+    if (S.mode === 'finale' && S.fin) {
+      var f = S.fin;
+      if (f.phase === 'pick') {
+        var ids = promiseIds(), pd = ids.length ? promiseDef(ids[Math.min(f.cursor, ids.length - 1)]) : null;
+        return pickLine(D.FINALE.title, pd ? pd.label : '');
+      }
+      if (f.phase === 'choose') return pickLine(D.FINALE.choose, D.FINALE.options[f.cursor]);
+      if (f.phase === 'confirm') return D.FINALE.confirm.join(' ') + ' ' + (f.confirmCursor === 0 ? D.FINALE.yes : D.FINALE.no);
+      if (f.phase === 'shake') return D.FINALE.shakeNote;
+    }
+    if (S.toast) return S.toast.text;
+    return '';
+  }
+  var srEl = null, srLast = null;
+  function syncSr() {
+    if (!srEl) return;
+    var t = srText();
+    if (t === srLast) return;
+    srLast = t; srEl.textContent = t;
+  }
+
   // 탄막 도중 자리를 비웠다 돌아오면 바로 맞지 않게 멈춰 준다.
   function pause() {
     if (S && (S.mode === 'battle' || S.mode === 'world') && !S.dialog) S.paused = true;
@@ -2567,6 +2621,7 @@
       last = t;
       update(dt);
       render();
+      syncSr();
       errRun = 0;
     } catch (e) {
       loopError(e);
@@ -2740,6 +2795,7 @@
   function start() {
     var doc = g.document;
     cv = doc && doc.getElementById ? doc.getElementById('game') : null;
+    srEl = doc && doc.getElementById ? doc.getElementById('sr') : null;
     ctx = cv && cv.getContext ? cv.getContext('2d') : null;
     // 캔버스를 못 얻으면(구형 브라우저·렌더 차단) 검은 화면 대신 안내를 띄운다.
     if (!ctx) {
@@ -2791,6 +2847,7 @@
     clearUi: function () { return clearUi; },
     bagFit: function () { return ctx && S ? bagFit() : null; },
     titleUi: function () { return title; },
+    srText: srText,
     pause: pause,
     press: function (k) { if (!keys[k]) edge[k] = true; keys[k] = true; },
     release: function (k) { keys[k] = false; }
